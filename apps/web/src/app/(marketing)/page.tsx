@@ -1,212 +1,240 @@
 import Image from "next/image"
 import Link from "next/link"
-import { ArrowRight, ChevronRight, Layers3, Link2, MousePointerClick, PanelRightOpen } from "lucide-react"
+import { ArrowRight, CornerDownRight, Sparkles, Wand2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { SectionHeading } from "@/components/layout/section-heading"
 
-const steps = [
+const valueCards = [
   {
-    title: "Capture quietly",
-    description: "Relay reads supported tabs, extracts visible turns, and stores clean session captures per project.",
-    icon: Layers3
+    title: "Capture the useful parts",
+    copy: "Relay saves visible turns from ChatGPT, Claude, and Perplexity without asking you to rewrite what just happened."
   },
   {
-    title: "Pin the signal",
-    description: "One click turns a useful snippet into a reusable decision, constraint, task, or note.",
-    icon: MousePointerClick
+    title: "Pin what should survive",
+    copy: "Turn a line into a decision, constraint, task, or note before the thread disappears behind another tab."
   },
   {
-    title: "Drop context anywhere",
-    description: "Open another AI tool, fetch the right packet, and insert context without re-explaining the project.",
-    icon: Link2
+    title: "Drop context into the next tool",
+    copy: "Open another AI, fetch the right packet, and insert it in one click without auto-submitting."
   }
 ]
 
 export default function MarketingPage() {
   return (
-    <main className="min-h-screen overflow-hidden bg-[#f6f1e7] text-stone-900">
-      <section className="relative isolate">
-        <div className="absolute inset-x-0 top-0 -z-10 h-[46rem] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.92),transparent_48%)]" />
-        <div className="mx-auto grid max-w-7xl gap-12 px-6 py-8 lg:grid-cols-[1.2fr_0.8fr] lg:px-10 lg:py-10">
-          <div className="flex flex-col gap-10">
-            <header className="flex items-center justify-between rounded-full border border-stone-900/10 bg-white/65 px-5 py-4 backdrop-blur">
-              <Link href="/" className="text-sm font-semibold tracking-[0.24em] uppercase">
-                Relay
+    <main className="relative min-h-screen overflow-hidden bg-[#f1f4ec] text-[var(--relay-ink)]">
+      <section className="relative min-h-screen">
+        <div className="absolute inset-0">
+          <Image
+            src="/images/hero-hills.jpg"
+            alt="Misty green hills behind the Relay landing hero"
+            fill
+            priority
+            className="object-cover object-center"
+          />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(242,245,238,0.82),rgba(242,245,238,0.42)_34%,rgba(17,24,17,0.22)_70%,rgba(12,17,12,0.58))]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.92),transparent_28%)]" />
+        </div>
+
+        <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col px-5 py-6 lg:px-8 lg:py-8">
+          <header className="flex flex-wrap items-center justify-between gap-4 rounded-full border border-white/50 bg-white/55 px-5 py-4 shadow-[var(--relay-shadow)] backdrop-blur-xl">
+            <Link href="/" className="inline-flex items-center rounded-full bg-[var(--relay-accent)] px-4 py-2 text-sm font-semibold uppercase tracking-[0.24em] text-white">
+              Relay
+            </Link>
+            <nav className="hidden items-center gap-2 rounded-full border border-white/60 bg-white/55 px-2 py-2 text-sm text-[var(--relay-muted)] md:flex">
+              <a className="rounded-full px-3 py-2 transition hover:bg-white/90 hover:text-[var(--relay-ink)]" href="#why">
+                Why it feels better
+              </a>
+              <a className="rounded-full px-3 py-2 transition hover:bg-white/90 hover:text-[var(--relay-ink)]" href="#product">
+                Product view
+              </a>
+            </nav>
+            <div className="flex items-center gap-3">
+              <Link className="rounded-full border border-white/60 bg-white/60 px-4 py-2 text-sm font-medium text-[var(--relay-muted)] transition hover:bg-white" href="/sign-in">
+                Sign in
               </Link>
-              <nav className="hidden gap-6 text-sm text-stone-600 md:flex">
-                <a href="#workflow">Workflow</a>
-                <a href="#architecture">Architecture</a>
-                <a href="#mvp">MVP</a>
-              </nav>
-            </header>
+              <Button asChild>
+                <Link href="/dashboard">
+                  Open Relay
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
+          </header>
 
-            <div className="space-y-7">
-              <div className="inline-flex rounded-full border border-stone-900/10 bg-white/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-stone-600 backdrop-blur">
-                Browser-first project memory
-              </div>
-              <div className="max-w-3xl space-y-5">
-                <h1 className="font-serif text-5xl leading-[0.95] tracking-tight text-stone-950 md:text-7xl">
-                  Keep the project in motion while the tools change around it.
-                </h1>
-                <p className="max-w-2xl text-lg leading-8 text-stone-700 md:text-xl">
-                  Relay sits between ChatGPT, Claude, and Perplexity, captures just enough context, and makes handoff feel
-                  like a single gesture instead of a repeated briefing.
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-4">
-                <Button asChild>
-                  <Link href="/dashboard">
-                    Open dashboard
-                    <ArrowRight className="ml-2 h-4 w-4" />
+          <div className="flex flex-1 items-center">
+            <div className="grid w-full gap-10 py-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
+              <div className="max-w-3xl space-y-8">
+                <div className="inline-flex rounded-full border border-white/60 bg-white/58 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-[var(--relay-muted)] backdrop-blur">
+                  Cross-AI project memory
+                </div>
+                <div className="space-y-5">
+                  <h1 className="max-w-4xl text-5xl font-semibold leading-[0.92] tracking-[-0.04em] text-[#102013] md:text-7xl">
+                    Stop re-briefing the next AI.
+                  </h1>
+                  <p className="max-w-2xl text-lg leading-8 text-[#203124]/84 md:text-xl">
+                    Relay quietly keeps the thread of your project alive while you move between ChatGPT, Claude, and Perplexity.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-4">
+                  <Button asChild>
+                    <Link href="/dashboard">See your project view</Link>
+                  </Button>
+                  <Link
+                    href="/settings"
+                    className="inline-flex items-center rounded-full border border-white/60 bg-white/58 px-5 py-3 text-sm font-semibold text-[var(--relay-ink)] backdrop-blur transition hover:bg-white">
+                    Connect the extension
                   </Link>
-                </Button>
-                <Button asChild variant="secondary">
-                  <Link href="/sign-in">Configure auth</Link>
-                </Button>
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-3">
-              {[
-                ["Supported tools", "ChatGPT, Claude, Perplexity"],
-                ["Core loop", "Capture, pin, compose, insert"],
-                ["Storage model", "Supabase with demo fallback"]
-              ].map(([label, value]) => (
-                <Card key={label} className="p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">{label}</p>
-                  <p className="mt-4 text-lg font-semibold text-stone-900">{value}</p>
-                </Card>
-              ))}
-            </div>
-          </div>
-
-          <div className="relative">
-            <Card className="overflow-hidden bg-white/35 p-4">
-              <div className="overflow-hidden rounded-[24px]">
-                <Image
-                  src="/images/hero-hills.jpg"
-                  alt="Green hills hero background for Relay"
-                  width={5464}
-                  height={3640}
-                  className="h-[34rem] w-full object-cover"
-                  priority
-                />
-              </div>
-              <div className="absolute inset-x-10 top-24 rounded-[28px] border border-white/70 bg-white/55 p-5 backdrop-blur-xl">
-                <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.3em] text-stone-500">
-                  <span>Relay surface</span>
-                  <span>Lightweight sidecar</span>
                 </div>
-                <div className="mt-6 space-y-4">
-                  <div className="rounded-[22px] bg-stone-950/90 p-4 text-stone-50">
-                    <p className="text-xs uppercase tracking-[0.24em] text-stone-300">Current project</p>
-                    <p className="mt-3 text-2xl font-semibold">Relay MVP</p>
-                    <p className="mt-2 text-sm text-stone-300">Bound to this tab. Capture visible turns and pin what matters.</p>
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-[20px] bg-white/90 p-4">
-                      <p className="text-xs uppercase tracking-[0.24em] text-stone-500">Pinned constraint</p>
-                      <p className="mt-2 text-sm leading-6 text-stone-700">Avoid vector databases and deep automation in v1.</p>
-                    </div>
-                    <div className="rounded-[20px] bg-white/90 p-4">
-                      <p className="text-xs uppercase tracking-[0.24em] text-stone-500">Target profile</p>
-                      <p className="mt-2 text-sm leading-6 text-stone-700">Claude Code build packet with current state and next tasks.</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between rounded-[20px] bg-white/85 p-4">
+                <div className="flex flex-wrap gap-3">
+                  {["ChatGPT", "Claude", "Perplexity", "Pinned decisions", "One-click insert"].map((item) => (
+                    <span key={item} className="rounded-full border border-white/55 bg-white/48 px-4 py-2 text-sm text-[var(--relay-muted)] backdrop-blur">
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+                <div className="rounded-[32px] border border-white/55 bg-[rgba(249,251,246,0.72)] p-6 shadow-[var(--relay-shadow)] backdrop-blur-xl">
+                  <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-xs uppercase tracking-[0.24em] text-stone-500">Insert context</p>
-                      <p className="mt-2 text-sm text-stone-700">One click. No auto-submit.</p>
+                      <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Current project</p>
+                      <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">Relay MVP</h2>
                     </div>
-                    <div className="rounded-full bg-stone-950 px-4 py-2 text-sm font-semibold text-stone-50">Ready</div>
+                    <div className="rounded-full bg-[var(--relay-accent)] px-4 py-2 text-sm font-semibold text-white">Bound</div>
+                  </div>
+                  <div className="mt-6 grid gap-3">
+                    <div className="rounded-[24px] bg-[#182718] p-5 text-white">
+                      <p className="text-xs uppercase tracking-[0.28em] text-white/65">Pinned constraint</p>
+                      <p className="mt-3 text-sm leading-6 text-white/86">Keep the MVP browser-first, cheap to host, and easy to review.</p>
+                    </div>
+                    <div className="rounded-[24px] border border-[var(--relay-line)] bg-white/80 p-5">
+                      <p className="text-xs uppercase tracking-[0.28em] text-[var(--relay-muted)]">Ready for the next tool</p>
+                      <p className="mt-3 text-sm leading-6 text-[var(--relay-muted)]">Compose a clean context packet and insert it without sending the prompt.</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-[32px] border border-white/55 bg-[rgba(249,251,246,0.58)] p-6 shadow-[var(--relay-shadow)] backdrop-blur-xl">
+                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">The handoff loop</p>
+                  <div className="mt-4 space-y-3">
+                    {[
+                      "Capture visible turns",
+                      "Pin the decision or task",
+                      "Insert context into the next AI"
+                    ].map((item) => (
+                      <div key={item} className="flex items-center justify-between rounded-[20px] border border-[var(--relay-line)] bg-white/70 px-4 py-3">
+                        <span className="text-sm font-medium text-[var(--relay-ink)]">{item}</span>
+                        <CornerDownRight className="h-4 w-4 text-[var(--relay-muted)]" />
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
-
-              <div className="absolute bottom-8 left-8 right-8 flex items-end justify-between gap-6">
-                <div className="max-w-xs rounded-[24px] border border-white/70 bg-white/60 p-4 backdrop-blur">
-                  <p className="text-xs uppercase tracking-[0.3em] text-stone-500">Inspiration reference</p>
-                  <div className="mt-4 overflow-hidden rounded-[18px]">
-                    <Image
-                      src="/images/landing-inspiration.jpeg"
-                      alt="Landing page inspiration reference"
-                      width={680}
-                      height={680}
-                      className="h-28 w-full object-cover"
-                    />
-                  </div>
-                </div>
-                <div className="hidden rounded-full border border-white/80 bg-white/60 px-4 py-3 text-sm text-stone-700 backdrop-blur md:flex md:items-center">
-                  Alternate background available
-                  <ChevronRight className="ml-2 h-4 w-4" />
-                </div>
-              </div>
-            </Card>
+            </div>
           </div>
         </div>
       </section>
 
-      <section id="workflow" className="mx-auto max-w-7xl px-6 py-24 lg:px-10">
-        <SectionHeading
-          eyebrow="Workflow"
-          title="A narrow loop that stays useful even without AI summarization."
-          description="Relay is optimized around one behavior: preserve project state while the user moves between tools, not replace their workflow."
-        />
-        <div className="mt-12 grid gap-5 md:grid-cols-3">
-          {steps.map((step) => (
-            <Card key={step.title} className="p-6">
-              <step.icon className="h-6 w-6 text-stone-600" />
-              <h3 className="mt-6 text-2xl font-semibold tracking-tight">{step.title}</h3>
-              <p className="mt-3 text-sm leading-7 text-stone-700">{step.description}</p>
-            </Card>
+      <section id="why" className="relative z-10 -mt-24 px-5 pb-24 lg:px-8">
+        <div className="mx-auto grid max-w-7xl gap-5 md:grid-cols-3">
+          {valueCards.map((card, index) => (
+            <div
+              key={card.title}
+              className={`rounded-[30px] border p-6 shadow-[var(--relay-shadow)] backdrop-blur ${
+                index === 0
+                  ? "border-[#d8e2cf] bg-[#f7faf4]"
+                  : index === 1
+                    ? "border-[#d8ddcf] bg-[#fbfbf8]"
+                    : "border-[#cfdac8] bg-[#eef5ea]"
+              }`}>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">
+                {index + 1 < 10 ? `0${index + 1}` : index + 1}
+              </p>
+              <h2 className="mt-4 text-2xl font-semibold tracking-tight text-[var(--relay-ink)]">{card.title}</h2>
+              <p className="mt-3 text-sm leading-7 text-[var(--relay-muted)]">{card.copy}</p>
+            </div>
           ))}
         </div>
       </section>
 
-      <section id="architecture" className="mx-auto max-w-7xl px-6 pb-24 lg:px-10">
-        <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr]">
-          <SectionHeading
-            eyebrow="Architecture"
-            title="Three layers, one source of truth."
-            description="The extension handles site-specific capture and insertion, the web app handles product surfaces and APIs, and the backend data model stays relational and inspectable."
-          />
-          <Card className="overflow-hidden p-0">
-            <div className="grid divide-y divide-stone-900/10 md:grid-cols-3 md:divide-x md:divide-y-0">
+      <section id="product" className="px-5 pb-28 lg:px-8">
+        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.92fr_1.08fr]">
+          <div className="space-y-5">
+            <div className="inline-flex rounded-full border border-[var(--relay-line)] bg-white/72 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">
+              What the user actually sees
+            </div>
+            <h2 className="max-w-xl text-4xl font-semibold tracking-[-0.03em] text-[var(--relay-ink)] md:text-5xl">
+              A calm project view, not another wall of setup text.
+            </h2>
+            <p className="max-w-xl text-base leading-8 text-[var(--relay-muted)]">
+              The dashboard keeps recent captures, pinned memory, and the latest handoff packet close together so the next move is obvious.
+            </p>
+            <div className="grid gap-3">
               {[
-                ["Extension", "MV3 content runtime, background worker, side panel, popup, site adapters"],
-                ["Web app", "Landing, dashboard, route handlers, services, DTO mapping"],
-                ["Backend", "Supabase-ready repositories, capture schema, heuristics, context packets"]
-              ].map(([title, copy]) => (
-                <div key={title} className="p-6">
-                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">{title}</p>
-                  <p className="mt-4 text-sm leading-7 text-stone-700">{copy}</p>
+                "Recent captures show exactly what was saved from each tool.",
+                "Pinned memory stays visible so constraints do not get lost.",
+                "Extension tokens live in settings so Chrome can connect once and stay out of the way."
+              ].map((line) => (
+                <div key={line} className="flex items-start gap-3 rounded-[22px] border border-[var(--relay-line)] bg-white/72 px-4 py-4">
+                  <Sparkles className="mt-0.5 h-4 w-4 text-[var(--relay-accent)]" />
+                  <p className="text-sm leading-6 text-[var(--relay-muted)]">{line}</p>
                 </div>
               ))}
             </div>
-          </Card>
-        </div>
-      </section>
+          </div>
 
-      <section id="mvp" className="mx-auto max-w-7xl px-6 pb-24 lg:px-10">
-        <Card className="grid gap-6 overflow-hidden bg-stone-950 p-8 text-stone-50 md:grid-cols-[1.2fr_0.8fr]">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-400">MVP definition</p>
-            <h2 className="mt-4 font-serif text-4xl tracking-tight">If one person can move between tools without re-briefing, the product is real.</h2>
-            <p className="mt-4 max-w-2xl text-base leading-8 text-stone-300">
-              The baseline repo already includes the monorepo layout, API surface, formatter strategy, adapter registry, and test scaffolding needed to harden the core loop.
-            </p>
+          <div className="rounded-[34px] border border-[var(--relay-line)] bg-white/84 p-5 shadow-[var(--relay-shadow)] backdrop-blur">
+            <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
+              <div className="rounded-[28px] bg-[#eef5ea] p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Dashboard snapshot</p>
+                <div className="mt-5 space-y-3">
+                  {[
+                    ["Current project", "Relay MVP"],
+                    ["Visible captures", "3 sessions this week"],
+                    ["Pinned memory", "5 decisions and constraints"],
+                    ["Next action", "Insert a Claude Code handoff"]
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-[22px] bg-white p-4">
+                      <p className="text-xs uppercase tracking-[0.24em] text-[var(--relay-muted)]">{label}</p>
+                      <p className="mt-2 text-lg font-semibold text-[var(--relay-ink)]">{value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div className="rounded-[28px] border border-[var(--relay-line)] bg-[#193021] p-5 text-white">
+                  <p className="text-xs uppercase tracking-[0.28em] text-white/70">Latest packet</p>
+                  <p className="mt-3 text-sm leading-7 text-white/84">
+                    Current goal, important decisions, open tasks, and the context worth carrying forward.
+                  </p>
+                </div>
+                <div className="rounded-[28px] border border-[var(--relay-line)] bg-white p-5">
+                  <p className="text-xs uppercase tracking-[0.28em] text-[var(--relay-muted)]">Extension</p>
+                  <p className="mt-3 text-sm leading-7 text-[var(--relay-muted)]">
+                    Paste the one-time token, pick a project, and keep the popup lean.
+                  </p>
+                </div>
+                <div className="rounded-[28px] border border-[var(--relay-line)] bg-[#f7faf4] p-5">
+                  <p className="text-xs uppercase tracking-[0.28em] text-[var(--relay-muted)]">Not in scope</p>
+                  <p className="mt-3 text-sm leading-7 text-[var(--relay-muted)]">
+                    No vector database, no auto-submission, no heavyweight team layer in the MVP.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Button asChild>
+                <Link href="/sign-in">Sign in to start</Link>
+              </Button>
+              <Link
+                href="/settings"
+                className="inline-flex items-center rounded-full border border-[var(--relay-line)] bg-white px-5 py-3 text-sm font-semibold text-[var(--relay-ink)] transition hover:bg-[var(--relay-soft)]">
+                Open extension setup
+                <Wand2 className="ml-2 h-4 w-4" />
+              </Link>
+            </div>
           </div>
-          <div className="rounded-[24px] bg-white/8 p-6">
-            <p className="text-sm font-semibold text-stone-200">Included now</p>
-            <ul className="mt-4 space-y-3 text-sm leading-7 text-stone-300">
-              <li className="flex gap-3"><PanelRightOpen className="mt-1 h-4 w-4 shrink-0" />Public landing + dashboard shell</li>
-              <li className="flex gap-3"><PanelRightOpen className="mt-1 h-4 w-4 shrink-0" />Capture, memory, context, binding, settings routes</li>
-              <li className="flex gap-3"><PanelRightOpen className="mt-1 h-4 w-4 shrink-0" />Supported adapters for ChatGPT, Claude, and Perplexity</li>
-            </ul>
-          </div>
-        </Card>
+        </div>
       </section>
     </main>
   )

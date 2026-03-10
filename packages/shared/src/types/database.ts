@@ -135,3 +135,15 @@ export interface UserSettingsRow {
   createdAt: string
   updatedAt: string
 }
+
+export interface ExtensionApiTokenRow {
+  id: string
+  userId: string
+  deviceName: string
+  tokenHash: string
+  tokenPrefix: string
+  lastUsedAt: string | null
+  expiresAt: string | null
+  createdAt: string
+  revokedAt: string | null
+}

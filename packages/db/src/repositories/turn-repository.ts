@@ -1,5 +1,5 @@
 import type { ParsedTurn, SourceTurnRow } from "@relay/shared"
-import { hashContent, isoNow, normalizeText } from "@relay/shared"
+import { hashContent, normalizeText } from "@relay/shared"
 
 import { toTurnRow } from "../mappers/session-mapper"
 import type { DatabaseProvider } from "../store/provider"
@@ -8,57 +8,35 @@ export class TurnRepository {
   constructor(private readonly provider: DatabaseProvider) {}
 
   async listBySession(sessionId: string): Promise<SourceTurnRow[]> {
-    if (this.provider.mode === "memory") {
-      return this.provider.store.turns
-        .filter((turn) => turn.sessionId === sessionId)
-        .sort((a, b) => a.turnIndex - b.turnIndex)
-    }
+    const rows = await this.provider.query(
+      `select *
+       from source_turns
+       where session_id = $1
+       order by turn_index asc`,
+      [sessionId]
+    )
 
-    const { data, error } = await this.provider.client.from("source_turns").select("*").eq("session_id", sessionId).order("turn_index", { ascending: true })
-
-    if (error) throw error
-    return (data ?? []).map((record) => toTurnRow(record))
+    return rows.map((record) => toTurnRow(record as Record<string, unknown>))
   }
 
   async insertDeduped(sessionId: string, turns: ParsedTurn[]): Promise<SourceTurnRow[]> {
-    if (this.provider.mode === "memory") {
-      const existingHashes = new Set(
-        this.provider.store.turns.filter((turn) => turn.sessionId === sessionId).map((turn) => turn.contentHash)
-      )
-      const created = turns
-        .map((turn) => ({
-          id: crypto.randomUUID(),
-          sessionId,
-          role: turn.role,
-          turnIndex: turn.turnIndex,
-          content: normalizeText(turn.content),
-          contentHash: hashContent(normalizeText(turn.content)),
-          rawHtml: turn.rawHtml ?? null,
-          metadata: {},
-          createdAt: isoNow()
-        }))
-        .filter((turn) => !existingHashes.has(turn.contentHash))
+    const created: SourceTurnRow[] = []
 
-      this.provider.store.turns.push(...created)
-      return created
+    for (const turn of turns) {
+      const content = normalizeText(turn.content)
+      const rows = await this.provider.query(
+        `insert into source_turns (session_id, role, turn_index, content, content_hash, raw_html, metadata)
+         values ($1, $2, $3, $4, $5, $6, '{}'::jsonb)
+         on conflict (session_id, content_hash) do nothing
+         returning *`,
+        [sessionId, turn.role, turn.turnIndex, content, hashContent(content), turn.rawHtml ?? null]
+      )
+
+      if (rows[0]) {
+        created.push(toTurnRow(rows[0] as Record<string, unknown>))
+      }
     }
 
-    const payload = turns.map((turn) => ({
-      session_id: sessionId,
-      role: turn.role,
-      turn_index: turn.turnIndex,
-      content: normalizeText(turn.content),
-      content_hash: hashContent(normalizeText(turn.content)),
-      raw_html: turn.rawHtml ?? null,
-      metadata: {}
-    }))
-
-    const { data, error } = await this.provider.client
-      .from("source_turns")
-      .upsert(payload, { onConflict: "session_id,content_hash", ignoreDuplicates: true })
-      .select("*")
-
-    if (error) throw error
-    return (data ?? []).map((record) => toTurnRow(record))
+    return created
   }
 }

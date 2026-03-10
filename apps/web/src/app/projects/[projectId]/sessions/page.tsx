@@ -2,22 +2,27 @@ import { notFound } from "next/navigation"
 
 import { AppShell } from "@/components/layout/app-shell"
 import { SessionList } from "@/components/sessions/session-list"
+import { requireSessionViewer } from "@/server/policies/viewer"
 import { getProjectDashboardForUser } from "@/server/services/project-service"
 
+export const dynamic = "force-dynamic"
+
 export default async function ProjectSessionsPage({ params }: { params: Promise<{ projectId: string }> }) {
+  const viewer = await requireSessionViewer()
   const { projectId } = await params
-  const userId = process.env.RELAY_DEFAULT_USER_ID ?? "demo-user"
-  const dashboard = await getProjectDashboardForUser(userId, projectId)
+  const dashboard = await getProjectDashboardForUser(viewer.userId, projectId)
 
   if (!dashboard) notFound()
 
   return (
     <AppShell>
-      <div className="space-y-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">Sessions</p>
-        <h1 className="font-serif text-4xl tracking-tight">{dashboard.project.name}</h1>
-      </div>
-      <SessionList sessions={dashboard.recentSessions} />
+      <section className="space-y-5">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Sessions</p>
+          <h1 className="mt-2 text-4xl font-semibold tracking-[-0.04em] text-[var(--relay-ink)]">{dashboard.project.name}</h1>
+        </div>
+        <SessionList sessions={dashboard.recentSessions} />
+      </section>
     </AppShell>
   )
 }

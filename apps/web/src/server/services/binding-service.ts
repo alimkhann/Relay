@@ -2,7 +2,7 @@ import { createRepositoryBundle } from "@relay/db"
 import { bindingInputSchema } from "@relay/shared"
 
 export async function bindProject(userId: string, input: unknown) {
-  const repositories = createRepositoryBundle()
+  const repositories = createRepositoryBundle(userId)
   const parsed = bindingInputSchema.parse(input)
   const binding = await repositories.bindings.bind(userId, parsed)
 

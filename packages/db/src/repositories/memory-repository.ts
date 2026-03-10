@@ -1,5 +1,4 @@
 import type { CreateMemoryItemInput, MemoryItemRow, UpdateMemoryItemInput } from "@relay/shared"
-import { isoNow } from "@relay/shared"
 
 import { toMemoryRow } from "../mappers/memory-mapper"
 import type { DatabaseProvider } from "../store/provider"
@@ -8,101 +7,64 @@ export class MemoryRepository {
   constructor(private readonly provider: DatabaseProvider) {}
 
   async listByProject(projectId: string): Promise<MemoryItemRow[]> {
-    if (this.provider.mode === "memory") {
-      return this.provider.store.memoryItems
-        .filter((item) => item.projectId === projectId && !item.isArchived)
-        .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt))
-    }
+    const rows = await this.provider.query(
+      `select *
+       from memory_items
+       where project_id = $1
+         and is_archived = false
+       order by pinned desc, updated_at desc`,
+      [projectId]
+    )
 
-    const { data, error } = await this.provider.client
-      .from("memory_items")
-      .select("*")
-      .eq("project_id", projectId)
-      .eq("is_archived", false)
-      .order("pinned", { ascending: false })
-      .order("updated_at", { ascending: false })
-
-    if (error) throw error
-    return (data ?? []).map((record) => toMemoryRow(record))
+    return rows.map((record) => toMemoryRow(record as Record<string, unknown>))
   }
 
   async create(userId: string, input: CreateMemoryItemInput): Promise<MemoryItemRow> {
-    if (this.provider.mode === "memory") {
-      const now = isoNow()
-      const item: MemoryItemRow = {
-        id: crypto.randomUUID(),
-        projectId: input.projectId,
-        sourceTurnId: input.sourceTurnId ?? null,
-        type: input.type,
-        title: input.title ?? null,
-        content: input.content,
-        pinned: input.pinned ?? false,
-        isArchived: false,
-        sortOrder: null,
-        metadata: input.metadata ?? {},
-        createdBy: userId,
-        createdAt: now,
-        updatedAt: now
-      }
-      this.provider.store.memoryItems.unshift(item)
-      return item
-    }
+    const rows = await this.provider.query(
+      `insert into memory_items (project_id, source_turn_id, type, title, content, pinned, metadata, created_by)
+       values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
+       returning *`,
+      [
+        input.projectId,
+        input.sourceTurnId ?? null,
+        input.type,
+        input.title ?? null,
+        input.content,
+        input.pinned ?? false,
+        JSON.stringify(input.metadata ?? {}),
+        userId
+      ]
+    )
 
-    const { data, error } = await this.provider.client
-      .from("memory_items")
-      .insert({
-        project_id: input.projectId,
-        source_turn_id: input.sourceTurnId ?? null,
-        type: input.type,
-        title: input.title ?? null,
-        content: input.content,
-        pinned: input.pinned ?? false,
-        metadata: input.metadata ?? {},
-        created_by: userId
-      })
-      .select("*")
-      .single()
-
-    if (error) throw error
-    return toMemoryRow(data)
+    return toMemoryRow(rows[0] as Record<string, unknown>)
   }
 
   async update(id: string, patch: UpdateMemoryItemInput): Promise<MemoryItemRow> {
-    if (this.provider.mode === "memory") {
-      const item = this.provider.store.memoryItems.find((memory) => memory.id === id)
-      if (!item) throw new Error("Memory item not found")
-      Object.assign(item, patch, { updatedAt: isoNow() })
-      return item
-    }
+    const rows = await this.provider.query(
+      `update memory_items
+       set title = case when $2::boolean then null else coalesce($3, title) end,
+           content = coalesce($4, content),
+           type = coalesce($5, type),
+           pinned = coalesce($6, pinned),
+           is_archived = coalesce($7, is_archived),
+           updated_at = now()
+       where id = $1
+       returning *`,
+      [id, patch.title === null, patch.title ?? null, patch.content ?? null, patch.type ?? null, patch.pinned ?? null, patch.isArchived ?? null]
+    )
 
-    const { data, error } = await this.provider.client
-      .from("memory_items")
-      .update({
-        title: patch.title,
-        content: patch.content,
-        type: patch.type,
-        pinned: patch.pinned,
-        is_archived: patch.isArchived
-      })
-      .eq("id", id)
-      .select("*")
-      .single()
-
-    if (error) throw error
-    return toMemoryRow(data)
+    const row = rows[0]
+    if (!row) throw new Error("Memory item not found")
+    return toMemoryRow(row as Record<string, unknown>)
   }
 
   async remove(id: string): Promise<void> {
-    if (this.provider.mode === "memory") {
-      const item = this.provider.store.memoryItems.find((memory) => memory.id === id)
-      if (item) {
-        item.isArchived = true
-        item.updatedAt = isoNow()
-      }
-      return
-    }
-
-    const { error } = await this.provider.client.from("memory_items").update({ is_archived: true }).eq("id", id)
-    if (error) throw error
+    await this.provider.query(
+      `update memory_items
+       set is_archived = true,
+           updated_at = now()
+       where id = $1`,
+      [id]
+    )
   }
 }

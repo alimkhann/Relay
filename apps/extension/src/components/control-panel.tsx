@@ -1,133 +1,297 @@
 import { useEffect, useState } from "react"
 
-import { setRelaySession, getRelaySession } from "../storage/session"
+import { getRelaySession, setRelaySession } from "../storage/session"
 import { getActiveTab } from "../utils/browser"
+import styles from "./control-panel.module.css"
 
 interface ControlPanelProps {
   compact?: boolean
 }
 
+interface ProjectOption {
+  id: string
+  name: string
+}
+
+const targetOptions = [
+  { value: "claude_code_build", label: "Claude Code" },
+  { value: "codex_implementation", label: "Codex" },
+  { value: "chatgpt_planning", label: "ChatGPT Planning" },
+  { value: "perplexity_research", label: "Perplexity Research" }
+]
+
 export function ControlPanel({ compact = false }: ControlPanelProps) {
-  const [projectId, setProjectId] = useState("project-relay-mvp")
+  const [apiBase, setApiBase] = useState("http://localhost:3000")
+  const [token, setToken] = useState("")
+  const [projectId, setProjectId] = useState("")
   const [targetProfileKey, setTargetProfileKey] = useState("claude_code_build")
-  const [status, setStatus] = useState("Ready")
+  const [projects, setProjects] = useState<ProjectOption[]>([])
+  const [status, setStatus] = useState("Paste an extension token from Relay settings, then load your projects.")
   const [pageState, setPageState] = useState("Waiting for a supported tab.")
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     void (async () => {
       const session = await getRelaySession()
+      setApiBase(session.apiBase)
+      setToken(session.token)
       setProjectId(session.projectId)
       setTargetProfileKey(session.targetProfileKey)
 
-      const tab = await getActiveTab()
-      if (!tab?.id) return
+      await refreshPageState()
 
-      const state = await chrome.tabs.sendMessage(tab.id, { type: "RELAY_PAGE_STATE" })
-      if (state?.supported) {
-        setPageState(`${state.platform} · ${state.turns} visible turns`)
-      } else {
-        setPageState("Open ChatGPT, Claude, or Perplexity to activate Relay.")
+      if (session.token) {
+        await loadProjects(session.apiBase, session.token, session.projectId)
       }
     })()
   }, [])
 
-  async function bindProject() {
+  async function refreshPageState() {
     const tab = await getActiveTab()
     if (!tab?.id) return
 
-    await setRelaySession({ projectId, targetProfileKey })
-    await chrome.runtime.sendMessage({
-      type: "RELAY_BIND_PROJECT",
-      payload: {
-        projectId,
-        tabId: String(tab.id),
-        domain: tab.url ? new URL(tab.url).hostname : null
-      }
-    })
-    setStatus("Project bound to this tab.")
+    const state = await chrome.tabs.sendMessage(tab.id, { type: "RELAY_PAGE_STATE" })
+    if (state?.supported) {
+      setPageState(`${state.platform} · ${state.turns} visible turns`)
+    } else {
+      setPageState("Open ChatGPT, Claude, or Perplexity to activate Relay.")
+    }
   }
 
-  async function capture() {
-    const tab = await getActiveTab()
-    if (!tab?.id) return
-
-    const result = await chrome.tabs.sendMessage(tab.id, {
-      type: "RELAY_CAPTURE_VISIBLE",
-      payload: { projectId }
-    })
-    setStatus(result?.ok ? `Captured ${result.turns} turns.` : result?.reason ?? "Capture failed.")
-  }
-
-  async function composeAndInsert() {
-    const tab = await getActiveTab()
-    if (!tab?.id) return
-
-    const composed = await chrome.runtime.sendMessage({
-      type: "RELAY_COMPOSE_CONTEXT",
-      payload: { projectId, targetProfileKey }
-    })
-
-    const content = composed?.packet?.content ?? composed?.packet?.packet?.content
-    if (!content) {
-      setStatus("Context composition failed.")
+  async function loadProjects(nextApiBase = apiBase, nextToken = token, preferredProjectId = projectId) {
+    if (!nextToken) {
+      setProjects([])
+      setProjectId("")
       return
     }
 
-    const inserted = await chrome.tabs.sendMessage(tab.id, {
-      type: "RELAY_INSERT_CONTEXT",
-      payload: { content }
+    const response = await fetch(`${nextApiBase}/api/projects`, {
+      headers: {
+        authorization: `Bearer ${nextToken}`
+      }
     })
 
-    setStatus(inserted?.ok ? "Context inserted into prompt." : inserted?.reason ?? "Insert failed.")
+    if (!response.ok) {
+      throw new Error(response.status === 401 ? "Extension token was rejected." : "Failed to load projects.")
+    }
+
+    const result = (await response.json()) as {
+      projects: ProjectOption[]
+    }
+
+    setProjects(result.projects)
+
+    const nextProjectId = preferredProjectId && result.projects.some((project) => project.id === preferredProjectId)
+      ? preferredProjectId
+      : result.projects[0]?.id ?? ""
+
+    setProjectId(nextProjectId)
+    await setRelaySession({
+      apiBase: nextApiBase,
+      token: nextToken,
+      projectId: nextProjectId
+    })
+  }
+
+  async function saveConnection() {
+    setBusy(true)
+    setStatus("Saving connection…")
+
+    try {
+      await setRelaySession({
+        apiBase,
+        token,
+        targetProfileKey
+      })
+
+      await loadProjects(apiBase, token)
+      setStatus("Connection saved. Pick a project and Relay is ready.")
+    } catch (cause) {
+      setStatus(cause instanceof Error ? cause.message : "Connection failed.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function bindProject() {
+    if (!projectId) {
+      setStatus("Pick a project first.")
+      return
+    }
+
+    const tab = await getActiveTab()
+    if (!tab?.id) return
+
+    setBusy(true)
+    setStatus("Binding tab…")
+
+    try {
+      await setRelaySession({ apiBase, token, projectId, targetProfileKey })
+      await chrome.runtime.sendMessage({
+        type: "RELAY_BIND_PROJECT",
+        payload: {
+          projectId,
+          tabId: String(tab.id),
+          domain: tab.url ? new URL(tab.url).hostname : null
+        }
+      })
+      setStatus("Project bound to this tab.")
+    } catch (cause) {
+      setStatus(cause instanceof Error ? cause.message : "Bind failed.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function capture() {
+    if (!projectId) {
+      setStatus("Pick a project first.")
+      return
+    }
+
+    const tab = await getActiveTab()
+    if (!tab?.id) return
+
+    setBusy(true)
+    setStatus("Capturing visible turns…")
+
+    try {
+      const result = await chrome.tabs.sendMessage(tab.id, {
+        type: "RELAY_CAPTURE_VISIBLE",
+        payload: { projectId }
+      })
+      setStatus(result?.ok ? `Captured ${result.turns} turns.` : result?.reason ?? "Capture failed.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function composeAndInsert() {
+    if (!projectId) {
+      setStatus("Pick a project first.")
+      return
+    }
+
+    const tab = await getActiveTab()
+    if (!tab?.id) return
+
+    setBusy(true)
+    setStatus("Composing context…")
+
+    try {
+      const composed = await chrome.runtime.sendMessage({
+        type: "RELAY_COMPOSE_CONTEXT",
+        payload: { projectId, targetProfileKey }
+      })
+
+      const content = composed?.packet?.content ?? composed?.packet?.packet?.content
+      if (!content) {
+        setStatus("Context composition failed.")
+        return
+      }
+
+      const inserted = await chrome.tabs.sendMessage(tab.id, {
+        type: "RELAY_INSERT_CONTEXT",
+        payload: { content }
+      })
+
+      setStatus(inserted?.ok ? "Context inserted into the prompt." : inserted?.reason ?? "Insert failed.")
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
-    <div className={`rounded-[24px] bg-stone-950 p-5 text-stone-50 ${compact ? "w-[360px]" : "min-h-screen"}`}>
-      <div className="space-y-2">
-        <p className="text-xs uppercase tracking-[0.28em] text-stone-400">Relay</p>
-        <h1 className="text-2xl font-semibold tracking-tight">Cross-tool project memory</h1>
-        <p className="text-sm leading-6 text-stone-300">{pageState}</p>
+    <div className={`${styles.shell} ${compact ? styles.compact : styles.expanded}`}>
+      <div className={styles.hero}>
+        <div>
+          <p className={styles.eyebrow}>Relay</p>
+          <h1 className={styles.title}>Project memory for the next AI tab.</h1>
+        </div>
+        <p className={styles.pageState}>{pageState}</p>
       </div>
 
-      <div className="mt-8 space-y-4">
-        <label className="block text-sm">
-          <span className="mb-2 block text-stone-300">Project ID</span>
-          <input
-            className="w-full rounded-2xl border border-white/10 bg-white/8 px-4 py-3 text-stone-50 outline-none"
-            value={projectId}
-            onChange={(event) => setProjectId(event.target.value)}
-          />
+      <div className={styles.panel}>
+        <div className={styles.panelHeader}>
+          <div>
+            <p className={styles.sectionLabel}>Connection</p>
+            <h2 className={styles.sectionTitle}>Authenticate the extension</h2>
+          </div>
+          <button className={styles.secondaryButton} disabled={busy} onClick={() => void refreshPageState()}>
+            Refresh tab
+          </button>
+        </div>
+
+        <label className={styles.field}>
+          <span>API base</span>
+          <input value={apiBase} onChange={(event) => setApiBase(event.target.value)} />
         </label>
 
-        <label className="block text-sm">
-          <span className="mb-2 block text-stone-300">Target profile</span>
-          <select
-            className="w-full rounded-2xl border border-white/10 bg-white/8 px-4 py-3 text-stone-50 outline-none"
-            value={targetProfileKey}
-            onChange={(event) => setTargetProfileKey(event.target.value)}>
-            <option value="claude_code_build">Claude Code</option>
-            <option value="codex_implementation">Codex</option>
-            <option value="chatgpt_planning">ChatGPT Planning</option>
-            <option value="perplexity_research">Perplexity Research</option>
+        <label className={styles.field}>
+          <span>Extension token</span>
+          <textarea rows={3} value={token} onChange={(event) => setToken(event.target.value)} />
+        </label>
+
+        <div className={styles.inlineRow}>
+          <a className={styles.helpLink} href={`${apiBase}/settings`} target="_blank" rel="noreferrer">
+            Open Relay settings
+          </a>
+          <button className={styles.primaryButton} disabled={busy} onClick={() => void saveConnection()}>
+            {busy ? "Working…" : "Save connection"}
+          </button>
+        </div>
+      </div>
+
+      <div className={styles.panel}>
+        <div className={styles.panelHeader}>
+          <div>
+            <p className={styles.sectionLabel}>Project</p>
+            <h2 className={styles.sectionTitle}>Pick the active project</h2>
+          </div>
+          <button className={styles.secondaryButton} disabled={busy || !token} onClick={() => void loadProjects()}>
+            Reload projects
+          </button>
+        </div>
+
+        <label className={styles.field}>
+          <span>Project</span>
+          <select value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+            <option value="">Select a project</option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
           </select>
         </label>
+
+        <label className={styles.field}>
+          <span>Target profile</span>
+          <select value={targetProfileKey} onChange={(event) => setTargetProfileKey(event.target.value)}>
+            {targetOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className={styles.actionGrid}>
+          <button className={styles.primaryButton} disabled={busy || !projectId} onClick={() => void bindProject()}>
+            Bind this tab
+          </button>
+          <button className={styles.secondaryButton} disabled={busy || !projectId} onClick={() => void capture()}>
+            Capture visible turns
+          </button>
+          <button className={styles.secondaryButton} disabled={busy || !projectId} onClick={() => void composeAndInsert()}>
+            Compose and insert
+          </button>
+        </div>
       </div>
 
-      <div className="mt-8 grid gap-3">
-        <button className="rounded-full bg-white px-4 py-3 text-sm font-semibold text-stone-950" onClick={() => void bindProject()}>
-          Bind tab to project
-        </button>
-        <button className="rounded-full border border-white/20 px-4 py-3 text-sm font-semibold" onClick={() => void capture()}>
-          Capture visible turns
-        </button>
-        <button className="rounded-full border border-white/20 px-4 py-3 text-sm font-semibold" onClick={() => void composeAndInsert()}>
-          Compose and insert context
-        </button>
-      </div>
-
-      <div className="mt-8 rounded-2xl bg-white/8 p-4 text-sm leading-6 text-stone-300">
-        <p className="font-medium text-stone-100">Status</p>
-        <p className="mt-2">{status}</p>
+      <div className={styles.statusCard}>
+        <p className={styles.sectionLabel}>Status</p>
+        <p className={styles.statusText}>{status}</p>
       </div>
     </div>
   )

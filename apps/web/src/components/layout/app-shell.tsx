@@ -1,22 +1,48 @@
 import Link from "next/link"
 import type { PropsWithChildren } from "react"
 
-export function AppShell({ children }: PropsWithChildren) {
+import { getAuthServer } from "@/lib/auth/server"
+import { SignOutButton } from "@/components/auth/sign-out-button"
+
+export async function AppShell({ children }: PropsWithChildren) {
+  const auth = getAuthServer()
+  const { data } = auth ? await auth.getSession() : { data: null }
+  const user = data?.user
+
   return (
-    <div className="min-h-screen bg-[#f6f1e7] text-stone-900">
-      <div className="mx-auto flex max-w-7xl flex-col gap-8 px-6 py-8 lg:px-10">
-        <header className="flex flex-col gap-4 rounded-[28px] border border-stone-900/10 bg-white/70 px-6 py-5 backdrop-blur md:flex-row md:items-center md:justify-between">
-          <div>
-            <Link href="/" className="text-xl font-semibold tracking-tight">
+    <div className="min-h-screen bg-[var(--relay-app-bg)] text-[var(--relay-ink)]">
+      <div className="mx-auto flex max-w-7xl flex-col gap-8 px-5 py-6 lg:px-8 lg:py-8">
+        <header className="sticky top-4 z-30 flex flex-col gap-4 rounded-[28px] border border-[var(--relay-line)] bg-[rgba(248,250,245,0.78)] px-5 py-4 shadow-[var(--relay-shadow)] backdrop-blur-xl md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-4">
+            <Link href="/" className="inline-flex items-center rounded-full bg-[var(--relay-accent)] px-4 py-2 text-sm font-semibold uppercase tracking-[0.24em] text-white">
               Relay
             </Link>
-            <p className="text-sm text-stone-600">Browser-first memory sidecar for moving between AI tools.</p>
+            <p className="text-sm text-[var(--relay-muted)]">Keep one project thread while you move between AI tools.</p>
           </div>
-          <nav className="flex flex-wrap gap-3 text-sm text-stone-700">
-            <Link href="/dashboard">Dashboard</Link>
-            <Link href="/settings">Settings</Link>
-            <Link href="/sign-in">Sign in</Link>
-          </nav>
+          <div className="flex flex-wrap items-center gap-3">
+            <nav className="flex flex-wrap items-center gap-2 rounded-full border border-[var(--relay-line)] bg-white/70 px-2 py-2 text-sm text-[var(--relay-muted)]">
+              <Link className="rounded-full px-3 py-2 transition hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]" href="/dashboard">
+                Dashboard
+              </Link>
+              <Link className="rounded-full px-3 py-2 transition hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]" href="/settings">
+                Settings
+              </Link>
+            </nav>
+            {user ? (
+              <>
+                <div className="rounded-full border border-[var(--relay-line)] bg-white/70 px-4 py-2 text-sm text-[var(--relay-muted)]">
+                  {user.name || user.email || "Signed in"}
+                </div>
+                <SignOutButton />
+              </>
+            ) : (
+              <Link
+                className="rounded-full border border-[var(--relay-line)] bg-white/70 px-4 py-2 text-sm font-medium text-[var(--relay-muted)] transition hover:bg-white"
+                href="/sign-in">
+                Sign in
+              </Link>
+            )}
+          </div>
         </header>
         {children}
       </div>

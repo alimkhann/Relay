@@ -7,22 +7,25 @@ export class TargetProfileRepository {
   constructor(private readonly provider: DatabaseProvider) {}
 
   async listAll(): Promise<TargetProfileRow[]> {
-    if (this.provider.mode === "memory") {
-      return this.provider.store.targetProfiles
-    }
+    const rows = await this.provider.query(
+      `select *
+       from target_profiles
+       order by name asc`
+    )
 
-    const { data, error } = await this.provider.client.from("target_profiles").select("*").order("name", { ascending: true })
-    if (error) throw error
-    return (data ?? []).map((record) => toTargetProfileRow(record))
+    return rows.map((record) => toTargetProfileRow(record as Record<string, unknown>))
   }
 
   async getByKey(key: string): Promise<TargetProfileRow | null> {
-    if (this.provider.mode === "memory") {
-      return this.provider.store.targetProfiles.find((profile) => profile.key === key) ?? null
-    }
+    const rows = await this.provider.query(
+      `select *
+       from target_profiles
+       where key = $1
+       limit 1`,
+      [key]
+    )
 
-    const { data, error } = await this.provider.client.from("target_profiles").select("*").eq("key", key).maybeSingle()
-    if (error) throw error
-    return data ? toTargetProfileRow(data) : null
+    const row = rows[0]
+    return row ? toTargetProfileRow(row as Record<string, unknown>) : null
   }
 }

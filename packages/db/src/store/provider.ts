@@ -1,35 +1,47 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js"
+import { Pool, type QueryResultRow } from "@neondatabase/serverless"
 
-import { getDemoStore, type RelayStore } from "./demo-store"
+export interface DatabaseProvider {
+  mode: "neon"
+  query<T extends QueryResultRow = QueryResultRow>(text: string, values?: unknown[]): Promise<T[]>
+}
 
-export type DatabaseProvider =
-  | {
-      mode: "memory"
-      store: RelayStore
-    }
-  | {
-      mode: "supabase"
-      client: SupabaseClient
-    }
+let pool: Pool | null = null
 
-export function createRepositoryProvider(): DatabaseProvider {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+function getPool() {
+  const connectionString = process.env.DATABASE_URL
 
-  if (url && serviceRoleKey) {
-    return {
-      mode: "supabase",
-      client: createClient(url, serviceRoleKey, {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false
-        }
-      })
-    }
+  if (!connectionString) {
+    throw new Error("DATABASE_URL is required.")
   }
 
+  if (!pool) {
+    pool = new Pool({
+      connectionString,
+      max: 4
+    })
+  }
+
+  return pool
+}
+
+export function createRepositoryProvider(viewerUserId?: string): DatabaseProvider {
+  const database = getPool()
+
   return {
-    mode: "memory",
-    store: getDemoStore()
+    mode: "neon",
+    async query<T extends QueryResultRow = QueryResultRow>(text: string, values: unknown[] = []) {
+      const client = await database.connect()
+
+      try {
+        if (viewerUserId) {
+          await client.query("select set_config('relay.current_user_id', $1, true)", [viewerUserId])
+        }
+
+        const result = await client.query<T>(text, values)
+        return result.rows
+      } finally {
+        client.release()
+      }
+    }
   }
 }

@@ -1,5 +1,4 @@
 import type { CapturePayload, SourceSessionRow } from "@relay/shared"
-import { isoNow } from "@relay/shared"
 
 import { toSessionRow } from "../mappers/session-mapper"
 import type { DatabaseProvider } from "../store/provider"
@@ -8,54 +7,34 @@ export class SessionRepository {
   constructor(private readonly provider: DatabaseProvider) {}
 
   async listByProject(projectId: string): Promise<SourceSessionRow[]> {
-    if (this.provider.mode === "memory") {
-      return this.provider.store.sessions
-        .filter((session) => session.projectId === projectId)
-        .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt))
-    }
+    const rows = await this.provider.query(
+      `select *
+       from source_sessions
+       where project_id = $1
+       order by captured_at desc`,
+      [projectId]
+    )
 
-    const { data, error } = await this.provider.client.from("source_sessions").select("*").eq("project_id", projectId).order("captured_at", { ascending: false })
-
-    if (error) throw error
-    return (data ?? []).map((record) => toSessionRow(record))
+    return rows.map((record) => toSessionRow(record as Record<string, unknown>))
   }
 
   async create(input: CapturePayload): Promise<SourceSessionRow> {
-    if (this.provider.mode === "memory") {
-      const now = isoNow()
-      const session: SourceSessionRow = {
-        id: crypto.randomUUID(),
-        projectId: input.projectId,
-        platform: input.platform,
-        url: input.session.url,
-        title: input.session.title ?? null,
-        tabId: input.session.tabId ?? null,
-        windowId: input.session.windowId ?? null,
-        pageFingerprint: input.session.pageFingerprint ?? null,
-        metadata: input.session.metadata ?? {},
-        capturedAt: now,
-        createdAt: now
-      }
-      this.provider.store.sessions.unshift(session)
-      return session
-    }
+    const rows = await this.provider.query(
+      `insert into source_sessions (project_id, platform, url, title, tab_id, window_id, page_fingerprint, metadata)
+       values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+       returning *`,
+      [
+        input.projectId,
+        input.platform,
+        input.session.url,
+        input.session.title ?? null,
+        input.session.tabId ?? null,
+        input.session.windowId ?? null,
+        input.session.pageFingerprint ?? null,
+        JSON.stringify(input.session.metadata ?? {})
+      ]
+    )
 
-    const { data, error } = await this.provider.client
-      .from("source_sessions")
-      .insert({
-        project_id: input.projectId,
-        platform: input.platform,
-        url: input.session.url,
-        title: input.session.title ?? null,
-        tab_id: input.session.tabId ?? null,
-        window_id: input.session.windowId ?? null,
-        page_fingerprint: input.session.pageFingerprint ?? null,
-        metadata: input.session.metadata ?? {}
-      })
-      .select("*")
-      .single()
-
-    if (error) throw error
-    return toSessionRow(data)
+    return toSessionRow(rows[0] as Record<string, unknown>)
   }
 }

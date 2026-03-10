@@ -2,17 +2,17 @@ import { createRepositoryBundle, getProjectDashboard, getProjectSummaries } from
 import { projectInputSchema, slugify, updateProjectSchema } from "@relay/shared"
 
 export async function listProjectsForUser(userId: string) {
-  const repositories = createRepositoryBundle()
+  const repositories = createRepositoryBundle(userId)
   return getProjectSummaries(repositories, userId)
 }
 
 export async function getProjectDashboardForUser(userId: string, projectId: string) {
-  const repositories = createRepositoryBundle()
+  const repositories = createRepositoryBundle(userId)
   return getProjectDashboard(repositories, userId, projectId)
 }
 
 export async function createProjectForUser(userId: string, input: unknown) {
-  const repositories = createRepositoryBundle()
+  const repositories = createRepositoryBundle(userId)
   const parsed = projectInputSchema.parse(input)
   const project = await repositories.projects.create({
     ownerId: userId,
@@ -25,8 +25,8 @@ export async function createProjectForUser(userId: string, input: unknown) {
   return project
 }
 
-export async function updateProjectForUser(projectId: string, input: unknown) {
-  const repositories = createRepositoryBundle()
+export async function updateProjectForUser(userId: string, projectId: string, input: unknown) {
+  const repositories = createRepositoryBundle(userId)
   const parsed = updateProjectSchema.parse(input)
   return repositories.projects.update(projectId, {
     name: parsed.name,

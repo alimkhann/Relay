@@ -1,9 +1,16 @@
 @import "tailwindcss";
 
 :root {
-  --relay-background: #f6f1e7;
-  --relay-foreground: #1c1712;
-  --relay-muted: #6b6256;
+  --relay-app-bg: #edf0e8;
+  --relay-background: #f7f8f3;
+  --relay-foreground: #182017;
+  --relay-ink: #182017;
+  --relay-muted: #5c6a5c;
+  --relay-line: rgba(24, 32, 23, 0.12);
+  --relay-accent: #193021;
+  --relay-accent-soft: #dfe8d8;
+  --relay-soft: #edf4e9;
+  --relay-shadow: 0 28px 80px -48px rgba(20, 28, 20, 0.35);
 }
 
 html {
@@ -11,13 +18,23 @@ html {
 }
 
 body {
+  min-height: 100vh;
   background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.85), transparent 42%),
-    linear-gradient(180deg, rgba(255, 247, 234, 0.95), rgba(246, 241, 231, 1));
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.94), transparent 30%),
+    linear-gradient(180deg, #f6f8f2 0%, #edf0e8 55%, #e7ece3 100%);
   color: var(--relay-foreground);
-  font-family: "Avenir Next", "Helvetica Neue", "Segoe UI", sans-serif;
+  font-family: "Avenir Next", "Neue Haas Grotesk Text", "Helvetica Neue", "Segoe UI", sans-serif;
 }
 
 .font-serif {
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+}
+
+a,
+button {
+  cursor: pointer;
+}
+
+::selection {
+  background: rgba(25, 48, 33, 0.14);
 }

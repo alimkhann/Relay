@@ -7,25 +7,26 @@ export async function getProjectDashboard(repositories: RepositoryBundle, ownerI
   const [projectSummary] = (await getProjectSummaries(repositories, ownerId)).filter((project) => project.id === projectId)
   if (!projectSummary) return null
 
-  const [recentSessions, memory, packets] = await Promise.all([
+  const [recentSessions, memory, packets, targetProfiles] = await Promise.all([
     repositories.sessions.listByProject(projectId),
     repositories.memory.listByProject(projectId),
-    repositories.contextPackets.listByProject(projectId)
+    repositories.contextPackets.listByProject(projectId),
+    repositories.targetProfiles.listAll()
   ])
+  const targetProfileById = new Map(targetProfiles.map((profile) => [profile.id, profile.key]))
 
   return {
     project: projectSummary,
-    recentSessions: recentSessions.map((session) => ({
-      id: session.id,
-      platform: session.platform,
-      title: session.title,
-      url: session.url,
-      capturedAt: session.capturedAt,
-      turnCount:
-        repositories.provider.mode === "memory"
-          ? repositories.provider.store.turns.filter((turn) => turn.sessionId === session.id).length
-          : 0
-    })),
+    recentSessions: await Promise.all(
+      recentSessions.map(async (session) => ({
+        id: session.id,
+        platform: session.platform,
+        title: session.title,
+        url: session.url,
+        capturedAt: session.capturedAt,
+        turnCount: (await repositories.turns.listBySession(session.id)).length
+      }))
+    ),
     memory: memory.map((item) => ({
       id: item.id,
       type: item.type,
@@ -37,10 +38,7 @@ export async function getProjectDashboard(repositories: RepositoryBundle, ownerI
     packets: packets.map((packet) => ({
       id: packet.id,
       content: packet.content,
-      targetProfileKey:
-        repositories.provider.mode === "memory"
-          ? repositories.provider.store.targetProfiles.find((profile) => profile.id === packet.targetProfileId)?.key ?? "unknown"
-          : packet.targetProfileId,
+      targetProfileKey: targetProfileById.get(packet.targetProfileId) ?? "unknown",
       createdAt: packet.createdAt
     }))
   }

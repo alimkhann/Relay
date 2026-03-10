@@ -1,5 +1,4 @@
 import type { ProjectRow } from "@relay/shared"
-import { isoNow } from "@relay/shared"
 
 import { fromProjectInput, toProjectRow } from "../mappers/project-mapper"
 import type { DatabaseProvider } from "../store/provider"
@@ -8,71 +7,57 @@ export class ProjectRepository {
   constructor(private readonly provider: DatabaseProvider) {}
 
   async listByOwner(ownerId: string): Promise<ProjectRow[]> {
-    if (this.provider.mode === "memory") {
-      return this.provider.store.projects.filter((project) => project.ownerId === ownerId)
-    }
+    const rows = await this.provider.query(
+      `select *
+       from projects
+       where owner_id = $1
+       order by updated_at desc`,
+      [ownerId]
+    )
 
-    const { data, error } = await this.provider.client.from("projects").select("*").eq("owner_id", ownerId).order("updated_at", { ascending: false })
-
-    if (error) throw error
-    return (data ?? []).map((record) => toProjectRow(record))
+    return rows.map((record) => toProjectRow(record as Record<string, unknown>))
   }
 
   async getById(id: string): Promise<ProjectRow | null> {
-    if (this.provider.mode === "memory") {
-      return this.provider.store.projects.find((project) => project.id === id) ?? null
-    }
+    const rows = await this.provider.query(
+      `select *
+       from projects
+       where id = $1
+       limit 1`,
+      [id]
+    )
 
-    const { data, error } = await this.provider.client.from("projects").select("*").eq("id", id).maybeSingle()
-
-    if (error) throw error
-    return data ? toProjectRow(data) : null
+    const row = rows[0]
+    return row ? toProjectRow(row as Record<string, unknown>) : null
   }
 
   async create(input: { ownerId: string; name: string; slug: string; description?: string | null }): Promise<ProjectRow> {
-    if (this.provider.mode === "memory") {
-      const now = isoNow()
-      const project: ProjectRow = {
-        id: crypto.randomUUID(),
-        ownerId: input.ownerId,
-        name: input.name,
-        slug: input.slug,
-        description: input.description ?? null,
-        isArchived: false,
-        createdAt: now,
-        updatedAt: now
-      }
-      this.provider.store.projects.unshift(project)
-      return project
-    }
+    const payload = fromProjectInput(input)
+    const rows = await this.provider.query(
+      `insert into projects (owner_id, name, slug, description)
+       values ($1, $2, $3, $4)
+       returning *`,
+      [payload.owner_id, payload.name, payload.slug, payload.description]
+    )
 
-    const { data, error } = await this.provider.client.from("projects").insert(fromProjectInput(input)).select("*").single()
-
-    if (error) throw error
-    return toProjectRow(data)
+    return toProjectRow(rows[0] as Record<string, unknown>)
   }
 
   async update(id: string, patch: Partial<Pick<ProjectRow, "name" | "slug" | "description" | "isArchived">>): Promise<ProjectRow> {
-    if (this.provider.mode === "memory") {
-      const project = this.provider.store.projects.find((item) => item.id === id)
-      if (!project) throw new Error("Project not found")
-      Object.assign(project, patch, { updatedAt: isoNow() })
-      return project
-    }
+    const rows = await this.provider.query(
+      `update projects
+       set name = coalesce($2, name),
+           slug = coalesce($3, slug),
+           description = case when $4::boolean then null else coalesce($5, description) end,
+           is_archived = coalesce($6, is_archived),
+           updated_at = now()
+       where id = $1
+       returning *`,
+      [id, patch.name ?? null, patch.slug ?? null, patch.description === null, patch.description ?? null, patch.isArchived ?? null]
+    )
 
-    const { data, error } = await this.provider.client
-      .from("projects")
-      .update({
-        name: patch.name,
-        slug: patch.slug,
-        description: patch.description,
-        is_archived: patch.isArchived
-      })
-      .eq("id", id)
-      .select("*")
-      .single()
-
-    if (error) throw error
-    return toProjectRow(data)
+    const row = rows[0]
+    if (!row) throw new Error("Project not found")
+    return toProjectRow(row as Record<string, unknown>)
   }
 }

@@ -12,7 +12,7 @@ export async function getRelaySession() {
     return {
       apiBase: process.env.PLASMO_PUBLIC_RELAY_API_BASE ?? "http://localhost:3000",
       token: "",
-      projectId: "project-relay-mvp",
+      projectId: "",
       targetProfileKey: "claude_code_build"
     }
   }
@@ -21,7 +21,7 @@ export async function getRelaySession() {
   return {
     apiBase: (values[keys.apiBase] as string | undefined) ?? process.env.PLASMO_PUBLIC_RELAY_API_BASE ?? "http://localhost:3000",
     token: (values[keys.token] as string | undefined) ?? "",
-    projectId: (values[keys.projectId] as string | undefined) ?? "project-relay-mvp",
+    projectId: (values[keys.projectId] as string | undefined) ?? "",
     targetProfileKey: (values[keys.targetProfileKey] as string | undefined) ?? "claude_code_build"
   }
 }

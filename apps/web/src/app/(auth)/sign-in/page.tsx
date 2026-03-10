@@ -1,28 +1,60 @@
 import Link from "next/link"
+import { redirect } from "next/navigation"
 
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button"
 import { AppShell } from "@/components/layout/app-shell"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
+import { getAuthServer } from "@/lib/auth/server"
 
-export default function SignInPage() {
+export const dynamic = "force-dynamic"
+
+export default async function SignInPage() {
+  const auth = getAuthServer()
+  const { data } = auth ? await auth.getSession() : { data: null }
+
+  if (data?.user) {
+    redirect("/dashboard")
+  }
+
   return (
     <AppShell>
-      <Card className="mx-auto max-w-2xl p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">Authentication</p>
-        <h1 className="mt-4 font-serif text-4xl tracking-tight">Supabase auth plugs in here.</h1>
-        <p className="mt-4 text-base leading-7 text-stone-700">
-          The MVP baseline resolves users from Supabase bearer tokens when env is present and falls back to demo mode when
-          `RELAY_ALLOW_DEMO_MODE=true`. Wire your Google provider in Supabase, then point the extension and web app at the same project.
-        </p>
-        <div className="mt-8 flex gap-3">
-          <Button asChild>
-            <Link href="/dashboard">Continue in demo mode</Link>
-          </Button>
-          <Button variant="secondary" asChild>
-            <Link href="/">Back to landing</Link>
-          </Button>
+      <section className="mx-auto grid w-full max-w-5xl gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="rounded-[32px] border border-[var(--relay-line)] bg-[#193021] p-8 text-white shadow-[var(--relay-shadow)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/68">Sign in</p>
+          <h1 className="mt-4 text-4xl font-semibold tracking-[-0.04em]">Use Relay with your real project history.</h1>
+          <p className="mt-4 max-w-md text-base leading-8 text-white/82">
+            Sign in once, create an extension token in settings, and Relay can keep your project context moving between tools.
+          </p>
+          <div className="mt-8 space-y-3 text-sm text-white/78">
+            <p>Google OAuth is the only login path in this pass.</p>
+            <p>The extension uses its own bearer token after sign-in, so Chrome does not depend on web session cookies.</p>
+          </div>
         </div>
-      </Card>
+
+        <div className="rounded-[32px] border border-[var(--relay-line)] bg-white/86 p-8 shadow-[var(--relay-shadow)] backdrop-blur">
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--relay-muted)]">Continue</p>
+          <h2 className="mt-4 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">Start with Google</h2>
+          <p className="mt-3 max-w-lg text-base leading-8 text-[var(--relay-muted)]">
+            After you sign in, open settings to create the extension token and finish the browser setup.
+          </p>
+          <div className="mt-8">
+            {auth ? (
+              <GoogleSignInButton />
+            ) : (
+              <p className="rounded-[20px] bg-[var(--relay-soft)] px-4 py-4 text-sm leading-7 text-[var(--relay-muted)]">
+                Add `NEON_AUTH_BASE_URL` and `NEON_AUTH_COOKIE_SECRET` to enable sign-in in this environment.
+              </p>
+            )}
+          </div>
+          <div className="mt-8 flex flex-wrap gap-3 text-sm text-[var(--relay-muted)]">
+            <Link className="rounded-full border border-[var(--relay-line)] px-4 py-2 transition hover:bg-[var(--relay-soft)]" href="/">
+              Back to landing
+            </Link>
+            <Link className="rounded-full border border-[var(--relay-line)] px-4 py-2 transition hover:bg-[var(--relay-soft)]" href="/dashboard">
+              Dashboard
+            </Link>
+          </div>
+        </div>
+      </section>
     </AppShell>
   )
 }

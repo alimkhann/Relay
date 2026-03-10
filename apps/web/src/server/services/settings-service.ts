@@ -8,7 +8,7 @@ const defaultSettings = {
 }
 
 export async function getUserSettings(userId: string) {
-  const repositories = createRepositoryBundle()
+  const repositories = createRepositoryBundle(userId)
   return (await repositories.settings.getByUser(userId)) ?? {
     userId,
     settings: defaultSettings,
@@ -18,7 +18,7 @@ export async function getUserSettings(userId: string) {
 }
 
 export async function updateUserSettings(userId: string, input: unknown) {
-  const repositories = createRepositoryBundle()
+  const repositories = createRepositoryBundle(userId)
   const partial = input as Partial<typeof defaultSettings>
 
   return repositories.settings.update(userId, {

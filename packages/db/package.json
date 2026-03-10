@@ -12,7 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@relay/shared": "workspace:*",
-    "@supabase/supabase-js": "^2.56.1"
+    "@neondatabase/serverless": "^1.0.2",
+    "@relay/shared": "workspace:*"
   }
 }

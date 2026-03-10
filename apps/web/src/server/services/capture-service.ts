@@ -2,7 +2,7 @@ import { createRepositoryBundle } from "@relay/db"
 import { capturePayloadSchema } from "@relay/shared"
 
 export async function saveCapture(userId: string, input: unknown) {
-  const repositories = createRepositoryBundle()
+  const repositories = createRepositoryBundle(userId)
   const parsed = capturePayloadSchema.parse(input)
   const session = await repositories.sessions.create({
     ...parsed,

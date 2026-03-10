@@ -1,0 +1,182 @@
+.shell {
+  min-height: 100vh;
+  padding: 20px;
+  color: #eef4ee;
+  font-family: "Avenir Next", "Helvetica Neue", sans-serif;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.12), transparent 28%),
+    linear-gradient(180deg, #0f1a11 0%, #142216 38%, #17251a 100%);
+}
+
+.compact {
+  width: 390px;
+}
+
+.expanded {
+  width: 100%;
+}
+
+.hero {
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06));
+  box-shadow: 0 28px 70px -42px rgba(0, 0, 0, 0.65);
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: rgba(237, 245, 238, 0.64);
+}
+
+.title {
+  margin: 10px 0 0;
+  font-size: 30px;
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+}
+
+.pageState {
+  margin: 18px 0 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: rgba(237, 245, 238, 0.8);
+}
+
+.panel {
+  margin-top: 16px;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 26px;
+  background: rgba(248, 252, 248, 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.panelHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.sectionLabel {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: rgba(237, 245, 238, 0.54);
+}
+
+.sectionTitle {
+  margin: 8px 0 0;
+  font-size: 22px;
+  line-height: 1.08;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: rgba(237, 245, 238, 0.82);
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 13px 14px;
+  color: #f4f8f4;
+  outline: none;
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 84px;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: rgba(202, 230, 198, 0.62);
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.inlineRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.actionGrid {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.primaryButton,
+.secondaryButton {
+  border-radius: 999px;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.primaryButton {
+  border: none;
+  background: #eff6ed;
+  color: #112014;
+}
+
+.primaryButton:hover:not(:disabled),
+.secondaryButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.secondaryButton {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: #eef4ee;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  opacity: 0.55;
+}
+
+.helpLink {
+  color: rgba(216, 234, 214, 0.82);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.helpLink:hover {
+  color: #ffffff;
+}
+
+.statusCard {
+  margin-top: 16px;
+  padding: 18px;
+  border-radius: 24px;
+  background: rgba(233, 243, 230, 0.94);
+  color: #1b2a1b;
+}
+
+.statusText {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.7;
+}
