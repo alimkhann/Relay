@@ -1,0 +1,36 @@
+{
+  "name": "@relay/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "plasmo dev",
+    "build": "plasmo build",
+    "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@relay/adapters": "workspace:*",
+    "@relay/shared": "workspace:*",
+    "plasmo": "^0.90.5",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "manifest": {
+    "permissions": ["storage", "tabs", "activeTab", "sidePanel"],
+    "host_permissions": [
+      "https://chatgpt.com/*",
+      "https://chat.openai.com/*",
+      "https://www.perplexity.ai/*",
+      "https://claude.ai/*",
+      "$PLASMO_PUBLIC_RELAY_API_BASE/*"
+    ],
+    "side_panel": {
+      "default_path": "sidepanel.html"
+    },
+    "action": {
+      "default_title": "Relay",
+      "default_popup": "popup.html"
+    }
+  }
+}
