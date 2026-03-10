@@ -5,6 +5,7 @@
   "packageManager": "pnpm@10.30.3",
   "scripts": {
     "build": "pnpm --filter @relay/shared build && pnpm --filter @relay/formatters build && pnpm --filter @relay/adapters build && pnpm --filter @relay/db build && pnpm --filter @relay/web build && pnpm --filter @relay/extension build",
+    "build:extension:prod": "pnpm --filter @relay/extension build:prod",
     "dev:web": "pnpm --filter @relay/web dev",
     "dev:extension": "pnpm --filter @relay/extension dev",
     "lint": "pnpm -r lint",

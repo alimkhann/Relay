@@ -20,8 +20,10 @@ const targetOptions = [
   { value: "perplexity_research", label: "Perplexity Research" }
 ]
 
+const defaultApiBase = process.env.PLASMO_PUBLIC_RELAY_API_BASE ?? "http://localhost:3000"
+
 export function ControlPanel({ compact = false }: ControlPanelProps) {
-  const [apiBase, setApiBase] = useState("http://localhost:3000")
+  const [apiBase, setApiBase] = useState(defaultApiBase)
   const [token, setToken] = useState("")
   const [projectId, setProjectId] = useState("")
   const [targetProfileKey, setTargetProfileKey] = useState("claude_code_build")
