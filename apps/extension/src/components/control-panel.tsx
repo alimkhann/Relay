@@ -21,6 +21,7 @@ const targetOptions = [
 ]
 
 const defaultApiBase = process.env.PLASMO_PUBLIC_RELAY_API_BASE ?? "http://localhost:3000"
+const supportedHosts = ["chatgpt.com", "chat.openai.com", "www.perplexity.ai", "claude.ai"]
 
 export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [apiBase, setApiBase] = useState(defaultApiBase)
@@ -77,7 +78,12 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         return { tab, state }
       }
     } catch {
-      // Ignore messaging failures and fall through to the unsupported state.
+      const hostname = tab.url ? new URL(tab.url).hostname : ""
+      if (supportedHosts.includes(hostname)) {
+        setPageSupported(false)
+        setPageState("This AI tab needs a reload after the extension update.")
+        return null
+      }
     }
 
     setPageSupported(false)
