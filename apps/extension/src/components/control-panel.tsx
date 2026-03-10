@@ -30,6 +30,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [projects, setProjects] = useState<ProjectOption[]>([])
   const [status, setStatus] = useState("Paste an extension token from Relay settings, then load your projects.")
   const [pageState, setPageState] = useState("Waiting for a supported tab.")
+  const [pageSupported, setPageSupported] = useState(false)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -48,16 +49,50 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     })()
   }, [])
 
+  function formatError(cause: unknown, fallback: string) {
+    if (cause instanceof Error) {
+      if (cause.message.includes("Could not establish connection") || cause.message.includes("Receiving end does not exist")) {
+        return "Open ChatGPT, Claude, or Perplexity in the active tab, then try again."
+      }
+
+      return cause.message
+    }
+
+    return fallback
+  }
+
   async function refreshPageState() {
     const tab = await getActiveTab()
-    if (!tab?.id) return
-
-    const state = await chrome.tabs.sendMessage(tab.id, { type: "RELAY_PAGE_STATE" })
-    if (state?.supported) {
-      setPageState(`${state.platform} · ${state.turns} visible turns`)
-    } else {
-      setPageState("Open ChatGPT, Claude, or Perplexity to activate Relay.")
+    if (!tab?.id) {
+      setPageSupported(false)
+      setPageState("No active tab found.")
+      return null
     }
+
+    try {
+      const state = await chrome.tabs.sendMessage(tab.id, { type: "RELAY_PAGE_STATE" })
+      if (state?.supported) {
+        setPageSupported(true)
+        setPageState(`${state.platform} · ${state.turns} visible turns`)
+        return { tab, state }
+      }
+    } catch {
+      // Ignore messaging failures and fall through to the unsupported state.
+    }
+
+    setPageSupported(false)
+    setPageState("Open ChatGPT, Claude, or Perplexity to activate Relay.")
+    return null
+  }
+
+  async function requireSupportedTab(actionLabel: string) {
+    const result = await refreshPageState()
+    if (!result?.tab?.id) {
+      setStatus(`${actionLabel} works only on a supported AI tab.`)
+      return null
+    }
+
+    return result.tab
   }
 
   async function loadProjects(nextApiBase = apiBase, nextToken = token, preferredProjectId = projectId) {
@@ -133,7 +168,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       return
     }
 
-    const tab = await getActiveTab()
+    const tab = await requireSupportedTab("Binding")
     if (!tab?.id) return
 
     setBusy(true)
@@ -141,7 +176,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
     try {
       await setRelaySession({ apiBase, token, projectId, targetProfileKey })
-      await chrome.runtime.sendMessage({
+      const result = await chrome.runtime.sendMessage({
         type: "RELAY_BIND_PROJECT",
         payload: {
           projectId,
@@ -149,9 +184,13 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           domain: tab.url ? new URL(tab.url).hostname : null
         }
       })
+      if (result?.error) {
+        setStatus(result.error)
+        return
+      }
       setStatus("Project bound to this tab.")
     } catch (cause) {
-      setStatus(cause instanceof Error ? cause.message : "Bind failed.")
+      setStatus(formatError(cause, "Bind failed."))
     } finally {
       setBusy(false)
     }
@@ -163,7 +202,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       return
     }
 
-    const tab = await getActiveTab()
+    const tab = await requireSupportedTab("Capture")
     if (!tab?.id) return
 
     setBusy(true)
@@ -174,7 +213,9 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         type: "RELAY_CAPTURE_VISIBLE",
         payload: { projectId }
       })
-      setStatus(result?.ok ? `Captured ${result.turns} turns.` : result?.reason ?? "Capture failed.")
+      setStatus(result?.ok ? `Captured ${result.turns} visible turns and saved them to this project.` : result?.reason ?? "Capture failed.")
+    } catch (cause) {
+      setStatus(formatError(cause, "Capture failed."))
     } finally {
       setBusy(false)
     }
@@ -186,11 +227,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       return
     }
 
-    const tab = await getActiveTab()
+    const tab = await requireSupportedTab("Compose and insert")
     if (!tab?.id) return
 
     setBusy(true)
-    setStatus("Composing context…")
+    setStatus("Composing context packet…")
 
     try {
       const composed = await chrome.runtime.sendMessage({
@@ -200,16 +241,19 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
       const content = composed?.packet?.content ?? composed?.packet?.packet?.content
       if (!content) {
-        setStatus("Context composition failed.")
+        setStatus(composed?.error ?? "Context composition failed.")
         return
       }
 
+      setStatus("Inserting context into the prompt…")
       const inserted = await chrome.tabs.sendMessage(tab.id, {
         type: "RELAY_INSERT_CONTEXT",
         payload: { content }
       })
 
       setStatus(inserted?.ok ? "Context inserted into the prompt." : inserted?.reason ?? "Insert failed.")
+    } catch (cause) {
+      setStatus(formatError(cause, "Compose and insert failed."))
     } finally {
       setBusy(false)
     }
@@ -291,13 +335,13 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         </label>
 
         <div className={styles.actionGrid}>
-          <button className={styles.primaryButton} disabled={busy || !projectId} onClick={() => void bindProject()}>
+          <button className={styles.primaryButton} disabled={busy || !projectId || !pageSupported} onClick={() => void bindProject()}>
             Bind this tab
           </button>
-          <button className={styles.secondaryButton} disabled={busy || !projectId} onClick={() => void capture()}>
+          <button className={styles.secondaryButton} disabled={busy || !projectId || !pageSupported} onClick={() => void capture()}>
             Capture visible turns
           </button>
-          <button className={styles.secondaryButton} disabled={busy || !projectId} onClick={() => void composeAndInsert()}>
+          <button className={styles.secondaryButton} disabled={busy || !projectId || !pageSupported} onClick={() => void composeAndInsert()}>
             Compose and insert
           </button>
         </div>

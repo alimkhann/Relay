@@ -3,6 +3,15 @@ import { resolveAdapter } from "@relay/adapters"
 import type { RelayPageState } from "../messaging/contracts"
 import { relayFetch } from "../utils/api"
 
+async function readErrorResponse(response: Response, fallback: string) {
+  try {
+    const payload = (await response.json()) as { error?: string; message?: string }
+    return payload.error ?? payload.message ?? fallback
+  } catch {
+    return fallback
+  }
+}
+
 export function getPageState(): RelayPageState {
   const adapter = resolveAdapter(window.location.href)
 
@@ -29,7 +38,7 @@ export async function captureVisibleTurns(projectId: string) {
   const turns = adapter.extractVisibleTurns(document)
   const metadata = adapter.getPageMetadata(document)
 
-  await relayFetch("/api/captures", {
+  const response = await relayFetch("/api/captures", {
     method: "POST",
     body: JSON.stringify({
       projectId,
@@ -47,7 +56,19 @@ export async function captureVisibleTurns(projectId: string) {
     })
   })
 
-  return { ok: true, turns: turns.length }
+  if (!response.ok) {
+    return {
+      ok: false,
+      reason: await readErrorResponse(response, "Capture request failed.")
+    }
+  }
+
+  const result = (await response.json()) as { turns?: Array<unknown> }
+
+  return {
+    ok: true,
+    turns: result.turns?.length ?? turns.length
+  }
 }
 
 export async function insertContext(content: string) {
