@@ -3,6 +3,7 @@ import Link from "next/link"
 import { AppShell } from "@/components/layout/app-shell"
 import { PacketList } from "@/components/context/packet-list"
 import { MemoryList } from "@/components/memory/memory-list"
+import { CreateProjectForm } from "@/components/projects/create-project-form"
 import { ProjectGrid } from "@/components/projects/project-grid"
 import { SessionList } from "@/components/sessions/session-list"
 import { Button } from "@/components/ui/button"
@@ -55,7 +56,11 @@ export default async function DashboardPage() {
                 <Button asChild variant="secondary">
                   <Link href={`/projects/${currentProject.id}`}>Open project</Link>
                 </Button>
-              ) : null}
+              ) : (
+                <Button asChild variant="secondary">
+                  <Link href="#create-project">Create project</Link>
+                </Button>
+              )}
             </div>
           </div>
           <div className="rounded-[30px] border border-[var(--relay-line)] bg-[#eef5ea] p-6 shadow-[var(--relay-shadow)]">
@@ -73,6 +78,11 @@ export default async function DashboardPage() {
 
       <section className="grid gap-8 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="space-y-5">
+          {!currentProject ? (
+            <div id="create-project">
+              <CreateProjectForm />
+            </div>
+          ) : null}
           <div className="flex items-end justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Projects</p>

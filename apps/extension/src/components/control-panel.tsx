@@ -64,6 +64,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     if (!nextToken) {
       setProjects([])
       setProjectId("")
+      setStatus("Paste an extension token first.")
       return
     }
 
@@ -82,6 +83,17 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
 
     setProjects(result.projects)
+
+    if (result.projects.length === 0) {
+      setProjectId("")
+      await setRelaySession({
+        apiBase: nextApiBase,
+        token: nextToken,
+        projectId: ""
+      })
+      setStatus("No projects yet. Create one in the Relay dashboard, then reload projects here.")
+      return
+    }
 
     const nextProjectId = preferredProjectId && result.projects.some((project) => project.id === preferredProjectId)
       ? preferredProjectId

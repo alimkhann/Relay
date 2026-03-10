@@ -7,7 +7,7 @@ export function ProjectGrid({ projects }: { projects: ProjectSummaryDto[] }) {
   if (projects.length === 0) {
     return (
       <div className="rounded-[30px] border border-dashed border-[var(--relay-line)] bg-white/70 p-6 text-sm leading-7 text-[var(--relay-muted)]">
-        No projects yet. Capture a supported thread or create a project through the API to give Relay a home for new memory.
+        No projects yet. Create one from the dashboard form above, then come back to the extension and reload projects.
       </div>
     )
   }
