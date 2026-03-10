@@ -18,6 +18,8 @@
     "react-dom": "^19.1.1"
   },
   "manifest": {
+    "name": "Relay",
+    "description": "Keep project memory moving between ChatGPT, Claude, and Perplexity.",
     "permissions": ["storage", "tabs", "activeTab", "sidePanel"],
     "host_permissions": [
       "https://chatgpt.com/*",
