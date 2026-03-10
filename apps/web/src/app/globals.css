@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+:root {
+  --relay-background: #f6f1e7;
+  --relay-foreground: #1c1712;
+  --relay-muted: #6b6256;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.85), transparent 42%),
+    linear-gradient(180deg, rgba(255, 247, 234, 0.95), rgba(246, 241, 231, 1));
+  color: var(--relay-foreground);
+  font-family: "Avenir Next", "Helvetica Neue", "Segoe UI", sans-serif;
+}
+
+.font-serif {
+  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+}
