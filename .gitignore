@@ -11,4 +11,3 @@ test-results
 .env
 .env.local
 .env.*.local
-pnpm-lock.yaml
