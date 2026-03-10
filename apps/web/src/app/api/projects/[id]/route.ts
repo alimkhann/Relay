@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
 
+import { withApiAuth } from "@/server/http/api-route"
 import { resolveViewer } from "@/server/policies/viewer"
 import { getProjectDashboardForUser, updateProjectForUser } from "@/server/services/project-service"
 
-export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const GET = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   const viewer = await resolveViewer(request.headers.get("authorization"))
   const { id } = await params
   const dashboard = await getProjectDashboardForUser(viewer.userId, id)
@@ -13,11 +14,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   }
 
   return NextResponse.json({ project: dashboard.project, dashboard })
-}
+})
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const PATCH = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   const viewer = await resolveViewer(request.headers.get("authorization"))
   const { id } = await params
   const project = await updateProjectForUser(viewer.userId, id, await request.json())
   return NextResponse.json({ project })
-}
+})

@@ -3,6 +3,13 @@ import { hashContent } from "@relay/shared"
 
 import { requireAuthServer } from "@/lib/auth/server"
 
+export class AuthRequiredError extends Error {
+  constructor(message = "Authentication is required.") {
+    super(message)
+    this.name = "AuthRequiredError"
+  }
+}
+
 export interface Viewer {
   userId: string
   mode: "session" | "extension"
@@ -30,7 +37,7 @@ export async function requireSessionViewer(): Promise<Viewer> {
   const user = data?.user as SessionUser | undefined
 
   if (!user?.id) {
-    throw new Error("Authentication is required.")
+    throw new AuthRequiredError()
   }
 
   await upsertProfile(user)
@@ -58,4 +65,8 @@ export async function resolveViewer(authorizationHeader?: string | null): Promis
   }
 
   return requireSessionViewer()
+}
+
+export function isAuthRequiredError(error: unknown): error is AuthRequiredError {
+  return error instanceof AuthRequiredError || (error instanceof Error && error.message === "Authentication is required.")
 }
