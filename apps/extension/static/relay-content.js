@@ -97,14 +97,31 @@
 
     if (target.isContentEditable) {
       element.focus()
-      element.textContent = text
-      element.dispatchEvent(new InputEvent("input", { bubbles: true, data: text }))
+      element.textContent = ""
+      if (typeof document.execCommand === "function") {
+        document.execCommand("insertText", false, text)
+      } else {
+        element.textContent = text
+      }
+      element.dispatchEvent(new InputEvent("input", { bubbles: true, data: text, inputType: "insertText" }))
       return { ok: true }
     }
 
     if ("value" in element) {
       element.focus()
-      element.value = text
+      const prototype =
+        element instanceof HTMLTextAreaElement
+          ? HTMLTextAreaElement.prototype
+          : element instanceof HTMLInputElement
+            ? HTMLInputElement.prototype
+            : null
+
+      const descriptor = prototype ? Object.getOwnPropertyDescriptor(prototype, "value") : null
+      if (descriptor && typeof descriptor.set === "function") {
+        descriptor.set.call(element, text)
+      } else {
+        element.value = text
+      }
       element.dispatchEvent(new Event("input", { bubbles: true }))
       element.dispatchEvent(new Event("change", { bubbles: true }))
       return { ok: true }

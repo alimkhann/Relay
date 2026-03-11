@@ -237,7 +237,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     try {
       const result = await chrome.runtime.sendMessage({
         type: "RELAY_CAPTURE_VISIBLE",
-        payload: { projectId }
+        payload: { projectId, tabId: tab.id }
       })
       setStatus(result?.ok ? `Captured ${result.turns} visible turns and saved them to this project.` : result?.reason ?? "Capture failed.")
     } catch (cause) {

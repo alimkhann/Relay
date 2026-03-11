@@ -53,8 +53,15 @@ chrome.runtime.onMessage.addListener((message: RelayMessage, sender: any, sendRe
         return
       }
 
-      if (message.type === "RELAY_CAPTURE_VISIBLE" && sender.tab?.id) {
-        const result = await chrome.tabs.sendMessage(sender.tab.id, message)
+      if (message.type === "RELAY_CAPTURE_VISIBLE") {
+        const tabId = message.payload.tabId ?? sender.tab?.id
+
+        if (!tabId) {
+          sendResponse({ ok: false, reason: "No supported tab was provided for capture." })
+          return
+        }
+
+        const result = await chrome.tabs.sendMessage(tabId, message)
 
         if (!result?.ok || !result.capture) {
           sendResponse(result ?? { ok: false, reason: "Capture failed." })
