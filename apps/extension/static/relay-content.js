@@ -12,7 +12,7 @@
     {
       platform: "chatgpt",
       hosts: ["chatgpt.com", "chat.openai.com"],
-      turnSelectors: ["[data-message-author-role]", "article[data-testid^='conversation-turn']"],
+      turnSelectors: ["[data-message-author-role]"],
       promptSelectors: [
         "#prompt-textarea",
         "form #prompt-textarea",
@@ -27,7 +27,7 @@
     {
       platform: "codex",
       hosts: ["codex.openai.com"],
-      turnSelectors: ["[data-message-author-role]", "article[data-testid^='conversation-turn']"],
+      turnSelectors: ["[data-message-author-role]"],
       promptSelectors: [
         "#prompt-textarea",
         "form #prompt-textarea",
@@ -63,6 +63,14 @@
     return (input || "").replace(/\s+/g, " ").trim()
   }
 
+  function cleanTurnContent(input) {
+    return normalizeText(input)
+      .replace(/^You said:\s*/i, "")
+      .replace(/^ChatGPT said:\s*/i, "")
+      .replace(/^Claude said:\s*/i, "")
+      .replace(/^Codex said:\s*/i, "")
+  }
+
   function computeSignature(turns, metadata, platform) {
     const payload = JSON.stringify({
       platform,
@@ -89,19 +97,26 @@
   }
 
   function collectTurns(config) {
-    const seen = new Set()
+    const seenNodes = new Set()
+    const seenContent = new Set()
     const turns = []
 
     for (const selector of config.turnSelectors) {
       for (const node of document.querySelectorAll(selector)) {
-        if (seen.has(node)) continue
-        seen.add(node)
+        if (seenNodes.has(node)) continue
+        seenNodes.add(node)
 
-        const content = normalizeText(node.textContent)
+        const role = config.getRole(node)
+        const content = cleanTurnContent(node.textContent)
         if (!content) continue
+        if (role === "unknown") continue
+
+        const contentKey = `${role}:${content.toLowerCase()}`
+        if (seenContent.has(contentKey)) continue
+        seenContent.add(contentKey)
 
         turns.push({
-          role: config.getRole(node),
+          role,
           content,
           turnIndex: turns.length,
           rawHtml: node.innerHTML || null

@@ -9,36 +9,79 @@ interface DigestModelShape extends SessionDigestShape {
   confidence?: number
 }
 
-function summarizeTurns(turns: SourceTurnRow[]) {
+export function cleanTurnContent(content: string) {
+  return normalizeText(content)
+    .replace(/^You said:\s*/i, "")
+    .replace(/^ChatGPT said:\s*/i, "")
+    .replace(/^Claude said:\s*/i, "")
+    .replace(/^Codex said:\s*/i, "")
+}
+
+export function isLowSignalUserTurn(content: string) {
+  const normalized = cleanTurnContent(content).toLowerCase()
+  const words = normalized.split(/\s+/).filter(Boolean)
+
+  if (!normalized) return true
+  if (normalized.length < 18) return true
+  if (words.length <= 4) return true
+
+  return /^(yes|yeah|yep|ok|okay|thanks|thank you|do that|do it|continue|proceed|both|sounds good|what'?s better\b)/i.test(normalized)
+}
+
+export function prepareDigestTurns(turns: SourceTurnRow[]) {
+  const seen = new Set<string>()
+
   return turns
-    .slice(-8)
-    .map((turn) => `${turn.role.toUpperCase()}: ${normalizeText(turn.content)}`)
+    .map((turn) => ({
+      ...turn,
+      content: cleanTurnContent(turn.content)
+    }))
+    .filter((turn) => turn.role !== "unknown")
+    .filter((turn) => turn.content.length > 0)
+    .filter((turn) => {
+      const key = `${turn.role}:${turn.content.toLowerCase()}`
+      if (seen.has(key)) {
+        return false
+      }
+
+      seen.add(key)
+      return true
+    })
+}
+
+function summarizeTurns(turns: SourceTurnRow[]) {
+  return prepareDigestTurns(turns)
+    .slice(-10)
+    .map((turn) => `${turn.role.toUpperCase()}: ${turn.content}`)
     .join("\n")
 }
 
-function deterministicDigest(session: SourceSessionRow, turns: SourceTurnRow[], state: ProjectStateRow | null): DigestModelShape {
-  const latestUserTurn = [...turns].reverse().find((turn) => turn.role === "user")
-  const recentSummary = normalizeText(
-    turns
-      .slice(-3)
-      .map((turn) => turn.content)
-      .join(" ")
-  ).slice(0, 280)
+export function deterministicDigest(session: SourceSessionRow, turns: SourceTurnRow[], state: ProjectStateRow | null): DigestModelShape {
+  const cleanedTurns = prepareDigestTurns(turns)
+  const latestMeaningfulUserTurn = [...cleanedTurns]
+    .reverse()
+    .find((turn) => turn.role === "user" && !isLowSignalUserTurn(turn.content))
+  const latestMeaningfulAssistantTurn = [...cleanedTurns].reverse().find((turn) => turn.role === "assistant" && turn.content.length >= 80)
+  const recentSummary = latestMeaningfulAssistantTurn?.content?.slice(0, 280) ?? null
 
-  const currentObjectiveDelta = latestUserTurn ? normalizeText(latestUserTurn.content).slice(0, 220) : null
+  const currentObjectiveDelta =
+    latestMeaningfulUserTurn && normalizeText(latestMeaningfulUserTurn.content) !== normalizeText(state?.currentObjective ?? "")
+      ? normalizeText(latestMeaningfulUserTurn.content).slice(0, 220)
+      : null
+  const shouldMerge = Boolean(currentObjectiveDelta || recentSummary || !state?.projectOverview)
 
   return {
-    summaryShort: recentSummary || session.title || "Captured a new session update.",
+    summaryShort: recentSummary || currentObjectiveDelta || session.title || "Captured a new session update.",
     newDecisions: [],
     newConstraints: [],
     newTasks: currentObjectiveDelta ? [currentObjectiveDelta] : [],
     projectOverviewDelta: state?.projectOverview ? null : session.title ?? null,
     currentObjectiveDelta,
-    recentProgressDelta: recentSummary || null,
-    relevantToolsDelta: [session.platform],
-    importanceScore: Math.min(100, Math.max(turns.length * 12, latestUserTurn ? 40 : 20)),
-    shouldMerge: turns.length > 0,
-    confidence: turns.length > 0 ? 0.52 : 0.3
+    recentProgressDelta: recentSummary,
+    relevantToolsDelta: shouldMerge ? [session.platform] : [],
+    importanceScore: Math.min(100, Math.max(cleanedTurns.length * 8, latestMeaningfulUserTurn ? 45 : 18)),
+    shouldMerge,
+    confidence: shouldMerge ? 0.58 : 0.24
   }
 }
 
@@ -62,6 +105,7 @@ function sanitizeDigest(input: DigestModelShape): DigestModelShape {
 }
 
 async function generateDigest(session: SourceSessionRow, turns: SourceTurnRow[], projectState: ProjectStateRow | null, projectDescription: string | null) {
+  const cleanedTurns = prepareDigestTurns(turns)
   const fallback = deterministicDigest(session, turns, projectState)
 
   try {
@@ -76,6 +120,8 @@ async function generateDigest(session: SourceSessionRow, turns: SourceTurnRow[],
         "Return a JSON object with these keys exactly:",
         "summaryShort, newDecisions, newConstraints, newTasks, projectOverviewDelta, currentObjectiveDelta, recentProgressDelta, relevantToolsDelta, importanceScore, shouldMerge, confidence.",
         "Use short strings. Arrays should contain only durable carry-forward items.",
+        "Ignore trivial meta prompts like 'yes', 'do that', 'continue', or 'what's better?' unless they clearly redefine the project goal.",
+        "Ignore transcript wrappers like 'You said:' and 'ChatGPT said:'.",
         `Project description: ${projectDescription ?? "None provided."}`,
         `Existing project overview: ${projectState?.projectOverview ?? "None."}`,
         `Existing current objective: ${projectState?.currentObjective ?? "None."}`,
@@ -85,7 +131,7 @@ async function generateDigest(session: SourceSessionRow, turns: SourceTurnRow[],
         `Session title: ${session.title ?? "Untitled session"}`,
         `Session platform: ${session.platform}`,
         "Recent turns:",
-        summarizeTurns(turns)
+        summarizeTurns(cleanedTurns)
       ].join("\n\n")
     })
 

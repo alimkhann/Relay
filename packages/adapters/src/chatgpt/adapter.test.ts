@@ -6,8 +6,9 @@ describe("ChatgptAdapter", () => {
   it("extracts visible user and assistant turns", () => {
     document.body.innerHTML = `
       <main>
-        <article data-message-author-role="user">Build Relay MVP.</article>
-        <article data-message-author-role="assistant">Use a browser extension with a web dashboard.</article>
+        <div data-message-author-role="user">Build Relay MVP.</div>
+        <div data-message-author-role="assistant">Use a browser extension with a web dashboard.</div>
+        <article data-testid="conversation-turn">You said: Build Relay MVP.</article>
         <form><textarea></textarea></form>
       </main>
     `

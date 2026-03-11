@@ -19,6 +19,18 @@ export async function saveCapture(userId: string, input: unknown) {
     normalizedInput.session.url,
     normalizedInput.session.pageFingerprint
   )
+  const isDuplicateCapture = latestComparable?.captureSignature === normalizedInput.session.captureSignature
+
+  if (isDuplicateCapture && latestComparable) {
+    return {
+      session: latestComparable,
+      turns: [],
+      digestQueued: false,
+      aiJobId: null,
+      duplicateSkipped: true
+    }
+  }
+
   const session = await repositories.sessions.create({
     ...normalizedInput,
     session: {

@@ -1,0 +1,104 @@
+import { describe, expect, it } from "vitest"
+
+import type { ProjectStateRow, SourceSessionRow, SourceTurnRow } from "@relay/shared"
+
+import { deterministicDigest, prepareDigestTurns } from "./digest-service"
+
+function makeSession(): SourceSessionRow {
+  return {
+    id: "session-1",
+    projectId: "project-1",
+    platform: "chatgpt",
+    title: "Relay planning",
+    url: "https://chatgpt.com/c/test",
+    pageFingerprint: "test",
+    captureSignature: "sig",
+    metadata: {},
+    createdAt: new Date().toISOString()
+  }
+}
+
+function makeTurn(turnIndex: number, role: SourceTurnRow["role"], content: string): SourceTurnRow {
+  return {
+    id: `turn-${turnIndex}`,
+    sessionId: "session-1",
+    role,
+    content,
+    rawHtml: null,
+    metadata: {},
+    turnIndex,
+    createdAt: new Date().toISOString()
+  }
+}
+
+function makeState(): ProjectStateRow {
+  const now = new Date().toISOString()
+  return {
+    projectId: "project-1",
+    projectOverview: "Relay keeps project state alive across AI chats.",
+    currentObjective: "Build fresh-chat bootstrap flow for Relay.",
+    stackDomain: null,
+    recentProgress: null,
+    decisions: [],
+    constraints: [],
+    openTasks: [],
+    relevantTools: [],
+    lastBootstrapAt: null,
+    dirty: false,
+    createdAt: now,
+    updatedAt: now
+  }
+}
+
+describe("prepareDigestTurns", () => {
+  it("drops unknown transcript wrappers and deduplicates repeated content", () => {
+    const turns = [
+      makeTurn(0, "user", "Build Relay MVP."),
+      makeTurn(1, "unknown", "You said: Build Relay MVP."),
+      makeTurn(2, "assistant", "Use a browser extension."),
+      makeTurn(3, "assistant", "Use a browser extension.")
+    ]
+
+    const cleaned = prepareDigestTurns(turns)
+
+    expect(cleaned).toHaveLength(2)
+    expect(cleaned.map((turn) => turn.role)).toEqual(["user", "assistant"])
+    expect(cleaned[0]?.content).toBe("Build Relay MVP.")
+  })
+})
+
+describe("deterministicDigest", () => {
+  it("ignores low-signal final user prompts when choosing the project objective", () => {
+    const state = makeState()
+    const turns = [
+      makeTurn(0, "user", "Implement Relay as a fresh-chat bootstrap system that restores durable project state into new AI chats."),
+      makeTurn(
+        1,
+        "assistant",
+        "Relay should compress captures into project state, then generate a bounded bootstrap with goals, progress, tasks, and constraints."
+      ),
+      makeTurn(2, "user", "whats better? give me a really short answer")
+    ]
+
+    const digest = deterministicDigest(makeSession(), turns, state)
+
+    expect(digest.currentObjectiveDelta).toBe(
+      "Implement Relay as a fresh-chat bootstrap system that restores durable project state into new AI chats."
+    )
+    expect(digest.recentProgressDelta).toContain("Relay should compress captures into project state")
+    expect(digest.newTasks).toEqual([
+      "Implement Relay as a fresh-chat bootstrap system that restores durable project state into new AI chats."
+    ])
+  })
+
+  it("does not merge when only low-signal chatter is present", () => {
+    const state = makeState()
+    const turns = [makeTurn(0, "user", "yes"), makeTurn(1, "assistant", "Okay.")]
+
+    const digest = deterministicDigest(makeSession(), turns, state)
+
+    expect(digest.shouldMerge).toBe(false)
+    expect(digest.currentObjectiveDelta).toBeNull()
+    expect(digest.newTasks).toEqual([])
+  })
+})
