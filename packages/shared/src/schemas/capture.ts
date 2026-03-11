@@ -9,13 +9,14 @@ const parsedTurnSchema = z.object({
 
 export const capturePayloadSchema = z.object({
   projectId: z.string().min(1),
-  platform: z.enum(["chatgpt", "perplexity", "claude"]),
+  platform: z.enum(["chatgpt", "perplexity", "claude", "codex"]),
   session: z.object({
     title: z.string().nullable().optional(),
     url: z.url(),
     tabId: z.string().nullable().optional(),
     windowId: z.string().nullable().optional(),
     pageFingerprint: z.string().nullable().optional(),
+    captureSignature: z.string().nullable().optional(),
     metadata: z.record(z.string(), z.unknown()).optional()
   }),
   turns: z.array(parsedTurnSchema)

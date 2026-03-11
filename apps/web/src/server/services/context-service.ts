@@ -1,49 +1,16 @@
-import { buildContextCompositionInput, createRepositoryBundle, getRankedMemory } from "@relay/db"
-import { getFormatter } from "@relay/formatters"
+import { createRepositoryBundle } from "@relay/db"
 import { composeContextSchema } from "@relay/shared"
 
+import { generateBootstrapForProject } from "./bootstrap-service"
+
 export async function composeContextForProject(userId: string, projectId: string, input: unknown) {
-  const repositories = createRepositoryBundle(userId)
   const parsed = composeContextSchema.parse(input)
-  const baseInput = await buildContextCompositionInput(repositories, projectId, parsed.targetProfileKey)
-  const rankedMemory = await getRankedMemory(repositories, projectId)
-
-  if (baseInput.recentSessions.length === 0 && rankedMemory.length === 0) {
-    throw new Error("No captured context yet. Capture visible turns or pin memory first.")
-  }
-
-  const formatter = getFormatter(parsed.targetProfileKey)
-  const content = formatter.format({
-    ...baseInput,
-    memoryItems: rankedMemory
-  })
-  const packet = await repositories.contextPackets.create(
-    userId,
-    projectId,
-    baseInput.targetProfile.id,
-    {
-      content,
-      sourceSnapshot: {
-        sessionIds: baseInput.recentSessions.map((session) => session.id),
-        memoryIds: rankedMemory.map((item) => item.id)
-      },
-      targetPlatform: baseInput.targetProfile.platform,
-      targetProfileKey: parsed.targetProfileKey
-    }
-  )
-
-  await repositories.events.log({
-    userId,
-    projectId,
-    sessionId: null,
-    eventType: "context_composed",
-    payload: { targetProfileKey: parsed.targetProfileKey }
+  const packet = await generateBootstrapForProject(userId, projectId, {
+    targetProfileKey: parsed.targetProfileKey,
+    kind: "fresh_chat_bootstrap"
   })
 
-  return {
-    packet,
-    targetProfileKey: parsed.targetProfileKey
-  }
+  return { packet, targetProfileKey: parsed.targetProfileKey }
 }
 
 export async function listContextHistory(userId: string, projectId: string) {

@@ -1,4 +1,4 @@
-import type { MemoryItemType, SupportedPlatform } from "./database"
+import type { BootstrapPacketKind, MemoryItemType, SupportedPlatform } from "./database"
 
 export type ProjectId = string
 
@@ -25,9 +25,12 @@ export interface ProjectSummaryDto {
 
 export interface ProjectDashboardDto {
   project: ProjectSummaryDto
+  projectState: ProjectStateDto | null
   recentSessions: RecentSessionDto[]
+  recentDigests: SessionDigestDto[]
   memory: MemoryItemDto[]
-  packets: ContextPacketDto[]
+  packets: BootstrapPacketDto[]
+  legacyPackets: ContextPacketDto[]
 }
 
 export interface RecentSessionDto {
@@ -46,6 +49,15 @@ export interface ContextPacketDto {
   createdAt: string
 }
 
+export interface BootstrapPacketDto {
+  id: string
+  kind: BootstrapPacketKind
+  content: string
+  targetProfileKey: string
+  renderer: "deterministic" | "gemini"
+  createdAt: string
+}
+
 export interface MemoryItemDto {
   id: string
   type: MemoryItemType
@@ -53,4 +65,28 @@ export interface MemoryItemDto {
   content: string
   pinned: boolean
   updatedAt: string
+}
+
+export interface ProjectStateDto {
+  projectOverview: string | null
+  currentObjective: string | null
+  stackDomain: string | null
+  recentProgress: string | null
+  decisions: string[]
+  constraints: string[]
+  openTasks: string[]
+  relevantTools: string[]
+  lastBootstrapAt: string | null
+  dirty: boolean
+  updatedAt: string
+}
+
+export interface SessionDigestDto {
+  id: string
+  sourceSessionId: string
+  summaryShort: string
+  confidence: number
+  importanceScore: number
+  shouldMerge: boolean
+  createdAt: string
 }

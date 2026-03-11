@@ -7,16 +7,34 @@ export async function getProjectDashboard(repositories: RepositoryBundle, ownerI
   const [projectSummary] = (await getProjectSummaries(repositories, ownerId)).filter((project) => project.id === projectId)
   if (!projectSummary) return null
 
-  const [recentSessions, memory, packets, targetProfiles] = await Promise.all([
+  const [recentSessions, memory, packets, legacyPackets, targetProfiles, projectState, recentDigests] = await Promise.all([
     repositories.sessions.listByProject(projectId),
     repositories.memory.listByProject(projectId),
+    repositories.bootstrapPackets.listByProject(projectId),
     repositories.contextPackets.listByProject(projectId),
-    repositories.targetProfiles.listAll()
+    repositories.targetProfiles.listAll(),
+    repositories.projectState.getByProject(projectId),
+    repositories.sessionDigests.listByProject(projectId)
   ])
   const targetProfileById = new Map(targetProfiles.map((profile) => [profile.id, profile.key]))
 
   return {
     project: projectSummary,
+    projectState: projectState
+      ? {
+          projectOverview: projectState.projectOverview,
+          currentObjective: projectState.currentObjective,
+          stackDomain: projectState.stackDomain,
+          recentProgress: projectState.recentProgress,
+          decisions: projectState.decisions,
+          constraints: projectState.constraints,
+          openTasks: projectState.openTasks,
+          relevantTools: projectState.relevantTools,
+          lastBootstrapAt: projectState.lastBootstrapAt,
+          dirty: projectState.dirty,
+          updatedAt: projectState.updatedAt
+        }
+      : null,
     recentSessions: await Promise.all(
       recentSessions.map(async (session) => ({
         id: session.id,
@@ -27,6 +45,15 @@ export async function getProjectDashboard(repositories: RepositoryBundle, ownerI
         turnCount: (await repositories.turns.listBySession(session.id)).length
       }))
     ),
+    recentDigests: recentDigests.map((digest) => ({
+      id: digest.id,
+      sourceSessionId: digest.sourceSessionId,
+      summaryShort: digest.summaryShort,
+      confidence: digest.confidence,
+      importanceScore: digest.importanceScore,
+      shouldMerge: digest.needsProjectStateMerge,
+      createdAt: digest.createdAt
+    })),
     memory: memory.map((item) => ({
       id: item.id,
       type: item.type,
@@ -36,6 +63,14 @@ export async function getProjectDashboard(repositories: RepositoryBundle, ownerI
       updatedAt: item.updatedAt
     })),
     packets: packets.map((packet) => ({
+      id: packet.id,
+      kind: packet.kind,
+      content: packet.content,
+      targetProfileKey: targetProfileById.get(packet.targetProfileId) ?? "unknown",
+      renderer: packet.renderer,
+      createdAt: packet.createdAt
+    })),
+    legacyPackets: legacyPackets.map((packet) => ({
       id: packet.id,
       content: packet.content,
       targetProfileKey: targetProfileById.get(packet.targetProfileId) ?? "unknown",

@@ -1,5 +1,9 @@
 import type {
+  aiJobKinds,
+  aiJobStatuses,
+  aiRenderers,
   bindingKinds,
+  bootstrapPacketKinds,
   memoryItemTypes,
   sourceTurnRoles,
   supportedPlatforms,
@@ -8,6 +12,10 @@ import type {
 
 export type SupportedPlatform = (typeof supportedPlatforms)[number]
 export type TargetPlatform = (typeof targetPlatforms)[number]
+export type BootstrapPacketKind = (typeof bootstrapPacketKinds)[number]
+export type AiRenderer = (typeof aiRenderers)[number]
+export type AiJobKind = (typeof aiJobKinds)[number]
+export type AiJobStatus = (typeof aiJobStatuses)[number]
 export type SourceTurnRole = (typeof sourceTurnRoles)[number]
 export type MemoryItemType = (typeof memoryItemTypes)[number]
 export type BindingKind = (typeof bindingKinds)[number]
@@ -49,6 +57,7 @@ export interface SourceSessionRow {
   tabId: string | null
   windowId: string | null
   pageFingerprint: string | null
+  captureSignature: string | null
   metadata: Record<string, unknown>
   capturedAt: string
   createdAt: string
@@ -99,6 +108,83 @@ export interface ContextPacketRow {
   content: string
   sourceSnapshot: Record<string, unknown>
   createdBy: string
+  createdAt: string
+}
+
+export interface SessionDigestRow {
+  id: string
+  projectId: string
+  sourceSessionId: string
+  sourceSignature: string
+  summaryShort: string
+  structuredDigest: Record<string, unknown>
+  confidence: number
+  importanceScore: number
+  needsProjectStateMerge: boolean
+  mergedAt: string | null
+  createdBy: string
+  createdAt: string
+}
+
+export interface ProjectStateRow {
+  projectId: string
+  projectOverview: string | null
+  currentObjective: string | null
+  stackDomain: string | null
+  recentProgress: string | null
+  decisions: string[]
+  constraints: string[]
+  openTasks: string[]
+  relevantTools: string[]
+  lastBootstrapAt: string | null
+  dirty: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface BootstrapPacketRow {
+  id: string
+  projectId: string
+  targetProfileId: string
+  kind: BootstrapPacketKind
+  content: string
+  structuredSnapshot: Record<string, unknown>
+  renderer: AiRenderer
+  generationMetadata: Record<string, unknown>
+  createdBy: string
+  createdAt: string
+}
+
+export interface AiJobRunRow {
+  id: string
+  projectId: string
+  sessionId: string | null
+  jobKind: AiJobKind
+  status: AiJobStatus
+  inputPayload: Record<string, unknown>
+  outputPayload: Record<string, unknown>
+  primaryModel: string | null
+  actualModel: string | null
+  fallbackUsed: boolean
+  tokenUsage: Record<string, unknown>
+  errorClass: string | null
+  errorMessage: string | null
+  attempts: number
+  startedAt: string | null
+  completedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ExtensionConnectGrantRow {
+  id: string
+  userId: string
+  deviceName: string
+  grantHash: string
+  grantPrefix: string
+  apiBase: string
+  expiresAt: string
+  consumedAt: string | null
   createdAt: string
 }
 

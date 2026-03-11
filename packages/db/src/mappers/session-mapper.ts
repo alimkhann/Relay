@@ -10,6 +10,7 @@ export function toSessionRow(record: Record<string, unknown>): SourceSessionRow 
     tabId: record.tab_id ? String(record.tab_id) : null,
     windowId: record.window_id ? String(record.window_id) : null,
     pageFingerprint: record.page_fingerprint ? String(record.page_fingerprint) : null,
+    captureSignature: record.capture_signature ? String(record.capture_signature) : null,
     metadata: (record.metadata as Record<string, unknown>) ?? {},
     capturedAt: String(record.captured_at),
     createdAt: String(record.created_at)

@@ -1,0 +1,91 @@
+import type { ProjectStateRow } from "@relay/shared"
+
+import { toProjectStateRow } from "../mappers/relay-v2-mapper"
+import type { DatabaseProvider } from "../store/provider"
+
+export class ProjectStateRepository {
+  constructor(private readonly provider: DatabaseProvider) {}
+
+  async getByProject(projectId: string): Promise<ProjectStateRow | null> {
+    const rows = await this.provider.query(
+      `select *
+       from project_state
+       where project_id = $1
+       limit 1`,
+      [projectId]
+    )
+
+    const row = rows[0]
+    return row ? toProjectStateRow(row as Record<string, unknown>) : null
+  }
+
+  async upsert(input: {
+    projectId: string
+    projectOverview: string | null
+    currentObjective: string | null
+    stackDomain: string | null
+    recentProgress: string | null
+    decisions: string[]
+    constraints: string[]
+    openTasks: string[]
+    relevantTools: string[]
+    dirty: boolean
+    lastBootstrapAt?: string | null
+  }): Promise<ProjectStateRow> {
+    const rows = await this.provider.query(
+      `insert into project_state (
+         project_id,
+         project_overview,
+         current_objective,
+         stack_domain,
+         recent_progress,
+         decisions,
+         constraints,
+         open_tasks,
+         relevant_tools,
+         dirty,
+         last_bootstrap_at
+       )
+       values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11)
+       on conflict (project_id) do update
+         set project_overview = excluded.project_overview,
+             current_objective = excluded.current_objective,
+             stack_domain = excluded.stack_domain,
+             recent_progress = excluded.recent_progress,
+             decisions = excluded.decisions,
+             constraints = excluded.constraints,
+             open_tasks = excluded.open_tasks,
+             relevant_tools = excluded.relevant_tools,
+             dirty = excluded.dirty,
+             last_bootstrap_at = coalesce(excluded.last_bootstrap_at, project_state.last_bootstrap_at),
+             updated_at = now()
+       returning *`,
+      [
+        input.projectId,
+        input.projectOverview,
+        input.currentObjective,
+        input.stackDomain,
+        input.recentProgress,
+        JSON.stringify(input.decisions),
+        JSON.stringify(input.constraints),
+        JSON.stringify(input.openTasks),
+        JSON.stringify(input.relevantTools),
+        input.dirty,
+        input.lastBootstrapAt ?? null
+      ]
+    )
+
+    return toProjectStateRow(rows[0] as Record<string, unknown>)
+  }
+
+  async markBootstrapped(projectId: string): Promise<void> {
+    await this.provider.query(
+      `update project_state
+       set dirty = false,
+           last_bootstrap_at = now(),
+           updated_at = now()
+       where project_id = $1`,
+      [projectId]
+    )
+  }
+}

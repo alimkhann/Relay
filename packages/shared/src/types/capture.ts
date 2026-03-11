@@ -24,6 +24,7 @@ export interface CapturePayload {
     tabId?: string | null
     windowId?: string | null
     pageFingerprint?: string | null
+    captureSignature?: string | null
     metadata?: Record<string, unknown>
   }
   turns: ParsedTurn[]

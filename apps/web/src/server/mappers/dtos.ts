@@ -1,4 +1,17 @@
-import type { ContextPacketDto, ContextPacketRow, MemoryItemDto, MemoryItemRow, ProjectSummaryDto, SourceSessionRow } from "@relay/shared"
+import type {
+  BootstrapPacketDto,
+  BootstrapPacketRow,
+  ContextPacketDto,
+  ContextPacketRow,
+  MemoryItemDto,
+  MemoryItemRow,
+  ProjectStateDto,
+  ProjectStateRow,
+  ProjectSummaryDto,
+  SessionDigestDto,
+  SessionDigestRow,
+  SourceSessionRow
+} from "@relay/shared"
 
 export function toProjectSummaryDto(project: ProjectSummaryDto): ProjectSummaryDto {
   return project
@@ -32,5 +45,44 @@ export function toPacketDto(packet: ContextPacketRow, targetProfileKey: string):
     content: packet.content,
     targetProfileKey,
     createdAt: packet.createdAt
+  }
+}
+
+export function toBootstrapPacketDto(packet: BootstrapPacketRow, targetProfileKey: string): BootstrapPacketDto {
+  return {
+    id: packet.id,
+    kind: packet.kind,
+    content: packet.content,
+    targetProfileKey,
+    renderer: packet.renderer,
+    createdAt: packet.createdAt
+  }
+}
+
+export function toProjectStateDto(state: ProjectStateRow): ProjectStateDto {
+  return {
+    projectOverview: state.projectOverview,
+    currentObjective: state.currentObjective,
+    stackDomain: state.stackDomain,
+    recentProgress: state.recentProgress,
+    decisions: state.decisions,
+    constraints: state.constraints,
+    openTasks: state.openTasks,
+    relevantTools: state.relevantTools,
+    lastBootstrapAt: state.lastBootstrapAt,
+    dirty: state.dirty,
+    updatedAt: state.updatedAt
+  }
+}
+
+export function toSessionDigestDto(digest: SessionDigestRow): SessionDigestDto {
+  return {
+    id: digest.id,
+    sourceSessionId: digest.sourceSessionId,
+    summaryShort: digest.summaryShort,
+    confidence: digest.confidence,
+    importanceScore: digest.importanceScore,
+    shouldMerge: digest.needsProjectStateMerge,
+    createdAt: digest.createdAt
   }
 }

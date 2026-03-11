@@ -1,7 +1,11 @@
 import type {
+  BootstrapPacketKind,
+  BootstrapPacketRow,
+  ProjectStateRow,
   ContextPacketRow,
   MemoryItemRow,
   ProjectRow,
+  SessionDigestRow,
   SourceTurnRole,
   SourceSessionRow,
   TargetPlatform,
@@ -28,4 +32,36 @@ export interface ContextCompositionInput {
 export interface ComposedContextPacket extends Pick<ContextPacketRow, "content" | "sourceSnapshot"> {
   targetProfileKey: string
   targetPlatform: TargetPlatform
+}
+
+export interface SessionDigestShape {
+  summaryShort: string
+  newDecisions: string[]
+  newConstraints: string[]
+  newTasks: string[]
+  projectOverviewDelta: string | null
+  currentObjectiveDelta: string | null
+  recentProgressDelta: string | null
+  relevantToolsDelta: string[]
+  importanceScore: number
+  shouldMerge: boolean
+}
+
+export interface BootstrapCompositionInput {
+  project: ProjectRow
+  projectState: ProjectStateRow | null
+  targetProfile: TargetProfileRow
+  recentDigests: SessionDigestRow[]
+  recentSessions: SourceSessionRow[]
+}
+
+export interface BootstrapPacketResult extends Pick<BootstrapPacketRow, "content" | "structuredSnapshot" | "renderer" | "generationMetadata" | "kind"> {
+  targetProfileKey: string
+  targetPlatform: TargetPlatform
+}
+
+export interface BootstrapRequest {
+  kind: BootstrapPacketKind
+  targetProfileKey: string
+  deep?: boolean
 }
