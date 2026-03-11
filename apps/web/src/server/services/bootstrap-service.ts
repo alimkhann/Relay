@@ -42,15 +42,21 @@ function sanitizeList(value: unknown) {
 }
 
 function sanitizeBootstrapShape(input: BootstrapModelShape, state: ProjectStateRow | null): BootstrapModelShape {
+  const decisions = sanitizeList(input.decisions)
+  const constraints = sanitizeList(input.constraints)
+  const openTasks = sanitizeList(input.openTasks)
+  const relevantTools = sanitizeList(input.relevantTools)
+
   return {
     projectOverview: input.projectOverview ? normalizeText(input.projectOverview).slice(0, 500) : state?.projectOverview ?? null,
     currentObjective: input.currentObjective ? normalizeText(input.currentObjective).slice(0, 320) : state?.currentObjective ?? null,
     recentProgress: input.recentProgress ? normalizeText(input.recentProgress).slice(0, 500) : state?.recentProgress ?? null,
-    decisions: sanitizeList(input.decisions),
-    constraints: sanitizeList(input.constraints),
-    openTasks: sanitizeList(input.openTasks),
-    relevantTools: sanitizeList(input.relevantTools),
-    firstAction: input.firstAction ? normalizeText(input.firstAction).slice(0, 260) : null
+    decisions: decisions.length ? decisions : state?.decisions ?? [],
+    constraints: constraints.length ? constraints : state?.constraints ?? [],
+    openTasks: openTasks.length ? openTasks : state?.openTasks ?? [],
+    relevantTools: relevantTools.length ? relevantTools : state?.relevantTools ?? [],
+    firstAction:
+      input.firstAction ? normalizeText(input.firstAction).slice(0, 260) : state?.openTasks[0] ?? null
   }
 }
 
