@@ -15,6 +15,14 @@ interface BootstrapModelShape {
   firstAction: string | null
 }
 
+function isLowSignalDigestSummary(summary: string) {
+  const normalized = normalizeText(summary).toLowerCase()
+  if (!normalized) return true
+  if (normalized.length < 40) return true
+  if (normalized.includes("what's better") || normalized.includes("whats better")) return true
+  return normalized.startsWith("chatgpt said:thought for")
+}
+
 function inferRenderer(parsed: BootstrapRequest, state: ProjectStateRow | null) {
   if (parsed.kind === "quick_continuity") {
     return "deterministic" as const
@@ -119,6 +127,7 @@ async function generateGeminiBootstrap(input: {
       `Relevant tools: ${(input.state?.relevantTools ?? []).join(" | ") || "None."}`,
       "Recent digest summaries:",
       input.digests
+        .filter((digest) => !isLowSignalDigestSummary(digest.summaryShort))
         .slice(0, 6)
         .map((digest, index) => `${index + 1}. ${digest.summaryShort}`)
         .join("\n") || "None."
