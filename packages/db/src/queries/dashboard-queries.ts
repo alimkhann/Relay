@@ -51,10 +51,14 @@ export async function getProjectDashboard(repositories: RepositoryBundle, ownerI
           }
         : null,
       digestJobs: digestJobs.map((job) => ({
+        id: job.id,
         status: job.status,
         errorMessage: job.errorMessage,
         createdAt: job.createdAt,
-        completedAt: job.completedAt
+        completedAt: job.completedAt,
+        attempts: job.attempts,
+        fallbackUsed: job.fallbackUsed,
+        outputPayload: job.outputPayload
       }))
     }),
     recentSessions: await Promise.all(

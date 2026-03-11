@@ -130,7 +130,11 @@ async function maybeAutoCapture(tabId: number) {
     } | null
 
     if (!pageState?.supported || pageState.isFreshChat) {
-      return { ok: false, reason: "This tab is not eligible for auto-capture." }
+      return {
+        ok: true,
+        skipped: true,
+        reason: pageState?.isFreshChat ? "Fresh chat detected." : "This tab is not eligible for auto-capture."
+      }
     }
 
     if (pageState.captureSignature && lastAutoCapturedByTab.get(tabId) === pageState.captureSignature) {

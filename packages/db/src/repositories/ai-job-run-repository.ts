@@ -12,13 +12,22 @@ export class AiJobRunRepository {
     createdBy: string
     jobKind: AiJobRunRow["jobKind"]
     inputPayload: Record<string, unknown>
+    outputPayload?: Record<string, unknown>
     primaryModel?: string | null
   }): Promise<AiJobRunRow> {
     const rows = await this.provider.query(
-      `insert into ai_job_runs (project_id, session_id, created_by, job_kind, input_payload, primary_model)
-       values ($1, $2, $3, $4, $5::jsonb, $6)
+      `insert into ai_job_runs (project_id, session_id, created_by, job_kind, input_payload, output_payload, primary_model)
+       values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7)
        returning *`,
-      [input.projectId, input.sessionId, input.createdBy, input.jobKind, JSON.stringify(input.inputPayload), input.primaryModel ?? null]
+      [
+        input.projectId,
+        input.sessionId,
+        input.createdBy,
+        input.jobKind,
+        JSON.stringify(input.inputPayload),
+        JSON.stringify(input.outputPayload ?? {}),
+        input.primaryModel ?? null
+      ]
     )
 
     return toAiJobRunRow(rows[0] as Record<string, unknown>)
@@ -101,6 +110,7 @@ export class AiJobRunRepository {
        set status = 'timed_out',
            error_class = 'JobTimeout',
            error_message = 'Relay marked this job as timed out before retrying it.',
+           output_payload = coalesce(output_payload, '{}'::jsonb) || '{"jobStage":"timed_out"}'::jsonb,
            completed_at = now(),
            updated_at = now()
        where job_kind = $1
@@ -130,6 +140,30 @@ export class AiJobRunRepository {
     )
   }
 
+  async patchProgress(id: string, patch: {
+    outputPayload?: Record<string, unknown>
+    actualModel?: string | null
+    fallbackUsed?: boolean
+    tokenUsage?: Record<string, unknown>
+  }): Promise<void> {
+    await this.provider.query(
+      `update ai_job_runs
+       set output_payload = coalesce(output_payload, '{}'::jsonb) || $2::jsonb,
+           actual_model = coalesce($3, actual_model),
+           fallback_used = coalesce($4, fallback_used),
+           token_usage = case when $5::jsonb = '{}'::jsonb then token_usage else $5::jsonb end,
+           updated_at = now()
+       where id = $1`,
+      [
+        id,
+        JSON.stringify(patch.outputPayload ?? {}),
+        patch.actualModel ?? null,
+        patch.fallbackUsed ?? null,
+        JSON.stringify(patch.tokenUsage ?? {})
+      ]
+    )
+  }
+
   async markCompleted(id: string, patch: {
     outputPayload: Record<string, unknown>
     actualModel?: string | null
@@ -150,9 +184,40 @@ export class AiJobRunRepository {
     )
   }
 
+  async markTimedOut(id: string, patch: {
+    errorMessage: string
+    outputPayload?: Record<string, unknown>
+    actualModel?: string | null
+    fallbackUsed?: boolean
+    tokenUsage?: Record<string, unknown>
+  }): Promise<void> {
+    await this.provider.query(
+      `update ai_job_runs
+       set status = 'timed_out',
+           error_class = 'JobTimeout',
+           error_message = $2,
+           output_payload = coalesce(output_payload, '{}'::jsonb) || $3::jsonb,
+           actual_model = coalesce($4, actual_model),
+           fallback_used = coalesce($5, fallback_used),
+           token_usage = $6::jsonb,
+           completed_at = now(),
+           updated_at = now()
+       where id = $1`,
+      [
+        id,
+        patch.errorMessage,
+        JSON.stringify(patch.outputPayload ?? {}),
+        patch.actualModel ?? null,
+        patch.fallbackUsed ?? null,
+        JSON.stringify(patch.tokenUsage ?? {})
+      ]
+    )
+  }
+
   async markFailed(id: string, patch: {
     errorClass: string
     errorMessage: string
+    outputPayload?: Record<string, unknown>
     actualModel?: string | null
     fallbackUsed?: boolean
     tokenUsage?: Record<string, unknown>
@@ -162,13 +227,22 @@ export class AiJobRunRepository {
        set status = 'failed',
            error_class = $2,
            error_message = $3,
-           actual_model = coalesce($4, actual_model),
-           fallback_used = coalesce($5, fallback_used),
-           token_usage = $6::jsonb,
+           output_payload = coalesce(output_payload, '{}'::jsonb) || $4::jsonb,
+           actual_model = coalesce($5, actual_model),
+           fallback_used = coalesce($6, fallback_used),
+           token_usage = $7::jsonb,
            completed_at = now(),
            updated_at = now()
        where id = $1`,
-      [id, patch.errorClass, patch.errorMessage, patch.actualModel ?? null, patch.fallbackUsed ?? null, JSON.stringify(patch.tokenUsage ?? {})]
+      [
+        id,
+        patch.errorClass,
+        patch.errorMessage,
+        JSON.stringify(patch.outputPayload ?? {}),
+        patch.actualModel ?? null,
+        patch.fallbackUsed ?? null,
+        JSON.stringify(patch.tokenUsage ?? {})
+      ]
     )
   }
 }

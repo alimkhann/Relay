@@ -3,8 +3,8 @@ import { NextResponse } from "next/server"
 import { drainDigestJobs } from "@/server/services/digest-service"
 
 export async function POST(request: Request) {
-  const secret = process.env.RELAY_INTERNAL_API_SECRET
-  const provided = request.headers.get("x-relay-internal-secret")
+  const secret = process.env.RELAY_INTERNAL_API_SECRET?.trim()
+  const provided = request.headers.get("x-relay-internal-secret")?.trim()
 
   if (!secret || provided !== secret) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 })

@@ -53,7 +53,13 @@ vi.mock("@/server/services/project-service", () => ({
       projectStateReady: true,
       digestErrorMessage: null,
       lastCapturedAt: new Date().toISOString(),
-      lastDigestAt: new Date().toISOString()
+      lastDigestAt: new Date().toISOString(),
+      activeJobId: null,
+      activeJobStatus: "completed",
+      activeJobStage: "completed",
+      activeJobAttempts: 1,
+      fallbackPlanned: true,
+      fallbackUsed: false
     },
     recentSessions: [],
     recentDigests: [],

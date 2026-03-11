@@ -4,6 +4,7 @@ import type { ProjectStateStatusDto } from "@relay/shared"
 import { getActiveTab } from "../utils/browser"
 import { getRelaySession, setRelaySession, type RelaySessionState } from "../storage/session"
 import { inferTargetProfile, resolveTargetProfile } from "../utils/target-profile"
+import { deriveControlPanelState } from "./control-panel-state"
 import styles from "./control-panel.module.css"
 
 interface ControlPanelProps {
@@ -158,6 +159,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       if (result.stateStatus) {
         await setRelaySession({ stateStatus: result.stateStatus })
         setSession((current) => (current ? { ...current, stateStatus: result.stateStatus ?? null } : current))
+      }
+
+      if ((result.turns ?? 0) === 0 && pageState.isFreshChat) {
+        setStatus(`${prefix ? `${prefix} ` : ""}Skipped: fresh chat detected.`)
+        return
       }
 
       setStatus(
@@ -370,7 +376,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   }
 
   const currentProject = projects.find((project) => project.id === session?.projectId) ?? null
-  const readyLabel = pageState.isFreshChat ? "Bootstrap ready" : "Ready on this chat"
   const resolvedTargetProfileKey = resolveTargetProfile({
     platform: pageState.platform,
     targetMode: session?.targetMode,
@@ -382,16 +387,22 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     codex_implementation: "Codex Implementation",
     perplexity_research: "Perplexity Research"
   }[resolvedTargetProfileKey]
-  const captureStatusLabel = session?.stateStatus?.rawCapturePresent ? "Captured" : "Waiting"
-  const digestStatusLabel = session?.stateStatus?.digestStatus ? session.stateStatus.digestStatus.replace("_", " ") : "idle"
-  const projectStateLabel = session?.stateStatus?.projectStateReady ? "Ready" : "Pending"
+  const panelState = deriveControlPanelState({
+    connected: Boolean(session?.connected),
+    supported: pageState.supported,
+    freshChat: Boolean(pageState.isFreshChat),
+    stateStatus: session?.stateStatus ?? null
+  })
+  const captureStatusLabel = session?.stateStatus?.rawCapturePresent ? "Captured" : pageState.isFreshChat ? "Fresh chat" : "Waiting"
+  const digestStatusLabel = panelState.stageLabel ?? (session?.stateStatus?.digestStatus ? session.stateStatus.digestStatus.replace("_", " ") : "Idle")
+  const projectStateLabel = panelState.projectStateReady ? "Ready" : "Pending"
 
   return (
     <div className={`${styles.shell} ${compact ? styles.compact : styles.expanded}`}>
       <section className={styles.hero}>
         <div className={styles.heroTop}>
           <p className={styles.eyebrow}>Relay</p>
-          {session?.connected ? <span className={styles.badge}>{readyLabel}</span> : null}
+          {session?.connected && panelState.heroBadge ? <span className={styles.badge}>{panelState.heroBadge}</span> : null}
         </div>
         <h1 className={styles.title}>
           {session?.connected ? "Project memory for the next AI tab." : "Quiet continuity for fresh AI chats."}
@@ -449,11 +460,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 </select>
               </label>
             ) : (
-              <p className={styles.metaText}>
-                {pageState.isFreshChat
-                  ? "Relay can drop a full bootstrap into this new chat."
-                  : "Relay keeps state nearby and can insert a smaller continuity packet on demand."}
-              </p>
+              <div className={styles.metaText}>
+                <p>{panelState.projectHint}</p>
+                <p>{session?.targetMode === "manual" ? "Manual target override" : "Automatic target"}: {resolvedTargetLabel}</p>
+              </div>
             )}
 
             <div className={styles.statusGrid}>
@@ -472,13 +482,15 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             </div>
 
             <div className={styles.actionGrid}>
-              <button className={styles.primaryButton} disabled={busy || !session.projectId || !pageState.supported} onClick={() => void insertBootstrap()}>
-                Insert bootstrap
+              <button className={styles.primaryButton} disabled={busy || !session.projectId || panelState.insertDisabled} onClick={() => void insertBootstrap()}>
+                {pageState.isFreshChat && !panelState.freshBootstrapReady ? "Digest pending" : "Insert bootstrap"}
               </button>
               <button className={styles.secondaryButton} disabled={busy || !session.projectId || !pageState.supported} onClick={() => void pinSelection()}>
                 Pin selection
               </button>
             </div>
+
+            {panelState.stageLabel ? <p className={styles.hint}>Digest stage: {panelState.stageLabel}</p> : null}
           </section>
 
           <details className={styles.panel} open={advancedOpen} onToggle={(event) => setAdvancedOpen((event.target as HTMLDetailsElement).open)}>
@@ -539,6 +551,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             {session.targetMode === "manual" ? "Manual target override" : "Automatic target"}: {resolvedTargetLabel}
           </p>
         ) : null}
+        {session?.stateStatus?.activeJobStage ? <p className={styles.hint}>Active job stage: {panelState.stageLabel ?? session.stateStatus.activeJobStage}</p> : null}
         {session?.stateStatus?.digestErrorMessage ? <p className={styles.hint}>{session.stateStatus.digestErrorMessage}</p> : null}
         {session?.limitedMode ? <p className={styles.hint}>Gemini was unavailable or rate-limited, so Relay fell back to a bounded deterministic packet.</p> : null}
       </section>

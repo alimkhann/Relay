@@ -1,6 +1,7 @@
 import { normalizeText } from "@relay/shared"
 
 const GEMINI_API_BASE = process.env.GEMINI_API_BASE_URL ?? "https://generativelanguage.googleapis.com/v1beta"
+const MODEL_UNAVAILABLE_CACHE_MS = 15 * 60 * 1000
 
 export const GEMINI_MODELS = {
   digest: {
@@ -31,11 +32,17 @@ interface GeminiJsonResult<T> {
   tokenUsage: GeminiUsage
 }
 
-class GeminiRequestError extends Error {
+export type GeminiFailurePhase = "preflight" | "count_tokens" | "generate" | "json_parse"
+export type GeminiStage = "count_tokens_primary" | "generate_primary" | "count_tokens_fallback" | "generate_fallback"
+
+const unavailableModelCache = new Map<string, number>()
+
+export class GeminiRequestError extends Error {
   constructor(
     message: string,
     readonly status: number,
-    readonly retryable: boolean
+    readonly retryable: boolean,
+    readonly phase: GeminiFailurePhase
   ) {
     super(message)
     this.name = "GeminiRequestError"
@@ -60,10 +67,47 @@ async function parseError(response: Response) {
 }
 
 function isRetryableStatus(status: number) {
-  return status === 404 || status === 429 || status === 500 || status === 503
+  return status === 403 || status === 404 || status === 429 || status === 500 || status === 503
 }
 
-async function countTokens(model: string, prompt: string) {
+function isModelUnavailableStatus(status: number) {
+  return status === 403 || status === 404
+}
+
+function getCachedUnavailableError(model: string, phase: GeminiFailurePhase) {
+  const expiresAt = unavailableModelCache.get(model)
+  if (!expiresAt) return null
+  if (expiresAt <= Date.now()) {
+    unavailableModelCache.delete(model)
+    return null
+  }
+
+  return new GeminiRequestError(`Gemini model ${model} is temporarily unavailable and Relay cached that failure.`, 403, true, phase)
+}
+
+function rememberUnavailableModel(model: string) {
+  unavailableModelCache.set(model, Date.now() + MODEL_UNAVAILABLE_CACHE_MS)
+}
+
+export function describeGeminiError(error: unknown) {
+  if (!(error instanceof GeminiRequestError)) {
+    return null
+  }
+
+  return {
+    message: error.message,
+    status: error.status,
+    retryable: error.retryable,
+    phase: error.phase
+  }
+}
+
+async function countTokens(model: string, prompt: string, signal?: AbortSignal) {
+  const cachedError = getCachedUnavailableError(model, "count_tokens")
+  if (cachedError) {
+    throw cachedError
+  }
+
   const apiKey = getGeminiApiKey()
   if (!apiKey) {
     return estimateTokenCount(prompt)
@@ -74,6 +118,7 @@ async function countTokens(model: string, prompt: string) {
     headers: {
       "content-type": "application/json"
     },
+    signal,
     body: JSON.stringify({
       contents: [
         {
@@ -85,6 +130,15 @@ async function countTokens(model: string, prompt: string) {
   })
 
   if (!response.ok) {
+    const message = await parseError(response)
+    if (isModelUnavailableStatus(response.status)) {
+      rememberUnavailableModel(model)
+    }
+
+    if (isRetryableStatus(response.status)) {
+      throw new GeminiRequestError(message, response.status, true, "count_tokens")
+    }
+
     return estimateTokenCount(prompt)
   }
 
@@ -92,10 +146,15 @@ async function countTokens(model: string, prompt: string) {
   return payload.totalTokens ?? estimateTokenCount(prompt)
 }
 
-async function generateJson<T>(model: string, systemInstruction: string, prompt: string, maxOutputTokens: number): Promise<{ data: T; tokenUsage: GeminiUsage }> {
+async function generateJson<T>(model: string, systemInstruction: string, prompt: string, maxOutputTokens: number, signal?: AbortSignal): Promise<{ data: T; tokenUsage: GeminiUsage }> {
+  const cachedError = getCachedUnavailableError(model, "generate")
+  if (cachedError) {
+    throw cachedError
+  }
+
   const apiKey = getGeminiApiKey()
   if (!apiKey) {
-    throw new GeminiRequestError("Gemini API key is not configured.", 0, false)
+    throw new GeminiRequestError("Gemini API key is not configured.", 0, false, "preflight")
   }
 
   const response = await fetch(`${GEMINI_API_BASE}/models/${model}:generateContent?key=${apiKey}`, {
@@ -103,6 +162,7 @@ async function generateJson<T>(model: string, systemInstruction: string, prompt:
     headers: {
       "content-type": "application/json"
     },
+    signal,
     body: JSON.stringify({
       systemInstruction: {
         parts: [{ text: systemInstruction }]
@@ -123,7 +183,12 @@ async function generateJson<T>(model: string, systemInstruction: string, prompt:
   })
 
   if (!response.ok) {
-    throw new GeminiRequestError(await parseError(response), response.status, isRetryableStatus(response.status))
+    const message = await parseError(response)
+    if (isModelUnavailableStatus(response.status)) {
+      rememberUnavailableModel(model)
+    }
+
+    throw new GeminiRequestError(message, response.status, isRetryableStatus(response.status), "generate")
   }
 
   const payload = (await response.json()) as {
@@ -141,11 +206,18 @@ async function generateJson<T>(model: string, systemInstruction: string, prompt:
 
   const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("").trim()
   if (!text) {
-    throw new GeminiRequestError("Gemini returned an empty response.", response.status, false)
+    throw new GeminiRequestError("Gemini returned an empty response.", response.status, false, "generate")
+  }
+
+  let data: T
+  try {
+    data = JSON.parse(text) as T
+  } catch {
+    throw new GeminiRequestError("Gemini returned invalid JSON.", response.status, false, "json_parse")
   }
 
   return {
-    data: JSON.parse(text) as T,
+    data,
     tokenUsage: {
       inputTokens: payload.usageMetadata?.promptTokenCount ?? estimateTokenCount(prompt),
       outputTokens: payload.usageMetadata?.candidatesTokenCount ?? estimateTokenCount(text),
@@ -157,13 +229,13 @@ async function generateJson<T>(model: string, systemInstruction: string, prompt:
   }
 }
 
-async function trimPromptToBudget(model: string, prompt: string, maxInputTokens: number) {
+async function trimPromptToBudget(model: string, prompt: string, maxInputTokens: number, signal?: AbortSignal) {
   let nextPrompt = normalizeText(prompt)
-  let totalTokens = await countTokens(model, nextPrompt)
+  let totalTokens = await countTokens(model, nextPrompt, signal)
 
   while (totalTokens > maxInputTokens && nextPrompt.length > 1200) {
     nextPrompt = nextPrompt.slice(0, Math.floor(nextPrompt.length * 0.85))
-    totalTokens = await countTokens(model, nextPrompt)
+    totalTokens = await countTokens(model, nextPrompt, signal)
   }
 
   return { prompt: nextPrompt, tokens: totalTokens }
@@ -176,11 +248,19 @@ export async function runGeminiJsonWithFallback<T>(input: {
   prompt: string
   maxInputTokens: number
   maxOutputTokens: number
+  signal?: AbortSignal
+  onStage?: (stage: GeminiStage, details: { model: string; fallbackUsed: boolean }) => void | Promise<void>
 }): Promise<GeminiJsonResult<T>> {
-  const primaryPrompt = await trimPromptToBudget(input.primaryModel, input.prompt, input.maxInputTokens)
+  const emitStage = async (stage: GeminiStage, model: string, fallbackUsed: boolean) => {
+    await input.onStage?.(stage, { model, fallbackUsed })
+  }
+
+  await emitStage("count_tokens_primary", input.primaryModel, false)
+  const primaryPrompt = await trimPromptToBudget(input.primaryModel, input.prompt, input.maxInputTokens, input.signal)
 
   try {
-    const result = await generateJson<T>(input.primaryModel, input.systemInstruction, primaryPrompt.prompt, input.maxOutputTokens)
+    await emitStage("generate_primary", input.primaryModel, false)
+    const result = await generateJson<T>(input.primaryModel, input.systemInstruction, primaryPrompt.prompt, input.maxOutputTokens, input.signal)
     return {
       data: result.data,
       primaryModel: input.primaryModel,
@@ -194,8 +274,10 @@ export async function runGeminiJsonWithFallback<T>(input: {
     }
   }
 
-  const fallbackPrompt = await trimPromptToBudget(input.fallbackModel, input.prompt, input.maxInputTokens)
-  const fallbackResult = await generateJson<T>(input.fallbackModel, input.systemInstruction, fallbackPrompt.prompt, input.maxOutputTokens)
+  await emitStage("count_tokens_fallback", input.fallbackModel, true)
+  const fallbackPrompt = await trimPromptToBudget(input.fallbackModel, input.prompt, input.maxInputTokens, input.signal)
+  await emitStage("generate_fallback", input.fallbackModel, true)
+  const fallbackResult = await generateJson<T>(input.fallbackModel, input.systemInstruction, fallbackPrompt.prompt, input.maxOutputTokens, input.signal)
 
   return {
     data: fallbackResult.data,

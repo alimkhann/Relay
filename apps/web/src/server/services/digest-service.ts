@@ -1,8 +1,8 @@
-import { createRepositoryBundle } from "@relay/db"
-import type { ProjectStateRow, SessionDigestShape, SourceSessionRow, SourceTurnRow } from "@relay/shared"
+import { createRepositoryBundle, type RepositoryBundle } from "@relay/db"
+import type { AiJobRunRow, ProjectStateRow, SessionDigestShape, SourceSessionRow, SourceTurnRow } from "@relay/shared"
 import { buildCaptureSignature, normalizeText } from "@relay/shared"
 
-import { GEMINI_MODELS, runGeminiJsonWithFallback } from "./gemini-service"
+import { describeGeminiError, GEMINI_MODELS, runGeminiJsonWithFallback, type GeminiStage } from "./gemini-service"
 import { mergeDigestIntoState } from "./project-state-service"
 
 interface DigestModelShape extends SessionDigestShape {
@@ -10,6 +10,63 @@ interface DigestModelShape extends SessionDigestShape {
 }
 
 const DIGEST_JOB_TIMEOUT_MINUTES = 5
+const DIGEST_INLINE_TIMEOUT_MS = 20_000
+const DIGEST_FALLBACK_PLANNED = true
+
+type DigestJobStage = "queued" | GeminiStage | "merge_state" | "completed" | "failed" | "timed_out"
+
+interface DigestGenerationResult {
+  digest: DigestModelShape
+  primaryModel: string
+  actualModel: string
+  fallbackUsed: boolean
+  tokenUsage: {
+    inputTokens: number
+    outputTokens: number
+    totalTokens: number
+  }
+  diagnostics?: {
+    failurePhase?: string | null
+    failureMessage?: string | null
+    lastGeminiStage?: GeminiStage | null
+  }
+}
+
+function createDigestTimeoutError(timeoutMs: number) {
+  const error = new Error(`Digest timed out after ${Math.round(timeoutMs / 1000)} seconds.`)
+  error.name = "AbortError"
+  return error
+}
+
+function isTimeoutError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError"
+}
+
+function buildJobProgress(stage: DigestJobStage, input: {
+  model?: string | null
+  fallbackUsed?: boolean
+  failurePhase?: string | null
+  failureMessage?: string | null
+  lastGeminiStage?: GeminiStage | null
+  digestId?: string
+  summaryShort?: string
+  skipped?: boolean
+  reason?: string
+} = {}) {
+  return {
+    jobStage: stage,
+    fallbackPlanned: DIGEST_FALLBACK_PLANNED,
+    fallbackUsed: input.fallbackUsed ?? false,
+    model: input.model ?? null,
+    failurePhase: input.failurePhase ?? null,
+    failureMessage: input.failureMessage ?? null,
+    lastGeminiStage: input.lastGeminiStage ?? null,
+    digestId: input.digestId,
+    summaryShort: input.summaryShort,
+    skipped: input.skipped,
+    reason: input.reason
+  }
+}
 
 export function cleanTurnContent(content: string) {
   return normalizeText(content)
@@ -125,57 +182,65 @@ function sanitizeDigest(input: DigestModelShape): DigestModelShape {
   }
 }
 
-async function generateDigest(session: SourceSessionRow, turns: SourceTurnRow[], projectState: ProjectStateRow | null, projectDescription: string | null) {
+async function generateDigest(
+  session: SourceSessionRow,
+  turns: SourceTurnRow[],
+  projectState: ProjectStateRow | null,
+  projectDescription: string | null,
+  input: {
+    signal?: AbortSignal
+    onStage?: (stage: GeminiStage, details: { model: string; fallbackUsed: boolean }) => void | Promise<void>
+  } = {}
+) {
   const cleanedTurns = prepareDigestTurns(turns)
-  const fallback = deterministicDigest(session, turns, projectState)
+  const result = await runGeminiJsonWithFallback<DigestModelShape>({
+    primaryModel: GEMINI_MODELS.digest.primary,
+    fallbackModel: GEMINI_MODELS.digest.fallback,
+    maxInputTokens: GEMINI_MODELS.digest.maxInputTokens,
+    maxOutputTokens: GEMINI_MODELS.digest.maxOutputTokens,
+    signal: input.signal,
+    onStage: input.onStage,
+    systemInstruction:
+      "You compress AI chat activity into a project-state digest. Return only JSON. Prefer concise, durable carry-forward state over transcript details.",
+    prompt: [
+      "Return a JSON object with these keys exactly:",
+      "summaryShort, newDecisions, newConstraints, newTasks, projectOverviewDelta, currentObjectiveDelta, recentProgressDelta, relevantToolsDelta, importanceScore, shouldMerge, confidence.",
+      "Use short strings. Arrays should contain only durable carry-forward items.",
+      "Ignore trivial meta prompts like 'yes', 'do that', 'continue', or 'what's better?' unless they clearly redefine the project goal.",
+      "Ignore transcript wrappers like 'You said:' and 'ChatGPT said:'.",
+      `Project description: ${projectDescription ?? "None provided."}`,
+      `Existing project overview: ${projectState?.projectOverview ?? "None."}`,
+      `Existing current objective: ${projectState?.currentObjective ?? "None."}`,
+      `Existing decisions: ${(projectState?.decisions ?? []).join(" | ") || "None."}`,
+      `Existing constraints: ${(projectState?.constraints ?? []).join(" | ") || "None."}`,
+      `Existing open tasks: ${(projectState?.openTasks ?? []).join(" | ") || "None."}`,
+      `Session title: ${session.title ?? "Untitled session"}`,
+      `Session platform: ${session.platform}`,
+      "Recent turns:",
+      summarizeTurns(cleanedTurns)
+    ].join("\n\n")
+  })
 
-  try {
-    const result = await runGeminiJsonWithFallback<DigestModelShape>({
-      primaryModel: GEMINI_MODELS.digest.primary,
-      fallbackModel: GEMINI_MODELS.digest.fallback,
-      maxInputTokens: GEMINI_MODELS.digest.maxInputTokens,
-      maxOutputTokens: GEMINI_MODELS.digest.maxOutputTokens,
-      systemInstruction:
-        "You compress AI chat activity into a project-state digest. Return only JSON. Prefer concise, durable carry-forward state over transcript details.",
-      prompt: [
-        "Return a JSON object with these keys exactly:",
-        "summaryShort, newDecisions, newConstraints, newTasks, projectOverviewDelta, currentObjectiveDelta, recentProgressDelta, relevantToolsDelta, importanceScore, shouldMerge, confidence.",
-        "Use short strings. Arrays should contain only durable carry-forward items.",
-        "Ignore trivial meta prompts like 'yes', 'do that', 'continue', or 'what's better?' unless they clearly redefine the project goal.",
-        "Ignore transcript wrappers like 'You said:' and 'ChatGPT said:'.",
-        `Project description: ${projectDescription ?? "None provided."}`,
-        `Existing project overview: ${projectState?.projectOverview ?? "None."}`,
-        `Existing current objective: ${projectState?.currentObjective ?? "None."}`,
-        `Existing decisions: ${(projectState?.decisions ?? []).join(" | ") || "None."}`,
-        `Existing constraints: ${(projectState?.constraints ?? []).join(" | ") || "None."}`,
-        `Existing open tasks: ${(projectState?.openTasks ?? []).join(" | ") || "None."}`,
-        `Session title: ${session.title ?? "Untitled session"}`,
-        `Session platform: ${session.platform}`,
-        "Recent turns:",
-        summarizeTurns(cleanedTurns)
-      ].join("\n\n")
-    })
-
-    return {
-      digest: sanitizeDigest(result.data),
-      primaryModel: result.primaryModel,
-      actualModel: result.actualModel,
-      fallbackUsed: result.fallbackUsed,
-      tokenUsage: result.tokenUsage
-    }
-  } catch {
-    return {
-      digest: sanitizeDigest(fallback),
-      primaryModel: GEMINI_MODELS.digest.primary,
-      actualModel: "deterministic",
-      fallbackUsed: false,
-      tokenUsage: {
-        inputTokens: 0,
-        outputTokens: 0,
-        totalTokens: 0
-      }
-    }
+  return {
+    digest: sanitizeDigest(result.data),
+    primaryModel: result.primaryModel,
+    actualModel: result.actualModel,
+    fallbackUsed: result.fallbackUsed,
+    tokenUsage: result.tokenUsage
   }
+}
+
+async function generateDigestWithOptions(
+  session: SourceSessionRow,
+  turns: SourceTurnRow[],
+  projectState: ProjectStateRow | null,
+  projectDescription: string | null,
+  input: {
+    signal?: AbortSignal
+    onStage?: (stage: GeminiStage, details: { model: string; fallbackUsed: boolean }) => void | Promise<void>
+  } = {}
+) {
+  return generateDigest(session, turns, projectState, projectDescription, input)
 }
 
 export async function enqueueDigestJob(userId: string, input: {
@@ -192,8 +257,217 @@ export async function enqueueDigestJob(userId: string, input: {
     inputPayload: {
       captureSignature: input.captureSignature
     },
+    outputPayload: buildJobProgress("queued"),
     primaryModel: GEMINI_MODELS.digest.primary
   })
+}
+
+async function patchDigestJobStage(
+  repositories: RepositoryBundle,
+  jobId: string,
+  stage: DigestJobStage,
+  input: {
+    model?: string | null
+    fallbackUsed?: boolean
+    failurePhase?: string | null
+    failureMessage?: string | null
+    lastGeminiStage?: GeminiStage | null
+    digestId?: string
+    summaryShort?: string
+    skipped?: boolean
+    reason?: string
+    tokenUsage?: { inputTokens: number; outputTokens: number; totalTokens: number }
+  } = {}
+) {
+  await repositories.aiJobs.patchProgress(jobId, {
+    actualModel: input.model ?? null,
+    fallbackUsed: input.fallbackUsed ?? false,
+    tokenUsage: input.tokenUsage ?? {},
+    outputPayload: buildJobProgress(stage, input)
+  })
+}
+
+async function runDigestJobInternal(
+  repositories: RepositoryBundle,
+  userId: string,
+  job: AiJobRunRow,
+  timeoutMs = DIGEST_INLINE_TIMEOUT_MS
+) {
+  let currentModel: string | null = null
+  let currentFallbackUsed = false
+  let lastGeminiStage: GeminiStage | null = null
+  let tokenUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0
+  }
+
+  const controller = new AbortController()
+  const timeoutHandle = setTimeout(() => controller.abort(createDigestTimeoutError(timeoutMs)), timeoutMs)
+
+  try {
+    await repositories.aiJobs.markRunning(job.id, job.attempts + 1)
+
+    const session = job.sessionId ? await repositories.sessions.getById(job.sessionId) : null
+    if (!session) {
+      throw new Error("Session not found for digest job.")
+    }
+
+    const [project, turns, existingDigest, projectState] = await Promise.all([
+      repositories.projects.getById(job.projectId),
+      repositories.turns.listBySession(session.id),
+      repositories.sessionDigests.getBySessionId(session.id),
+      repositories.projectState.getByProject(job.projectId)
+    ])
+
+    if (!project) {
+      throw new Error("Project not found for digest job.")
+    }
+
+    const signature =
+      session.captureSignature ??
+      buildCaptureSignature({
+        platform: session.platform,
+        url: session.url,
+        pageFingerprint: session.pageFingerprint,
+        turns: turns.map((turn) => ({
+          role: turn.role,
+          content: turn.content,
+          turnIndex: turn.turnIndex,
+          rawHtml: turn.rawHtml
+        }))
+      })
+
+    if (existingDigest && existingDigest.sourceSignature === signature) {
+      await repositories.aiJobs.markCompleted(job.id, {
+        actualModel: "skipped",
+        fallbackUsed: false,
+        tokenUsage: {},
+        outputPayload: buildJobProgress("completed", {
+          model: "skipped",
+          digestId: existingDigest.id,
+          summaryShort: existingDigest.summaryShort,
+          skipped: true,
+          reason: "Digest already exists for this signature."
+        })
+      })
+      return
+    }
+
+    const generation = await generateDigestWithOptions(session, turns, projectState, project.description, {
+      signal: controller.signal,
+      onStage: async (stage, details) => {
+        currentModel = details.model
+        currentFallbackUsed = details.fallbackUsed
+        lastGeminiStage = stage
+        await patchDigestJobStage(repositories, job.id, stage, {
+          model: details.model,
+          fallbackUsed: details.fallbackUsed,
+          lastGeminiStage: stage
+        })
+      }
+    })
+
+    currentModel = generation.actualModel
+    currentFallbackUsed = generation.fallbackUsed
+    tokenUsage = generation.tokenUsage
+
+    await patchDigestJobStage(repositories, job.id, "merge_state", {
+      model: generation.actualModel,
+      fallbackUsed: generation.fallbackUsed,
+      lastGeminiStage,
+      tokenUsage
+    })
+
+    const digest = await repositories.sessionDigests.create({
+      projectId: job.projectId,
+      sourceSessionId: session.id,
+      sourceSignature: signature,
+      summaryShort: generation.digest.summaryShort,
+      structuredDigest: { ...generation.digest },
+      confidence: generation.digest.confidence ?? 0.65,
+      importanceScore: generation.digest.importanceScore,
+      needsProjectStateMerge: generation.digest.shouldMerge,
+      createdBy: userId
+    })
+
+    if (generation.digest.shouldMerge) {
+      const nextState = mergeDigestIntoState(project, projectState, generation.digest)
+      await repositories.projectState.upsert({
+        projectId: job.projectId,
+        projectOverview: nextState.projectOverview,
+        currentObjective: nextState.currentObjective,
+        stackDomain: nextState.stackDomain,
+        recentProgress: nextState.recentProgress,
+        decisions: nextState.decisions,
+        constraints: nextState.constraints,
+        openTasks: nextState.openTasks,
+        relevantTools: nextState.relevantTools,
+        dirty: nextState.dirty
+      })
+      await repositories.sessionDigests.markMerged(digest.id)
+    }
+
+    await repositories.aiJobs.markCompleted(job.id, {
+      actualModel: generation.actualModel,
+      fallbackUsed: generation.fallbackUsed,
+      tokenUsage: { ...generation.tokenUsage },
+      outputPayload: buildJobProgress("completed", {
+        model: generation.actualModel,
+        fallbackUsed: generation.fallbackUsed,
+        lastGeminiStage,
+        digestId: digest.id,
+        summaryShort: digest.summaryShort
+      })
+    })
+  } catch (error) {
+    const geminiError = describeGeminiError(error)
+    const failureMessage = geminiError?.message ?? (error instanceof Error ? error.message : "Digest job failed.")
+    const failurePhase = geminiError?.phase ?? null
+
+    if (isTimeoutError(error) || controller.signal.aborted) {
+      await repositories.aiJobs.markTimedOut(job.id, {
+        errorMessage: failureMessage,
+        actualModel: currentModel,
+        fallbackUsed: currentFallbackUsed,
+        tokenUsage,
+        outputPayload: buildJobProgress("timed_out", {
+          model: currentModel,
+          fallbackUsed: currentFallbackUsed,
+          failurePhase,
+          failureMessage,
+          lastGeminiStage
+        })
+      })
+      return
+    }
+
+    await repositories.aiJobs.markFailed(job.id, {
+      errorClass: error instanceof Error ? error.name : "DigestJobError",
+      errorMessage: failureMessage,
+      actualModel: currentModel,
+      fallbackUsed: currentFallbackUsed,
+      tokenUsage,
+      outputPayload: buildJobProgress("failed", {
+        model: currentModel,
+        fallbackUsed: currentFallbackUsed,
+        failurePhase,
+        failureMessage,
+        lastGeminiStage
+      })
+    })
+  } finally {
+    clearTimeout(timeoutHandle)
+  }
+}
+
+export async function runDigestJobInline(
+  repositories: RepositoryBundle,
+  userId: string,
+  job: AiJobRunRow,
+  timeoutMs = DIGEST_INLINE_TIMEOUT_MS
+) {
+  await runDigestJobInternal(repositories, userId, job, timeoutMs)
 }
 
 export async function drainDigestJobs(userId: string, limit = 4) {
@@ -202,96 +476,7 @@ export async function drainDigestJobs(userId: string, limit = 4) {
   const pending = await repositories.aiJobs.listByStatuses(["pending", "timed_out"], limit, "session_digest")
 
   for (const job of pending) {
-    await repositories.aiJobs.markRunning(job.id, job.attempts + 1)
-
-    try {
-      const session = job.sessionId ? await repositories.sessions.getById(job.sessionId) : null
-      if (!session) {
-        throw new Error("Session not found for digest job.")
-      }
-
-      const [project, turns, existingDigest, projectState] = await Promise.all([
-        repositories.projects.getById(job.projectId),
-        repositories.turns.listBySession(session.id),
-        repositories.sessionDigests.getBySessionId(session.id),
-        repositories.projectState.getByProject(job.projectId)
-      ])
-
-      if (!project) {
-        throw new Error("Project not found for digest job.")
-      }
-
-      const signature =
-        session.captureSignature ??
-        buildCaptureSignature({
-          platform: session.platform,
-          url: session.url,
-          pageFingerprint: session.pageFingerprint,
-          turns: turns.map((turn) => ({
-            role: turn.role,
-            content: turn.content,
-            turnIndex: turn.turnIndex,
-            rawHtml: turn.rawHtml
-          }))
-        })
-
-      if (existingDigest && existingDigest.sourceSignature === signature) {
-        await repositories.aiJobs.markCompleted(job.id, {
-          actualModel: "skipped",
-          outputPayload: {
-            skipped: true,
-            reason: "Digest already exists for this signature."
-          }
-        })
-        continue
-      }
-
-      const generation = await generateDigest(session, turns, projectState, project.description)
-      const digest = await repositories.sessionDigests.create({
-        projectId: job.projectId,
-        sourceSessionId: session.id,
-        sourceSignature: signature,
-        summaryShort: generation.digest.summaryShort,
-        structuredDigest: { ...generation.digest },
-        confidence: generation.digest.confidence ?? 0.65,
-        importanceScore: generation.digest.importanceScore,
-        needsProjectStateMerge: generation.digest.shouldMerge,
-        createdBy: userId
-      })
-
-      if (generation.digest.shouldMerge) {
-        const nextState = mergeDigestIntoState(project, projectState, generation.digest)
-        await repositories.projectState.upsert({
-          projectId: job.projectId,
-          projectOverview: nextState.projectOverview,
-          currentObjective: nextState.currentObjective,
-          stackDomain: nextState.stackDomain,
-          recentProgress: nextState.recentProgress,
-          decisions: nextState.decisions,
-          constraints: nextState.constraints,
-          openTasks: nextState.openTasks,
-          relevantTools: nextState.relevantTools,
-          dirty: nextState.dirty
-        })
-        await repositories.sessionDigests.markMerged(digest.id)
-      }
-
-      await repositories.aiJobs.markCompleted(job.id, {
-        actualModel: generation.actualModel,
-        fallbackUsed: generation.fallbackUsed,
-        tokenUsage: { ...generation.tokenUsage },
-        outputPayload: {
-          digestId: digest.id,
-          summaryShort: digest.summaryShort
-        }
-      })
-    } catch (error) {
-      await repositories.aiJobs.markFailed(job.id, {
-        errorClass: error instanceof Error ? error.name : "DigestJobError",
-        errorMessage: error instanceof Error ? error.message : "Digest job failed.",
-        tokenUsage: {}
-      })
-    }
+    await runDigestJobInternal(repositories, userId, job)
   }
 }
 

@@ -1,7 +1,7 @@
 import { createRepositoryBundle } from "@relay/db"
 import { capturePayloadSchema, withCaptureSignature } from "@relay/shared"
 
-import { drainDigestJobs, enqueueDigestJob } from "./digest-service"
+import { enqueueDigestJob, runDigestJobInline } from "./digest-service"
 import { getProjectStateStatus } from "./state-status-service"
 
 export async function saveCapture(userId: string, input: unknown) {
@@ -62,8 +62,7 @@ export async function saveCapture(userId: string, input: unknown) {
       captureSignature: normalizedInput.session.captureSignature
     })
     jobId = job.id
-
-    void drainDigestJobs(userId, 2)
+    await runDigestJobInline(repositories, userId, job)
   }
 
   const stateStatus = await getProjectStateStatus(repositories, normalizedInput.projectId)

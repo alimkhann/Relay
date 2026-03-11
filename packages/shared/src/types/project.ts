@@ -41,6 +41,12 @@ export interface ProjectStateStatusDto {
   digestErrorMessage: string | null
   lastCapturedAt: string | null
   lastDigestAt: string | null
+  activeJobId: string | null
+  activeJobStatus: "idle" | "pending" | "running" | "completed" | "failed" | "timed_out"
+  activeJobStage: string | null
+  activeJobAttempts: number
+  fallbackPlanned: boolean
+  fallbackUsed: boolean
 }
 
 export interface RecentSessionDto {

@@ -138,6 +138,24 @@ function renderBootstrapMarkdown(shape: BootstrapModelShape, profile: TargetProf
   ].join("\n")
 }
 
+function describeJobStage(stage: string | null) {
+  if (!stage) return null
+
+  const labels: Record<string, string> = {
+    queued: "queued",
+    count_tokens_primary: "counting tokens on the primary model",
+    generate_primary: "generating with the primary model",
+    count_tokens_fallback: "counting tokens on the fallback model",
+    generate_fallback: "generating with the fallback model",
+    merge_state: "merging the digest into project state",
+    completed: "completed",
+    failed: "failed",
+    timed_out: "timed out"
+  }
+
+  return labels[stage] ?? stage.replaceAll("_", " ")
+}
+
 async function generateGeminiBootstrap(input: {
   state: ProjectStateRow | null
   digests: SessionDigestRow[]
@@ -181,12 +199,26 @@ async function generateGeminiBootstrap(input: {
 }
 
 function getPendingReason(stateStatus: ProjectStateStatusDto) {
+  const stageLabel = describeJobStage(stateStatus.activeJobStage)
+
   if (stateStatus.digestStatus === "failed") {
+    if (stateStatus.digestErrorMessage && stageLabel) {
+      return `Digest failed while ${stageLabel}. ${stateStatus.digestErrorMessage}`
+    }
+
     return stateStatus.digestErrorMessage ?? "Digest failed. Refresh Relay or capture the chat again."
   }
 
   if (stateStatus.digestStatus === "timed_out") {
-    return "Relay is retrying the digest for this chat. Try again in a moment."
+    return stageLabel
+      ? `Digest timed out while ${stageLabel}. Relay is ready to retry it.`
+      : "Relay is retrying the digest for this chat. Try again in a moment."
+  }
+
+  if (stateStatus.digestStatus === "running" || stateStatus.digestStatus === "pending") {
+    return stageLabel
+      ? `Digest pending. Relay is ${stageLabel}.`
+      : "Digest pending. Relay is still turning this chat into project state."
   }
 
   if (stateStatus.rawCapturePresent) {

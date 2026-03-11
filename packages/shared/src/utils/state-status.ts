@@ -5,7 +5,7 @@ interface DeriveProjectStateStatusInput {
   sessions: Array<Pick<SourceSessionRow, "capturedAt">>
   digests: Array<Pick<SessionDigestDto, "createdAt">>
   projectState: Pick<ProjectStateDto, "updatedAt"> | null
-  digestJobs: Array<Pick<AiJobRunRow, "status" | "errorMessage" | "createdAt" | "completedAt">>
+  digestJobs: Array<Pick<AiJobRunRow, "id" | "status" | "errorMessage" | "createdAt" | "completedAt" | "attempts" | "fallbackUsed" | "outputPayload">>
 }
 
 export function deriveProjectStateStatus(input: DeriveProjectStateStatusInput): ProjectStateStatusDto {
@@ -16,13 +16,22 @@ export function deriveProjectStateStatus(input: DeriveProjectStateStatusInput): 
   const projectStateReady = Boolean(input.projectState)
 
   let digestStatus: ProjectStateStatusDto["digestStatus"] = "idle"
-  if (projectStateReady || latestDigest) {
-    digestStatus = "completed"
-  } else if (latestJob) {
+  if (latestJob) {
     digestStatus = latestJob.status
+  } else if (projectStateReady || latestDigest) {
+    digestStatus = "completed"
   } else if (rawCapturePresent) {
     digestStatus = "pending"
   }
+
+  const outputPayload = latestJob?.outputPayload ?? {}
+  const activeJobStage =
+    typeof outputPayload.jobStage === "string"
+      ? outputPayload.jobStage
+      : typeof outputPayload.stage === "string"
+        ? outputPayload.stage
+        : null
+  const fallbackPlanned = Boolean(outputPayload.fallbackPlanned)
 
   return {
     rawCapturePresent,
@@ -31,6 +40,12 @@ export function deriveProjectStateStatus(input: DeriveProjectStateStatusInput): 
     digestErrorMessage:
       latestJob?.status === "failed" || latestJob?.status === "timed_out" ? latestJob.errorMessage ?? null : null,
     lastCapturedAt: latestSession?.capturedAt ?? null,
-    lastDigestAt: latestDigest?.createdAt ?? latestJob?.completedAt ?? null
+    lastDigestAt: latestDigest?.createdAt ?? latestJob?.completedAt ?? null,
+    activeJobId: latestJob?.id ?? null,
+    activeJobStatus: latestJob?.status ?? (projectStateReady || latestDigest ? "completed" : "idle"),
+    activeJobStage,
+    activeJobAttempts: latestJob?.attempts ?? 0,
+    fallbackPlanned,
+    fallbackUsed: latestJob?.fallbackUsed ?? false
   }
 }
