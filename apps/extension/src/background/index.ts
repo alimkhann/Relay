@@ -54,8 +54,35 @@ chrome.runtime.onMessage.addListener((message: RelayMessage, sender: any, sendRe
       }
 
       if (message.type === "RELAY_CAPTURE_VISIBLE" && sender.tab?.id) {
-        const response = await chrome.tabs.sendMessage(sender.tab.id, message)
-        sendResponse(response)
+        const result = await chrome.tabs.sendMessage(sender.tab.id, message)
+
+        if (!result?.ok || !result.capture) {
+          sendResponse(result ?? { ok: false, reason: "Capture failed." })
+          return
+        }
+
+        const response = await relayFetch("/api/captures", {
+          method: "POST",
+          body: JSON.stringify({
+            projectId: message.payload.projectId,
+            ...result.capture
+          })
+        })
+
+        if (!response.ok) {
+          sendResponse({
+            ok: false,
+            reason: await readErrorResponse(response, "Capture request failed.")
+          })
+          return
+        }
+
+        const payload = await response.json()
+
+        sendResponse({
+          ok: true,
+          turns: payload.turns?.length ?? result.capture.turns?.length ?? 0
+        })
         return
       }
 

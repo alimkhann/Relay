@@ -28,6 +28,18 @@
       "https://claude.ai/*",
       "$PLASMO_PUBLIC_RELAY_API_BASE/*"
     ],
+    "content_scripts": [
+      {
+        "matches": [
+          "https://chatgpt.com/*",
+          "https://chat.openai.com/*",
+          "https://www.perplexity.ai/*",
+          "https://claude.ai/*"
+        ],
+        "js": ["../static/relay-content.js"],
+        "run_at": "document_idle"
+      }
+    ],
     "side_panel": {
       "default_path": "sidepanel.html"
     },
