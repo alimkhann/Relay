@@ -24,15 +24,23 @@
     "host_permissions": [
       "https://chatgpt.com/*",
       "https://chat.openai.com/*",
+      "https://codex.openai.com/*",
       "https://www.perplexity.ai/*",
       "https://claude.ai/*",
       "$PLASMO_PUBLIC_RELAY_API_BASE/*"
     ],
+    "externally_connectable": {
+      "matches": [
+        "$PLASMO_PUBLIC_RELAY_API_BASE/*",
+        "http://localhost:3000/*"
+      ]
+    },
     "content_scripts": [
       {
         "matches": [
           "https://chatgpt.com/*",
           "https://chat.openai.com/*",
+          "https://codex.openai.com/*",
           "https://www.perplexity.ai/*",
           "https://claude.ai/*"
         ],

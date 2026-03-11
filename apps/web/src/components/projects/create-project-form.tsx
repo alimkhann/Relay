@@ -19,7 +19,7 @@ export function CreateProjectForm() {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [pending, setPending] = useState(false)
-  const [status, setStatus] = useState("Create a project once, then the extension can bind tabs, capture turns, and compose handoff context.")
+  const [status, setStatus] = useState("Create a project once, then let Relay keep the next fresh chat ready.")
 
   async function createProject() {
     const trimmedName = name.trim()
@@ -71,11 +71,11 @@ export function CreateProjectForm() {
   }
 
   return (
-    <div className="rounded-[30px] border border-[var(--relay-line)] bg-white/84 p-6 shadow-[var(--relay-shadow)]">
+    <div className="rounded-[20px] border border-[var(--relay-line)] bg-white/84 p-6 shadow-[var(--relay-shadow)]">
       <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Create project</p>
       <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--relay-ink)]">Give Relay a project to hold onto.</h2>
       <p className="mt-3 text-sm leading-7 text-[var(--relay-muted)]">
-        Start with a name and optional one-line description. Relay will use that project as the home for captures, pinned memory, and context packets.
+        Start with a name and optional one-line description. Relay uses this as the durable home for digests, project state, and bootstrap packets.
       </p>
 
       <div className="mt-5 grid gap-4">

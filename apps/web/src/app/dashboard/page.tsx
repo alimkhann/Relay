@@ -1,8 +1,8 @@
 import Link from "next/link"
 
+import { DigestList } from "@/components/digests/digest-list"
 import { AppShell } from "@/components/layout/app-shell"
 import { PacketList } from "@/components/context/packet-list"
-import { MemoryList } from "@/components/memory/memory-list"
 import { CreateProjectForm } from "@/components/projects/create-project-form"
 import { ProjectGrid } from "@/components/projects/project-grid"
 import { SessionList } from "@/components/sessions/session-list"
@@ -12,113 +12,151 @@ import { getProjectDashboardForUser, listProjectsForUser } from "@/server/servic
 
 export const dynamic = "force-dynamic"
 
+function lineItems(items: string[]) {
+  return items.length > 0 ? items : ["Nothing durable has been promoted yet."]
+}
+
 export default async function DashboardPage() {
   const viewer = await requireSessionViewer()
   const projects = await listProjectsForUser(viewer.userId)
   const currentProject = projects[0] ?? null
   const dashboard = currentProject ? await getProjectDashboardForUser(viewer.userId, currentProject.id) : null
-  const pinnedMemory = dashboard?.memory.filter((item) => item.pinned) ?? []
 
   return (
     <AppShell>
-      <section className="grid gap-6 lg:grid-cols-[1.08fr_0.92fr]">
-        <div className="rounded-[34px] border border-[var(--relay-line)] bg-[#193021] p-7 text-white shadow-[var(--relay-shadow)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/68">Dashboard</p>
-          <h1 className="mt-4 text-4xl font-semibold tracking-[-0.04em]">
-            {currentProject ? currentProject.name : "Start your first Relay project"}
-          </h1>
-          <p className="mt-4 max-w-2xl text-base leading-8 text-white/82">
-            {currentProject
-              ? currentProject.description || "Relay is ready to keep this project moving between tools."
-              : "Once you sign in, the dashboard becomes the review point for captured sessions, pinned memory, and handoff packets."}
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <div className="rounded-full bg-white/12 px-4 py-2 text-sm text-white/84">{projects.length} projects</div>
-            <div className="rounded-full bg-white/12 px-4 py-2 text-sm text-white/84">{dashboard?.recentSessions.length ?? 0} recent captures</div>
-            <div className="rounded-full bg-white/12 px-4 py-2 text-sm text-white/84">{pinnedMemory.length} pinned items</div>
+      <section className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
+        <div className="overflow-hidden rounded-[24px] border border-[var(--relay-line)] bg-[#151713] text-white">
+          <div className="grid gap-10 p-8 lg:grid-cols-[0.9fr_1.1fr]">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/54">Dashboard</p>
+              <h1 className="mt-4 max-w-md text-5xl font-semibold tracking-[-0.055em]">
+                {currentProject ? currentProject.name : "Keep the next chat ready before you need it."}
+              </h1>
+            </div>
+            <div className="space-y-4 text-sm leading-7 text-white/72">
+              <p>
+                {dashboard?.projectState?.projectOverview ??
+                  currentProject?.description ??
+                  "Relay watches for meaningful project changes, compresses them into state, and keeps a fresh bootstrap ready for the next AI session."}
+              </p>
+              <div className="grid gap-3 md:grid-cols-3">
+                {[
+                  [`${projects.length}`, "projects"],
+                  [`${dashboard?.recentDigests.length ?? 0}`, "digests"],
+                  [`${dashboard?.packets.length ?? 0}`, "bootstraps"]
+                ].map(([value, label]) => (
+                  <div key={label} className="rounded-[16px] border border-white/8 bg-white/4 px-4 py-4">
+                    <p className="text-2xl font-semibold text-white">{value}</p>
+                    <p className="mt-1 text-xs uppercase tracking-[0.24em] text-white/52">{label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
         <div className="grid gap-4">
-          <div className="rounded-[30px] border border-[var(--relay-line)] bg-white/84 p-6 shadow-[var(--relay-shadow)]">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Next action</p>
+          <div className="rounded-[24px] border border-[var(--relay-line)] bg-white/82 p-6 shadow-[var(--relay-shadow)]">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Current state</p>
             <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--relay-ink)]">
-              {currentProject ? "Connect the extension and keep capturing." : "Connect Chrome before your first handoff."}
+              {dashboard?.projectState?.currentObjective ?? "No current objective captured yet"}
             </h2>
             <p className="mt-3 text-sm leading-7 text-[var(--relay-muted)]">
-              Create an extension token in settings, paste it into the popup once, then pick the project you want Relay to track.
+              {dashboard?.projectState?.recentProgress ??
+                "Once Relay captures and digests a meaningful session, recent progress and open tasks appear here instead of raw transcripts."}
+            </p>
+          </div>
+
+          <div className="rounded-[24px] border border-[var(--relay-line)] bg-[var(--relay-background)] p-6 shadow-[var(--relay-shadow)]">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Connect the extension</p>
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--relay-ink)]">Pair Chrome once, then let Relay stay hidden.</h2>
+            <p className="mt-3 text-sm leading-7 text-[var(--relay-muted)]">
+              Open the Relay sidepanel in Chrome and use the built-in connect action. The browser now receives its device token behind the scenes.
             </p>
             <div className="mt-5 flex flex-wrap gap-3">
               <Button asChild>
                 <Link href="/settings">Open settings</Link>
               </Button>
               {currentProject ? (
-                <Button asChild variant="secondary">
+                <Button variant="secondary" asChild>
                   <Link href={`/projects/${currentProject.id}`}>Open project</Link>
                 </Button>
-              ) : (
-                <Button asChild variant="secondary">
-                  <Link href="#create-project">Create project</Link>
-                </Button>
-              )}
-            </div>
-          </div>
-          <div className="rounded-[30px] border border-[var(--relay-line)] bg-[#eef5ea] p-6 shadow-[var(--relay-shadow)]">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">What Relay keeps nearby</p>
-            <div className="mt-4 grid gap-3">
-              {["Recent captures", "Pinned decisions and constraints", "Latest context packet"].map((item) => (
-                <div key={item} className="rounded-[20px] bg-white/80 px-4 py-3 text-sm font-medium text-[var(--relay-ink)]">
-                  {item}
-                </div>
-              ))}
+              ) : null}
             </div>
           </div>
         </div>
       </section>
 
-      <section className="grid gap-8 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="space-y-5">
-          {!currentProject ? (
-            <div id="create-project">
-              <CreateProjectForm />
-            </div>
-          ) : null}
-          <div className="flex items-end justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Projects</p>
-              <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">Everything currently in motion</h2>
-            </div>
-            <Link className="text-sm font-medium text-[var(--relay-muted)] transition hover:text-[var(--relay-ink)]" href="/settings">
-              Connect extension
-            </Link>
+      {!currentProject ? (
+        <section className="space-y-5">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">First step</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">Create the project Relay should carry forward</h2>
           </div>
-          <ProjectGrid projects={projects} />
-        </div>
+          <CreateProjectForm />
+        </section>
+      ) : (
+        <section className="grid gap-8 xl:grid-cols-[1.08fr_0.92fr]">
+          <div className="space-y-5">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Project memory</p>
+              <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">What should survive the next reset</h2>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-[20px] border border-[var(--relay-line)] bg-white/80 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--relay-muted)]">Decisions</p>
+                <ul className="mt-4 space-y-3 text-sm leading-7 text-[var(--relay-muted)]">
+                  {lineItems(dashboard?.projectState?.decisions ?? []).map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-[20px] border border-[var(--relay-line)] bg-white/80 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--relay-muted)]">Open tasks</p>
+                <ul className="mt-4 space-y-3 text-sm leading-7 text-[var(--relay-muted)]">
+                  {lineItems(dashboard?.projectState?.openTasks ?? []).map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
 
+          <div className="space-y-5">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Latest bootstrap</p>
+              <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">The next clean handoff</h2>
+            </div>
+            <PacketList packets={dashboard?.packets.slice(0, 1) ?? []} />
+          </div>
+        </section>
+      )}
+
+      <section className="grid gap-8 xl:grid-cols-[0.86fr_1.14fr]">
         <div className="space-y-5">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Latest handoff</p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">Ready to drop into the next tool</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Recent digests</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">Compressed state, not transcript clutter</h2>
           </div>
-          <PacketList packets={dashboard?.packets.slice(0, 1) ?? []} />
+          <DigestList digests={dashboard?.recentDigests ?? []} />
         </div>
-      </section>
-
-      <section className="grid gap-8 lg:grid-cols-2">
         <div className="space-y-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Recent captures</p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">What Relay saw last</h2>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">What Relay has seen lately</h2>
           </div>
           <SessionList sessions={dashboard?.recentSessions ?? []} />
         </div>
-        <div className="space-y-5">
+      </section>
+
+      <section className="space-y-5">
+        <div className="flex items-end justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Pinned memory</p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">The pieces worth carrying forward</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Projects</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">Everything Relay is keeping alive</h2>
           </div>
-          <MemoryList items={pinnedMemory.length > 0 ? pinnedMemory : dashboard?.memory.slice(0, 4) ?? []} />
         </div>
+        <ProjectGrid projects={projects} />
       </section>
     </AppShell>
   )

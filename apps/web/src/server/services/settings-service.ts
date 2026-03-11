@@ -1,7 +1,7 @@
 import { createRepositoryBundle } from "@relay/db"
 
 const defaultSettings = {
-  enabledPlatforms: ["chatgpt", "perplexity", "claude"] as ("chatgpt" | "perplexity" | "claude")[],
+  enabledPlatforms: ["chatgpt", "perplexity", "claude", "codex"] as ("chatgpt" | "perplexity" | "claude" | "codex")[],
   defaultTargetProfileKey: "claude_code_build",
   autoCapture: true,
   showSidepanelOnSupportedSites: true

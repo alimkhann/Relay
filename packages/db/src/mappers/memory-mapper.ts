@@ -60,7 +60,7 @@ export function toSettingsRow(record: Record<string, unknown>): UserSettingsRow 
   return {
     userId: String(record.user_id),
     settings: (record.settings as UserSettingsRow["settings"]) ?? {
-      enabledPlatforms: ["chatgpt", "perplexity", "claude"],
+      enabledPlatforms: ["chatgpt", "perplexity", "claude", "codex"],
       defaultTargetProfileKey: "claude_code_build",
       autoCapture: true,
       showSidepanelOnSupportedSites: true

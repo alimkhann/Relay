@@ -22,11 +22,11 @@ export default async function SignInPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/68">Sign in</p>
           <h1 className="mt-4 text-4xl font-semibold tracking-[-0.04em]">Use Relay with your real project history.</h1>
           <p className="mt-4 max-w-md text-base leading-8 text-white/82">
-            Sign in once, create an extension token in settings, and Relay can keep your project context moving between tools.
+            Sign in once, pair the extension from Chrome, and Relay can keep project state moving between tools without token paste.
           </p>
           <div className="mt-8 space-y-3 text-sm text-white/78">
             <p>Google OAuth is the only login path in this pass.</p>
-            <p>The extension uses its own bearer token after sign-in, so Chrome does not depend on web session cookies.</p>
+            <p>The extension still uses its own device token under the hood, but the normal setup flow now hides that from the user.</p>
           </div>
         </div>
 
@@ -34,7 +34,7 @@ export default async function SignInPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--relay-muted)]">Continue</p>
           <h2 className="mt-4 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">Start with Google</h2>
           <p className="mt-3 max-w-lg text-base leading-8 text-[var(--relay-muted)]">
-            After you sign in, open settings to create the extension token and finish the browser setup.
+            After you sign in, open the Relay sidepanel in Chrome and use the built-in connect flow to finish setup.
           </p>
           <div className="mt-8">
             {auth ? (

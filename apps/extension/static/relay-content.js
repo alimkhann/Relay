@@ -25,6 +25,21 @@
       }
     },
     {
+      platform: "codex",
+      hosts: ["codex.openai.com"],
+      turnSelectors: ["[data-message-author-role]", "article[data-testid^='conversation-turn']"],
+      promptSelectors: [
+        "#prompt-textarea",
+        "form #prompt-textarea",
+        "form [contenteditable='true']",
+        "form textarea",
+        "main textarea"
+      ],
+      getRole(node) {
+        return node.getAttribute("data-message-author-role") || "unknown"
+      }
+    },
+    {
       platform: "claude",
       hosts: ["claude.ai"],
       turnSelectors: ["[data-is-streaming]", "main [data-testid='message-human']", "main [data-testid='message-assistant']"],
@@ -46,6 +61,26 @@
 
   function normalizeText(input) {
     return (input || "").replace(/\s+/g, " ").trim()
+  }
+
+  function computeSignature(turns, metadata, platform) {
+    const payload = JSON.stringify({
+      platform,
+      url: metadata.url,
+      pageFingerprint: metadata.pageFingerprint,
+      turns: turns.map((turn) => ({
+        role: turn.role,
+        content: turn.content,
+        turnIndex: turn.turnIndex
+      }))
+    })
+
+    let hash = 0
+    for (let index = 0; index < payload.length; index += 1) {
+      hash = (hash << 5) - hash + payload.charCodeAt(index)
+      hash |= 0
+    }
+    return String(hash)
   }
 
   function getSiteConfig() {
@@ -86,6 +121,17 @@
       pageFingerprint: url.pathname.split("/").filter(Boolean).pop() || null,
       domain: url.hostname
     }
+  }
+
+  function inferFreshChat(config, turns, metadata) {
+    if (!turns.length) return true
+
+    const pathname = metadata.pathname || "/"
+    if (config.platform === "claude" && pathname.includes("/new")) return true
+    if ((config.platform === "chatgpt" || config.platform === "codex") && pathname === "/") return turns.length === 0
+    if (config.platform === "perplexity" && pathname === "/") return turns.length === 0
+
+    return false
   }
 
   function findPrompt(config) {
@@ -211,7 +257,9 @@
         platform: config.platform,
         title: metadata.title,
         url: metadata.url,
-        turns: turns.length
+        turns: turns.length,
+        captureSignature: computeSignature(turns, metadata, config.platform),
+        isFreshChat: inferFreshChat(config, turns, metadata)
       })
       return true
     }
@@ -233,12 +281,39 @@
             title: metadata.title,
             url: metadata.url,
             pageFingerprint: metadata.pageFingerprint,
+            captureSignature: computeSignature(turns, metadata, config.platform),
             metadata: {
               domain: metadata.domain,
               pathname: metadata.pathname
             }
           },
           turns
+        }
+      })
+      return true
+    }
+
+    if (message.type === "RELAY_GET_SELECTION") {
+      if (!config) {
+        sendResponse({ ok: false, reason: "Unsupported site." })
+        return true
+      }
+
+      const text = normalizeText(window.getSelection ? window.getSelection().toString() : "")
+      if (!text) {
+        sendResponse({ ok: false, reason: "Select text in the page first." })
+        return true
+      }
+
+      const metadata = getPageMetadata()
+      sendResponse({
+        ok: true,
+        text,
+        platform: config.platform,
+        metadata: {
+          url: metadata.url,
+          title: metadata.title,
+          pathname: metadata.pathname
         }
       })
       return true

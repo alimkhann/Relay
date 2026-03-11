@@ -6,8 +6,8 @@ import { Card } from "@/components/ui/card"
 export function ProjectGrid({ projects }: { projects: ProjectSummaryDto[] }) {
   if (projects.length === 0) {
     return (
-      <div className="rounded-[30px] border border-dashed border-[var(--relay-line)] bg-white/70 p-6 text-sm leading-7 text-[var(--relay-muted)]">
-        No projects yet. Create one from the dashboard form above, then come back to the extension and reload projects.
+      <div className="rounded-[18px] border border-dashed border-[var(--relay-line)] bg-white/70 p-6 text-sm leading-7 text-[var(--relay-muted)]">
+        No projects yet. Create one once, then let Relay keep the thread alive in the background.
       </div>
     )
   }
@@ -16,7 +16,7 @@ export function ProjectGrid({ projects }: { projects: ProjectSummaryDto[] }) {
     <div className="grid gap-4 md:grid-cols-2">
       {projects.map((project) => (
         <Link key={project.id} href={`/projects/${project.id}`}>
-          <Card className="h-full border-[var(--relay-line)] bg-white/82 p-5 transition hover:-translate-y-0.5 hover:bg-white">
+          <Card className="h-full p-5 transition hover:-translate-y-0.5 hover:bg-white">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-xl font-semibold tracking-tight text-[var(--relay-ink)]">{project.name}</h3>

@@ -1,15 +1,19 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
+import { DigestList } from "@/components/digests/digest-list"
 import { AppShell } from "@/components/layout/app-shell"
 import { PacketList } from "@/components/context/packet-list"
-import { MemoryList } from "@/components/memory/memory-list"
 import { SessionList } from "@/components/sessions/session-list"
 import { Button } from "@/components/ui/button"
 import { requireSessionViewer } from "@/server/policies/viewer"
 import { getProjectDashboardForUser } from "@/server/services/project-service"
 
 export const dynamic = "force-dynamic"
+
+function stateList(items: string[]) {
+  return items.length > 0 ? items : ["Nothing durable recorded yet."]
+}
 
 export default async function ProjectPage({ params }: { params: Promise<{ projectId: string }> }) {
   const viewer = await requireSessionViewer()
@@ -22,65 +26,74 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
 
   return (
     <AppShell>
-      <section className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-        <div className="rounded-[34px] border border-[var(--relay-line)] bg-[#193021] p-7 text-white shadow-[var(--relay-shadow)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/68">Project</p>
-          <h1 className="mt-4 text-4xl font-semibold tracking-[-0.04em]">{dashboard.project.name}</h1>
-          <p className="mt-4 max-w-2xl text-base leading-8 text-white/82">
-            {dashboard.project.description || "This project does not have a written description yet."}
+      <section className="grid gap-6 xl:grid-cols-[1.02fr_0.98fr]">
+        <div className="rounded-[24px] border border-[var(--relay-line)] bg-[#171915] p-8 text-white">
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/54">Project</p>
+          <h1 className="mt-4 text-5xl font-semibold tracking-[-0.05em]">{dashboard.project.name}</h1>
+          <p className="mt-4 max-w-2xl text-base leading-8 text-white/76">
+            {dashboard.projectState?.projectOverview ?? dashboard.project.description ?? "This project has not been summarized yet."}
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Button variant="secondary" asChild>
-              <Link href={`/projects/${projectId}/memory`}>Memory</Link>
+            <Button asChild variant="secondary">
+              <Link href="/dashboard">Back to dashboard</Link>
             </Button>
-            <Button variant="secondary" asChild>
-              <Link href={`/projects/${projectId}/sessions`}>Sessions</Link>
-            </Button>
-            <Button variant="secondary" asChild>
-              <Link href={`/projects/${projectId}/packets`}>Packets</Link>
+            <Button asChild>
+              <Link href="/settings">Settings</Link>
             </Button>
           </div>
         </div>
-        <div className="rounded-[34px] border border-[var(--relay-line)] bg-white/84 p-7 shadow-[var(--relay-shadow)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">At a glance</p>
-          <div className="mt-5 grid gap-3">
-            {[
-              [`${dashboard.recentSessions.length}`, "recent captures"],
-              [`${dashboard.memory.length}`, "memory items"],
-              [`${dashboard.packets.length}`, "context packets"]
-            ].map(([value, label]) => (
-              <div key={label} className="rounded-[22px] bg-[var(--relay-soft)] px-4 py-4">
-                <p className="text-2xl font-semibold text-[var(--relay-ink)]">{value}</p>
-                <p className="mt-1 text-sm text-[var(--relay-muted)]">{label}</p>
-              </div>
-            ))}
-          </div>
+
+        <div className="rounded-[24px] border border-[var(--relay-line)] bg-white/82 p-6 shadow-[var(--relay-shadow)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Current objective</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">
+            {dashboard.projectState?.currentObjective ?? "No current objective has been promoted yet."}
+          </h2>
+          <p className="mt-4 text-sm leading-7 text-[var(--relay-muted)]">
+            {dashboard.projectState?.recentProgress ?? "Recent progress will appear here after Relay digests the next meaningful session."}
+          </p>
         </div>
       </section>
 
-      <section className="grid gap-8 lg:grid-cols-2">
+      <section className="grid gap-4 lg:grid-cols-3">
+        {([
+          ["Decisions", dashboard.projectState?.decisions ?? []],
+          ["Constraints", dashboard.projectState?.constraints ?? []],
+          ["Open tasks", dashboard.projectState?.openTasks ?? []]
+        ] as Array<[string, string[]]>).map(([label, items]) => (
+          <div key={label} className="rounded-[20px] border border-[var(--relay-line)] bg-white/78 p-5 shadow-[var(--relay-shadow)]">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--relay-muted)]">{label}</p>
+            <ul className="mt-4 space-y-3 text-sm leading-7 text-[var(--relay-muted)]">
+              {stateList(items as string[]).map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </section>
+
+      <section className="grid gap-8 xl:grid-cols-[0.88fr_1.12fr]">
         <div className="space-y-5">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Pinned memory</p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">What should survive the next switch</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Recent digests</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">What Relay promoted into state</h2>
           </div>
-          <MemoryList items={dashboard.memory.filter((item) => item.pinned).slice(0, 4)} />
+          <DigestList digests={dashboard.recentDigests} />
         </div>
         <div className="space-y-5">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Recent captures</p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">Latest thread fragments</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Latest bootstrap packet</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">The handoff ready for the next chat</h2>
           </div>
-          <SessionList sessions={dashboard.recentSessions.slice(0, 4)} />
+          <PacketList packets={dashboard.packets.slice(0, 2)} />
         </div>
       </section>
 
       <section className="space-y-5">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Context history</p>
-          <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">Packets already composed for this project</h2>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Recent captures</p>
+          <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">Source sessions that shaped this project</h2>
         </div>
-        <PacketList packets={dashboard.packets} />
+        <SessionList sessions={dashboard.recentSessions} />
       </section>
     </AppShell>
   )

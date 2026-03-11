@@ -34,7 +34,21 @@ vi.mock("@/server/services/project-service", () => ({
       sessionCount: 1,
       updatedAt: new Date().toISOString()
     },
+    projectState: {
+      projectOverview: "Browser-first project memory sidecar.",
+      currentObjective: "Ship Relay v2.",
+      stackDomain: null,
+      recentProgress: "Server pipeline is in place.",
+      decisions: ["Use Neon"],
+      constraints: [],
+      openTasks: ["Finish redesign"],
+      relevantTools: ["Gemini"],
+      lastBootstrapAt: null,
+      dirty: true,
+      updatedAt: new Date().toISOString()
+    },
     recentSessions: [],
+    recentDigests: [],
     memory: [
       {
         id: "memory-1",
@@ -45,7 +59,8 @@ vi.mock("@/server/services/project-service", () => ({
         updatedAt: new Date().toISOString()
       }
     ],
-    packets: []
+    packets: [],
+    legacyPackets: []
   }))
 }))
 
@@ -55,6 +70,6 @@ describe("DashboardPage", () => {
   it("renders the project overview heading", async () => {
     render(await DashboardPage())
 
-    expect(screen.getByText("Everything currently in motion")).toBeTruthy()
+    expect(screen.getByText("What should survive the next reset")).toBeTruthy()
   })
 })

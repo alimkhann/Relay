@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 
-import { getRelaySession, setRelaySession } from "../storage/session"
 import { getActiveTab } from "../utils/browser"
+import { getRelaySession, setRelaySession } from "../storage/session"
 import styles from "./control-panel.module.css"
 
 interface ControlPanelProps {
@@ -13,40 +13,51 @@ interface ProjectOption {
   name: string
 }
 
-const targetOptions = [
-  { value: "claude_code_build", label: "Claude Code" },
-  { value: "codex_implementation", label: "Codex" },
-  { value: "chatgpt_planning", label: "ChatGPT Planning" },
-  { value: "perplexity_research", label: "Perplexity Research" }
-]
+type RelaySessionState = Awaited<ReturnType<typeof getRelaySession>>
 
-const defaultApiBase = process.env.PLASMO_PUBLIC_RELAY_API_BASE ?? "http://localhost:3000"
-const supportedHosts = ["chatgpt.com", "chat.openai.com", "www.perplexity.ai", "claude.ai"]
+interface PageState {
+  supported: boolean
+  platform?: string
+  title?: string | null
+  url?: string
+  turns?: number
+  isFreshChat?: boolean
+}
+
+function inferTargetProfile(platform?: string) {
+  switch (platform) {
+    case "perplexity":
+      return "perplexity_research"
+    case "claude":
+      return "claude_code_build"
+    case "codex":
+      return "codex_implementation"
+    case "chatgpt":
+    default:
+      return "chatgpt_planning"
+  }
+}
+
+function defaultDeviceName() {
+  const platform = navigator.userAgent.includes("Mac") ? "Mac" : navigator.platform || "browser"
+  return `Relay on ${platform}`
+}
 
 export function ControlPanel({ compact = false }: ControlPanelProps) {
-  const [apiBase, setApiBase] = useState(defaultApiBase)
-  const [token, setToken] = useState("")
-  const [projectId, setProjectId] = useState("")
-  const [targetProfileKey, setTargetProfileKey] = useState("claude_code_build")
+  const [session, setSession] = useState<RelaySessionState | null>(null)
   const [projects, setProjects] = useState<ProjectOption[]>([])
-  const [status, setStatus] = useState("Paste an extension token from Relay settings, then load your projects.")
-  const [pageState, setPageState] = useState("Waiting for a supported tab.")
-  const [pageSupported, setPageSupported] = useState(false)
+  const [pageState, setPageState] = useState<PageState>({ supported: false })
+  const [status, setStatus] = useState("Relay stays quiet until it is useful.")
   const [busy, setBusy] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [deviceName, setDeviceName] = useState("")
+  const [projectSwitcherOpen, setProjectSwitcherOpen] = useState(false)
 
   useEffect(() => {
     void (async () => {
-      const session = await getRelaySession()
-      setApiBase(session.apiBase)
-      setToken(session.token)
-      setProjectId(session.projectId)
-      setTargetProfileKey(session.targetProfileKey)
-
+      setDeviceName(defaultDeviceName())
+      await refreshLocalSession()
       await refreshPageState()
-
-      if (session.token) {
-        await loadProjects(session.apiBase, session.token, session.projectId)
-      }
     })()
   }, [])
 
@@ -70,161 +81,179 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
   }, [])
 
-  function formatError(cause: unknown, fallback: string) {
-    if (cause instanceof Error) {
-      if (cause.message.includes("Could not establish connection") || cause.message.includes("Receiving end does not exist")) {
-        return "Open ChatGPT, Claude, or Perplexity in the active tab, then try again."
+  async function refreshLocalSession() {
+    const nextSession = await getRelaySession()
+    setSession(nextSession)
+
+    if (nextSession.connected) {
+      await refreshRemoteSession()
+    } else if (nextSession.lastStatus) {
+      setStatus(nextSession.lastStatus)
+    }
+  }
+
+  async function refreshRemoteSession() {
+    try {
+      const result = (await chrome.runtime.sendMessage({ type: "RELAY_REFRESH_SESSION" })) as {
+        ok?: boolean
+        projects?: ProjectOption[]
+        settings?: { settings?: { autoCapture?: boolean; defaultTargetProfileKey?: string } }
+        error?: string
       }
 
-      return cause.message
-    }
+      if (result?.error) {
+        setStatus(result.error)
+        return
+      }
 
-    return fallback
+      const nextSession = await getRelaySession()
+      setSession(nextSession)
+      setProjects(result?.projects ?? [])
+      setStatus(nextSession.lastStatus || "Relay is connected and ready.")
+    } catch (cause) {
+      setStatus(cause instanceof Error ? cause.message : "Failed to refresh Relay session.")
+    }
   }
 
   async function refreshPageState() {
     const tab = await getActiveTab()
     if (!tab?.id) {
-      setPageSupported(false)
-      setPageState("No active tab found.")
-      return null
+      setPageState({ supported: false })
+      return
     }
 
     try {
-      const state = await chrome.tabs.sendMessage(tab.id, { type: "RELAY_PAGE_STATE" })
-      if (state?.supported) {
-        setPageSupported(true)
-        setPageState(`${state.platform} · ${state.turns} visible turns`)
-        return { tab, state }
-      }
+      const state = (await chrome.tabs.sendMessage(tab.id, { type: "RELAY_PAGE_STATE" })) as PageState
+      setPageState(state ?? { supported: false })
     } catch {
-      const hostname = tab.url ? new URL(tab.url).hostname : ""
-      if (supportedHosts.includes(hostname)) {
-        setPageSupported(false)
-        setPageState("This AI tab needs a reload after the extension update.")
-        return null
-      }
+      setPageState({ supported: false })
     }
-
-    setPageSupported(false)
-    setPageState("Open ChatGPT, Claude, or Perplexity to activate Relay.")
-    return null
   }
 
   async function requireSupportedTab(actionLabel: string) {
-    const result = await refreshPageState()
-    if (!result?.tab?.id) {
+    const tab = await getActiveTab()
+    if (!tab?.id || !pageState.supported) {
       setStatus(`${actionLabel} works only on a supported AI tab.`)
       return null
     }
 
-    return result.tab
+    return tab
   }
 
-  async function loadProjects(nextApiBase = apiBase, nextToken = token, preferredProjectId = projectId) {
-    if (!nextToken) {
-      setProjects([])
-      setProjectId("")
-      setStatus("Paste an extension token first.")
-      return
-    }
-
-    const response = await fetch(`${nextApiBase}/api/projects`, {
-      headers: {
-        authorization: `Bearer ${nextToken}`
-      }
-    })
-
-    if (!response.ok) {
-      throw new Error(response.status === 401 ? "Extension token was rejected." : "Failed to load projects.")
-    }
-
-    const result = (await response.json()) as {
-      projects: ProjectOption[]
-    }
-
-    setProjects(result.projects)
-
-    if (result.projects.length === 0) {
-      setProjectId("")
-      await setRelaySession({
-        apiBase: nextApiBase,
-        token: nextToken,
-        projectId: ""
-      })
-      setStatus("No projects yet. Create one in the Relay dashboard, then reload projects here.")
-      return
-    }
-
-    const nextProjectId = preferredProjectId && result.projects.some((project) => project.id === preferredProjectId)
-      ? preferredProjectId
-      : result.projects[0]?.id ?? ""
-
-    setProjectId(nextProjectId)
-    await setRelaySession({
-      apiBase: nextApiBase,
-      token: nextToken,
-      projectId: nextProjectId
-    })
-  }
-
-  async function saveConnection() {
+  async function openConnectFlow() {
     setBusy(true)
-    setStatus("Saving connection…")
+    setStatus("Opening Relay pairing…")
 
     try {
-      await setRelaySession({
-        apiBase,
-        token,
-        targetProfileKey
+      await chrome.runtime.sendMessage({
+        type: "RELAY_OPEN_CONNECT",
+        payload: {
+          deviceName: deviceName || defaultDeviceName()
+        }
       })
-
-      await loadProjects(apiBase, token)
-      setStatus("Connection saved. Pick a project and Relay is ready.")
+      setStatus("Finish pairing in the Relay tab, then come back here.")
     } catch (cause) {
-      setStatus(cause instanceof Error ? cause.message : "Connection failed.")
+      setStatus(cause instanceof Error ? cause.message : "Failed to open pairing flow.")
     } finally {
       setBusy(false)
     }
   }
 
-  async function bindProject() {
-    if (!projectId) {
-      setStatus("Pick a project first.")
+  async function insertBootstrap() {
+    if (!session?.projectId) {
+      setStatus("Choose a project first.")
       return
     }
 
-    const tab = await requireSupportedTab("Binding")
+    const tab = await requireSupportedTab("Insert bootstrap")
     if (!tab?.id) return
 
     setBusy(true)
-    setStatus("Binding tab…")
+    setStatus(pageState.isFreshChat ? "Preparing fresh-chat bootstrap…" : "Preparing continuity bootstrap…")
 
     try {
-      await setRelaySession({ apiBase, token, projectId, targetProfileKey })
-      const result = await chrome.runtime.sendMessage({
-        type: "RELAY_BIND_PROJECT",
+      const targetProfileKey = session.targetProfileKey || inferTargetProfile(pageState.platform)
+      const kind = pageState.isFreshChat ? "fresh_chat_bootstrap" : "quick_continuity"
+      const generated = (await chrome.runtime.sendMessage({
+        type: "RELAY_GENERATE_BOOTSTRAP",
         payload: {
-          projectId,
-          tabId: String(tab.id),
-          domain: tab.url ? new URL(tab.url).hostname : null
+          projectId: session.projectId,
+          targetProfileKey,
+          kind,
+          deep: kind === "fresh_chat_bootstrap"
         }
-      })
-      if (result?.error) {
-        setStatus(result.error)
+      })) as {
+        packet?: {
+          content?: string
+          renderer?: string
+          generationMetadata?: Record<string, unknown>
+        }
+        error?: string
+      }
+
+      const content = generated?.packet?.content
+      if (!content) {
+        setStatus(generated?.error ?? "Bootstrap generation failed.")
         return
       }
-      setStatus("Project bound to this tab.")
+
+      const inserted = await chrome.tabs.sendMessage(tab.id, {
+        type: "RELAY_INSERT_CONTEXT",
+        payload: { content }
+      })
+
+      if (inserted?.ok) {
+        const actualModel = String(generated.packet?.generationMetadata?.actual_model ?? "")
+        const limitedMode = actualModel === "deterministic"
+        if (limitedMode) {
+          await setRelaySession({ limitedMode: true, lastStatus: "Inserted a limited-mode bootstrap." })
+          setStatus("Inserted a limited-mode bootstrap.")
+        } else {
+          await setRelaySession({ limitedMode: false, lastStatus: "Bootstrap inserted into the prompt." })
+          setStatus("Bootstrap inserted into the prompt.")
+        }
+      } else {
+        setStatus(inserted?.reason ?? "Insert failed.")
+      }
     } catch (cause) {
-      setStatus(formatError(cause, "Bind failed."))
+      setStatus(cause instanceof Error ? cause.message : "Insert bootstrap failed.")
     } finally {
       setBusy(false)
     }
   }
 
-  async function capture() {
-    if (!projectId) {
-      setStatus("Pick a project first.")
+  async function pinSelection() {
+    if (!session?.projectId) {
+      setStatus("Choose a project first.")
+      return
+    }
+
+    const tab = await requireSupportedTab("Pin selection")
+    if (!tab?.id) return
+
+    setBusy(true)
+    setStatus("Saving selected text…")
+
+    try {
+      const result = await chrome.runtime.sendMessage({
+        type: "RELAY_PIN_SELECTION",
+        payload: {
+          projectId: session.projectId,
+          tabId: tab.id
+        }
+      })
+
+      setStatus(result?.ok ? "Selection pinned to the current project." : result?.reason ?? "Pin selection failed.")
+    } catch (cause) {
+      setStatus(cause instanceof Error ? cause.message : "Pin selection failed.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function captureManually() {
+    if (!session?.projectId) {
+      setStatus("Choose a project first.")
       return
     }
 
@@ -237,146 +266,151 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     try {
       const result = await chrome.runtime.sendMessage({
         type: "RELAY_CAPTURE_VISIBLE",
-        payload: { projectId, tabId: tab.id }
+        payload: {
+          projectId: session.projectId,
+          tabId: tab.id
+        }
       })
-      setStatus(result?.ok ? `Captured ${result.turns} visible turns and saved them to this project.` : result?.reason ?? "Capture failed.")
+
+      setStatus(result?.ok ? `Captured ${result.turns ?? 0} visible turns.` : result?.reason ?? "Capture failed.")
     } catch (cause) {
-      setStatus(formatError(cause, "Capture failed."))
+      setStatus(cause instanceof Error ? cause.message : "Capture failed.")
     } finally {
       setBusy(false)
     }
   }
 
-  async function composeAndInsert() {
-    if (!projectId) {
-      setStatus("Pick a project first.")
-      return
-    }
-
-    const tab = await requireSupportedTab("Compose and insert")
-    if (!tab?.id) return
-
-    setBusy(true)
-    setStatus("Composing context packet…")
-
-    try {
-      const composed = await chrome.runtime.sendMessage({
-        type: "RELAY_COMPOSE_CONTEXT",
-        payload: { projectId, targetProfileKey }
-      })
-
-      const content = composed?.packet?.content ?? composed?.packet?.packet?.content
-      if (!content) {
-        setStatus(composed?.error ?? "Context composition failed.")
-        return
-      }
-
-      setStatus("Inserting context into the prompt…")
-      const inserted = await chrome.tabs.sendMessage(tab.id, {
-        type: "RELAY_INSERT_CONTEXT",
-        payload: { content }
-      })
-
-      setStatus(inserted?.ok ? "Context inserted into the prompt." : inserted?.reason ?? "Insert failed.")
-    } catch (cause) {
-      setStatus(formatError(cause, "Compose and insert failed."))
-    } finally {
-      setBusy(false)
-    }
+  async function handleProjectChange(nextProjectId: string) {
+    if (!session) return
+    await setRelaySession({ projectId: nextProjectId })
+    setSession({ ...session, projectId: nextProjectId })
+    setStatus("Project switched.")
   }
+
+  const currentProject = projects.find((project) => project.id === session?.projectId) ?? null
+  const readyLabel = pageState.isFreshChat ? "Bootstrap ready" : "Tracking"
 
   return (
     <div className={`${styles.shell} ${compact ? styles.compact : styles.expanded}`}>
-      <div className={styles.hero}>
-        <div>
+      <section className={styles.hero}>
+        <div className={styles.heroTop}>
           <p className={styles.eyebrow}>Relay</p>
-          <h1 className={styles.title}>Project memory for the next AI tab.</h1>
+          {session?.connected ? <span className={styles.badge}>{readyLabel}</span> : null}
         </div>
-        <p className={styles.pageState}>{pageState}</p>
-      </div>
+        <h1 className={styles.title}>
+          {session?.connected ? "Project memory for the next AI tab." : "Quiet continuity for fresh AI chats."}
+        </h1>
+        <p className={styles.pageState}>
+          {pageState.supported
+            ? `${pageState.platform} · ${pageState.turns ?? 0} visible turns${pageState.isFreshChat ? " · fresh chat detected" : ""}`
+            : "Open ChatGPT, Claude, Perplexity, or Codex to activate Relay."}
+        </p>
+      </section>
 
-      <div className={styles.panel}>
-        <div className={styles.panelHeader}>
-          <div>
-            <p className={styles.sectionLabel}>Connection</p>
-            <h2 className={styles.sectionTitle}>Authenticate the extension</h2>
+      {!session?.connected ? (
+        <section className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <div>
+              <p className={styles.sectionLabel}>Connection</p>
+              <h2 className={styles.sectionTitle}>Connect Relay once</h2>
+            </div>
           </div>
-          <button className={styles.secondaryButton} disabled={busy} onClick={() => void refreshPageState()}>
-            Refresh tab
-          </button>
-        </div>
 
-        <label className={styles.field}>
-          <span>API base</span>
-          <input value={apiBase} onChange={(event) => setApiBase(event.target.value)} />
-        </label>
+          <label className={styles.field}>
+            <span>Device name</span>
+            <input value={deviceName} onChange={(event) => setDeviceName(event.target.value)} />
+          </label>
 
-        <label className={styles.field}>
-          <span>Extension token</span>
-          <textarea rows={3} value={token} onChange={(event) => setToken(event.target.value)} />
-        </label>
-
-        <div className={styles.inlineRow}>
-          <a className={styles.helpLink} href={`${apiBase}/settings`} target="_blank" rel="noreferrer">
-            Open Relay settings
-          </a>
-          <button className={styles.primaryButton} disabled={busy} onClick={() => void saveConnection()}>
-            {busy ? "Working…" : "Save connection"}
-          </button>
-        </div>
-      </div>
-
-      <div className={styles.panel}>
-        <div className={styles.panelHeader}>
-          <div>
-            <p className={styles.sectionLabel}>Project</p>
-            <h2 className={styles.sectionTitle}>Pick the active project</h2>
+          <div className={styles.actionGrid}>
+            <button className={styles.primaryButton} disabled={busy} onClick={() => void openConnectFlow()}>
+              {busy ? "Working…" : "Connect Relay"}
+            </button>
           </div>
-          <button className={styles.secondaryButton} disabled={busy || !token} onClick={() => void loadProjects()}>
-            Reload projects
-          </button>
-        </div>
+        </section>
+      ) : (
+        <>
+          <section className={styles.panel}>
+            <div className={styles.panelHeader}>
+              <div>
+                <p className={styles.sectionLabel}>Current project</p>
+                <h2 className={styles.sectionTitle}>{currentProject?.name ?? "Choose a project"}</h2>
+              </div>
+              <button className={styles.ghostButton} onClick={() => setProjectSwitcherOpen((value) => !value)}>
+                Switch project
+              </button>
+            </div>
 
-        <label className={styles.field}>
-          <span>Project</span>
-          <select value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-            <option value="">Select a project</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-        </label>
+            {projectSwitcherOpen ? (
+              <label className={styles.field}>
+                <span>Project</span>
+                <select value={session.projectId} onChange={(event) => void handleProjectChange(event.target.value)}>
+                  <option value="">Select a project</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <p className={styles.metaText}>
+                {pageState.isFreshChat
+                  ? "Relay can drop a full bootstrap into this new chat."
+                  : "Relay keeps state nearby and can insert a smaller continuity packet on demand."}
+              </p>
+            )}
 
-        <label className={styles.field}>
-          <span>Target profile</span>
-          <select value={targetProfileKey} onChange={(event) => setTargetProfileKey(event.target.value)}>
-            {targetOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+            <div className={styles.actionGrid}>
+              <button className={styles.primaryButton} disabled={busy || !session.projectId || !pageState.supported} onClick={() => void insertBootstrap()}>
+                Insert bootstrap
+              </button>
+              <button className={styles.secondaryButton} disabled={busy || !session.projectId || !pageState.supported} onClick={() => void pinSelection()}>
+                Pin selection
+              </button>
+            </div>
+          </section>
 
-        <div className={styles.actionGrid}>
-          <button className={styles.primaryButton} disabled={busy || !projectId || !pageSupported} onClick={() => void bindProject()}>
-            Bind this tab
-          </button>
-          <button className={styles.secondaryButton} disabled={busy || !projectId || !pageSupported} onClick={() => void capture()}>
-            Capture visible turns
-          </button>
-          <button className={styles.secondaryButton} disabled={busy || !projectId || !pageSupported} onClick={() => void composeAndInsert()}>
-            Compose and insert
-          </button>
-        </div>
-      </div>
+          <details className={styles.panel} open={advancedOpen} onToggle={(event) => setAdvancedOpen((event.target as HTMLDetailsElement).open)}>
+            <summary className={styles.summary}>
+              <span>
+                <span className={styles.sectionLabel}>Advanced</span>
+                <span className={styles.summaryTitle}>Manual controls and diagnostics</span>
+              </span>
+            </summary>
 
-      <div className={styles.statusCard}>
+            <label className={styles.field}>
+              <span>Target override</span>
+              <select
+                value={session.targetProfileKey}
+                onChange={async (event) => {
+                  const nextTarget = event.target.value
+                  await setRelaySession({ targetProfileKey: nextTarget })
+                  setSession((current) => (current ? { ...current, targetProfileKey: nextTarget } : current))
+                }}>
+                <option value="chatgpt_planning">ChatGPT planning</option>
+                <option value="claude_code_build">Claude build</option>
+                <option value="codex_implementation">Codex build</option>
+                <option value="perplexity_research">Perplexity research</option>
+              </select>
+            </label>
+
+            <div className={styles.inlineRow}>
+              <button className={styles.secondaryButton} disabled={busy || !session.projectId || !pageState.supported} onClick={() => void captureManually()}>
+                Force capture
+              </button>
+              <button className={styles.secondaryButton} disabled={busy} onClick={() => void refreshRemoteSession()}>
+                Refresh session
+              </button>
+            </div>
+          </details>
+        </>
+      )}
+
+      <section className={styles.statusCard}>
         <p className={styles.sectionLabel}>Status</p>
         <p className={styles.statusText}>{status}</p>
-      </div>
+        {session?.limitedMode ? <p className={styles.hint}>Gemini was unavailable or rate-limited, so Relay fell back to a bounded deterministic packet.</p> : null}
+      </section>
     </div>
   )
 }

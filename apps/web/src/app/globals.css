@@ -1,16 +1,16 @@
 @import "tailwindcss";
 
 :root {
-  --relay-app-bg: #edf0e8;
-  --relay-background: #f7f8f3;
-  --relay-foreground: #182017;
-  --relay-ink: #182017;
-  --relay-muted: #5c6a5c;
-  --relay-line: rgba(24, 32, 23, 0.12);
-  --relay-accent: #193021;
-  --relay-accent-soft: #dfe8d8;
-  --relay-soft: #edf4e9;
-  --relay-shadow: 0 28px 80px -48px rgba(20, 28, 20, 0.35);
+  --relay-app-bg: #ece9df;
+  --relay-background: #f7f5ee;
+  --relay-foreground: #171915;
+  --relay-ink: #171915;
+  --relay-muted: #66695f;
+  --relay-line: rgba(23, 25, 21, 0.1);
+  --relay-accent: #181b18;
+  --relay-accent-soft: #e5e1d6;
+  --relay-soft: #f0ede4;
+  --relay-shadow: 0 18px 40px -26px rgba(22, 24, 21, 0.24);
 }
 
 html {
@@ -20,8 +20,8 @@ html {
 body {
   min-height: 100vh;
   background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.94), transparent 30%),
-    linear-gradient(180deg, #f6f8f2 0%, #edf0e8 55%, #e7ece3 100%);
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.86), transparent 28%),
+    linear-gradient(180deg, #f7f5ef 0%, #ece9df 54%, #e7e1d4 100%);
   color: var(--relay-foreground);
   font-family: "Avenir Next", "Neue Haas Grotesk Text", "Helvetica Neue", "Segoe UI", sans-serif;
 }
