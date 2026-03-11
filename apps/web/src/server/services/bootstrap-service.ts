@@ -23,6 +23,19 @@ function isLowSignalDigestSummary(summary: string) {
   return normalized.startsWith("chatgpt said:thought for")
 }
 
+function sanitizeFirstAction(value: string | null | undefined, state: ProjectStateRow | null) {
+  const normalized = value ? normalizeText(value).slice(0, 260) : ""
+
+  if (
+    !normalized ||
+    /^(insert bootstrap|pin selection|connect relay|open settings|open project)$/i.test(normalized)
+  ) {
+    return state?.openTasks[0] ?? "Review the project state and continue from the highest-priority open task."
+  }
+
+  return normalized
+}
+
 function inferRenderer(parsed: BootstrapRequest, state: ProjectStateRow | null) {
   if (parsed.kind === "quick_continuity") {
     return "deterministic" as const
@@ -55,8 +68,7 @@ function sanitizeBootstrapShape(input: BootstrapModelShape, state: ProjectStateR
     constraints: constraints.length ? constraints : state?.constraints ?? [],
     openTasks: openTasks.length ? openTasks : state?.openTasks ?? [],
     relevantTools: relevantTools.length ? relevantTools : state?.relevantTools ?? [],
-    firstAction:
-      input.firstAction ? normalizeText(input.firstAction).slice(0, 260) : state?.openTasks[0] ?? null
+    firstAction: sanitizeFirstAction(input.firstAction, state)
   }
 }
 
