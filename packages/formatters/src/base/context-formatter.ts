@@ -1,4 +1,4 @@
-import type { MemoryItemRow, SourceSessionRow } from "@relay/shared"
+import type { MemoryItemRow, RecentTurnSnippet, SourceSessionRow } from "@relay/shared"
 
 export function groupMemory(items: MemoryItemRow[]): Record<string, MemoryItemRow[]> {
   return items.reduce<Record<string, MemoryItemRow[]>>((acc, item) => {
@@ -9,7 +9,11 @@ export function groupMemory(items: MemoryItemRow[]): Record<string, MemoryItemRo
   }, {})
 }
 
-export function summarizeCurrentState(items: MemoryItemRow[], recentSessions: SourceSessionRow[] = []): string {
+export function summarizeCurrentState(
+  items: MemoryItemRow[],
+  recentTurns: RecentTurnSnippet[] = [],
+  recentSessions: SourceSessionRow[] = []
+): string {
   const memorySummary = items
     .slice(0, 3)
     .map((item) => item.content)
@@ -19,6 +23,15 @@ export function summarizeCurrentState(items: MemoryItemRow[], recentSessions: So
     return memorySummary
   }
 
+  const turnSummary = recentTurns
+    .slice(-3)
+    .map((turn) => `${turn.role}: ${turn.content}`)
+    .join("\n")
+
+  if (turnSummary) {
+    return turnSummary
+  }
+
   const sessionSummary = recentSessions
     .slice(0, 3)
     .map((session) => session.title ?? session.url)
@@ -26,4 +39,8 @@ export function summarizeCurrentState(items: MemoryItemRow[], recentSessions: So
     .join("\n")
 
   return sessionSummary || "No captured context yet. Capture visible turns or pin memory first."
+}
+
+export function formatRecentTurns(recentTurns: RecentTurnSnippet[]) {
+  return recentTurns.slice(-4).map((turn) => `- ${turn.role}: ${turn.content}`)
 }

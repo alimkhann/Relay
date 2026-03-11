@@ -1,5 +1,5 @@
 import type { ContextFormatter } from "../base/types"
-import { groupMemory, summarizeCurrentState } from "../base/context-formatter"
+import { formatRecentTurns, groupMemory, summarizeCurrentState } from "../base/context-formatter"
 
 export const chatgptPlanningFormatter: ContextFormatter = {
   key: "chatgpt_planning",
@@ -9,7 +9,7 @@ export const chatgptPlanningFormatter: ContextFormatter = {
       `Project: ${input.project.name}`,
       "",
       "Current goal:",
-      summarizeCurrentState(grouped.requirement ?? input.memoryItems, input.recentSessions),
+      summarizeCurrentState(grouped.requirement ?? input.memoryItems, input.recentTurns, input.recentSessions),
       "",
       "Important decisions:",
       ...(grouped.decision ?? []).map((item) => `- ${item.content}`),
@@ -18,7 +18,10 @@ export const chatgptPlanningFormatter: ContextFormatter = {
       ...(grouped.constraint ?? []).map((item) => `- ${item.content}`),
       "",
       "Next tasks:",
-      ...(grouped.task ?? []).map((item) => `- ${item.content}`)
+      ...(grouped.task ?? []).map((item) => `- ${item.content}`),
+      "",
+      "Relevant recent thread:",
+      ...formatRecentTurns(input.recentTurns)
     ]
       .filter(Boolean)
       .join("\n")

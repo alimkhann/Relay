@@ -1,5 +1,5 @@
 import type { ContextFormatter } from "../base/types"
-import { summarizeCurrentState } from "../base/context-formatter"
+import { formatRecentTurns, summarizeCurrentState } from "../base/context-formatter"
 
 export const perplexityResearchFormatter: ContextFormatter = {
   key: "perplexity_research",
@@ -8,13 +8,16 @@ export const perplexityResearchFormatter: ContextFormatter = {
       `I am working on ${input.project.name}.`,
       "",
       "What I already know:",
-      summarizeCurrentState(input.memoryItems),
+      summarizeCurrentState(input.memoryItems, input.recentTurns, input.recentSessions),
       "",
       "Open questions:",
       ...input.memoryItems.filter((item) => item.type === "task").map((item) => `- ${item.content}`),
       "",
       "Avoid repeating:",
-      ...input.memoryItems.filter((item) => item.type === "constraint").map((item) => `- ${item.content}`)
+      ...input.memoryItems.filter((item) => item.type === "constraint").map((item) => `- ${item.content}`),
+      "",
+      "Recent thread context:",
+      ...formatRecentTurns(input.recentTurns)
     ].join("\n")
   }
 }

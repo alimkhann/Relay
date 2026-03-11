@@ -7,7 +7,7 @@ export async function buildContextCompositionInput(
   projectId: string,
   targetProfileKey: string
 ): Promise<ContextCompositionInput> {
-  const [project, targetProfile, recentSessions, memoryItems] = await Promise.all([
+  const [project, targetProfile, sessions, memoryItems] = await Promise.all([
     repositories.projects.getById(projectId),
     repositories.targetProfiles.getByKey(targetProfileKey),
     repositories.sessions.listByProject(projectId),
@@ -17,10 +17,27 @@ export async function buildContextCompositionInput(
   if (!project) throw new Error("Project not found")
   if (!targetProfile) throw new Error("Target profile not found")
 
+  const recentSessions = sessions.slice(0, 5)
+  const recentTurns = (
+    await Promise.all(
+      recentSessions.slice(0, 3).map(async (session) => {
+        const turns = await repositories.turns.listBySession(session.id)
+        return turns.slice(-3).map((turn) => ({
+          sessionId: session.id,
+          sessionTitle: session.title,
+          platform: session.platform,
+          role: turn.role,
+          content: turn.content
+        }))
+      })
+    )
+  ).flat()
+
   return {
     project,
     targetProfile,
-    recentSessions: recentSessions.slice(0, 5),
+    recentSessions,
+    recentTurns,
     memoryItems
   }
 }
