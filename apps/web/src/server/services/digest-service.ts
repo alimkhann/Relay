@@ -163,9 +163,11 @@ export function deterministicDigest(session: SourceSessionRow, turns: SourceTurn
   }
 }
 
-function sanitizeDigest(input: DigestModelShape): DigestModelShape {
+export function sanitizeDigest(input: DigestModelShape): DigestModelShape {
   const normalizeList = (value: unknown) =>
     Array.isArray(value) ? value.map((item) => normalizeText(String(item))).filter(Boolean).slice(0, 8) : []
+  const rawImportanceScore = Number(input.importanceScore ?? 0)
+  const normalizedImportanceScore = rawImportanceScore <= 1 ? Math.round(rawImportanceScore * 100) : Math.round(rawImportanceScore)
 
   return {
     summaryShort: normalizeText(String(input.summaryShort ?? "")).slice(0, 320) || "Captured a project update.",
@@ -176,7 +178,7 @@ function sanitizeDigest(input: DigestModelShape): DigestModelShape {
     currentObjectiveDelta: input.currentObjectiveDelta ? normalizeText(String(input.currentObjectiveDelta)).slice(0, 280) : null,
     recentProgressDelta: input.recentProgressDelta ? normalizeText(String(input.recentProgressDelta)).slice(0, 400) : null,
     relevantToolsDelta: normalizeList(input.relevantToolsDelta),
-    importanceScore: Math.max(0, Math.min(100, Number(input.importanceScore ?? 0))),
+    importanceScore: Math.max(0, Math.min(100, normalizedImportanceScore)),
     shouldMerge: Boolean(input.shouldMerge),
     confidence: Math.max(0, Math.min(1, Number(input.confidence ?? 0.65)))
   }

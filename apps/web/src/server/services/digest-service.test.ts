@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import type { ProjectStateRow, SourceSessionRow, SourceTurnRow } from "@relay/shared"
 import { hashContent } from "@relay/shared"
 
-import { deterministicDigest, prepareDigestTurns } from "./digest-service"
+import { deterministicDigest, prepareDigestTurns, sanitizeDigest } from "./digest-service"
 
 function makeSession(): SourceSessionRow {
   return {
@@ -129,5 +129,25 @@ describe("deterministicDigest", () => {
     expect(digest.shouldMerge).toBe(false)
     expect(digest.currentObjectiveDelta).toBeNull()
     expect(digest.newTasks).toEqual([])
+  })
+})
+
+describe("sanitizeDigest", () => {
+  it("normalizes fractional importance scores into integer percentages", () => {
+    const digest = sanitizeDigest({
+      summaryShort: "Relay update",
+      newDecisions: [],
+      newConstraints: [],
+      newTasks: [],
+      projectOverviewDelta: null,
+      currentObjectiveDelta: null,
+      recentProgressDelta: null,
+      relevantToolsDelta: [],
+      importanceScore: 0.9,
+      shouldMerge: true,
+      confidence: 0.9
+    })
+
+    expect(digest.importanceScore).toBe(90)
   })
 })
