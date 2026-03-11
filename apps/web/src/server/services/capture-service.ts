@@ -72,10 +72,6 @@ export async function saveCapture(userId: string, input: unknown) {
     turns,
     digestQueued: shouldQueueDigest,
     aiJobId: jobId,
-    stateStatus: {
-      ...stateStatus,
-      rawCapturePresent: true,
-      digestStatus: shouldQueueDigest ? "pending" : stateStatus.digestStatus
-    }
+    stateStatus
   }
 }

@@ -8,7 +8,6 @@ export async function getProjectStateStatus(repositories: RepositoryBundle, proj
     repositories.projectState.getByProject(projectId),
     repositories.aiJobs.listByProject(projectId, {
       jobKind: "session_digest",
-      statuses: ["pending", "running", "failed", "timed_out"],
       limit: 1
     })
   ])

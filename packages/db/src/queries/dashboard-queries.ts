@@ -17,7 +17,6 @@ export async function getProjectDashboard(repositories: RepositoryBundle, ownerI
     repositories.sessionDigests.listByProject(projectId),
     repositories.aiJobs.listByProject(projectId, {
       jobKind: "session_digest",
-      statuses: ["pending", "running", "failed", "timed_out"],
       limit: 1
     })
   ])
