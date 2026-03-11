@@ -92,7 +92,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
   }
 
-  async function refreshRemoteSession() {
+async function refreshRemoteSession() {
     try {
       const result = (await chrome.runtime.sendMessage({ type: "RELAY_REFRESH_SESSION" })) as {
         ok?: boolean
@@ -110,6 +110,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       setSession(nextSession)
       setProjects(result?.projects ?? [])
       setStatus(nextSession.lastStatus || "Relay is connected and ready.")
+      await triggerAutoCapture("Connection refreshed.")
     } catch (cause) {
       setStatus(cause instanceof Error ? cause.message : "Failed to refresh Relay session.")
     }
@@ -127,6 +128,46 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       setPageState(state ?? { supported: false })
     } catch {
       setPageState({ supported: false })
+    }
+  }
+
+  async function triggerAutoCapture(prefix?: string) {
+    const tab = await getActiveTab()
+    if (!tab?.id) {
+      return
+    }
+
+    try {
+      const result = (await chrome.runtime.sendMessage({
+        type: "RELAY_TRIGGER_AUTO_CAPTURE",
+        payload: { tabId: tab.id }
+      })) as {
+        ok?: boolean
+        skipped?: boolean
+        turns?: number
+        digestQueued?: boolean
+        reason?: string
+      }
+
+      if (!result?.ok) {
+        if (prefix && result?.reason) {
+          setStatus(`${prefix} ${result.reason}`)
+        }
+        return
+      }
+
+      if (result.skipped) {
+        if (prefix) {
+          setStatus(`${prefix} ${result.reason ?? "No new changes to capture."}`)
+        }
+        return
+      }
+
+      setStatus(
+        `${prefix ? `${prefix} ` : ""}Auto-captured ${result.turns ?? 0} visible turns${result.digestQueued ? " and queued a digest." : "."}`
+      )
+    } catch {
+      return
     }
   }
 
@@ -285,10 +326,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     await setRelaySession({ projectId: nextProjectId })
     setSession({ ...session, projectId: nextProjectId })
     setStatus("Project switched.")
+    await triggerAutoCapture("Project switched.")
   }
 
   const currentProject = projects.find((project) => project.id === session?.projectId) ?? null
-  const readyLabel = pageState.isFreshChat ? "Bootstrap ready" : "Tracking"
+  const readyLabel = pageState.isFreshChat ? "Bootstrap ready" : "Ready on this chat"
 
   return (
     <div className={`${styles.shell} ${compact ? styles.compact : styles.expanded}`}>
@@ -387,6 +429,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   await setRelaySession({ targetProfileKey: nextTarget })
                   setSession((current) => (current ? { ...current, targetProfileKey: nextTarget } : current))
                 }}>
+                <option value="">Automatic</option>
                 <option value="chatgpt_planning">ChatGPT planning</option>
                 <option value="claude_code_build">Claude build</option>
                 <option value="codex_implementation">Codex build</option>

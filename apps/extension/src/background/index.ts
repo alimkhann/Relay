@@ -69,7 +69,7 @@ async function loadSessionData() {
     connected: true,
     projectId: nextProjectId,
     autoCapture: settingsPayload.settings.settings.autoCapture,
-    targetProfileKey: session.targetProfileKey || settingsPayload.settings.settings.defaultTargetProfileKey
+    targetProfileKey: session.targetProfileKey || ""
   })
 
   return {
@@ -116,7 +116,7 @@ async function captureTab(projectId: string, tabId: number) {
 async function maybeAutoCapture(tabId: number) {
   const session = await getRelaySession()
   if (!session.connected || !session.token || !session.projectId || !session.autoCapture) {
-    return
+    return { ok: false, reason: "Auto-capture is not ready." }
   }
 
   try {
@@ -124,22 +124,32 @@ async function maybeAutoCapture(tabId: number) {
       supported?: boolean
       captureSignature?: string
       isFreshChat?: boolean
+      turns?: number
     } | null
 
     if (!pageState?.supported || pageState.isFreshChat) {
-      return
+      return { ok: false, reason: "This tab is not eligible for auto-capture." }
     }
 
     if (pageState.captureSignature && lastAutoCapturedByTab.get(tabId) === pageState.captureSignature) {
-      return
+      return { ok: true, skipped: true, reason: "No meaningful change since the last capture." }
     }
 
     const result = await captureTab(session.projectId, tabId)
     if (result?.ok && pageState.captureSignature) {
       lastAutoCapturedByTab.set(tabId, pageState.captureSignature)
     }
+
+    return result?.ok
+      ? {
+          ok: true,
+          turns: result.turns ?? pageState.turns ?? 0,
+          digestQueued: Boolean(result.digestQueued),
+          captured: true
+        }
+      : result ?? { ok: false, reason: "Auto-capture failed." }
   } catch {
-    return
+    return { ok: false, reason: "Relay could not read the current tab." }
   }
 }
 
@@ -240,6 +250,18 @@ chrome.runtime.onMessage.addListener((message: RelayMessage, sender: any, sendRe
         return
       }
 
+      if (message.type === "RELAY_TRIGGER_AUTO_CAPTURE") {
+        const tabId = message.payload.tabId ?? sender.tab?.id
+
+        if (!tabId) {
+          sendResponse({ ok: false, reason: "No supported tab was provided for auto-capture." })
+          return
+        }
+
+        sendResponse(await maybeAutoCapture(tabId))
+        return
+      }
+
       if (message.type === "RELAY_PAGE_STATE" && sender.tab?.id) {
         const response = await chrome.tabs.sendMessage(sender.tab.id, message)
         sendResponse(response)
@@ -299,7 +321,7 @@ chrome.runtime.onMessageExternal.addListener((message: any, _sender: unknown, se
         apiBase: payload.apiBase,
         token: payload.token,
         projectId: payload.projectId,
-        targetProfileKey: payload.targetProfileKey,
+        targetProfileKey: "",
         connected: true,
         autoCapture: payload.settings?.settings?.autoCapture ?? true,
         limitedMode: false,
