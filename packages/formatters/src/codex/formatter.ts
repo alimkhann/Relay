@@ -8,7 +8,7 @@ export const codexFormatter: ContextFormatter = {
       `Project: ${input.project.name}`,
       "",
       "Current goal:",
-      summarizeCurrentState(input.memoryItems),
+      summarizeCurrentState(input.memoryItems, input.recentSessions),
       "",
       "Known constraints:",
       ...input.memoryItems.filter((item) => item.type === "constraint").map((item) => `- ${item.content}`),

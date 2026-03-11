@@ -9,7 +9,7 @@ export const chatgptPlanningFormatter: ContextFormatter = {
       `Project: ${input.project.name}`,
       "",
       "Current goal:",
-      summarizeCurrentState(grouped.requirement ?? input.memoryItems),
+      summarizeCurrentState(grouped.requirement ?? input.memoryItems, input.recentSessions),
       "",
       "Important decisions:",
       ...(grouped.decision ?? []).map((item) => `- ${item.content}`),

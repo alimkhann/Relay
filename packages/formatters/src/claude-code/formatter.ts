@@ -9,7 +9,7 @@ export const claudeCodeFormatter: ContextFormatter = {
       `Project: ${input.project.name}`,
       "",
       "Current state:",
-      summarizeCurrentState(input.memoryItems),
+      summarizeCurrentState(input.memoryItems, input.recentSessions),
       "",
       "Important decisions:",
       ...(grouped.decision ?? []).map((item) => `- ${item.content}`),

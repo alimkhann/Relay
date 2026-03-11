@@ -7,6 +7,11 @@ export async function composeContextForProject(userId: string, projectId: string
   const parsed = composeContextSchema.parse(input)
   const baseInput = await buildContextCompositionInput(repositories, projectId, parsed.targetProfileKey)
   const rankedMemory = await getRankedMemory(repositories, projectId)
+
+  if (baseInput.recentSessions.length === 0 && rankedMemory.length === 0) {
+    throw new Error("No captured context yet. Capture visible turns or pin memory first.")
+  }
+
   const formatter = getFormatter(parsed.targetProfileKey)
   const content = formatter.format({
     ...baseInput,

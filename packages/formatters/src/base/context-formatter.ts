@@ -1,4 +1,4 @@
-import type { MemoryItemRow } from "@relay/shared"
+import type { MemoryItemRow, SourceSessionRow } from "@relay/shared"
 
 export function groupMemory(items: MemoryItemRow[]): Record<string, MemoryItemRow[]> {
   return items.reduce<Record<string, MemoryItemRow[]>>((acc, item) => {
@@ -9,9 +9,21 @@ export function groupMemory(items: MemoryItemRow[]): Record<string, MemoryItemRo
   }, {})
 }
 
-export function summarizeCurrentState(items: MemoryItemRow[]): string {
-  return items
+export function summarizeCurrentState(items: MemoryItemRow[], recentSessions: SourceSessionRow[] = []): string {
+  const memorySummary = items
     .slice(0, 3)
     .map((item) => item.content)
     .join("\n")
+
+  if (memorySummary) {
+    return memorySummary
+  }
+
+  const sessionSummary = recentSessions
+    .slice(0, 3)
+    .map((session) => session.title ?? session.url)
+    .filter(Boolean)
+    .join("\n")
+
+  return sessionSummary || "No captured context yet. Capture visible turns or pin memory first."
 }

@@ -50,6 +50,26 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     })()
   }, [])
 
+  useEffect(() => {
+    const handleTabActivated = () => {
+      void refreshPageState()
+    }
+
+    const handleTabUpdated = (_tabId: number, changeInfo: { status?: string }, tab: { active?: boolean }) => {
+      if (changeInfo.status === "complete" && tab.active) {
+        void refreshPageState()
+      }
+    }
+
+    chrome.tabs.onActivated.addListener(handleTabActivated)
+    chrome.tabs.onUpdated.addListener(handleTabUpdated)
+
+    return () => {
+      chrome.tabs.onActivated.removeListener(handleTabActivated)
+      chrome.tabs.onUpdated.removeListener(handleTabUpdated)
+    }
+  }, [])
+
   function formatError(cause: unknown, fallback: string) {
     if (cause instanceof Error) {
       if (cause.message.includes("Could not establish connection") || cause.message.includes("Receiving end does not exist")) {
@@ -215,7 +235,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     setStatus("Capturing visible turns…")
 
     try {
-      const result = await chrome.tabs.sendMessage(tab.id, {
+      const result = await chrome.runtime.sendMessage({
         type: "RELAY_CAPTURE_VISIBLE",
         payload: { projectId }
       })
