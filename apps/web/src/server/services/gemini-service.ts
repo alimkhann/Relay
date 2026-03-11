@@ -60,7 +60,7 @@ async function parseError(response: Response) {
 }
 
 function isRetryableStatus(status: number) {
-  return status === 429 || status === 500 || status === 503
+  return status === 404 || status === 429 || status === 500 || status === 503
 }
 
 async function countTokens(model: string, prompt: string) {
