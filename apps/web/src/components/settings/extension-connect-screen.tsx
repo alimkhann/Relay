@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
+import { useState, useTransition } from "react"
 
 import { Button } from "@/components/ui/button"
 
@@ -26,10 +26,6 @@ export function ExtensionConnectScreen({ apiBase, extensionId, initialDeviceName
   const [status, setStatus] = useState("Relay will pair this browser without exposing the device token.")
   const [pending, startTransition] = useTransition()
 
-  const browserRuntime = useMemo(() => {
-    return (window as Window & { chrome?: { runtime?: RuntimeBridge } }).chrome?.runtime ?? null
-  }, [])
-
   async function connect() {
     setStatus("Creating a short-lived pairing grant…")
 
@@ -51,6 +47,9 @@ export function ExtensionConnectScreen({ apiBase, extensionId, initialDeviceName
     const payload = (await response.json()) as {
       grantToken: string
     }
+
+    const browserRuntime =
+      typeof window === "undefined" ? null : (window as Window & { chrome?: { runtime?: RuntimeBridge } }).chrome?.runtime ?? null
 
     if (!browserRuntime?.sendMessage) {
       throw new Error("Chrome runtime messaging is unavailable in this browser tab.")
