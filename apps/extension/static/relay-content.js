@@ -1,10 +1,25 @@
 (function () {
+  function escapeHtml(value) {
+    return value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;")
+  }
+
   const siteConfigs = [
     {
       platform: "chatgpt",
       hosts: ["chatgpt.com", "chat.openai.com"],
       turnSelectors: ["[data-message-author-role]", "article[data-testid^='conversation-turn']"],
-      promptSelectors: ["form textarea", "main textarea", "[contenteditable='true']"],
+      promptSelectors: [
+        "#prompt-textarea",
+        "form #prompt-textarea",
+        "form [contenteditable='true']",
+        "form textarea",
+        "main textarea"
+      ],
       getRole(node) {
         return node.getAttribute("data-message-author-role") || "unknown"
       }
@@ -75,16 +90,40 @@
 
   function findPrompt(config) {
     for (const selector of config.promptSelectors) {
-      const element = document.querySelector(selector)
-      if (!element) continue
+      const elements = Array.from(document.querySelectorAll(selector))
 
-      return {
-        element,
-        isContentEditable: Boolean(element.isContentEditable)
+      for (const element of elements) {
+        const rect = element.getBoundingClientRect()
+        const style = window.getComputedStyle(element)
+        const isVisible =
+          rect.width > 0 &&
+          rect.height > 0 &&
+          style.visibility !== "hidden" &&
+          style.display !== "none" &&
+          !element.hasAttribute("disabled")
+
+        if (!isVisible) continue
+
+        return {
+          element,
+          isContentEditable: Boolean(element.isContentEditable)
+        }
       }
     }
 
     return null
+  }
+
+  function readPromptText(target) {
+    if (target.isContentEditable) {
+      return normalizeText(target.element.textContent)
+    }
+
+    if ("value" in target.element) {
+      return normalizeText(target.element.value)
+    }
+
+    return ""
   }
 
   function insertIntoPrompt(config, text) {
@@ -94,17 +133,38 @@
     }
 
     const element = target.element
+    const expected = normalizeText(text)
 
     if (target.isContentEditable) {
       element.focus()
-      element.textContent = ""
+      const selection = window.getSelection()
+      const range = document.createRange()
+      range.selectNodeContents(element)
+      selection.removeAllRanges()
+      selection.addRange(range)
+
+      let inserted = false
+
       if (typeof document.execCommand === "function") {
-        document.execCommand("insertText", false, text)
-      } else {
-        element.textContent = text
+        inserted = document.execCommand("insertText", false, text)
       }
+
+      if (!inserted) {
+        const html = text
+          .split("\n")
+          .map((line) => `<p>${line ? escapeHtml(line) : "<br>"}</p>`)
+          .join("")
+
+        element.innerHTML = html
+      }
+
+      element.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, cancelable: true, data: text, inputType: "insertText" }))
       element.dispatchEvent(new InputEvent("input", { bubbles: true, data: text, inputType: "insertText" }))
-      return { ok: true }
+      element.dispatchEvent(new Event("change", { bubbles: true }))
+
+      return readPromptText(target).includes(expected)
+        ? { ok: true }
+        : { ok: false, reason: "Prompt editor did not accept the inserted text." }
     }
 
     if ("value" in element) {
@@ -122,9 +182,13 @@
       } else {
         element.value = text
       }
-      element.dispatchEvent(new Event("input", { bubbles: true }))
+      element.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, cancelable: true, data: text, inputType: "insertText" }))
+      element.dispatchEvent(new InputEvent("input", { bubbles: true, data: text, inputType: "insertText" }))
       element.dispatchEvent(new Event("change", { bubbles: true }))
-      return { ok: true }
+
+      return readPromptText(target).includes(expected)
+        ? { ok: true }
+        : { ok: false, reason: "Prompt textarea did not accept the inserted text." }
     }
 
     return { ok: false, reason: "No editable prompt field found." }
