@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react"
+import type { ProjectStateStatusDto } from "@relay/shared"
 
 import { getActiveTab } from "../utils/browser"
-import { getRelaySession, setRelaySession } from "../storage/session"
+import { getRelaySession, setRelaySession, type RelaySessionState } from "../storage/session"
+import { inferTargetProfile, resolveTargetProfile } from "../utils/target-profile"
 import styles from "./control-panel.module.css"
 
 interface ControlPanelProps {
@@ -13,8 +15,6 @@ interface ProjectOption {
   name: string
 }
 
-type RelaySessionState = Awaited<ReturnType<typeof getRelaySession>>
-
 interface PageState {
   supported: boolean
   platform?: string
@@ -22,20 +22,6 @@ interface PageState {
   url?: string
   turns?: number
   isFreshChat?: boolean
-}
-
-function inferTargetProfile(platform?: string) {
-  switch (platform) {
-    case "perplexity":
-      return "perplexity_research"
-    case "claude":
-      return "claude_code_build"
-    case "codex":
-      return "codex_implementation"
-    case "chatgpt":
-    default:
-      return "chatgpt_planning"
-  }
 }
 
 function defaultDeviceName() {
@@ -92,7 +78,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
   }
 
-async function refreshRemoteSession() {
+  async function refreshRemoteSession() {
     try {
       const result = (await chrome.runtime.sendMessage({ type: "RELAY_REFRESH_SESSION" })) as {
         ok?: boolean
@@ -126,6 +112,13 @@ async function refreshRemoteSession() {
     try {
       const state = (await chrome.tabs.sendMessage(tab.id, { type: "RELAY_PAGE_STATE" })) as PageState
       setPageState(state ?? { supported: false })
+      const nextResolvedTarget = resolveTargetProfile({
+        platform: state?.platform,
+        targetMode: session?.targetMode,
+        manualTargetProfileKey: session?.targetProfileKey
+      })
+      await setRelaySession({ resolvedTargetProfileKey: nextResolvedTarget })
+      setSession((current) => (current ? { ...current, resolvedTargetProfileKey: nextResolvedTarget } : current))
     } catch {
       setPageState({ supported: false })
     }
@@ -147,6 +140,7 @@ async function refreshRemoteSession() {
         turns?: number
         digestQueued?: boolean
         reason?: string
+        stateStatus?: ProjectStateStatusDto | null
       }
 
       if (!result?.ok) {
@@ -157,14 +151,17 @@ async function refreshRemoteSession() {
       }
 
       if (result.skipped) {
-        if (prefix) {
-          setStatus(`${prefix} ${result.reason ?? "No new changes to capture."}`)
-        }
+        setStatus(`${prefix ? `${prefix} ` : ""}Skipped: ${result.reason ?? "No new changes to capture."}`)
         return
       }
 
+      if (result.stateStatus) {
+        await setRelaySession({ stateStatus: result.stateStatus })
+        setSession((current) => (current ? { ...current, stateStatus: result.stateStatus ?? null } : current))
+      }
+
       setStatus(
-        `${prefix ? `${prefix} ` : ""}Auto-captured ${result.turns ?? 0} visible turns${result.digestQueued ? " and queued a digest." : "."}`
+        `${prefix ? `${prefix} ` : ""}Auto-captured ${result.turns ?? 0} visible turns.${result.digestQueued ? " Digest queued." : " State unchanged."}`
       )
     } catch {
       return
@@ -213,7 +210,11 @@ async function refreshRemoteSession() {
     setStatus(pageState.isFreshChat ? "Preparing fresh-chat bootstrap…" : "Preparing continuity bootstrap…")
 
     try {
-      const targetProfileKey = session.targetProfileKey || inferTargetProfile(pageState.platform)
+      const targetProfileKey = resolveTargetProfile({
+        platform: pageState.platform,
+        targetMode: session.targetMode,
+        manualTargetProfileKey: session.targetProfileKey
+      })
       const kind = pageState.isFreshChat ? "fresh_chat_bootstrap" : "quick_continuity"
       const generated = (await chrome.runtime.sendMessage({
         type: "RELAY_GENERATE_BOOTSTRAP",
@@ -224,12 +225,37 @@ async function refreshRemoteSession() {
           deep: kind === "fresh_chat_bootstrap"
         }
       })) as {
+        status?: "ready" | "pending"
         packet?: {
           content?: string
           renderer?: string
           generationMetadata?: Record<string, unknown>
         }
+        reason?: string | null
+        resolvedTargetProfileKey?: string
+        stateStatus?: ProjectStateStatusDto | null
         error?: string
+      }
+
+      if (generated?.stateStatus) {
+        await setRelaySession({
+          stateStatus: generated.stateStatus,
+          resolvedTargetProfileKey: generated.resolvedTargetProfileKey ?? targetProfileKey
+        })
+        setSession((current) =>
+          current
+            ? {
+                ...current,
+                stateStatus: generated.stateStatus ?? null,
+                resolvedTargetProfileKey: generated.resolvedTargetProfileKey ?? current.resolvedTargetProfileKey
+              }
+            : current
+        )
+      }
+
+      if (generated?.status === "pending" || !generated?.packet) {
+        setStatus(generated?.reason ?? "Relay is still building project state for this chat.")
+        return
       }
 
       const content = generated?.packet?.content
@@ -311,9 +337,18 @@ async function refreshRemoteSession() {
           projectId: session.projectId,
           tabId: tab.id
         }
-      })
+      }) as { ok?: boolean; turns?: number; reason?: string; digestQueued?: boolean; stateStatus?: ProjectStateStatusDto | null }
 
-      setStatus(result?.ok ? `Captured ${result.turns ?? 0} visible turns.` : result?.reason ?? "Capture failed.")
+      if (result?.stateStatus) {
+        await setRelaySession({ stateStatus: result.stateStatus })
+        setSession((current) => (current ? { ...current, stateStatus: result.stateStatus ?? null } : current))
+      }
+
+      setStatus(
+        result?.ok
+          ? `Captured ${result.turns ?? 0} visible turns.${result?.digestQueued ? " Digest queued." : ""}`
+          : result?.reason ?? "Capture failed."
+      )
     } catch (cause) {
       setStatus(cause instanceof Error ? cause.message : "Capture failed.")
     } finally {
@@ -323,14 +358,33 @@ async function refreshRemoteSession() {
 
   async function handleProjectChange(nextProjectId: string) {
     if (!session) return
-    await setRelaySession({ projectId: nextProjectId })
-    setSession({ ...session, projectId: nextProjectId })
+    await setRelaySession({
+      projectId: nextProjectId,
+      targetMode: "auto",
+      targetProfileKey: "",
+      stateStatus: null
+    })
+    setSession({ ...session, projectId: nextProjectId, targetMode: "auto", targetProfileKey: "", stateStatus: null })
     setStatus("Project switched.")
     await triggerAutoCapture("Project switched.")
   }
 
   const currentProject = projects.find((project) => project.id === session?.projectId) ?? null
   const readyLabel = pageState.isFreshChat ? "Bootstrap ready" : "Ready on this chat"
+  const resolvedTargetProfileKey = resolveTargetProfile({
+    platform: pageState.platform,
+    targetMode: session?.targetMode,
+    manualTargetProfileKey: session?.targetProfileKey
+  })
+  const resolvedTargetLabel = {
+    chatgpt_planning: "ChatGPT Planning",
+    claude_code_build: "Claude Code Build",
+    codex_implementation: "Codex Implementation",
+    perplexity_research: "Perplexity Research"
+  }[resolvedTargetProfileKey]
+  const captureStatusLabel = session?.stateStatus?.rawCapturePresent ? "Captured" : "Waiting"
+  const digestStatusLabel = session?.stateStatus?.digestStatus ? session.stateStatus.digestStatus.replace("_", " ") : "idle"
+  const projectStateLabel = session?.stateStatus?.projectStateReady ? "Ready" : "Pending"
 
   return (
     <div className={`${styles.shell} ${compact ? styles.compact : styles.expanded}`}>
@@ -402,6 +456,21 @@ async function refreshRemoteSession() {
               </p>
             )}
 
+            <div className={styles.statusGrid}>
+              <div className={styles.statusPill}>
+                <span>Capture</span>
+                <strong>{captureStatusLabel}</strong>
+              </div>
+              <div className={styles.statusPill}>
+                <span>Digest</span>
+                <strong>{digestStatusLabel}</strong>
+              </div>
+              <div className={styles.statusPill}>
+                <span>State</span>
+                <strong>{projectStateLabel}</strong>
+              </div>
+            </div>
+
             <div className={styles.actionGrid}>
               <button className={styles.primaryButton} disabled={busy || !session.projectId || !pageState.supported} onClick={() => void insertBootstrap()}>
                 Insert bootstrap
@@ -423,11 +492,24 @@ async function refreshRemoteSession() {
             <label className={styles.field}>
               <span>Target override</span>
               <select
-                value={session.targetProfileKey}
+                value={session.targetMode === "manual" ? session.targetProfileKey : ""}
                 onChange={async (event) => {
                   const nextTarget = event.target.value
-                  await setRelaySession({ targetProfileKey: nextTarget })
-                  setSession((current) => (current ? { ...current, targetProfileKey: nextTarget } : current))
+                  await setRelaySession({
+                    targetMode: nextTarget ? "manual" : "auto",
+                    targetProfileKey: nextTarget,
+                    resolvedTargetProfileKey: nextTarget || inferTargetProfile(pageState.platform)
+                  })
+                  setSession((current) =>
+                    current
+                      ? {
+                          ...current,
+                          targetMode: nextTarget ? "manual" : "auto",
+                          targetProfileKey: nextTarget,
+                          resolvedTargetProfileKey: nextTarget || inferTargetProfile(pageState.platform)
+                        }
+                      : current
+                  )
                 }}>
                 <option value="">Automatic</option>
                 <option value="chatgpt_planning">ChatGPT planning</option>
@@ -452,6 +534,12 @@ async function refreshRemoteSession() {
       <section className={styles.statusCard}>
         <p className={styles.sectionLabel}>Status</p>
         <p className={styles.statusText}>{status}</p>
+        {session?.connected ? (
+          <p className={styles.hint}>
+            {session.targetMode === "manual" ? "Manual target override" : "Automatic target"}: {resolvedTargetLabel}
+          </p>
+        ) : null}
+        {session?.stateStatus?.digestErrorMessage ? <p className={styles.hint}>{session.stateStatus.digestErrorMessage}</p> : null}
         {session?.limitedMode ? <p className={styles.hint}>Gemini was unavailable or rate-limited, so Relay fell back to a bounded deterministic packet.</p> : null}
       </section>
     </div>

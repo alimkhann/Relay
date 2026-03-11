@@ -12,6 +12,7 @@ import type {
   TargetProfileRow,
   SupportedPlatform
 } from "./database"
+import type { BootstrapPacketDto, ProjectStateStatusDto } from "./project"
 
 export interface RecentTurnSnippet {
   sessionId: string
@@ -64,4 +65,12 @@ export interface BootstrapRequest {
   kind: BootstrapPacketKind
   targetProfileKey: string
   deep?: boolean
+}
+
+export interface BootstrapGenerationResponse {
+  status: "ready" | "pending"
+  packet: BootstrapPacketDto | null
+  reason: string | null
+  resolvedTargetProfileKey: string
+  stateStatus: ProjectStateStatusDto
 }

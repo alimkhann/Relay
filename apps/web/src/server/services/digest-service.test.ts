@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import type { ProjectStateRow, SourceSessionRow, SourceTurnRow } from "@relay/shared"
+import { hashContent } from "@relay/shared"
 
 import { deterministicDigest, prepareDigestTurns } from "./digest-service"
 
@@ -11,9 +12,12 @@ function makeSession(): SourceSessionRow {
     platform: "chatgpt",
     title: "Relay planning",
     url: "https://chatgpt.com/c/test",
+    tabId: null,
+    windowId: null,
     pageFingerprint: "test",
     captureSignature: "sig",
     metadata: {},
+    capturedAt: new Date().toISOString(),
     createdAt: new Date().toISOString()
   }
 }
@@ -24,6 +28,7 @@ function makeTurn(turnIndex: number, role: SourceTurnRow["role"], content: strin
     sessionId: "session-1",
     role,
     content,
+    contentHash: hashContent(content),
     rawHtml: null,
     metadata: {},
     turnIndex,

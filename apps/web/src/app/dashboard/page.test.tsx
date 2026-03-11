@@ -47,6 +47,14 @@ vi.mock("@/server/services/project-service", () => ({
       dirty: true,
       updatedAt: new Date().toISOString()
     },
+    stateStatus: {
+      rawCapturePresent: true,
+      digestStatus: "completed",
+      projectStateReady: true,
+      digestErrorMessage: null,
+      lastCapturedAt: new Date().toISOString(),
+      lastDigestAt: new Date().toISOString()
+    },
     recentSessions: [],
     recentDigests: [],
     memory: [

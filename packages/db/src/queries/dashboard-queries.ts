@@ -1,4 +1,4 @@
-import type { ProjectDashboardDto } from "@relay/shared"
+import { deriveProjectStateStatus, type ProjectDashboardDto } from "@relay/shared"
 
 import type { RepositoryBundle } from "./repository-bundle"
 import { getProjectSummaries } from "./project-queries"
@@ -7,14 +7,19 @@ export async function getProjectDashboard(repositories: RepositoryBundle, ownerI
   const [projectSummary] = (await getProjectSummaries(repositories, ownerId)).filter((project) => project.id === projectId)
   if (!projectSummary) return null
 
-  const [recentSessions, memory, packets, legacyPackets, targetProfiles, projectState, recentDigests] = await Promise.all([
+  const [recentSessions, memory, packets, legacyPackets, targetProfiles, projectState, recentDigests, digestJobs] = await Promise.all([
     repositories.sessions.listByProject(projectId),
     repositories.memory.listByProject(projectId),
     repositories.bootstrapPackets.listByProject(projectId),
     repositories.contextPackets.listByProject(projectId),
     repositories.targetProfiles.listAll(),
     repositories.projectState.getByProject(projectId),
-    repositories.sessionDigests.listByProject(projectId)
+    repositories.sessionDigests.listByProject(projectId),
+    repositories.aiJobs.listByProject(projectId, {
+      jobKind: "session_digest",
+      statuses: ["pending", "running", "failed", "timed_out"],
+      limit: 1
+    })
   ])
   const targetProfileById = new Map(targetProfiles.map((profile) => [profile.id, profile.key]))
 
@@ -32,9 +37,26 @@ export async function getProjectDashboard(repositories: RepositoryBundle, ownerI
           relevantTools: projectState.relevantTools,
           lastBootstrapAt: projectState.lastBootstrapAt,
           dirty: projectState.dirty,
-          updatedAt: projectState.updatedAt
-        }
+        updatedAt: projectState.updatedAt
+      }
       : null,
+    stateStatus: deriveProjectStateStatus({
+      sessions: recentSessions.slice(0, 1),
+      digests: recentDigests.slice(0, 1).map((digest) => ({
+        createdAt: digest.createdAt
+      })),
+      projectState: projectState
+        ? {
+            updatedAt: projectState.updatedAt
+          }
+        : null,
+      digestJobs: digestJobs.map((job) => ({
+        status: job.status,
+        errorMessage: job.errorMessage,
+        createdAt: job.createdAt,
+        completedAt: job.completedAt
+      }))
+    }),
     recentSessions: await Promise.all(
       recentSessions.map(async (session) => ({
         id: session.id,

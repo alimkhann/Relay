@@ -9,6 +9,8 @@ interface DigestModelShape extends SessionDigestShape {
   confidence?: number
 }
 
+const DIGEST_JOB_TIMEOUT_MINUTES = 5
+
 export function cleanTurnContent(content: string) {
   return normalizeText(content)
     .replace(/^You said:\s*/i, "")
@@ -177,7 +179,8 @@ export async function enqueueDigestJob(userId: string, input: {
 
 export async function drainDigestJobs(userId: string, limit = 4) {
   const repositories = createRepositoryBundle(userId)
-  const pending = (await repositories.aiJobs.listPending(limit)).filter((job) => job.jobKind === "session_digest")
+  await repositories.aiJobs.markTimedOutOlderThan("session_digest", DIGEST_JOB_TIMEOUT_MINUTES)
+  const pending = await repositories.aiJobs.listByStatuses(["pending", "timed_out"], limit, "session_digest")
 
   for (const job of pending) {
     await repositories.aiJobs.markRunning(job.id, job.attempts + 1)

@@ -26,11 +26,21 @@ export interface ProjectSummaryDto {
 export interface ProjectDashboardDto {
   project: ProjectSummaryDto
   projectState: ProjectStateDto | null
+  stateStatus: ProjectStateStatusDto
   recentSessions: RecentSessionDto[]
   recentDigests: SessionDigestDto[]
   memory: MemoryItemDto[]
   packets: BootstrapPacketDto[]
   legacyPackets: ContextPacketDto[]
+}
+
+export interface ProjectStateStatusDto {
+  rawCapturePresent: boolean
+  digestStatus: "idle" | "pending" | "running" | "completed" | "failed" | "timed_out"
+  projectStateReady: boolean
+  digestErrorMessage: string | null
+  lastCapturedAt: string | null
+  lastDigestAt: string | null
 }
 
 export interface RecentSessionDto {

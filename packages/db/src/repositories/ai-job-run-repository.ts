@@ -37,12 +37,93 @@ export class AiJobRunRepository {
     return rows.map((record) => toAiJobRunRow(record as Record<string, unknown>))
   }
 
+  async listByStatuses(statuses: AiJobRunRow["status"][], limit = 10, jobKind?: AiJobRunRow["jobKind"]): Promise<AiJobRunRow[]> {
+    const values: Array<string | number | string[]> = [statuses]
+    let clause = "status = any($1::text[])"
+
+    if (jobKind) {
+      values.push(jobKind)
+      clause += ` and job_kind = $${values.length}`
+    }
+
+    values.push(limit)
+    const rows = await this.provider.query(
+      `select *
+       from ai_job_runs
+       where ${clause}
+       order by created_at asc
+       limit $${values.length}`,
+      values
+    )
+
+    return rows.map((record) => toAiJobRunRow(record as Record<string, unknown>))
+  }
+
+  async listByProject(
+    projectId: string,
+    input: {
+      limit?: number
+      jobKind?: AiJobRunRow["jobKind"]
+      statuses?: AiJobRunRow["status"][]
+    } = {}
+  ): Promise<AiJobRunRow[]> {
+    const clauses = ["project_id = $1"]
+    const values: Array<string | number | string[]> = [projectId]
+
+    if (input.jobKind) {
+      clauses.push(`job_kind = $${values.length + 1}`)
+      values.push(input.jobKind)
+    }
+
+    if (input.statuses?.length) {
+      clauses.push(`status = any($${values.length + 1}::text[])`)
+      values.push(input.statuses)
+    }
+
+    const limit = input.limit ?? 20
+    values.push(limit)
+
+    const rows = await this.provider.query(
+      `select *
+       from ai_job_runs
+       where ${clauses.join(" and ")}
+       order by created_at desc
+       limit $${values.length}`,
+      values
+    )
+
+    return rows.map((record) => toAiJobRunRow(record as Record<string, unknown>))
+  }
+
+  async markTimedOutOlderThan(jobKind: AiJobRunRow["jobKind"], olderThanMinutes: number): Promise<AiJobRunRow[]> {
+    const rows = await this.provider.query(
+      `update ai_job_runs
+       set status = 'timed_out',
+           error_class = 'JobTimeout',
+           error_message = 'Relay marked this job as timed out before retrying it.',
+           completed_at = now(),
+           updated_at = now()
+       where job_kind = $1
+         and status = 'running'
+         and started_at is not null
+         and started_at < now() - make_interval(mins => $2)
+       returning *`,
+      [jobKind, olderThanMinutes]
+    )
+
+    return rows.map((record) => toAiJobRunRow(record as Record<string, unknown>))
+  }
+
   async markRunning(id: string, attempts: number): Promise<void> {
     await this.provider.query(
       `update ai_job_runs
        set status = 'running',
            attempts = $2,
            started_at = now(),
+           completed_at = null,
+           error_class = null,
+           error_message = null,
+           output_payload = '{}'::jsonb,
            updated_at = now()
        where id = $1`,
       [id, attempts]

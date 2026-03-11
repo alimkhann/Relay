@@ -1,5 +1,6 @@
 import type { RelayMessage } from "../messaging/contracts"
 import { getRelaySession, setRelaySession } from "../storage/session"
+import { resolveTargetProfile } from "../utils/target-profile"
 import { relayFetch } from "../utils/api"
 
 async function readErrorResponse(response: Response, fallback: string) {
@@ -12,20 +13,6 @@ async function readErrorResponse(response: Response, fallback: string) {
 }
 
 const lastAutoCapturedByTab = new Map<number, string>()
-
-function inferTargetProfile(platform?: string) {
-  switch (platform) {
-    case "perplexity":
-      return "perplexity_research"
-    case "claude":
-      return "claude_code_build"
-    case "codex":
-      return "codex_implementation"
-    case "chatgpt":
-    default:
-      return "chatgpt_planning"
-  }
-}
 
 async function loadSessionData() {
   const session = await getRelaySession()
@@ -65,11 +52,24 @@ async function loadSessionData() {
       ? session.projectId
       : projectsPayload.projects[0]?.id ?? ""
 
+  let stateStatus = session.stateStatus
+  if (nextProjectId) {
+    const dashboardResponse = await relayFetch(`/api/projects/${nextProjectId}`)
+    if (dashboardResponse.ok) {
+      const dashboardPayload = (await dashboardResponse.json()) as {
+        dashboard?: { stateStatus?: typeof session.stateStatus }
+      }
+      stateStatus = dashboardPayload.dashboard?.stateStatus ?? stateStatus
+    }
+  }
+
   await setRelaySession({
     connected: true,
     projectId: nextProjectId,
     autoCapture: settingsPayload.settings.settings.autoCapture,
-    targetProfileKey: session.targetProfileKey || ""
+    targetMode: session.targetMode ?? "auto",
+    targetProfileKey: session.targetMode === "manual" ? session.targetProfileKey : "",
+    stateStatus
   })
 
   return {
@@ -109,7 +109,8 @@ async function captureTab(projectId: string, tabId: number) {
   return {
     ok: true,
     turns: payload.turns?.length ?? result.capture.turns?.length ?? 0,
-    digestQueued: Boolean(payload.digestQueued)
+    digestQueued: Boolean(payload.digestQueued),
+    stateStatus: payload.stateStatus ?? null
   }
 }
 
@@ -122,6 +123,7 @@ async function maybeAutoCapture(tabId: number) {
   try {
     const pageState = (await chrome.tabs.sendMessage(tabId, { type: "RELAY_PAGE_STATE" })) as {
       supported?: boolean
+      platform?: string
       captureSignature?: string
       isFreshChat?: boolean
       turns?: number
@@ -140,12 +142,24 @@ async function maybeAutoCapture(tabId: number) {
       lastAutoCapturedByTab.set(tabId, pageState.captureSignature)
     }
 
+    if (result?.ok) {
+      await setRelaySession({
+        resolvedTargetProfileKey: resolveTargetProfile({
+          platform: pageState.platform,
+          targetMode: session.targetMode,
+          manualTargetProfileKey: session.targetProfileKey
+        }),
+        stateStatus: result.stateStatus ?? session.stateStatus
+      })
+    }
+
     return result?.ok
       ? {
           ok: true,
           turns: result.turns ?? pageState.turns ?? 0,
           digestQueued: Boolean(result.digestQueued),
-          captured: true
+          captured: true,
+          stateStatus: result.stateStatus ?? session.stateStatus
         }
       : result ?? { ok: false, reason: "Auto-capture failed." }
   } catch {
@@ -185,7 +199,11 @@ chrome.runtime.onMessage.addListener((message: RelayMessage, sender: any, sendRe
           return
         }
 
-        sendResponse(await response.json())
+        const payload = await response.json()
+        if (payload?.stateStatus) {
+          await setRelaySession({ stateStatus: payload.stateStatus })
+        }
+        sendResponse(payload)
         return
       }
 
@@ -321,11 +339,14 @@ chrome.runtime.onMessageExternal.addListener((message: any, _sender: unknown, se
         apiBase: payload.apiBase,
         token: payload.token,
         projectId: payload.projectId,
+        targetMode: "auto",
         targetProfileKey: "",
+        resolvedTargetProfileKey: "",
         connected: true,
         autoCapture: payload.settings?.settings?.autoCapture ?? true,
         limitedMode: false,
-        lastStatus: "Extension connected."
+        lastStatus: "Extension connected.",
+        stateStatus: null
       })
 
       sendResponse({ ok: true })

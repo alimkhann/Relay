@@ -1,4 +1,5 @@
 import Link from "next/link"
+import type { ProjectStateStatusDto } from "@relay/shared"
 
 import { DigestList } from "@/components/digests/digest-list"
 import { AppShell } from "@/components/layout/app-shell"
@@ -14,6 +15,22 @@ export const dynamic = "force-dynamic"
 
 function lineItems(items: string[]) {
   return items.length > 0 ? items : ["Nothing durable has been promoted yet."]
+}
+
+function describeStateStatus(status: ProjectStateStatusDto | undefined) {
+  if (!status) return "Relay is waiting for the first meaningful capture."
+  if (status.projectStateReady) return "Project state is ready for the next fresh chat."
+  if (status.digestStatus === "running" || status.digestStatus === "pending") {
+    return "Relay has raw captures and is currently compressing them into project state."
+  }
+  if (status.digestStatus === "timed_out") {
+    return "A digest timed out and Relay is waiting to retry it."
+  }
+  if (status.digestStatus === "failed") {
+    return status.digestErrorMessage ?? "The latest digest failed and needs another capture attempt."
+  }
+
+  return status.rawCapturePresent ? "Relay has raw captures but no durable state yet." : "Relay is waiting for the first meaningful capture."
 }
 
 export default async function DashboardPage() {
@@ -65,6 +82,10 @@ export default async function DashboardPage() {
               {dashboard?.projectState?.recentProgress ??
                 "Once Relay captures and digests a meaningful session, recent progress and open tasks appear here instead of raw transcripts."}
             </p>
+            <div className="mt-5 rounded-[18px] border border-[var(--relay-line)] bg-[var(--relay-panel)]/70 px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--relay-muted)]">Pipeline status</p>
+              <p className="mt-2 text-sm leading-7 text-[var(--relay-ink)]">{describeStateStatus(dashboard?.stateStatus)}</p>
+            </div>
           </div>
 
           <div className="rounded-[24px] border border-[var(--relay-line)] bg-[var(--relay-background)] p-6 shadow-[var(--relay-shadow)]">

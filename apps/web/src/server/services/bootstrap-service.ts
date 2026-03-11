@@ -1,8 +1,27 @@
 import { createRepositoryBundle } from "@relay/db"
-import type { BootstrapPacketDto, BootstrapRequest, BootstrapPacketRow, ProjectStateRow, SessionDigestRow, TargetProfileRow } from "@relay/shared"
+import type { BootstrapPacketDto, BootstrapRequest, BootstrapPacketRow, ProjectStateRow, ProjectStateStatusDto, SessionDigestRow, TargetProfileRow } from "@relay/shared"
 import { bootstrapRequestSchema, normalizeText } from "@relay/shared"
 
 import { GEMINI_MODELS, runGeminiJsonWithFallback } from "./gemini-service"
+import { getProjectStateStatus } from "./state-status-service"
+
+interface BootstrapGenerationReady {
+  status: "ready"
+  packet: BootstrapPacketRow
+  reason: null
+  resolvedTargetProfileKey: string
+  stateStatus: ProjectStateStatusDto
+}
+
+interface BootstrapGenerationPending {
+  status: "pending"
+  packet: null
+  reason: string
+  resolvedTargetProfileKey: string
+  stateStatus: ProjectStateStatusDto
+}
+
+export type BootstrapGenerationResult = BootstrapGenerationReady | BootstrapGenerationPending
 
 interface BootstrapModelShape {
   projectOverview: string | null
@@ -161,7 +180,27 @@ async function generateGeminiBootstrap(input: {
   }
 }
 
-export async function generateBootstrapForProject(userId: string, projectId: string, input: unknown) {
+function getPendingReason(stateStatus: ProjectStateStatusDto) {
+  if (stateStatus.digestStatus === "failed") {
+    return stateStatus.digestErrorMessage ?? "Digest failed. Refresh Relay or capture the chat again."
+  }
+
+  if (stateStatus.digestStatus === "timed_out") {
+    return "Relay is retrying the digest for this chat. Try again in a moment."
+  }
+
+  if (stateStatus.rawCapturePresent) {
+    return "Digest pending. Relay is still turning this chat into project state."
+  }
+
+  return "Capture a meaningful chat first so Relay can build project state."
+}
+
+export function shouldDeferBootstrapGeneration(state: ProjectStateRow | null, digests: SessionDigestRow[]) {
+  return !state && digests.length === 0
+}
+
+export async function generateBootstrapForProject(userId: string, projectId: string, input: unknown): Promise<BootstrapGenerationResult> {
   const repositories = createRepositoryBundle(userId)
   const parsed = bootstrapRequestSchema.parse(input)
   const [project, profile, state, digests] = await Promise.all([
@@ -179,9 +218,26 @@ export async function generateBootstrapForProject(userId: string, projectId: str
     throw new Error("Target profile not found.")
   }
 
+  const stateStatus = await getProjectStateStatus(repositories, projectId)
+  if (shouldDeferBootstrapGeneration(state, digests)) {
+    return {
+      status: "pending",
+      packet: null,
+      reason: getPendingReason(stateStatus),
+      resolvedTargetProfileKey: parsed.targetProfileKey,
+      stateStatus
+    }
+  }
+
   const latest = await repositories.bootstrapPackets.getLatest(projectId, profile.id, parsed.kind)
   if (latest && !state?.dirty && !parsed.deep) {
-    return latest
+    return {
+      status: "ready",
+      packet: latest,
+      reason: null,
+      resolvedTargetProfileKey: parsed.targetProfileKey,
+      stateStatus
+    }
   }
 
   const preferredRenderer = inferRenderer(parsed, state)
@@ -250,7 +306,18 @@ export async function generateBootstrapForProject(userId: string, projectId: str
     }
   })
 
-  return packet
+  return {
+    status: "ready",
+    packet,
+    reason: null,
+    resolvedTargetProfileKey: parsed.targetProfileKey,
+    stateStatus: {
+      ...stateStatus,
+      digestStatus: "completed",
+      projectStateReady: Boolean(state ?? digests.length > 0),
+      lastDigestAt: packet.createdAt
+    }
+  }
 }
 
 export async function getLatestBootstrapForProject(userId: string, projectId: string, targetProfileKey: string, kind: BootstrapPacketRow["kind"]) {

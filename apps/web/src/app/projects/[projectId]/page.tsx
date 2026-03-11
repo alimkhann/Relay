@@ -15,6 +15,21 @@ function stateList(items: string[]) {
   return items.length > 0 ? items : ["Nothing durable recorded yet."]
 }
 
+function describeStateStatus(
+  status: {
+    digestStatus: "idle" | "pending" | "running" | "completed" | "failed" | "timed_out"
+    projectStateReady: boolean
+    rawCapturePresent: boolean
+    digestErrorMessage: string | null
+  }
+) {
+  if (status.projectStateReady) return "Project state is ready."
+  if (status.digestStatus === "running" || status.digestStatus === "pending") return "Digest in progress."
+  if (status.digestStatus === "timed_out") return "Digest timed out and will be retried."
+  if (status.digestStatus === "failed") return status.digestErrorMessage ?? "Latest digest failed."
+  return status.rawCapturePresent ? "Raw captures exist, but durable state is not ready yet." : "No meaningful captures yet."
+}
+
 export default async function ProjectPage({ params }: { params: Promise<{ projectId: string }> }) {
   const viewer = await requireSessionViewer()
   const { projectId } = await params
@@ -51,6 +66,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
           <p className="mt-4 text-sm leading-7 text-[var(--relay-muted)]">
             {dashboard.projectState?.recentProgress ?? "Recent progress will appear here after Relay digests the next meaningful session."}
           </p>
+          <div className="mt-5 rounded-[18px] border border-[var(--relay-line)] bg-[var(--relay-panel)]/70 px-4 py-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--relay-muted)]">Pipeline status</p>
+            <p className="mt-2 text-sm leading-7 text-[var(--relay-ink)]">{describeStateStatus(dashboard.stateStatus)}</p>
+          </div>
         </div>
       </section>
 

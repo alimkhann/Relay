@@ -118,6 +118,37 @@
   margin-top: 18px;
 }
 
+.statusGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.statusPill {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(233, 236, 227, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 11px 12px;
+}
+
+.statusPill span {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(233, 236, 227, 0.48);
+}
+
+.statusPill strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f2f4ef;
+  text-transform: capitalize;
+}
+
 .primaryButton,
 .secondaryButton,
 .ghostButton {
