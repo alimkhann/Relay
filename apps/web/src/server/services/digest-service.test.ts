@@ -96,6 +96,30 @@ describe("deterministicDigest", () => {
     ])
   })
 
+  it("skips long feedback turns and pairs progress with the last meaningful project request", () => {
+    const turns = [
+      makeTurn(0, "user", "Build Relay as a browser-first AI continuity layer that captures useful project context and restores it into fresh chats."),
+      makeTurn(
+        1,
+        "assistant",
+        "Relay should focus on a fresh-chat bootstrap flow, durable state, and one-click insertion instead of transcript dumping."
+      ),
+      makeTurn(
+        2,
+        "user",
+        "1. yes 2. both, and also i believe your example chatgpt/claude planning packet is too small/short, the info you provided is not enough."
+      ),
+      makeTurn(3, "assistant", "Both: generate structured JSON internally, then render clean text/markdown on the surface.")
+    ]
+
+    const digest = deterministicDigest(makeSession(), turns, null)
+
+    expect(digest.currentObjectiveDelta).toBe(
+      "Build Relay as a browser-first AI continuity layer that captures useful project context and restores it into fresh chats."
+    )
+    expect(digest.recentProgressDelta).toContain("fresh-chat bootstrap flow")
+  })
+
   it("does not merge when only low-signal chatter is present", () => {
     const state = makeState()
     const turns = [makeTurn(0, "user", "yes"), makeTurn(1, "assistant", "Okay.")]

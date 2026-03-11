@@ -26,8 +26,27 @@ export function isLowSignalUserTurn(content: string) {
   if (!normalized) return true
   if (normalized.length < 18) return true
   if (words.length <= 4) return true
+  if (normalized.includes("your example") || normalized.includes("the info you provided")) return true
+  if (normalized.includes("too small") || normalized.includes("too short")) return true
+  if (normalized.includes("really short answer")) return true
 
   return /^(yes|yeah|yep|ok|okay|thanks|thank you|do that|do it|continue|proceed|both|sounds good|what'?s better\b)/i.test(normalized)
+}
+
+function findLatestMeaningfulAssistantTurn(turns: SourceTurnRow[]) {
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index]
+    if (!turn || turn.role !== "assistant" || turn.content.length < 80) {
+      continue
+    }
+
+    const priorUserTurn = [...turns.slice(0, index)].reverse().find((candidate) => candidate.role === "user")
+    if (priorUserTurn && !isLowSignalUserTurn(priorUserTurn.content)) {
+      return turn
+    }
+  }
+
+  return [...turns].reverse().find((turn) => turn.role === "assistant" && turn.content.length >= 80) ?? null
 }
 
 export function prepareDigestTurns(turns: SourceTurnRow[]) {
@@ -63,7 +82,7 @@ export function deterministicDigest(session: SourceSessionRow, turns: SourceTurn
   const latestMeaningfulUserTurn = [...cleanedTurns]
     .reverse()
     .find((turn) => turn.role === "user" && !isLowSignalUserTurn(turn.content))
-  const latestMeaningfulAssistantTurn = [...cleanedTurns].reverse().find((turn) => turn.role === "assistant" && turn.content.length >= 80)
+  const latestMeaningfulAssistantTurn = findLatestMeaningfulAssistantTurn(cleanedTurns)
   const recentSummary = latestMeaningfulAssistantTurn?.content?.slice(0, 280) ?? null
 
   const currentObjectiveDelta =
