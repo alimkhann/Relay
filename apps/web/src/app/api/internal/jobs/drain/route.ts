@@ -2,9 +2,13 @@ import { NextResponse } from "next/server"
 
 import { drainDigestJobs } from "@/server/services/digest-service"
 
+function normalizeSecret(value: string | null | undefined) {
+  return value?.replace(/\\n/g, "").trim() ?? null
+}
+
 export async function POST(request: Request) {
-  const secret = process.env.RELAY_INTERNAL_API_SECRET?.trim()
-  const provided = request.headers.get("x-relay-internal-secret")?.trim()
+  const secret = normalizeSecret(process.env.RELAY_INTERNAL_API_SECRET)
+  const provided = normalizeSecret(request.headers.get("x-relay-internal-secret"))
 
   if (!secret || provided !== secret) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 })

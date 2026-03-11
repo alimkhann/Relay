@@ -50,7 +50,10 @@ export class GeminiRequestError extends Error {
 }
 
 function getGeminiApiKey() {
-  return process.env.GEMINI_API_KEY ?? process.env.GOOGLE_AI_API_KEY ?? null
+  const rawKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_AI_API_KEY ?? null
+  if (!rawKey) return null
+  const normalizedKey = rawKey.replace(/\\n/g, "").trim()
+  return normalizedKey || null
 }
 
 function estimateTokenCount(text: string) {
@@ -255,10 +258,9 @@ export async function runGeminiJsonWithFallback<T>(input: {
     await input.onStage?.(stage, { model, fallbackUsed })
   }
 
-  await emitStage("count_tokens_primary", input.primaryModel, false)
-  const primaryPrompt = await trimPromptToBudget(input.primaryModel, input.prompt, input.maxInputTokens, input.signal)
-
   try {
+    await emitStage("count_tokens_primary", input.primaryModel, false)
+    const primaryPrompt = await trimPromptToBudget(input.primaryModel, input.prompt, input.maxInputTokens, input.signal)
     await emitStage("generate_primary", input.primaryModel, false)
     const result = await generateJson<T>(input.primaryModel, input.systemInstruction, primaryPrompt.prompt, input.maxOutputTokens, input.signal)
     return {
