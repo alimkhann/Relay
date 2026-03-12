@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 
 import { createRepositoryBundle } from "@relay/db";
 
@@ -81,13 +82,15 @@ export async function POST(request: Request) {
     }
 
     if (!userId) {
-      return NextResponse.json(
-        {
-          error:
-            "No Relay account found for this Google account. Please sign in on the web first.",
-        },
-        { status: 404 },
-      );
+      // No account found — create one so extension-first sign-up works
+      const newId = randomUUID();
+      await repositories.profiles.upsert({
+        id: newId,
+        email: googleUser.email,
+        displayName: googleUser.name ?? null,
+        avatarUrl: googleUser.picture ?? null,
+      });
+      userId = newId;
     }
 
     // Create a device token for the extension
