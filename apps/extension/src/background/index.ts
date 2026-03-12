@@ -957,15 +957,23 @@ chrome.runtime.onMessage.addListener(
         }
 
         if (message.type === "RELAY_GOOGLE_SIGN_IN") {
+          console.log("[Relay BG] RELAY_GOOGLE_SIGN_IN received");
           try {
-            // Use promise-based getAuthToken (MV3)
-            const authResult = await chrome.identity.getAuthToken({
-              interactive: true,
-            });
+            console.log("[Relay BG] calling getAuthToken...");
+            const authResult = await Promise.race([
+              chrome.identity.getAuthToken({ interactive: true }),
+              new Promise((_, reject) =>
+                setTimeout(
+                  () => reject(new Error("Google sign-in timed out. Make sure your Google account is added as a test user in Google Cloud Console.")),
+                  15000,
+                ),
+              ),
+            ]);
+            console.log("[Relay BG] getAuthToken result:", authResult);
             const accessToken =
               typeof authResult === "string"
                 ? authResult
-                : authResult?.token;
+                : (authResult as { token?: string })?.token;
             if (!accessToken) {
               sendResponse({
                 ok: false,
