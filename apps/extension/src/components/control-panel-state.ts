@@ -39,36 +39,30 @@ export function deriveControlPanelState(input: ControlPanelStateInput) {
   if (input.connected) {
     if (input.freshChat) {
       if (freshBootstrapReady) {
-        heroBadge = "Bootstrap ready"
-      } else if (digestStatus === "failed") {
-        heroBadge = "Digest failed"
-      } else if (digestStatus === "timed_out") {
-        heroBadge = "Digest timed out"
+        heroBadge = "Ready for this chat"
+      } else if (digestStatus === "failed" || digestStatus === "timed_out") {
+        heroBadge = "Project brief unavailable"
       } else if (input.stateStatus?.rawCapturePresent || activeDigest) {
-        heroBadge = "Digest pending"
+        heroBadge = "Updating your project brief"
       } else {
-        heroBadge = "Capture needed"
+        heroBadge = "Project brief unavailable"
       }
     } else if (input.supported) {
-      heroBadge = "Ready on this chat"
+      heroBadge = projectStateReady ? "Ready for this chat" : "Updating your project brief"
     }
   }
 
-  let projectHint = "Relay will watch for a meaningful capture and keep the next clean handoff ready."
+  let projectHint = "Built from recent chats and saved project context."
   if (input.freshChat) {
     if (freshBootstrapReady) {
-      projectHint = "Relay can drop a full bootstrap into this new chat."
-    } else if (input.stateStatus?.digestStatus === "failed") {
-      projectHint = "Digest failed. Capture the source chat again or wait for the next successful digest."
-    } else if (input.stateStatus?.digestStatus === "timed_out") {
-      projectHint = "Digest timed out. Relay can retry before the next bootstrap is inserted."
+      projectHint = "Ready for this chat."
+    } else if (input.stateStatus?.digestStatus === "failed" || input.stateStatus?.digestStatus === "timed_out") {
+      projectHint = "Project brief unavailable until Relay learns from another recent chat."
     } else if (input.stateStatus?.rawCapturePresent || activeDigest) {
-      projectHint = "Relay is still building project state before this fresh-chat bootstrap is ready."
+      projectHint = "Updating your project brief."
     } else {
-      projectHint = "Capture a meaningful source chat first so Relay has project state to restore here."
+      projectHint = "Project brief unavailable until Relay learns from another recent chat."
     }
-  } else if (projectStateReady) {
-    projectHint = "Relay keeps state nearby and can insert a smaller continuity packet on demand."
   }
 
   const insertDisabled =

@@ -54,6 +54,15 @@
     "action": {
       "default_title": "Relay",
       "default_popup": "popup.html"
+    },
+    "commands": {
+      "insert-project-brief": {
+        "suggested_key": {
+          "default": "Ctrl+Shift+I",
+          "mac": "Command+Shift+I"
+        },
+        "description": "Insert the current project brief"
+      }
     }
   }
 }

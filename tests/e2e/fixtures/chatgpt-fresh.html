@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fresh Chat</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        background: #f5f3ec;
+        color: #182018;
+      }
+
+      main {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 48px 20px 120px;
+      }
+
+      article {
+        margin-bottom: 20px;
+        padding: 16px;
+        border-radius: 18px;
+        background: white;
+      }
+
+      form {
+        margin-top: 32px;
+        padding: 18px;
+        border-radius: 24px;
+        background: white;
+        box-shadow: 0 16px 40px rgba(19, 24, 19, 0.08);
+      }
+
+      textarea {
+        width: 100%;
+        min-height: 120px;
+        border: 1px solid #d9d5ca;
+        border-radius: 18px;
+        padding: 16px;
+        font: inherit;
+        box-sizing: border-box;
+        resize: vertical;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <article>
+        <h1>New project chat</h1>
+        <p>Select any text here if you want to test saving context later.</p>
+      </article>
+      <form>
+        <textarea id="prompt-textarea" placeholder="Message ChatGPT"></textarea>
+      </form>
+    </main>
+  </body>
+</html>

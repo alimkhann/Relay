@@ -23,7 +23,7 @@ function makeStateStatus(input: Partial<ProjectStateStatusDto> = {}): ProjectSta
 }
 
 describe("deriveControlPanelState", () => {
-  it("shows bootstrap ready only when a fresh chat has ready project state and no active digest", () => {
+  it("shows ready for this chat only when a fresh chat has ready project state and no active digest", () => {
     const state = deriveControlPanelState({
       connected: true,
       supported: true,
@@ -31,12 +31,12 @@ describe("deriveControlPanelState", () => {
       stateStatus: makeStateStatus()
     })
 
-    expect(state.heroBadge).toBe("Bootstrap ready")
+    expect(state.heroBadge).toBe("Ready for this chat")
     expect(state.insertDisabled).toBe(false)
     expect(state.freshBootstrapReady).toBe(true)
   })
 
-  it("shows digest pending and disables insert while the digest is still running", () => {
+  it("shows updating while the brief is still being prepared", () => {
     const state = deriveControlPanelState({
       connected: true,
       supported: true,
@@ -49,12 +49,12 @@ describe("deriveControlPanelState", () => {
       })
     })
 
-    expect(state.heroBadge).toBe("Digest pending")
+    expect(state.heroBadge).toBe("Updating your project brief")
     expect(state.insertDisabled).toBe(true)
     expect(state.stageLabel).toBe("Generating")
   })
 
-  it("shows digest failure explicitly on a fresh chat", () => {
+  it("shows unavailable when a fresh chat does not have a ready brief", () => {
     const state = deriveControlPanelState({
       connected: true,
       supported: true,
@@ -68,7 +68,7 @@ describe("deriveControlPanelState", () => {
       })
     })
 
-    expect(state.heroBadge).toBe("Digest failed")
+    expect(state.heroBadge).toBe("Project brief unavailable")
     expect(state.insertDisabled).toBe(true)
   })
 })

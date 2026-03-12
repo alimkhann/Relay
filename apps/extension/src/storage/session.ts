@@ -1,6 +1,7 @@
 import type { ProjectStateStatusDto } from "@relay/shared"
 
 import type { RelayTargetMode } from "../utils/target-profile"
+import type { RelayTrustMetadata } from "../messaging/contracts"
 
 const storage = typeof chrome !== "undefined" ? chrome.storage.local : null
 
@@ -15,7 +16,10 @@ const keys = {
   autoCapture: "relay.autoCapture",
   limitedMode: "relay.limitedMode",
   lastStatus: "relay.lastStatus",
-  stateStatus: "relay.stateStatus"
+  stateStatus: "relay.stateStatus",
+  assumedProjectId: "relay.assumedProjectId",
+  assumedProjectName: "relay.assumedProjectName",
+  trust: "relay.trust"
 } as const
 
 export interface RelaySessionState {
@@ -30,6 +34,9 @@ export interface RelaySessionState {
   limitedMode: boolean
   lastStatus: string
   stateStatus: ProjectStateStatusDto | null
+  assumedProjectId: string
+  assumedProjectName: string
+  trust: RelayTrustMetadata
 }
 
 export function normalizeRelaySession(values: Record<string, unknown>): RelaySessionState {
@@ -48,7 +55,16 @@ export function normalizeRelaySession(values: Record<string, unknown>): RelaySes
     autoCapture: (values[keys.autoCapture] as boolean | undefined) ?? true,
     limitedMode: Boolean(values[keys.limitedMode]),
     lastStatus: (values[keys.lastStatus] as string | undefined) ?? "",
-    stateStatus: (values[keys.stateStatus] as ProjectStateStatusDto | undefined) ?? null
+    stateStatus: (values[keys.stateStatus] as ProjectStateStatusDto | undefined) ?? null,
+    assumedProjectId: (values[keys.assumedProjectId] as string | undefined) ?? "",
+    assumedProjectName: (values[keys.assumedProjectName] as string | undefined) ?? "",
+    trust:
+      (values[keys.trust] as RelayTrustMetadata | undefined) ?? {
+        updatedAt: null,
+        updatedLabel: null,
+        recentChatCount: 0,
+        savedContextCount: 0
+      }
   }
 }
 
@@ -65,7 +81,15 @@ export async function getRelaySession() {
       autoCapture: true,
       limitedMode: false,
       lastStatus: "",
-      stateStatus: null
+      stateStatus: null,
+      assumedProjectId: "",
+      assumedProjectName: "",
+      trust: {
+        updatedAt: null,
+        updatedLabel: null,
+        recentChatCount: 0,
+        savedContextCount: 0
+      }
     }
   }
 
@@ -89,6 +113,9 @@ export async function setRelaySession(input: Partial<RelaySessionState>) {
   if (input.limitedMode !== undefined) payload[keys.limitedMode] = input.limitedMode
   if (input.lastStatus !== undefined) payload[keys.lastStatus] = input.lastStatus
   if (input.stateStatus !== undefined) payload[keys.stateStatus] = input.stateStatus
+  if (input.assumedProjectId !== undefined) payload[keys.assumedProjectId] = input.assumedProjectId
+  if (input.assumedProjectName !== undefined) payload[keys.assumedProjectName] = input.assumedProjectName
+  if (input.trust !== undefined) payload[keys.trust] = input.trust
 
   if (Object.keys(payload).length > 0) {
     await storage.set(payload)

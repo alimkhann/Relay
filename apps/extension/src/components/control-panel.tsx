@@ -1,28 +1,13 @@
-import { useEffect, useState } from "react"
-import type { ProjectStateStatusDto } from "@relay/shared"
+import { useEffect, useRef, useState } from "react"
 
+import type { RelayActiveProjectState } from "../messaging/contracts"
 import { getActiveTab } from "../utils/browser"
 import { getRelaySession, setRelaySession, type RelaySessionState } from "../storage/session"
 import { inferTargetProfile, resolveTargetProfile } from "../utils/target-profile"
-import { deriveControlPanelState } from "./control-panel-state"
 import styles from "./control-panel.module.css"
 
 interface ControlPanelProps {
   compact?: boolean
-}
-
-interface ProjectOption {
-  id: string
-  name: string
-}
-
-interface PageState {
-  supported: boolean
-  platform?: string
-  title?: string | null
-  url?: string
-  turns?: number
-  isFreshChat?: boolean
 }
 
 function defaultDeviceName() {
@@ -30,32 +15,67 @@ function defaultDeviceName() {
   return `Relay on ${platform}`
 }
 
+const emptyActiveState: RelayActiveProjectState = {
+  projectId: null,
+  projectName: null,
+  projectOptions: [],
+  showCue: true,
+  status: "unavailable",
+  message: "Open ChatGPT, Claude, Codex, or Perplexity to use Relay.",
+  trustLine: "Built from recent chats and saved project context",
+  freshnessText: null,
+  shortcutLabel: "Mod+Shift+I",
+  canInsert: false,
+  page: { supported: false },
+  trust: {
+    updatedAt: null,
+    updatedLabel: null,
+    recentChatCount: 0,
+    savedContextCount: 0
+  },
+  remoteStatus: "unavailable",
+  issue: null,
+  insertKind: "fresh_chat_bootstrap",
+  lastSuccessfulSyncAt: null,
+  capturePending: false
+}
+
+function isRelayActiveProjectState(value: unknown): value is RelayActiveProjectState {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      "page" in value &&
+      typeof (value as RelayActiveProjectState).page?.supported === "boolean" &&
+      Array.isArray((value as RelayActiveProjectState).projectOptions)
+  )
+}
+
 export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [session, setSession] = useState<RelaySessionState | null>(null)
-  const [projects, setProjects] = useState<ProjectOption[]>([])
-  const [pageState, setPageState] = useState<PageState>({ supported: false })
+  const [activeState, setActiveState] = useState<RelayActiveProjectState>(emptyActiveState)
   const [status, setStatus] = useState("Relay stays quiet until it is useful.")
   const [busy, setBusy] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [deviceName, setDeviceName] = useState("")
   const [projectSwitcherOpen, setProjectSwitcherOpen] = useState(false)
+  const activeStateRequestInFlight = useRef(false)
 
   useEffect(() => {
     void (async () => {
       setDeviceName(defaultDeviceName())
       await refreshLocalSession()
-      await refreshPageState()
+      await refreshActiveProjectState()
     })()
   }, [])
 
   useEffect(() => {
     const handleTabActivated = () => {
-      void refreshPageState()
+      void refreshActiveProjectState()
     }
 
     const handleTabUpdated = (_tabId: number, changeInfo: { status?: string }, tab: { active?: boolean }) => {
       if (changeInfo.status === "complete" && tab.active) {
-        void refreshPageState()
+        void refreshActiveProjectState()
       }
     }
 
@@ -68,13 +88,62 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
   }, [])
 
+  useEffect(() => {
+    const handleRuntimeMessage = (message: unknown) => {
+      const payload =
+        message &&
+        typeof message === "object" &&
+        "payload" in message &&
+        typeof message.payload === "object" &&
+        message.payload
+          ? (message.payload as { tabId?: number; state?: RelayActiveProjectState })
+          : null
+
+      if (
+        !message ||
+        typeof message !== "object" ||
+        !("type" in message) ||
+        message.type !== "RELAY_ACTIVE_PROJECT_STATE_CHANGED" ||
+        !payload
+      ) {
+        return
+      }
+
+      void (async () => {
+        const tab = await getActiveTab()
+        if (!tab?.id || payload.tabId !== tab.id || !isRelayActiveProjectState(payload.state)) {
+          return
+        }
+
+        applyActiveState(payload.state)
+      })()
+    }
+
+    chrome.runtime.onMessage.addListener(handleRuntimeMessage)
+
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleRuntimeMessage)
+    }
+  }, [])
+
+  function applyActiveState(nextState: RelayActiveProjectState) {
+    setActiveState(nextState)
+    setSession((current) =>
+      current
+        ? {
+            ...current,
+            assumedProjectId: nextState.projectId ?? "",
+            assumedProjectName: nextState.projectName ?? "",
+            trust: nextState.trust
+          }
+        : current
+    )
+  }
+
   async function refreshLocalSession() {
     const nextSession = await getRelaySession()
     setSession(nextSession)
-
-    if (nextSession.connected) {
-      await refreshRemoteSession()
-    } else if (nextSession.lastStatus) {
+    if (nextSession.lastStatus) {
       setStatus(nextSession.lastStatus)
     }
   }
@@ -83,8 +152,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     try {
       const result = (await chrome.runtime.sendMessage({ type: "RELAY_REFRESH_SESSION" })) as {
         ok?: boolean
-        projects?: ProjectOption[]
-        settings?: { settings?: { autoCapture?: boolean; defaultTargetProfileKey?: string } }
         error?: string
       }
 
@@ -93,95 +160,47 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         return
       }
 
-      const nextSession = await getRelaySession()
-      setSession(nextSession)
-      setProjects(result?.projects ?? [])
-      setStatus(nextSession.lastStatus || "Relay is connected and ready.")
-      await triggerAutoCapture("Connection refreshed.")
+      await refreshLocalSession()
+      await refreshActiveProjectState()
+      setStatus("Relay is connected and ready.")
     } catch (cause) {
       setStatus(cause instanceof Error ? cause.message : "Failed to refresh Relay session.")
     }
   }
 
-  async function refreshPageState() {
+  async function refreshActiveProjectState() {
+    if (activeStateRequestInFlight.current) return
+
     const tab = await getActiveTab()
     if (!tab?.id) {
-      setPageState({ supported: false })
+      setActiveState(emptyActiveState)
       return
     }
 
     try {
-      const state = (await chrome.tabs.sendMessage(tab.id, { type: "RELAY_PAGE_STATE" })) as PageState
-      setPageState(state ?? { supported: false })
-      const nextResolvedTarget = resolveTargetProfile({
-        platform: state?.platform,
-        targetMode: session?.targetMode,
-        manualTargetProfileKey: session?.targetProfileKey
-      })
-      await setRelaySession({ resolvedTargetProfileKey: nextResolvedTarget })
-      setSession((current) => (current ? { ...current, resolvedTargetProfileKey: nextResolvedTarget } : current))
-    } catch {
-      setPageState({ supported: false })
-    }
-  }
-
-  async function triggerAutoCapture(prefix?: string) {
-    const tab = await getActiveTab()
-    if (!tab?.id) {
-      return
-    }
-
-    try {
-      const result = (await chrome.runtime.sendMessage({
-        type: "RELAY_TRIGGER_AUTO_CAPTURE",
+      activeStateRequestInFlight.current = true
+      const response = await chrome.runtime.sendMessage({
+        type: "RELAY_GET_ACTIVE_PROJECT_STATE",
         payload: { tabId: tab.id }
-      })) as {
-        ok?: boolean
-        skipped?: boolean
-        turns?: number
-        digestQueued?: boolean
-        reason?: string
-        stateStatus?: ProjectStateStatusDto | null
-      }
+      })
 
-      if (!result?.ok) {
-        if (prefix && result?.reason) {
-          setStatus(`${prefix} ${result.reason}`)
-        }
+      if (!isRelayActiveProjectState(response)) {
+        setStatus(
+          typeof response === "object" && response && "error" in response && typeof response.error === "string"
+            ? response.error
+            : "Relay could not load this chat state."
+        )
+
+        setActiveState((current) => (current.page.supported || current.projectId ? current : emptyActiveState))
         return
       }
 
-      if (result.skipped) {
-        setStatus(`${prefix ? `${prefix} ` : ""}Skipped: ${result.reason ?? "No new changes to capture."}`)
-        return
-      }
-
-      if (result.stateStatus) {
-        await setRelaySession({ stateStatus: result.stateStatus })
-        setSession((current) => (current ? { ...current, stateStatus: result.stateStatus ?? null } : current))
-      }
-
-      if ((result.turns ?? 0) === 0 && pageState.isFreshChat) {
-        setStatus(`${prefix ? `${prefix} ` : ""}Skipped: fresh chat detected.`)
-        return
-      }
-
-      setStatus(
-        `${prefix ? `${prefix} ` : ""}Auto-captured ${result.turns ?? 0} visible turns.${result.digestQueued ? " Digest queued." : " State unchanged."}`
-      )
+      applyActiveState(response)
     } catch {
-      return
+      setActiveState(emptyActiveState)
+    } finally {
+      activeStateRequestInFlight.current = false
     }
-  }
-
-  async function requireSupportedTab(actionLabel: string) {
-    const tab = await getActiveTab()
-    if (!tab?.id || !pageState.supported) {
-      setStatus(`${actionLabel} works only on a supported AI tab.`)
-      return null
-    }
-
-    return tab
   }
 
   async function openConnectFlow() {
@@ -195,7 +214,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           deviceName: deviceName || defaultDeviceName()
         }
       })
-      setStatus("Finish pairing in the Relay tab, then come back here.")
+      setStatus("Finish pairing in the Relay tab, then return here.")
     } catch (cause) {
       setStatus(cause instanceof Error ? cause.message : "Failed to open pairing flow.")
     } finally {
@@ -203,158 +222,106 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
   }
 
-  async function insertBootstrap() {
-    if (!session?.projectId) {
-      setStatus("Choose a project first.")
+  async function insertProjectBrief() {
+    const tab = await getActiveTab()
+    if (!tab?.id) {
+      setStatus("Open a supported AI chat first.")
       return
     }
 
-    const tab = await requireSupportedTab("Insert bootstrap")
-    if (!tab?.id) return
-
     setBusy(true)
-    setStatus(pageState.isFreshChat ? "Preparing fresh-chat bootstrap…" : "Preparing continuity bootstrap…")
+    setStatus("Inserting project brief…")
 
     try {
-      const targetProfileKey = resolveTargetProfile({
-        platform: pageState.platform,
-        targetMode: session.targetMode,
-        manualTargetProfileKey: session.targetProfileKey
-      })
-      const kind = pageState.isFreshChat ? "fresh_chat_bootstrap" : "quick_continuity"
-      const generated = (await chrome.runtime.sendMessage({
-        type: "RELAY_GENERATE_BOOTSTRAP",
-        payload: {
-          projectId: session.projectId,
-          targetProfileKey,
-          kind,
-          deep: kind === "fresh_chat_bootstrap"
-        }
-      })) as {
-        status?: "ready" | "pending"
-        packet?: {
-          content?: string
-          renderer?: string
-          generationMetadata?: Record<string, unknown>
-        }
-        reason?: string | null
-        resolvedTargetProfileKey?: string
-        stateStatus?: ProjectStateStatusDto | null
-        error?: string
-      }
+      const result = (await chrome.runtime.sendMessage({
+        type: "RELAY_INSERT_PROJECT_BRIEF",
+        payload: { tabId: tab.id }
+      })) as { ok?: boolean; reason?: string; error?: string }
 
-      if (generated?.stateStatus) {
-        await setRelaySession({
-          stateStatus: generated.stateStatus,
-          resolvedTargetProfileKey: generated.resolvedTargetProfileKey ?? targetProfileKey
-        })
-        setSession((current) =>
-          current
-            ? {
-                ...current,
-                stateStatus: generated.stateStatus ?? null,
-                resolvedTargetProfileKey: generated.resolvedTargetProfileKey ?? current.resolvedTargetProfileKey
-              }
-            : current
-        )
-      }
-
-      if (generated?.status === "pending" || !generated?.packet) {
-        setStatus(generated?.reason ?? "Relay is still building project state for this chat.")
+      if (!result?.ok) {
+        setStatus(result?.reason ?? result?.error ?? "Insert project brief failed.")
         return
       }
 
-      const content = generated?.packet?.content
-      if (!content) {
-        setStatus(generated?.error ?? "Bootstrap generation failed.")
-        return
-      }
-
-      const inserted = await chrome.tabs.sendMessage(tab.id, {
-        type: "RELAY_INSERT_CONTEXT",
-        payload: { content }
-      })
-
-      if (inserted?.ok) {
-        const actualModel = String(generated.packet?.generationMetadata?.actual_model ?? "")
-        const limitedMode = actualModel === "deterministic"
-        if (limitedMode) {
-          await setRelaySession({ limitedMode: true, lastStatus: "Inserted a limited-mode bootstrap." })
-          setStatus("Inserted a limited-mode bootstrap.")
-        } else {
-          await setRelaySession({ limitedMode: false, lastStatus: "Bootstrap inserted into the prompt." })
-          setStatus("Bootstrap inserted into the prompt.")
-        }
-      } else {
-        setStatus(inserted?.reason ?? "Insert failed.")
-      }
+      setStatus("Inserted the project brief.")
+      await refreshLocalSession()
+      await refreshActiveProjectState()
     } catch (cause) {
-      setStatus(cause instanceof Error ? cause.message : "Insert bootstrap failed.")
+      setStatus(cause instanceof Error ? cause.message : "Insert project brief failed.")
     } finally {
       setBusy(false)
     }
   }
 
-  async function pinSelection() {
-    if (!session?.projectId) {
-      setStatus("Choose a project first.")
+  async function saveToProject() {
+    const tab = await getActiveTab()
+    if (!tab?.id || !activeState.page.supported) {
+      setStatus("Save to project works only on a supported AI tab.")
       return
     }
 
-    const tab = await requireSupportedTab("Pin selection")
-    if (!tab?.id) return
+    if (!activeState.projectId) {
+      setStatus("Choose a project first.")
+      return
+    }
 
     setBusy(true)
     setStatus("Saving selected text…")
 
     try {
-      const result = await chrome.runtime.sendMessage({
+      const result = (await chrome.runtime.sendMessage({
         type: "RELAY_PIN_SELECTION",
         payload: {
-          projectId: session.projectId,
+          projectId: activeState.projectId,
           tabId: tab.id
         }
-      })
+      })) as { ok?: boolean; reason?: string }
 
-      setStatus(result?.ok ? "Selection pinned to the current project." : result?.reason ?? "Pin selection failed.")
+      setStatus(result?.ok ? "Saved to project." : result?.reason ?? "Save to project failed.")
+      if (result?.ok) {
+        await refreshActiveProjectState()
+      }
     } catch (cause) {
-      setStatus(cause instanceof Error ? cause.message : "Pin selection failed.")
+      setStatus(cause instanceof Error ? cause.message : "Save to project failed.")
     } finally {
       setBusy(false)
     }
   }
 
-  async function captureManually() {
-    if (!session?.projectId) {
-      setStatus("Choose a project first.")
+  async function captureNow() {
+    const tab = await getActiveTab()
+    if (!tab?.id || !activeState.page.supported) {
+      setStatus("Capture now works only on a supported AI tab.")
       return
     }
 
-    const tab = await requireSupportedTab("Capture")
-    if (!tab?.id) return
+    if (!activeState.projectId) {
+      setStatus("Choose a project first.")
+      return
+    }
 
     setBusy(true)
     setStatus("Capturing visible turns…")
 
     try {
-      const result = await chrome.runtime.sendMessage({
+      const result = (await chrome.runtime.sendMessage({
         type: "RELAY_CAPTURE_VISIBLE",
         payload: {
-          projectId: session.projectId,
+          projectId: activeState.projectId,
           tabId: tab.id
         }
-      }) as { ok?: boolean; turns?: number; reason?: string; digestQueued?: boolean; stateStatus?: ProjectStateStatusDto | null }
-
-      if (result?.stateStatus) {
-        await setRelaySession({ stateStatus: result.stateStatus })
-        setSession((current) => (current ? { ...current, stateStatus: result.stateStatus ?? null } : current))
-      }
+      })) as { ok?: boolean; turns?: number; reason?: string; digestQueued?: boolean }
 
       setStatus(
         result?.ok
-          ? `Captured ${result.turns ?? 0} visible turns.${result?.digestQueued ? " Digest queued." : ""}`
+          ? `Captured ${result.turns ?? 0} visible turns.${result?.digestQueued ? " Relay is updating your project brief." : ""}`
           : result?.reason ?? "Capture failed."
       )
+
+      if (result?.ok) {
+        await refreshLocalSession()
+        await refreshActiveProjectState()
+      }
     } catch (cause) {
       setStatus(cause instanceof Error ? cause.message : "Capture failed.")
     } finally {
@@ -363,165 +330,151 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   }
 
   async function handleProjectChange(nextProjectId: string) {
-    if (!session) return
-    await setRelaySession({
-      projectId: nextProjectId,
-      targetMode: "auto",
-      targetProfileKey: "",
-      stateStatus: null
-    })
-    setSession({ ...session, projectId: nextProjectId, targetMode: "auto", targetProfileKey: "", stateStatus: null })
-    setStatus("Project switched.")
-    await triggerAutoCapture("Project switched.")
+    if (!nextProjectId) return
+
+    const tab = await getActiveTab()
+    setBusy(true)
+
+    try {
+      await chrome.runtime.sendMessage({
+        type: "RELAY_SET_ACTIVE_PROJECT",
+        payload: {
+          projectId: nextProjectId,
+          tabId: tab?.id
+        }
+      })
+      await setRelaySession({
+        projectId: nextProjectId
+      })
+      setStatus("Project switched.")
+      setProjectSwitcherOpen(false)
+      await refreshLocalSession()
+      await refreshActiveProjectState()
+    } catch (cause) {
+      setStatus(cause instanceof Error ? cause.message : "Project switch failed.")
+    } finally {
+      setBusy(false)
+    }
   }
 
-  const currentProject = projects.find((project) => project.id === session?.projectId) ?? null
   const resolvedTargetProfileKey = resolveTargetProfile({
-    platform: pageState.platform,
+    platform: activeState.page.platform,
     targetMode: session?.targetMode,
     manualTargetProfileKey: session?.targetProfileKey
   })
   const resolvedTargetLabel = {
     chatgpt_planning: "ChatGPT Planning",
-    claude_code_build: "Claude Code Build",
-    codex_implementation: "Codex Implementation",
+    claude_code_build: "Claude Build",
+    codex_implementation: "Codex Build",
     perplexity_research: "Perplexity Research"
   }[resolvedTargetProfileKey]
-  const panelState = deriveControlPanelState({
-    connected: Boolean(session?.connected),
-    supported: pageState.supported,
-    freshChat: Boolean(pageState.isFreshChat),
-    stateStatus: session?.stateStatus ?? null
-  })
-  const captureStatusLabel = session?.stateStatus?.rawCapturePresent ? "Captured" : pageState.isFreshChat ? "Fresh chat" : "Waiting"
-  const digestStatusLabel = panelState.stageLabel ?? (session?.stateStatus?.digestStatus ? session.stateStatus.digestStatus.replace("_", " ") : "Idle")
-  const projectStateLabel = panelState.projectStateReady ? "Ready" : "Pending"
+  const selectedProjectId = activeState.projectId ?? session?.projectId ?? ""
+  const shouldShowIssue = Boolean(activeState.issue) && (!activeState.canInsert || activeState.remoteStatus === "stale" || activeState.remoteStatus === "unavailable")
 
   return (
     <div className={`${styles.shell} ${compact ? styles.compact : styles.expanded}`}>
       <section className={styles.hero}>
-        <div className={styles.heroTop}>
-          <p className={styles.eyebrow}>Relay</p>
-          {session?.connected && panelState.heroBadge ? <span className={styles.badge}>{panelState.heroBadge}</span> : null}
-        </div>
-        <h1 className={styles.title}>
-          {session?.connected ? "Project memory for the next AI tab." : "Quiet continuity for fresh AI chats."}
-        </h1>
+        <p className={styles.eyebrow}>Relay</p>
+        <h1 className={styles.title}>{session?.connected ? "Your project is ready for this chat" : "Keep your project ready for the next fresh chat"}</h1>
         <p className={styles.pageState}>
-          {pageState.supported
-            ? `${pageState.platform} · ${pageState.turns ?? 0} visible turns${pageState.isFreshChat ? " · fresh chat detected" : ""}`
-            : "Open ChatGPT, Claude, Perplexity, or Codex to activate Relay."}
+          {activeState.page.supported
+            ? `${activeState.page.platform} · ${activeState.page.turns ?? 0} visible turns${activeState.page.isFreshChat ? " · fresh chat detected" : ""}`
+            : "Open ChatGPT, Claude, Codex, or Perplexity to activate Relay."}
         </p>
       </section>
 
       {!session?.connected ? (
-        <section className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <div>
-              <p className={styles.sectionLabel}>Connection</p>
-              <h2 className={styles.sectionTitle}>Connect Relay once</h2>
-            </div>
-          </div>
+        <section className={`${styles.panel} ${styles.primaryPanel}`}>
+          <p className={styles.sectionLabel}>Connect Relay in Chrome</p>
+          <h2 className={styles.sectionTitle}>Sign in once and let Relay stay quiet.</h2>
+          <p className={styles.copy}>Relay auto-captures useful work and keeps the next fresh chat ready without token paste in the normal flow.</p>
 
           <label className={styles.field}>
             <span>Device name</span>
             <input value={deviceName} onChange={(event) => setDeviceName(event.target.value)} />
           </label>
 
-          <div className={styles.actionGrid}>
-            <button className={styles.primaryButton} disabled={busy} onClick={() => void openConnectFlow()}>
-              {busy ? "Working…" : "Connect Relay"}
-            </button>
-          </div>
+          <button className={styles.primaryButton} disabled={busy} onClick={() => void openConnectFlow()}>
+            {busy ? "Working…" : "Connect Relay"}
+          </button>
         </section>
       ) : (
         <>
-          <section className={styles.panel}>
-            <div className={styles.panelHeader}>
+          <section className={`${styles.panel} ${styles.primaryPanel}`}>
+            <div className={styles.row}>
               <div>
                 <p className={styles.sectionLabel}>Current project</p>
-                <h2 className={styles.sectionTitle}>{currentProject?.name ?? "Choose a project"}</h2>
+                <h2 className={styles.sectionTitle}>{activeState.projectName ?? "Choose a project"}</h2>
               </div>
-              <button className={styles.ghostButton} onClick={() => setProjectSwitcherOpen((value) => !value)}>
-                Switch project
+            </div>
+
+            <p className={styles.statusLine}>{activeState.message}</p>
+            {shouldShowIssue ? (
+              <div className={styles.infoWrap}>
+                <button className={styles.infoButton} type="button" aria-label="Relay issue details">
+                  i
+                </button>
+                <div className={styles.tooltip}>{activeState.issue?.detail}</div>
+              </div>
+            ) : null}
+
+            <div className={styles.actionGrid}>
+              <button className={styles.primaryButton} disabled={busy || !activeState.canInsert} onClick={() => void insertProjectBrief()}>
+                {busy ? "Working…" : "Insert project brief"}
+              </button>
+              <button
+                className={styles.secondaryButton}
+                disabled={busy || !activeState.projectId || !activeState.page.supported}
+                onClick={() => void saveToProject()}>
+                Save to project
               </button>
             </div>
+
+            <button className={styles.linkButton} onClick={() => setProjectSwitcherOpen((value) => !value)}>
+              Switch project
+            </button>
 
             {projectSwitcherOpen ? (
               <label className={styles.field}>
                 <span>Project</span>
-                <select value={session.projectId} onChange={(event) => void handleProjectChange(event.target.value)}>
+                <select value={selectedProjectId} onChange={(event) => void handleProjectChange(event.target.value)}>
                   <option value="">Select a project</option>
-                  {projects.map((project) => (
+                  {activeState.projectOptions.map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.name}
                     </option>
                   ))}
                 </select>
               </label>
-            ) : (
-              <div className={styles.metaText}>
-                <p>{panelState.projectHint}</p>
-                <p>{session?.targetMode === "manual" ? "Manual target override" : "Automatic target"}: {resolvedTargetLabel}</p>
-              </div>
-            )}
+            ) : null}
 
-            <div className={styles.statusGrid}>
-              <div className={styles.statusPill}>
-                <span>Capture</span>
-                <strong>{captureStatusLabel}</strong>
-              </div>
-              <div className={styles.statusPill}>
-                <span>Digest</span>
-                <strong>{digestStatusLabel}</strong>
-              </div>
-              <div className={styles.statusPill}>
-                <span>State</span>
-                <strong>{projectStateLabel}</strong>
-              </div>
+            <div className={styles.trustLine}>
+              <span>{activeState.trustLine}</span>
+              {activeState.freshnessText ? <span>{activeState.freshnessText}</span> : null}
+              {activeState.capturePending ? <span>Refreshing from this chat</span> : null}
             </div>
-
-            <div className={styles.actionGrid}>
-              <button className={styles.primaryButton} disabled={busy || !session.projectId || panelState.insertDisabled} onClick={() => void insertBootstrap()}>
-                {pageState.isFreshChat && !panelState.freshBootstrapReady ? "Digest pending" : "Insert bootstrap"}
-              </button>
-              <button className={styles.secondaryButton} disabled={busy || !session.projectId || !pageState.supported} onClick={() => void pinSelection()}>
-                Pin selection
-              </button>
-            </div>
-
-            {panelState.stageLabel ? <p className={styles.hint}>Digest stage: {panelState.stageLabel}</p> : null}
           </section>
 
-          <details className={styles.panel} open={advancedOpen} onToggle={(event) => setAdvancedOpen((event.target as HTMLDetailsElement).open)}>
+          <details
+            className={`${styles.panel} ${styles.advancedPanel}`}
+            open={advancedOpen}
+            onToggle={(event) => setAdvancedOpen((event.target as HTMLDetailsElement).open)}>
             <summary className={styles.summary}>
-              <span>
-                <span className={styles.sectionLabel}>Advanced</span>
-                <span className={styles.summaryTitle}>Manual controls and diagnostics</span>
-              </span>
+              <span className={styles.summaryTitle}>Advanced</span>
             </summary>
 
             <label className={styles.field}>
               <span>Target override</span>
               <select
-                value={session.targetMode === "manual" ? session.targetProfileKey : ""}
+                value={session?.targetMode === "manual" ? session.targetProfileKey : ""}
                 onChange={async (event) => {
                   const nextTarget = event.target.value
                   await setRelaySession({
                     targetMode: nextTarget ? "manual" : "auto",
                     targetProfileKey: nextTarget,
-                    resolvedTargetProfileKey: nextTarget || inferTargetProfile(pageState.platform)
+                    resolvedTargetProfileKey: nextTarget || inferTargetProfile(activeState.page.platform)
                   })
-                  setSession((current) =>
-                    current
-                      ? {
-                          ...current,
-                          targetMode: nextTarget ? "manual" : "auto",
-                          targetProfileKey: nextTarget,
-                          resolvedTargetProfileKey: nextTarget || inferTargetProfile(pageState.platform)
-                        }
-                      : current
-                  )
+                  await refreshLocalSession()
                 }}>
                 <option value="">Automatic</option>
                 <option value="chatgpt_planning">ChatGPT planning</option>
@@ -531,30 +484,27 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               </select>
             </label>
 
-            <div className={styles.inlineRow}>
-              <button className={styles.secondaryButton} disabled={busy || !session.projectId || !pageState.supported} onClick={() => void captureManually()}>
-                Force capture
+            <div className={styles.advancedButtons}>
+              <button className={styles.secondaryButton} disabled={busy || !activeState.projectId || !activeState.page.supported} onClick={() => void captureNow()}>
+                Capture now
               </button>
               <button className={styles.secondaryButton} disabled={busy} onClick={() => void refreshRemoteSession()}>
                 Refresh session
               </button>
             </div>
+
+            <div className={styles.debugCard}>
+              <p>{status}</p>
+              <p>Remote: {activeState.remoteStatus}</p>
+              <p>Target: {session?.targetMode === "manual" ? "Manual" : "Automatic"} · {resolvedTargetLabel}</p>
+              <p>Shortcut: {activeState.shortcutLabel}</p>
+              {activeState.issue ? <p>Issue: {activeState.issue.detail}</p> : null}
+              {activeState.lastSuccessfulSyncAt ? <p>Last sync: {new Date(activeState.lastSuccessfulSyncAt).toLocaleTimeString()}</p> : null}
+              {session?.limitedMode ? <p>Fallback mode: using saved project context.</p> : null}
+            </div>
           </details>
         </>
       )}
-
-      <section className={styles.statusCard}>
-        <p className={styles.sectionLabel}>Status</p>
-        <p className={styles.statusText}>{status}</p>
-        {session?.connected ? (
-          <p className={styles.hint}>
-            {session.targetMode === "manual" ? "Manual target override" : "Automatic target"}: {resolvedTargetLabel}
-          </p>
-        ) : null}
-        {session?.stateStatus?.activeJobStage ? <p className={styles.hint}>Active job stage: {panelState.stageLabel ?? session.stateStatus.activeJobStage}</p> : null}
-        {session?.stateStatus?.digestErrorMessage ? <p className={styles.hint}>{session.stateStatus.digestErrorMessage}</p> : null}
-        {session?.limitedMode ? <p className={styles.hint}>Gemini was unavailable or rate-limited, so Relay fell back to a bounded deterministic packet.</p> : null}
-      </section>
     </div>
   )
 }
