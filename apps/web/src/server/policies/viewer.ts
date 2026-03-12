@@ -13,6 +13,7 @@ export class AuthRequiredError extends Error {
 export interface Viewer {
   userId: string
   mode: "session" | "extension"
+  email?: string | null
 }
 
 interface SessionUser {
@@ -44,7 +45,8 @@ export async function requireSessionViewer(): Promise<Viewer> {
 
   return {
     userId: user.id,
-    mode: "session"
+    mode: "session",
+    email: user.email ?? null
   }
 }
 
@@ -59,12 +61,25 @@ export async function resolveViewer(authorizationHeader?: string | null): Promis
       await repositories.extensionTokens.touch(tokenRecord.id)
       return {
         userId: tokenRecord.userId,
-        mode: "extension"
+        mode: "extension",
+        email: null
       }
     }
   }
 
   return requireSessionViewer()
+}
+
+export async function resolveOptionalViewer(authorizationHeader?: string | null): Promise<Viewer | null> {
+  try {
+    return await resolveViewer(authorizationHeader)
+  } catch (error) {
+    if (isAuthRequiredError(error)) {
+      return null
+    }
+
+    throw error
+  }
 }
 
 export function isAuthRequiredError(error: unknown): error is AuthRequiredError {

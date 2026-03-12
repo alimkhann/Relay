@@ -3,6 +3,7 @@ import "@fontsource-variable/outfit";
 import { Analytics } from "@vercel/analytics/next";
 
 import { ThemeProvider } from "@/components/theme-provider";
+import { GlobalTelemetryBootstrap } from "@/components/telemetry/global-telemetry-bootstrap";
 
 import "./globals.css";
 
@@ -29,7 +30,10 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <GlobalTelemetryBootstrap />
+          {children}
+        </ThemeProvider>
         <Analytics />
       </body>
     </html>

@@ -3,16 +3,11 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 
-import { Button } from "@/components/ui/button"
+import { slugify } from "@relay/shared"
 
-function slugify(input: string) {
-  return input
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80)
-}
+import { Button } from "@/components/ui/button"
+import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client"
+import { relayClientFetch } from "@/lib/telemetry/fetch"
 
 export function CreateProjectForm() {
   const router = useRouter()
@@ -29,21 +24,33 @@ export function CreateProjectForm() {
       return
     }
 
-    const slug = slugify(trimmedName)
+    const slug = slugify(trimmedName).slice(0, 80)
 
     if (slug.length < 2) {
       setStatus("Project name needs at least two letters or numbers.")
       return
     }
 
+    const flowId = createClientFlowId("project")
     setPending(true)
     setStatus("Creating project…")
 
     try {
-      const response = await fetch("/api/projects", {
+      const response = await relayClientFetch("/api/projects", {
         method: "POST",
         headers: {
           "content-type": "application/json"
+        },
+        telemetry: {
+          surface: "web-dashboard",
+          area: "projects",
+          event: "project_create.submit",
+          flowId,
+          context: {
+            source: "dashboard_form",
+            nameLength: trimmedName.length
+          },
+          logSuccess: true
         },
         body: JSON.stringify({
           name: trimmedName,
@@ -53,18 +60,43 @@ export function CreateProjectForm() {
       })
 
       if (!response.ok) {
-        throw new Error("Project creation failed.")
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string
+        }
+        throw new Error(payload.error ?? "Project creation failed.")
       }
 
       const result = (await response.json()) as {
         project: {
           id: string
+          slug: string
         }
       }
 
+      logClientEvent({
+        level: "info",
+        surface: "web-dashboard",
+        area: "projects",
+        event: "project_create.succeeded",
+        flowId,
+        message: `Created project ${result.project.id}.`,
+        context: {
+          projectId: result.project.id,
+          slug: result.project.slug
+        }
+      })
       router.push(`/projects/${result.project.id}`)
       router.refresh()
     } catch (cause) {
+      logClientEvent({
+        level: "error",
+        surface: "web-dashboard",
+        area: "projects",
+        event: "project_create.failed",
+        flowId,
+        message: "Project creation failed from the dashboard form.",
+        error: cause
+      })
       setStatus(cause instanceof Error ? cause.message : "Project creation failed.")
       setPending(false)
     }

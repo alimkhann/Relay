@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
+import { PageTelemetry } from "@/components/telemetry/page-telemetry";
 import { LandingHeader } from "./landing-header";
 import { LandingAnimations } from "./landing-animations";
 import { FAQ } from "./faq";
@@ -30,6 +31,12 @@ export default function MarketingPage() {
   return (
     <LandingAnimations>
       <main className="min-h-screen">
+        <PageTelemetry
+          surface="web-landing"
+          area="page"
+          event="landing.viewed"
+          message="Rendered the marketing landing page."
+        />
         <LandingHeader />
 
         {/* ─── Full-bleed Hero ─── */}

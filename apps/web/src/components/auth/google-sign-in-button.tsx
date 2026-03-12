@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 
+import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client";
 import { authClient } from "@/lib/auth/client";
 import { Button } from "@/components/ui/button";
 
@@ -17,6 +18,16 @@ export function GoogleSignInButton() {
         onClick={() =>
           startTransition(async () => {
             setError(null);
+            const flowId = createClientFlowId("auth");
+
+            logClientEvent({
+              level: "info",
+              surface: "web-auth",
+              area: "auth",
+              event: "google_sign_in.started",
+              flowId,
+              message: "User started Google sign-in from the web app.",
+            });
 
             try {
               await authClient.signIn.social({
@@ -24,6 +35,15 @@ export function GoogleSignInButton() {
                 callbackURL: "/dashboard",
               });
             } catch (cause) {
+              logClientEvent({
+                level: "error",
+                surface: "web-auth",
+                area: "auth",
+                event: "google_sign_in.failed",
+                flowId,
+                message: "Google sign-in failed before redirect completed.",
+                error: cause,
+              });
               setError(
                 cause instanceof Error
                   ? cause.message

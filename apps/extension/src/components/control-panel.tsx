@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
+import { slugify } from "@relay/shared";
+
 import type { RelayActiveProjectState } from "../messaging/contracts";
 import { getActiveTab } from "../utils/browser";
 import {
@@ -7,6 +9,10 @@ import {
   setRelaySession,
   type RelaySessionState,
 } from "../storage/session";
+import {
+  createExtensionFlowId,
+  logExtensionEvent,
+} from "../utils/telemetry";
 import {
   inferTargetProfile,
   resolveTargetProfile,
@@ -150,6 +156,38 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     };
   }, []);
 
+  useEffect(() => {
+    function handleError(event: ErrorEvent) {
+      logExtensionEvent({
+        level: "error",
+        surface: "extension-sidebar",
+        area: "runtime",
+        event: "sidebar.error",
+        message: event.message || "Unhandled extension UI error.",
+        error: event.error ?? event.message,
+      });
+    }
+
+    function handleRejection(event: PromiseRejectionEvent) {
+      logExtensionEvent({
+        level: "error",
+        surface: "extension-sidebar",
+        area: "runtime",
+        event: "sidebar.unhandled_rejection",
+        message: "Unhandled extension UI promise rejection.",
+        error: event.reason,
+      });
+    }
+
+    window.addEventListener("error", handleError);
+    window.addEventListener("unhandledrejection", handleRejection);
+
+    return () => {
+      window.removeEventListener("error", handleError);
+      window.removeEventListener("unhandledrejection", handleRejection);
+    };
+  }, []);
+
   function applyActiveState(nextState: RelayActiveProjectState) {
     setActiveState(nextState);
     setSession((current) =>
@@ -262,26 +300,65 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   }
 
   async function signInWithGoogle() {
+    console.log("[Relay] signInWithGoogle called");
     setBusy(true);
     setStatus("Signing in with Google…");
+    const flowId = createExtensionFlowId("ext-auth");
+    logExtensionEvent({
+      level: "info",
+      surface: "extension-sidebar",
+      area: "auth",
+      event: "google_sign_in.clicked",
+      flowId,
+      message: "User started Google sign-in from the extension panel.",
+      context: {
+        compact,
+      },
+    });
 
     try {
       const result = (await chrome.runtime.sendMessage({
         type: "RELAY_GOOGLE_SIGN_IN",
         payload: {
           deviceName: deviceName || defaultDeviceName(),
+          flowId,
         },
       })) as { ok?: boolean; reason?: string };
 
       if (!result?.ok) {
+        logExtensionEvent({
+          level: "error",
+          surface: "extension-sidebar",
+          area: "auth",
+          event: "google_sign_in.failed",
+          flowId,
+          message: result?.reason ?? "Google sign-in failed.",
+        });
         setStatus(result?.reason ?? "Google sign-in failed.");
         return;
       }
 
+      logExtensionEvent({
+        level: "info",
+        surface: "extension-sidebar",
+        area: "auth",
+        event: "google_sign_in.succeeded",
+        flowId,
+        message: "Google sign-in completed in the extension UI.",
+      });
       setStatus("Signed in with Google.");
       await refreshLocalSession();
       await refreshActiveProjectState();
     } catch (cause) {
+      logExtensionEvent({
+        level: "error",
+        surface: "extension-sidebar",
+        area: "auth",
+        event: "google_sign_in.exception",
+        flowId,
+        message: "Google sign-in threw an exception in the extension UI.",
+        error: cause,
+      });
       setStatus(
         cause instanceof Error ? cause.message : "Google sign-in failed.",
       );
@@ -296,11 +373,25 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
     setBusy(true);
     setStatus("Creating project…");
+    const flowId = createExtensionFlowId("ext-project");
+    const slug = slugify(name).slice(0, 80);
+    logExtensionEvent({
+      level: "info",
+      surface: "extension-sidebar",
+      area: "projects",
+      event: "project_create.clicked",
+      flowId,
+      message: "User submitted project creation from extension onboarding.",
+      context: {
+        name,
+        slug,
+      },
+    });
 
     try {
       const result = (await chrome.runtime.sendMessage({
         type: "RELAY_CREATE_PROJECT",
-        payload: { name },
+        payload: { name, slug, flowId },
       })) as {
         ok?: boolean;
         reason?: string;
@@ -308,15 +399,48 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       };
 
       if (!result?.ok) {
+        logExtensionEvent({
+          level: "error",
+          surface: "extension-sidebar",
+          area: "projects",
+          event: "project_create.failed",
+          flowId,
+          message: result?.reason ?? "Project creation failed.",
+          context: {
+            name,
+            slug,
+          },
+        });
         setStatus(result?.reason ?? "Project creation failed.");
         return;
       }
 
+      logExtensionEvent({
+        level: "info",
+        surface: "extension-sidebar",
+        area: "projects",
+        event: "project_create.succeeded",
+        flowId,
+        message: `Created project ${result.project?.id ?? ""} from extension onboarding.`,
+        context: {
+          projectId: result.project?.id ?? null,
+          name: result.project?.name ?? name,
+        },
+      });
       setNewProjectName("");
       setStatus(`Created project "${result.project?.name}".`);
       await refreshLocalSession();
       await refreshActiveProjectState();
     } catch (cause) {
+      logExtensionEvent({
+        level: "error",
+        surface: "extension-sidebar",
+        area: "projects",
+        event: "project_create.exception",
+        flowId,
+        message: "Project creation threw an exception in the extension UI.",
+        error: cause,
+      });
       setStatus(
         cause instanceof Error ? cause.message : "Project creation failed.",
       );

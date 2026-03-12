@@ -5,6 +5,8 @@ import { useState } from "react"
 import type { ExtensionApiTokenRow } from "@relay/shared"
 
 import { Button } from "@/components/ui/button"
+import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client"
+import { relayClientFetch } from "@/lib/telemetry/fetch"
 
 interface ExtensionTokenManagerProps {
   initialTokens: ExtensionApiTokenRow[]
@@ -21,12 +23,23 @@ export function ExtensionTokenManager({ initialTokens, appUrl }: ExtensionTokenM
   async function createToken() {
     setPending(true)
     setStatus("Creating token…")
+    const flowId = createClientFlowId("ext-token")
 
     try {
-      const response = await fetch("/api/extension/tokens", {
+      const response = await relayClientFetch("/api/extension/tokens", {
         method: "POST",
         headers: {
           "content-type": "application/json"
+        },
+        telemetry: {
+          surface: "web-dashboard",
+          area: "extension",
+          event: "extension_token.create",
+          flowId,
+          context: {
+            deviceName
+          },
+          logSuccess: true
         },
         body: JSON.stringify({ deviceName })
       })
@@ -42,6 +55,17 @@ export function ExtensionTokenManager({ initialTokens, appUrl }: ExtensionTokenM
 
       setIssuedToken(result.token)
       setTokens((current) => [result.record, ...current])
+      logClientEvent({
+        level: "info",
+        surface: "web-dashboard",
+        area: "extension",
+        event: "extension_token.created",
+        flowId,
+        message: `Created extension token ${result.record.id}.`,
+        context: {
+          tokenId: result.record.id
+        }
+      })
       setStatus("Token created. Copy it now, because the full value is only shown once.")
     } catch (cause) {
       setStatus(cause instanceof Error ? cause.message : "Token creation failed.")
@@ -53,10 +77,21 @@ export function ExtensionTokenManager({ initialTokens, appUrl }: ExtensionTokenM
   async function revokeToken(tokenId: string) {
     setPending(true)
     setStatus("Revoking token…")
+    const flowId = createClientFlowId("ext-token")
 
     try {
-      const response = await fetch(`/api/extension/tokens/${tokenId}`, {
-        method: "DELETE"
+      const response = await relayClientFetch(`/api/extension/tokens/${tokenId}`, {
+        method: "DELETE",
+        telemetry: {
+          surface: "web-dashboard",
+          area: "extension",
+          event: "extension_token.revoke",
+          flowId,
+          context: {
+            tokenId
+          },
+          logSuccess: true
+        }
       })
 
       if (!response.ok) {
@@ -75,6 +110,13 @@ export function ExtensionTokenManager({ initialTokens, appUrl }: ExtensionTokenM
   async function copyIssuedToken() {
     if (!issuedToken) return
     await navigator.clipboard.writeText(issuedToken)
+    logClientEvent({
+      level: "info",
+      surface: "web-dashboard",
+      area: "extension",
+      event: "extension_token.copied",
+      message: "Copied one-time extension token to the clipboard."
+    })
     setStatus("Token copied. In the extension, set API base and paste the token once.")
   }
 

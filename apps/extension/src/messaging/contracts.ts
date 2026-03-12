@@ -1,3 +1,5 @@
+import type { TelemetryEventInput } from "@relay/shared";
+
 export interface RelayProjectOption {
   id: string;
   name: string;
@@ -86,9 +88,16 @@ export type RelayMessage =
       payload: { projectId: string; tabId?: number };
     }
   | { type: "RELAY_REFRESH_SESSION" }
-  | { type: "RELAY_OPEN_CONNECT"; payload: { deviceName: string } }
-  | { type: "RELAY_GOOGLE_SIGN_IN"; payload: { deviceName: string } }
-  | { type: "RELAY_CREATE_PROJECT"; payload: { name: string } };
+  | { type: "RELAY_OPEN_CONNECT"; payload: { deviceName: string; flowId?: string } }
+  | { type: "RELAY_GOOGLE_SIGN_IN"; payload: { deviceName: string; flowId?: string } }
+  | {
+      type: "RELAY_CREATE_PROJECT";
+      payload: { name: string; slug?: string; flowId?: string };
+    }
+  | {
+      type: "RELAY_LOG_TELEMETRY";
+      payload: TelemetryEventInput;
+    };
 
 export interface RelayPageState {
   supported: boolean;

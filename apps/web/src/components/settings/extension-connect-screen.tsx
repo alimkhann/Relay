@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react"
 
 import { Button } from "@/components/ui/button"
+import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client"
+import { relayClientFetch } from "@/lib/telemetry/fetch"
 
 interface ExtensionConnectScreenProps {
   apiBase: string
@@ -28,11 +30,23 @@ export function ExtensionConnectScreen({ apiBase, extensionId, initialDeviceName
 
   async function connect() {
     setStatus("Creating a short-lived pairing grant…")
+    const flowId = createClientFlowId("connect")
 
-    const response = await fetch("/api/extension/connect/start", {
+    const response = await relayClientFetch("/api/extension/connect/start", {
       method: "POST",
       headers: {
         "content-type": "application/json"
+      },
+      telemetry: {
+        surface: "web-dashboard",
+        area: "extension",
+        event: "extension_connect.start",
+        flowId,
+        context: {
+          extensionId,
+          deviceName
+        },
+        logSuccess: true
       },
       body: JSON.stringify({
         deviceName
@@ -52,6 +66,14 @@ export function ExtensionConnectScreen({ apiBase, extensionId, initialDeviceName
       typeof window === "undefined" ? null : (window as Window & { chrome?: { runtime?: RuntimeBridge } }).chrome?.runtime ?? null
 
     if (!browserRuntime?.sendMessage) {
+      logClientEvent({
+        level: "error",
+        surface: "web-dashboard",
+        area: "extension",
+        event: "extension_connect.runtime_missing",
+        flowId,
+        message: "Chrome runtime messaging is unavailable in this browser tab."
+      })
       throw new Error("Chrome runtime messaging is unavailable in this browser tab.")
     }
 
@@ -68,15 +90,45 @@ export function ExtensionConnectScreen({ apiBase, extensionId, initialDeviceName
         (result?: { ok?: boolean; reason?: string }) => {
           const runtimeError = browserRuntime.lastError?.message
           if (runtimeError) {
+            logClientEvent({
+              level: "error",
+              surface: "web-dashboard",
+              area: "extension",
+              event: "extension_connect.runtime_failed",
+              flowId,
+              message: runtimeError,
+              context: {
+                extensionId
+              }
+            })
             reject(new Error(runtimeError))
             return
           }
 
           if (!result?.ok) {
+            logClientEvent({
+              level: "error",
+              surface: "web-dashboard",
+              area: "extension",
+              event: "extension_connect.bridge_failed",
+              flowId,
+              message: result?.reason ?? "Extension pairing failed.",
+              context: {
+                extensionId
+              }
+            })
             reject(new Error(result?.reason ?? "Extension pairing failed."))
             return
           }
 
+          logClientEvent({
+            level: "info",
+            surface: "web-dashboard",
+            area: "extension",
+            event: "extension_connect.completed",
+            flowId,
+            message: "Extension pairing grant was delivered to Chrome."
+          })
           resolve()
         }
       )

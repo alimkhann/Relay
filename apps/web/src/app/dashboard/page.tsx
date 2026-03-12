@@ -5,9 +5,11 @@ import { AppShell } from "@/components/layout/app-shell";
 import { PacketList } from "@/components/context/packet-list";
 import { CreateProjectForm } from "@/components/projects/create-project-form";
 import { ProjectPicker } from "@/components/projects/project-picker";
+import { PageTelemetry } from "@/components/telemetry/page-telemetry";
 import { ActivityFeed } from "@/components/activity/activity-feed";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Button } from "@/components/ui/button";
+import { logServerEvent } from "@/server/logging/logger";
 import { requireSessionViewer } from "@/server/policies/viewer";
 import {
   getProjectDashboardForUser,
@@ -54,8 +56,29 @@ export default async function DashboardPage({
   const statusReady = dashboard?.stateStatus?.projectStateReady;
   const statusText = describeStatus(dashboard?.stateStatus);
 
+  if (!currentProject) {
+    await logServerEvent({
+      level: "info",
+      surface: "web-dashboard",
+      area: "onboarding",
+      event: "dashboard.empty_state",
+      message: "Rendered the dashboard empty state for a user with no projects.",
+      userId: viewer.userId,
+    });
+  }
+
   return (
     <AppShell>
+      <PageTelemetry
+        surface="web-dashboard"
+        area="page"
+        event="dashboard.viewed"
+        message="Rendered the dashboard."
+        context={{
+          hasProject: Boolean(currentProject),
+          projectId: currentProject?.id ?? null,
+        }}
+      />
       {/* ─── First-run: no projects ─── */}
       {!currentProject ? (
         <section className="mx-auto max-w-lg py-12">

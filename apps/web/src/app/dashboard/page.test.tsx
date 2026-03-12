@@ -1,6 +1,13 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    refresh: vi.fn(),
+  }),
+}));
+
 vi.mock("@/components/layout/app-shell", () => ({
   AppShell: ({ children }: { children: any }) => <div>{children}</div>,
 }));
@@ -84,8 +91,7 @@ describe("DashboardPage", () => {
   it("renders the project index heading", async () => {
     render(await DashboardPage({ searchParams: Promise.resolve({}) }));
 
-    expect(
-      screen.getByText("Pick the project you want Relay to keep ready"),
-    ).toBeTruthy();
+    expect(screen.getByText("Relay MVP")).toBeTruthy();
+    expect(screen.getByText("Ready for next chat")).toBeTruthy();
   });
 });

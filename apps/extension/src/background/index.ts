@@ -1,4 +1,4 @@
-import type { ProjectStateStatusDto } from "@relay/shared";
+import { createFlowId, slugify, type ProjectStateStatusDto } from "@relay/shared";
 
 import type {
   RelayActiveProjectState,
@@ -19,6 +19,11 @@ import {
   RELAY_SHORTCUT_LABEL,
   shouldScheduleAutoCapture,
 } from "./tab-state";
+import {
+  flushBackgroundTelemetry,
+  initializeBackgroundTelemetry,
+  recordBackgroundTelemetry,
+} from "./telemetry";
 
 interface RemoteSettingsPayload {
   settings: {
@@ -84,6 +89,8 @@ const DASHBOARD_CACHE_TTL_MS = 6_000;
 const REMOTE_RETRY_DELAY_MS = 300;
 const REMOTE_RETRY_BACKOFF_MS = [5_000, 15_000];
 
+initializeBackgroundTelemetry();
+
 function formatUpdatedLabel(value: string | null | undefined) {
   if (!value) return null;
 
@@ -103,6 +110,10 @@ function formatUpdatedLabel(value: string | null | undefined) {
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function createOAuthNonce() {
+  return crypto.randomUUID();
 }
 
 async function retryRemote<T>(
@@ -270,6 +281,15 @@ async function loadSessionData() {
       id: project.id,
       name: project.name,
     }));
+    if (projects.length === 0) {
+      recordBackgroundTelemetry({
+        level: "info",
+        surface: "extension-background",
+        area: "onboarding",
+        event: "session.no_projects",
+        message: "Loaded an authenticated extension session with no projects yet.",
+      });
+    }
     const nextProjectId =
       session.projectId &&
       projects.some((project) => project.id === session.projectId)
@@ -299,6 +319,14 @@ async function loadSessionData() {
 
     return data;
   } catch (cause) {
+    recordBackgroundTelemetry({
+      level: "error",
+      surface: "extension-background",
+      area: "session",
+      event: "session.refresh_failed",
+      message: "Failed to refresh extension session data from the Relay API.",
+      error: cause,
+    });
     if (sessionDataCache && sessionDataCache.token === session.token) {
       return sessionDataCache.data;
     }
@@ -878,6 +906,10 @@ chrome.tabs.onUpdated.addListener(
   },
 );
 
+chrome.runtime.onSuspend.addListener(() => {
+  void flushBackgroundTelemetry();
+});
+
 chrome.tabs.onActivated.addListener((activeInfo: { tabId: number }) => {
   void requestPageStateFromTab(activeInfo.tabId);
   void syncTabRemoteState(activeInfo.tabId, {
@@ -959,19 +991,43 @@ chrome.runtime.onMessage.addListener(
         if (message.type === "RELAY_GOOGLE_SIGN_IN") {
           console.log("[Relay BG] RELAY_GOOGLE_SIGN_IN received");
           try {
+            const flowId = message.payload.flowId ?? createFlowId("ext-auth");
+            recordBackgroundTelemetry({
+              level: "info",
+              surface: "extension-background",
+              area: "auth",
+              event: "google_sign_in.started",
+              flowId,
+              message: "Received Google sign-in request from the extension UI.",
+              context: {
+                deviceName: message.payload.deviceName,
+              },
+            });
             const googleClientId = process.env.PLASMO_PUBLIC_CRX_GOOGLE_CLIENT_ID;
             if (!googleClientId) {
+              recordBackgroundTelemetry({
+                level: "error",
+                surface: "extension-background",
+                area: "auth",
+                event: "google_sign_in.client_id_missing",
+                flowId,
+                message: "Google sign-in could not start because the client ID was missing.",
+              });
               sendResponse({ ok: false, reason: "Google sign-in is not configured (missing client ID)." });
               return;
             }
             const redirectUrl = chrome.identity.getRedirectURL();
+            const state = createOAuthNonce();
+            const nonce = createOAuthNonce();
             console.log("[Relay BG] redirect URL:", redirectUrl);
             const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
             authUrl.searchParams.set("client_id", googleClientId);
             authUrl.searchParams.set("redirect_uri", redirectUrl);
-            authUrl.searchParams.set("response_type", "token");
+            authUrl.searchParams.set("response_type", "token id_token");
             authUrl.searchParams.set("scope", "openid email profile");
             authUrl.searchParams.set("prompt", "select_account");
+            authUrl.searchParams.set("nonce", nonce);
+            authUrl.searchParams.set("state", state);
             console.log("[Relay BG] launching web auth flow...");
             const callbackUrl = await chrome.identity.launchWebAuthFlow({
               url: authUrl.toString(),
@@ -979,14 +1035,45 @@ chrome.runtime.onMessage.addListener(
             });
             console.log("[Relay BG] callbackUrl:", callbackUrl);
             if (!callbackUrl) {
+              recordBackgroundTelemetry({
+                level: "warn",
+                surface: "extension-background",
+                area: "auth",
+                event: "google_sign_in.cancelled",
+                flowId,
+                message: "Google sign-in was cancelled before a callback URL was returned.",
+              });
               sendResponse({ ok: false, reason: "Google sign-in was cancelled." });
               return;
             }
             const hashParams = new URLSearchParams(new URL(callbackUrl).hash.slice(1));
+            const callbackState = hashParams.get("state");
+            if (callbackState !== state) {
+              recordBackgroundTelemetry({
+                level: "error",
+                surface: "extension-background",
+                area: "auth",
+                event: "google_sign_in.invalid_state",
+                flowId,
+                message: "Google sign-in returned an invalid state value.",
+              });
+              sendResponse({ ok: false, reason: "Google sign-in returned an invalid state." });
+              return;
+            }
             const accessToken = hashParams.get("access_token");
+            const idToken = hashParams.get("id_token");
             console.log("[Relay BG] accessToken present:", !!accessToken);
-            if (!accessToken) {
-              sendResponse({ ok: false, reason: "Google sign-in did not return a token." });
+            console.log("[Relay BG] idToken present:", !!idToken);
+            if (!accessToken || !idToken) {
+              recordBackgroundTelemetry({
+                level: "error",
+                surface: "extension-background",
+                area: "auth",
+                event: "google_sign_in.tokens_missing",
+                flowId,
+                message: "Google sign-in callback did not include the required OAuth tokens.",
+              });
+              sendResponse({ ok: false, reason: "Google sign-in did not return the required tokens." });
               return;
             }
 
@@ -999,19 +1086,44 @@ chrome.runtime.onMessage.addListener(
               `${apiBase}/api/extension/auth/google`,
               {
                 method: "POST",
-                headers: { "content-type": "application/json" },
+                headers: {
+                  "content-type": "application/json",
+                  "x-relay-flow-id": flowId,
+                },
                 body: JSON.stringify({
                   googleAccessToken: accessToken,
+                  googleIdToken: idToken,
                   deviceName: message.payload.deviceName,
                 }),
               },
             );
+            console.log("[Relay BG] extension auth response status:", response.status);
+            recordBackgroundTelemetry({
+              level: response.ok ? "info" : "warn",
+              surface: "extension-background",
+              area: "auth",
+              event: "google_sign_in.api_response",
+              flowId,
+              message: `Extension Google auth returned ${response.status}.`,
+              context: {
+                status: response.status,
+              },
+            });
 
             if (!response.ok) {
               const reason = await readErrorResponse(
                 response,
                 "Google sign-in failed.",
               );
+              console.log("[Relay BG] extension auth failed:", reason);
+              recordBackgroundTelemetry({
+                level: "error",
+                surface: "extension-background",
+                area: "auth",
+                event: "google_sign_in.failed",
+                flowId,
+                message: reason,
+              });
               sendResponse({ ok: false, reason });
               return;
             }
@@ -1022,6 +1134,26 @@ chrome.runtime.onMessage.addListener(
               projectId: string;
               settings?: { settings?: { autoCapture?: boolean } };
             };
+            console.log("[Relay BG] extension auth payload:", {
+              apiBase: payload.apiBase,
+              hasToken: Boolean(payload.token),
+              projectId: payload.projectId,
+            });
+            if (!payload.token || !payload.apiBase) {
+              recordBackgroundTelemetry({
+                level: "error",
+                surface: "extension-background",
+                area: "auth",
+                event: "google_sign_in.invalid_payload",
+                flowId,
+                message: "Extension auth completed but Relay returned an incomplete session payload.",
+              });
+              sendResponse({
+                ok: false,
+                reason: "Extension auth completed but Relay did not return a valid session.",
+              });
+              return;
+            }
 
             sessionDataCache = null;
             await setRelaySession({
@@ -1040,9 +1172,38 @@ chrome.runtime.onMessage.addListener(
               assumedProjectName: "",
               trust: createEmptyTrustMetadata(),
             });
+            const storedSession = await getRelaySession();
+            console.log("[Relay BG] stored session after Google auth:", {
+              connected: storedSession.connected,
+              apiBase: storedSession.apiBase,
+              hasToken: Boolean(storedSession.token),
+              projectId: storedSession.projectId,
+            });
+            recordBackgroundTelemetry({
+              level: "info",
+              surface: "extension-background",
+              area: "auth",
+              event: "google_sign_in.succeeded",
+              flowId,
+              message: "Stored Relay session after Google sign-in.",
+              context: {
+                connected: storedSession.connected,
+                projectId: storedSession.projectId,
+                hasToken: Boolean(storedSession.token),
+              },
+            });
 
             sendResponse({ ok: true });
           } catch (cause) {
+            console.error("[Relay BG] Google sign-in exception:", cause);
+            recordBackgroundTelemetry({
+              level: "error",
+              surface: "extension-background",
+              area: "auth",
+              event: "google_sign_in.exception",
+              message: "Google sign-in threw an exception in the background worker.",
+              error: cause,
+            });
             sendResponse({
               ok: false,
               reason:
@@ -1056,9 +1217,39 @@ chrome.runtime.onMessage.addListener(
 
         if (message.type === "RELAY_CREATE_PROJECT") {
           try {
+            const flowId = message.payload.flowId ?? createFlowId("ext-project");
+            const slug =
+              message.payload.slug ?? slugify(message.payload.name).slice(0, 80);
+            recordBackgroundTelemetry({
+              level: "info",
+              surface: "extension-background",
+              area: "projects",
+              event: "project_create.started",
+              flowId,
+              message: "Received project creation request from the extension UI.",
+              context: {
+                name: message.payload.name,
+                slug,
+              },
+            });
             const response = await relayFetch("/api/projects", {
               method: "POST",
-              body: JSON.stringify({ name: message.payload.name }),
+              headers: {
+                "x-relay-flow-id": flowId,
+              },
+              body: JSON.stringify({ name: message.payload.name, slug }),
+            });
+            console.log("[Relay BG] create project response status:", response.status);
+            recordBackgroundTelemetry({
+              level: response.ok ? "info" : "warn",
+              surface: "extension-background",
+              area: "projects",
+              event: "project_create.api_response",
+              flowId,
+              message: `Project creation returned ${response.status}.`,
+              context: {
+                status: response.status,
+              },
             });
 
             if (!response.ok) {
@@ -1066,12 +1257,25 @@ chrome.runtime.onMessage.addListener(
                 response,
                 "Project creation failed.",
               );
+              console.log("[Relay BG] create project failed:", reason);
+              recordBackgroundTelemetry({
+                level: "error",
+                surface: "extension-background",
+                area: "projects",
+                event: "project_create.failed",
+                flowId,
+                message: reason,
+                context: {
+                  name: message.payload.name,
+                  slug,
+                },
+              });
               sendResponse({ ok: false, reason });
               return;
             }
 
             const payload = (await response.json()) as {
-              project: { id: string; name: string };
+              project: { id: string; name: string; slug?: string };
             };
             sessionDataCache = null;
             await setRelaySession({
@@ -1079,9 +1283,29 @@ chrome.runtime.onMessage.addListener(
               assumedProjectId: payload.project.id,
               assumedProjectName: payload.project.name,
             });
+            recordBackgroundTelemetry({
+              level: "info",
+              surface: "extension-background",
+              area: "projects",
+              event: "project_create.succeeded",
+              flowId,
+              message: `Created project ${payload.project.id} from extension onboarding.`,
+              context: {
+                projectId: payload.project.id,
+                slug: payload.project.slug ?? slug,
+              },
+            });
 
             sendResponse({ ok: true, project: payload.project });
           } catch (cause) {
+            recordBackgroundTelemetry({
+              level: "error",
+              surface: "extension-background",
+              area: "projects",
+              event: "project_create.exception",
+              message: "Project creation threw an exception in the background worker.",
+              error: cause,
+            });
             sendResponse({
               ok: false,
               reason:
@@ -1090,6 +1314,12 @@ chrome.runtime.onMessage.addListener(
                   : "Project creation failed.",
             });
           }
+          return;
+        }
+
+        if (message.type === "RELAY_LOG_TELEMETRY") {
+          recordBackgroundTelemetry(message.payload);
+          sendResponse({ ok: true });
           return;
         }
 

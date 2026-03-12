@@ -4,6 +4,11 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Plus, Trash2, Check } from "lucide-react";
 
+import { slugify } from "@relay/shared";
+
+import { createClientFlowId } from "@/lib/telemetry/client";
+import { relayClientFetch } from "@/lib/telemetry/fetch";
+
 type Project = { id: string; name: string };
 
 export function ProjectPicker({
@@ -37,15 +42,21 @@ export function ProjectPicker({
     if (!newName.trim() || newName.trim().length < 2) return;
     setPending(true);
     try {
-      const slug = newName
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-        .slice(0, 80);
-      const res = await fetch("/api/projects", {
+      const flowId = createClientFlowId("project");
+      const slug = slugify(newName.trim()).slice(0, 80);
+      const res = await relayClientFetch("/api/projects", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        telemetry: {
+          surface: "web-dashboard",
+          area: "projects",
+          event: "project_picker.create",
+          flowId,
+          context: {
+            source: "project_picker",
+          },
+          logSuccess: true,
+        },
         body: JSON.stringify({ name: newName.trim(), slug }),
       });
       if (res.ok) {
@@ -63,9 +74,20 @@ export function ProjectPicker({
 
   async function handleDelete(id: string) {
     if (!confirm("Archive this project? You can restore it later.")) return;
-    await fetch(`/api/projects/${id}`, {
+    const flowId = createClientFlowId("project");
+    await relayClientFetch(`/api/projects/${id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
+      telemetry: {
+        surface: "web-dashboard",
+        area: "projects",
+        event: "project_picker.archive",
+        flowId,
+        context: {
+          projectId: id,
+        },
+        logSuccess: true,
+      },
       body: JSON.stringify({ isArchived: true }),
     });
     if (id === currentId) {

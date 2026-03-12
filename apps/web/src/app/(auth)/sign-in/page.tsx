@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
+import { PageTelemetry } from "@/components/telemetry/page-telemetry";
 import { getAuthServer } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,12 @@ export default async function SignInPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#FAFAF8] px-6">
+      <PageTelemetry
+        surface="web-auth"
+        area="page"
+        event="auth_page.viewed"
+        message="Rendered the sign-in page."
+      />
       <div className="w-full max-w-sm text-center">
         <Image
           src="/images/relay_logo_white.png"

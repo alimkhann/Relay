@@ -14,6 +14,7 @@ import { SessionRepository } from "../repositories/session-repository"
 import { SessionDigestRepository } from "../repositories/session-digest-repository"
 import { SettingsRepository } from "../repositories/settings-repository"
 import { TargetProfileRepository } from "../repositories/target-profile-repository"
+import { TelemetryLogRepository } from "../repositories/telemetry-log-repository"
 import { TurnRepository } from "../repositories/turn-repository"
 import { createRepositoryProvider, type DatabaseProvider } from "../store/provider"
 
@@ -36,6 +37,7 @@ export interface RepositoryBundle {
   targetProfiles: TargetProfileRepository
   extensionTokens: ExtensionTokenRepository
   extensionConnectGrants: ExtensionConnectGrantRepository
+  telemetryLogs: TelemetryLogRepository
 }
 
 export function createRepositoryBundle(viewerUserId?: string): RepositoryBundle {
@@ -59,6 +61,7 @@ export function createRepositoryBundle(viewerUserId?: string): RepositoryBundle 
     settings: new SettingsRepository(provider),
     targetProfiles: new TargetProfileRepository(provider),
     extensionTokens: new ExtensionTokenRepository(provider),
-    extensionConnectGrants: new ExtensionConnectGrantRepository(provider)
+    extensionConnectGrants: new ExtensionConnectGrantRepository(provider),
+    telemetryLogs: new TelemetryLogRepository(provider)
   }
 }

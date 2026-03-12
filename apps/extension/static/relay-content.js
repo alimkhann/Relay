@@ -449,6 +449,26 @@
     });
   }
 
+  function createFlowId(prefix) {
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  function emitInlineTelemetry(payload) {
+    try {
+      chrome.runtime.sendMessage({
+        type: "RELAY_LOG_TELEMETRY",
+        payload: {
+          surface: "extension-inline-chip",
+          url: window.location.pathname,
+          timestamp: new Date().toISOString(),
+          ...payload,
+        },
+      });
+    } catch (_error) {
+      // Best-effort logging only.
+    }
+  }
+
   function clearChipTimers() {
     if (relayChipState.exitTimer !== null) {
       window.clearTimeout(relayChipState.exitTimer);
@@ -865,7 +885,15 @@
 
   async function invokeInsertFromChip() {
     const activeState = getRenderableState();
+    const flowId = createFlowId("chip-insert");
     if (!activeState || !activeState.canInsert) {
+      emitInlineTelemetry({
+        level: "warn",
+        area: "insert",
+        event: "inline_insert.unavailable",
+        flowId,
+        message: activeState?.issue?.detail ?? "Project brief unavailable.",
+      });
       return {
         ok: false,
         reason: activeState?.issue?.detail ?? "Project brief unavailable.",
@@ -881,6 +909,17 @@
       type: "RELAY_INSERT_PROJECT_BRIEF",
     });
     if (!result || !result.ok) {
+      emitInlineTelemetry({
+        level: "error",
+        area: "insert",
+        event: "inline_insert.failed",
+        flowId,
+        message:
+          result && result.reason ? result.reason : "Insert failed from inline chip.",
+        context: {
+          projectId: activeState.projectId,
+        },
+      });
       relayChipState.buttonMode = "error";
       relayChipState.buttonError =
         result && result.reason ? result.reason : "Insert failed.";
@@ -902,6 +941,18 @@
       hideInlineChipWithMotion();
       relayChipState.buttonMode = "idle";
     }, 120);
+
+    emitInlineTelemetry({
+      level: "info",
+      area: "insert",
+      event: "inline_insert.succeeded",
+      flowId,
+      message: "Inserted project brief from the inline chip.",
+      context: {
+        projectId: activeState.projectId,
+        projectName: activeState.projectName,
+      },
+    });
 
     return result;
   }
@@ -996,6 +1047,12 @@
       const closeButton = root.querySelector(".relay-inline-chip__close");
       if (closeButton) {
         closeButton.addEventListener("click", () => {
+          emitInlineTelemetry({
+            level: "info",
+            area: "chip",
+            event: "inline_chip.dismissed",
+            message: "Dismissed the inline chip.",
+          });
           relayChipState.dismissed = true;
           relayChipState.forcedInsertKind = null;
           hideInlineChipWithMotion();
@@ -1014,6 +1071,15 @@
         select.addEventListener("change", async (event) => {
           const nextProjectId = event.target.value;
           if (!nextProjectId) return;
+          emitInlineTelemetry({
+            level: "info",
+            area: "project",
+            event: "inline_project.switch",
+            message: "Switched the active project from the inline chip.",
+            context: {
+              projectId: nextProjectId,
+            },
+          });
           relayChipState.buttonMode = "idle";
           relayChipState.buttonError = "";
           await sendRuntimeMessage({
@@ -1148,6 +1214,19 @@
       const wasDismissed = relayChipState.dismissed;
       relayChipState.dismissed = false;
       renderInlineChip();
+      emitInlineTelemetry({
+        level: "info",
+        area: "chip",
+        event: "inline_chip.shown",
+        message: "Requested to show the inline chip.",
+        context: {
+          restored: wasDismissed,
+          insertKind:
+            message.payload?.insertKind === "quick_continuity"
+              ? "quick_continuity"
+              : "fresh_chat_bootstrap",
+        },
+      });
       void sendRuntimeMessage({ type: "RELAY_GET_ACTIVE_PROJECT_STATE" }).then(
         (state) => {
           if (isValidActiveProjectState(state)) {
@@ -1180,6 +1259,12 @@
 
       const chipVisible = Boolean(document.getElementById("relay-inline-chip"));
       if (chipVisible) {
+        emitInlineTelemetry({
+          level: "info",
+          area: "shortcut",
+          event: "inline_chip.shortcut_insert",
+          message: "Shortcut triggered project brief insertion from a visible chip.",
+        });
         void invokeInsertFromChip();
         sendResponse({ ok: true, action: "invoked_insert" });
         return true;
@@ -1187,6 +1272,15 @@
 
       if (pageState.isFreshChat) {
         const action = relayChipState.dismissed ? "restored" : "opened";
+        emitInlineTelemetry({
+          level: "info",
+          area: "shortcut",
+          event: "inline_chip.shortcut_opened",
+          message: "Shortcut opened the inline chip on a fresh chat.",
+          context: {
+            action,
+          },
+        });
         relayChipState.forcedInsertKind = null;
         relayChipState.dismissed = false;
         renderInlineChip();
@@ -1204,6 +1298,12 @@
 
       relayChipState.forcedInsertKind = "quick_continuity";
       relayChipState.dismissed = false;
+      emitInlineTelemetry({
+        level: "info",
+        area: "shortcut",
+        event: "inline_chip.shortcut_quick_continuity",
+        message: "Shortcut opened the inline chip in quick continuity mode.",
+      });
       renderInlineChip();
       void sendRuntimeMessage({ type: "RELAY_GET_ACTIVE_PROJECT_STATE" }).then(
         (state) => {
@@ -1292,6 +1392,26 @@
     }
 
     return false;
+  });
+
+  window.addEventListener("error", (event) => {
+    emitInlineTelemetry({
+      level: "error",
+      area: "runtime",
+      event: "inline_chip.error",
+      message: event.message || "Unhandled content-script error.",
+      error: event.error ? { message: String(event.error.message || event.error), stack: event.error.stack || null } : { message: event.message || "Unhandled content-script error." },
+    });
+  });
+
+  window.addEventListener("unhandledrejection", (event) => {
+    emitInlineTelemetry({
+      level: "error",
+      area: "runtime",
+      event: "inline_chip.unhandled_rejection",
+      message: "Unhandled content-script promise rejection.",
+      error: { message: String(event.reason) },
+    });
   });
 
   scheduleObservation();

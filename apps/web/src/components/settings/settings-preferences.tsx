@@ -4,6 +4,9 @@ import { useState, useTransition } from "react";
 
 import type { UserSettingsRow } from "@relay/shared";
 
+import { createClientFlowId } from "@/lib/telemetry/client";
+import { relayClientFetch } from "@/lib/telemetry/fetch";
+
 interface SettingsPreferencesProps {
   initialSettings: UserSettingsRow["settings"];
 }
@@ -51,9 +54,17 @@ export function SettingsPreferences({
   const [pending, startTransition] = useTransition();
 
   async function save(nextSettings: typeof settings) {
-    const response = await fetch("/api/settings", {
+    const flowId = createClientFlowId("settings");
+    const response = await relayClientFetch("/api/settings", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
+      telemetry: {
+        surface: "web-dashboard",
+        area: "settings",
+        event: "settings.save",
+        flowId,
+        logSuccess: true,
+      },
       body: JSON.stringify(nextSettings),
     });
     if (!response.ok) throw new Error("Save failed");
