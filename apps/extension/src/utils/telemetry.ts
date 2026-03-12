@@ -1,5 +1,5 @@
-import type { TelemetryEventInput, TelemetrySurface } from "@relay/shared";
-import { createFlowId, sanitizeTelemetryEvent } from "@relay/shared";
+import type { TelemetryEventInput, TelemetrySurface } from "@relay/shared/types/telemetry";
+import { createFlowId, sanitizeTelemetryEvent } from "@relay/shared/utils/telemetry";
 
 export function createExtensionFlowId(prefix = "ext") {
   return createFlowId(prefix);

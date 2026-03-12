@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { slugify } from "@relay/shared";
+import { slugify } from "@relay/shared/utils/text";
 
 import type { RelayActiveProjectState } from "../messaging/contracts";
 import { getActiveTab } from "../utils/browser";

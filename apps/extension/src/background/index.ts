@@ -1,4 +1,6 @@
-import { createFlowId, slugify, type ProjectStateStatusDto } from "@relay/shared";
+import { createFlowId } from "@relay/shared/utils/telemetry";
+import { slugify } from "@relay/shared/utils/text";
+import type { ProjectStateStatusDto } from "@relay/shared";
 
 import type {
   RelayActiveProjectState,

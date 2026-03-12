@@ -1,5 +1,5 @@
-import type { TelemetryEventInput } from "@relay/shared";
-import { sanitizeTelemetryEvent } from "@relay/shared";
+import type { TelemetryEventInput } from "@relay/shared/types/telemetry";
+import { sanitizeTelemetryEvent } from "@relay/shared/utils/telemetry";
 
 import { getRelaySession } from "../storage/session";
 
