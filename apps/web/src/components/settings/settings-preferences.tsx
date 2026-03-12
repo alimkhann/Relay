@@ -1,21 +1,29 @@
-"use client"
+"use client";
 
-import { useState, useTransition } from "react"
+import { useState, useTransition } from "react";
 
-import type { UserSettingsRow } from "@relay/shared"
+import type { UserSettingsRow } from "@relay/shared";
 
 interface SettingsPreferencesProps {
-  initialSettings: UserSettingsRow["settings"]
+  initialSettings: UserSettingsRow["settings"];
 }
 
 const platformOptions = [
   { key: "chatgpt", label: "ChatGPT" },
   { key: "claude", label: "Claude" },
   { key: "codex", label: "Codex" },
-  { key: "perplexity", label: "Perplexity" }
-] as const
+  { key: "perplexity", label: "Perplexity" },
+] as const;
 
-function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+function Toggle({
+  checked,
+  onChange,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
   return (
     <button
       role="switch"
@@ -32,35 +40,37 @@ function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (
         }`}
       />
     </button>
-  )
+  );
 }
 
-export function SettingsPreferences({ initialSettings }: SettingsPreferencesProps) {
-  const [settings, setSettings] = useState(initialSettings)
-  const [toast, setToast] = useState<string | null>(null)
-  const [pending, startTransition] = useTransition()
+export function SettingsPreferences({
+  initialSettings,
+}: SettingsPreferencesProps) {
+  const [settings, setSettings] = useState(initialSettings);
+  const [toast, setToast] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
 
   async function save(nextSettings: typeof settings) {
     const response = await fetch("/api/settings", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(nextSettings)
-    })
-    if (!response.ok) throw new Error("Save failed")
-    setSettings(nextSettings)
+      body: JSON.stringify(nextSettings),
+    });
+    if (!response.ok) throw new Error("Save failed");
+    setSettings(nextSettings);
   }
 
   function update(nextSettings: typeof settings, message: string) {
     startTransition(async () => {
       try {
-        await save(nextSettings)
-        setToast(message)
-        setTimeout(() => setToast(null), 2000)
+        await save(nextSettings);
+        setToast(message);
+        setTimeout(() => setToast(null), 2000);
       } catch (error) {
-        setToast(error instanceof Error ? error.message : "Save failed")
-        setTimeout(() => setToast(null), 3000)
+        setToast(error instanceof Error ? error.message : "Save failed");
+        setTimeout(() => setToast(null), 3000);
       }
-    })
+    });
   }
 
   return (
@@ -69,19 +79,26 @@ export function SettingsPreferences({ initialSettings }: SettingsPreferencesProp
       <section className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-5 shadow-[var(--relay-shadow-sm)]">
         <h2 className="text-sm font-semibold">Chrome extension</h2>
         <p className="mt-1.5 text-sm leading-relaxed text-[var(--relay-muted)]">
-          Open the Relay sidepanel in Chrome and tap <strong className="text-[var(--relay-ink)]">Connect</strong> to pair your browser.
+          Open the Relay sidepanel in Chrome and tap{" "}
+          <strong className="text-[var(--relay-ink)]">Connect</strong> to pair
+          your browser.
         </p>
       </section>
 
       {/* ─── Platforms ─── */}
       <section>
         <h2 className="text-sm font-semibold">Platforms</h2>
-        <p className="mt-1 text-sm text-[var(--relay-muted)]">Choose which AI chats Relay watches.</p>
+        <p className="mt-1 text-sm text-[var(--relay-muted)]">
+          Choose which AI chats Relay watches.
+        </p>
         <div className="mt-3 divide-y divide-[var(--relay-line)] rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
           {platformOptions.map((platform) => {
-            const checked = settings.enabledPlatforms.includes(platform.key)
+            const checked = settings.enabledPlatforms.includes(platform.key);
             return (
-              <div key={platform.key} className="flex items-center justify-between px-4 py-3">
+              <div
+                key={platform.key}
+                className="flex items-center justify-between px-4 py-3"
+              >
                 <span className="text-sm">{platform.label}</span>
                 <Toggle
                   checked={checked}
@@ -89,12 +106,17 @@ export function SettingsPreferences({ initialSettings }: SettingsPreferencesProp
                   onChange={(on) => {
                     const enabledPlatforms = on
                       ? [...settings.enabledPlatforms, platform.key]
-                      : settings.enabledPlatforms.filter((p) => p !== platform.key)
-                    update({ ...settings, enabledPlatforms }, `${platform.label} ${on ? "enabled" : "disabled"}`)
+                      : settings.enabledPlatforms.filter(
+                          (p) => p !== platform.key,
+                        );
+                    update(
+                      { ...settings, enabledPlatforms },
+                      `${platform.label} ${on ? "enabled" : "disabled"}`,
+                    );
                   }}
                 />
               </div>
-            )
+            );
           })}
         </div>
       </section>
@@ -102,28 +124,44 @@ export function SettingsPreferences({ initialSettings }: SettingsPreferencesProp
       {/* ─── Behavior ─── */}
       <section>
         <h2 className="text-sm font-semibold">Behavior</h2>
-        <p className="mt-1 text-sm text-[var(--relay-muted)]">Fine-tune how Relay runs in the background.</p>
+        <p className="mt-1 text-sm text-[var(--relay-muted)]">
+          Fine-tune how Relay runs in the background.
+        </p>
         <div className="mt-3 divide-y divide-[var(--relay-line)] rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
           <div className="flex items-center justify-between gap-4 px-4 py-3">
             <div>
               <p className="text-sm font-medium">Auto-capture</p>
-              <p className="text-sm text-[var(--relay-muted)]">Save chat content automatically.</p>
+              <p className="text-sm text-[var(--relay-muted)]">
+                Save chat content automatically.
+              </p>
             </div>
             <Toggle
               checked={settings.autoCapture}
               disabled={pending}
-              onChange={(on) => update({ ...settings, autoCapture: on }, `Auto-capture ${on ? "on" : "off"}`)}
+              onChange={(on) =>
+                update(
+                  { ...settings, autoCapture: on },
+                  `Auto-capture ${on ? "on" : "off"}`,
+                )
+              }
             />
           </div>
           <div className="flex items-center justify-between gap-4 px-4 py-3">
             <div>
               <p className="text-sm font-medium">Inline chip</p>
-              <p className="text-sm text-[var(--relay-muted)]">Show a brief-insert chip on new chats.</p>
+              <p className="text-sm text-[var(--relay-muted)]">
+                Show a brief-insert chip on new chats.
+              </p>
             </div>
             <Toggle
               checked={settings.showSidepanelOnSupportedSites}
               disabled={pending}
-              onChange={(on) => update({ ...settings, showSidepanelOnSupportedSites: on }, `Inline chip ${on ? "on" : "off"}`)}
+              onChange={(on) =>
+                update(
+                  { ...settings, showSidepanelOnSupportedSites: on },
+                  `Inline chip ${on ? "on" : "off"}`,
+                )
+              }
             />
           </div>
         </div>
@@ -133,7 +171,8 @@ export function SettingsPreferences({ initialSettings }: SettingsPreferencesProp
       <section className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-5 shadow-[var(--relay-shadow-sm)]">
         <h2 className="text-sm font-semibold">Offline fallback</h2>
         <p className="mt-1.5 text-sm leading-relaxed text-[var(--relay-muted)]">
-          When AI is unavailable, Relay inserts a bounded brief from saved project context.
+          When AI is unavailable, Relay inserts a bounded brief from saved
+          project context.
         </p>
       </section>
 
@@ -144,5 +183,5 @@ export function SettingsPreferences({ initialSettings }: SettingsPreferencesProp
         </div>
       )}
     </div>
-  )
+  );
 }

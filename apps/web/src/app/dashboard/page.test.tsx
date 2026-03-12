@@ -1,16 +1,16 @@
-import { render, screen } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/components/layout/app-shell", () => ({
-  AppShell: ({ children }: { children: any }) => <div>{children}</div>
-}))
+  AppShell: ({ children }: { children: any }) => <div>{children}</div>,
+}));
 
 vi.mock("@/server/policies/viewer", () => ({
   requireSessionViewer: vi.fn(async () => ({
     userId: "user-1",
-    mode: "session"
-  }))
-}))
+    mode: "session",
+  })),
+}));
 
 vi.mock("@/server/services/project-service", () => ({
   listProjectsForUser: vi.fn(async () => [
@@ -21,8 +21,8 @@ vi.mock("@/server/services/project-service", () => ({
       description: "Browser-first project memory sidecar.",
       memoryCount: 3,
       sessionCount: 1,
-      updatedAt: new Date().toISOString()
-    }
+      updatedAt: new Date().toISOString(),
+    },
   ]),
   getProjectDashboardForUser: vi.fn(async () => ({
     project: {
@@ -32,7 +32,7 @@ vi.mock("@/server/services/project-service", () => ({
       description: "Browser-first project memory sidecar.",
       memoryCount: 3,
       sessionCount: 1,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     },
     projectState: {
       projectOverview: "Browser-first project memory sidecar.",
@@ -45,7 +45,7 @@ vi.mock("@/server/services/project-service", () => ({
       relevantTools: ["Gemini"],
       lastBootstrapAt: null,
       dirty: true,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     },
     stateStatus: {
       rawCapturePresent: true,
@@ -59,7 +59,7 @@ vi.mock("@/server/services/project-service", () => ({
       activeJobStage: "completed",
       activeJobAttempts: 1,
       fallbackPlanned: true,
-      fallbackUsed: false
+      fallbackUsed: false,
     },
     recentSessions: [],
     recentDigests: [],
@@ -70,20 +70,22 @@ vi.mock("@/server/services/project-service", () => ({
         title: "Use Neon",
         content: "Auth and DB are now on Neon.",
         pinned: true,
-        updatedAt: new Date().toISOString()
-      }
+        updatedAt: new Date().toISOString(),
+      },
     ],
     packets: [],
-    legacyPackets: []
-  }))
-}))
+    legacyPackets: [],
+  })),
+}));
 
-import DashboardPage from "./page"
+import DashboardPage from "./page";
 
 describe("DashboardPage", () => {
   it("renders the project index heading", async () => {
-    render(await DashboardPage({ searchParams: Promise.resolve({}) }))
+    render(await DashboardPage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByText("Pick the project you want Relay to keep ready")).toBeTruthy()
-  })
-})
+    expect(
+      screen.getByText("Pick the project you want Relay to keep ready"),
+    ).toBeTruthy();
+  });
+});

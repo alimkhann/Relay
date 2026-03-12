@@ -1,20 +1,20 @@
-"use client"
+"use client";
 
-import { useState, type ReactNode } from "react"
-import { ChevronDown } from "lucide-react"
+import { useState, type ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
 
 export function CollapsibleSection({
   title,
   children,
   defaultOpen = true,
-  action
+  action,
 }: {
-  title: string
-  children: ReactNode
-  defaultOpen?: boolean
-  action?: ReactNode
+  title: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+  action?: ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen)
+  const [open, setOpen] = useState(defaultOpen);
 
   return (
     <section>
@@ -32,13 +32,13 @@ export function CollapsibleSection({
       </div>
       <div
         className={`grid transition-all duration-300 ease-out ${
-          open ? "grid-rows-[1fr] opacity-100 mt-3" : "grid-rows-[0fr] opacity-0"
+          open
+            ? "grid-rows-[1fr] opacity-100 mt-3"
+            : "grid-rows-[0fr] opacity-0"
         }`}
       >
-        <div className="overflow-hidden">
-          {children}
-        </div>
+        <div className="overflow-hidden">{children}</div>
       </div>
     </section>
-  )
+  );
 }

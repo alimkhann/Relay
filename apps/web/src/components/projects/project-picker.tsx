@@ -1,78 +1,82 @@
-"use client"
+"use client";
 
-import { useState, useRef, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { ChevronDown, Plus, Trash2, Check } from "lucide-react"
+import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { ChevronDown, Plus, Trash2, Check } from "lucide-react";
 
-type Project = { id: string; name: string }
+type Project = { id: string; name: string };
 
 export function ProjectPicker({
   projects,
   currentId,
 }: {
-  projects: Project[]
-  currentId: string
+  projects: Project[];
+  currentId: string;
 }) {
-  const router = useRouter()
-  const [open, setOpen] = useState(false)
-  const [creating, setCreating] = useState(false)
-  const [newName, setNewName] = useState("")
-  const [pending, setPending] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [pending, setPending] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false)
-        setCreating(false)
+        setOpen(false);
+        setCreating(false);
       }
     }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [])
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
-  const current = projects.find((p) => p.id === currentId) ?? projects[0]
+  const current = projects.find((p) => p.id === currentId) ?? projects[0];
 
   async function handleCreate() {
-    if (!newName.trim() || newName.trim().length < 2) return
-    setPending(true)
+    if (!newName.trim() || newName.trim().length < 2) return;
+    setPending(true);
     try {
       const slug = newName
         .trim()
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "")
-        .slice(0, 80)
+        .slice(0, 80);
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name: newName.trim(), slug }),
-      })
+      });
       if (res.ok) {
-        const { project } = (await res.json()) as { project: { id: string } }
-        setNewName("")
-        setCreating(false)
-        setOpen(false)
-        router.push(`/dashboard?project=${project.id}`)
-        router.refresh()
+        const { project } = (await res.json()) as { project: { id: string } };
+        setNewName("");
+        setCreating(false);
+        setOpen(false);
+        router.push(`/dashboard?project=${project.id}`);
+        router.refresh();
       }
     } finally {
-      setPending(false)
+      setPending(false);
     }
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Archive this project? You can restore it later.")) return
+    if (!confirm("Archive this project? You can restore it later.")) return;
     await fetch(`/api/projects/${id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ isArchived: true }),
-    })
+    });
     if (id === currentId) {
-      const remaining = projects.filter((p) => p.id !== id)
-      router.push(remaining.length && remaining[0] ? `/dashboard?project=${remaining[0].id}` : "/dashboard")
+      const remaining = projects.filter((p) => p.id !== id);
+      router.push(
+        remaining.length && remaining[0]
+          ? `/dashboard?project=${remaining[0].id}`
+          : "/dashboard",
+      );
     }
-    router.refresh()
+    router.refresh();
   }
 
   return (
@@ -81,7 +85,9 @@ export function ProjectPicker({
         onClick={() => setOpen(!open)}
         className="inline-flex items-center gap-2 rounded-[var(--relay-radius-sm)] px-2 py-1 -ml-2 transition hover:bg-[var(--relay-soft)]"
       >
-        <h1 className="text-3xl font-bold tracking-tight">{current?.name ?? "Projects"}</h1>
+        <h1 className="text-3xl font-bold tracking-tight">
+          {current?.name ?? "Projects"}
+        </h1>
         <ChevronDown
           className={`h-5 w-5 text-[var(--relay-faint)] transition-transform duration-200 ${
             open ? "rotate-180" : ""
@@ -98,10 +104,10 @@ export function ProjectPicker({
             >
               <button
                 onClick={() => {
-                  setOpen(false)
+                  setOpen(false);
                   if (p.id !== currentId) {
-                    router.push(`/dashboard?project=${p.id}`)
-                    router.refresh()
+                    router.push(`/dashboard?project=${p.id}`);
+                    router.refresh();
                   }
                 }}
                 className="flex flex-1 items-center gap-2 text-left"
@@ -122,8 +128,8 @@ export function ProjectPicker({
               {projects.length > 1 && (
                 <button
                   onClick={(e) => {
-                    e.stopPropagation()
-                    handleDelete(p.id)
+                    e.stopPropagation();
+                    handleDelete(p.id);
                   }}
                   className="hidden rounded p-1 text-[var(--relay-faint)] transition hover:bg-red-50 hover:text-red-500 group-hover:block dark:hover:bg-red-500/10"
                 >
@@ -144,8 +150,8 @@ export function ProjectPicker({
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") handleCreate()
-                  if (e.key === "Escape") setCreating(false)
+                  if (e.key === "Enter") handleCreate();
+                  if (e.key === "Escape") setCreating(false);
                 }}
               />
               <button
@@ -168,5 +174,5 @@ export function ProjectPicker({
         </div>
       )}
     </div>
-  )
+  );
 }

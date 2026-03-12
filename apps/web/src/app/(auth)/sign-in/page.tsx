@@ -1,18 +1,18 @@
-import Image from "next/image"
-import Link from "next/link"
-import { redirect } from "next/navigation"
+import Image from "next/image";
+import Link from "next/link";
+import { redirect } from "next/navigation";
 
-import { GoogleSignInButton } from "@/components/auth/google-sign-in-button"
-import { getAuthServer } from "@/lib/auth/server"
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
+import { getAuthServer } from "@/lib/auth/server";
 
-export const dynamic = "force-dynamic"
+export const dynamic = "force-dynamic";
 
 export default async function SignInPage() {
-  const auth = getAuthServer()
-  const { data } = auth ? await auth.getSession() : { data: null }
+  const auth = getAuthServer();
+  const { data } = auth ? await auth.getSession() : { data: null };
 
   if (data?.user) {
-    redirect("/dashboard")
+    redirect("/dashboard");
   }
 
   return (
@@ -58,5 +58,5 @@ export default async function SignInPage() {
         </div>
       </div>
     </main>
-  )
+  );
 }

@@ -29,13 +29,13 @@
 
 .shell {
   --bg: #161716;
-  --surface: #1E1F1E;
-  --ink: #E8E8E4;
-  --ink-secondary: #BCBDB6;
-  --muted: #8B8E84;
-  --faint: #5C5F56;
+  --surface: #1e1f1e;
+  --ink: #e8e8e4;
+  --ink-secondary: #bcbdb6;
+  --muted: #8b8e84;
+  --faint: #5c5f56;
   --line: rgba(255, 255, 255, 0.08);
-  --accent: #E8E8E4;
+  --accent: #e8e8e4;
   --accent-text: #111210;
   --radius: 12px;
   --radius-sm: 8px;
@@ -47,7 +47,12 @@
   gap: 10px;
   padding: 12px;
   color: var(--ink);
-  font-family: "Outfit Variable", "Outfit", system-ui, -apple-system, sans-serif;
+  font-family:
+    "Outfit Variable",
+    "Outfit",
+    system-ui,
+    -apple-system,
+    sans-serif;
   font-size: 14px;
   line-height: 1.5;
   background: var(--bg);
@@ -172,7 +177,9 @@
   font-weight: 500;
   padding: 4px 10px;
   cursor: pointer;
-  transition: color 120ms, border-color 120ms;
+  transition:
+    color 120ms,
+    border-color 120ms;
 }
 
 .switchButton:hover {
@@ -219,7 +226,9 @@
   opacity: 0;
   pointer-events: none;
   transform: translateY(3px);
-  transition: opacity 120ms ease, transform 120ms ease;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
 }
 
 .infoWrap:hover .tooltip,
@@ -239,7 +248,11 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 120ms, border-color 120ms, opacity 120ms, box-shadow 120ms;
+  transition:
+    background 120ms,
+    border-color 120ms,
+    opacity 120ms,
+    box-shadow 120ms;
 }
 
 .primaryButton {
@@ -422,7 +435,9 @@
   height: 14px;
   color: var(--faint);
   opacity: 0;
-  transition: opacity 150ms, transform 200ms;
+  transition:
+    opacity 150ms,
+    transform 200ms;
   flex-shrink: 0;
 }
 

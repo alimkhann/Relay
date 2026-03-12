@@ -1,58 +1,70 @@
-import Link from "next/link"
-import type { ProjectStateStatusDto } from "@relay/shared"
+import Link from "next/link";
+import type { ProjectStateStatusDto } from "@relay/shared";
 
-import { AppShell } from "@/components/layout/app-shell"
-import { PacketList } from "@/components/context/packet-list"
-import { CreateProjectForm } from "@/components/projects/create-project-form"
-import { ProjectPicker } from "@/components/projects/project-picker"
-import { ActivityFeed } from "@/components/activity/activity-feed"
-import { CollapsibleSection } from "@/components/ui/collapsible-section"
-import { Button } from "@/components/ui/button"
-import { requireSessionViewer } from "@/server/policies/viewer"
-import { getProjectDashboardForUser, listProjectsForUser } from "@/server/services/project-service"
+import { AppShell } from "@/components/layout/app-shell";
+import { PacketList } from "@/components/context/packet-list";
+import { CreateProjectForm } from "@/components/projects/create-project-form";
+import { ProjectPicker } from "@/components/projects/project-picker";
+import { ActivityFeed } from "@/components/activity/activity-feed";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
+import { Button } from "@/components/ui/button";
+import { requireSessionViewer } from "@/server/policies/viewer";
+import {
+  getProjectDashboardForUser,
+  listProjectsForUser,
+} from "@/server/services/project-service";
 
-export const dynamic = "force-dynamic"
+export const dynamic = "force-dynamic";
 
 function describeStatus(status: ProjectStateStatusDto | undefined) {
-  if (!status) return "Waiting for the first chat."
-  if (status.projectStateReady) return "Ready for next chat"
-  if (status.digestStatus === "running" || status.digestStatus === "pending") return "Updating brief…"
-  if (status.digestStatus === "timed_out") return "Retrying update…"
-  if (status.digestStatus === "failed") return status.digestErrorMessage ?? "Needs another chat"
-  return status.rawCapturePresent ? "Preparing brief…" : "Waiting for the first chat."
+  if (!status) return "Waiting for the first chat.";
+  if (status.projectStateReady) return "Ready for next chat";
+  if (status.digestStatus === "running" || status.digestStatus === "pending")
+    return "Updating brief…";
+  if (status.digestStatus === "timed_out") return "Retrying update…";
+  if (status.digestStatus === "failed")
+    return status.digestErrorMessage ?? "Needs another chat";
+  return status.rawCapturePresent
+    ? "Preparing brief…"
+    : "Waiting for the first chat.";
 }
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ project?: string }>
+  searchParams: Promise<{ project?: string }>;
 }) {
-  const viewer = await requireSessionViewer()
-  const projects = await listProjectsForUser(viewer.userId)
-  const { project: selectedProjectId } = await searchParams
+  const viewer = await requireSessionViewer();
+  const projects = await listProjectsForUser(viewer.userId);
+  const { project: selectedProjectId } = await searchParams;
   const currentProject =
     (selectedProjectId
       ? projects.find((p) => p.id === selectedProjectId)
-      : projects[0]) ?? projects[0] ?? null
+      : projects[0]) ??
+    projects[0] ??
+    null;
   const dashboard = currentProject
     ? await getProjectDashboardForUser(viewer.userId, currentProject.id)
-    : null
+    : null;
 
-  const decisions = dashboard?.projectState?.decisions ?? []
-  const constraints = dashboard?.projectState?.constraints ?? []
-  const openTasks = dashboard?.projectState?.openTasks ?? []
+  const decisions = dashboard?.projectState?.decisions ?? [];
+  const constraints = dashboard?.projectState?.constraints ?? [];
+  const openTasks = dashboard?.projectState?.openTasks ?? [];
 
-  const statusReady = dashboard?.stateStatus?.projectStateReady
-  const statusText = describeStatus(dashboard?.stateStatus)
+  const statusReady = dashboard?.stateStatus?.projectStateReady;
+  const statusText = describeStatus(dashboard?.stateStatus);
 
   return (
     <AppShell>
       {/* ─── First-run: no projects ─── */}
       {!currentProject ? (
         <section className="mx-auto max-w-lg py-12">
-          <h1 className="text-2xl font-bold tracking-tight">Create your first project</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Create your first project
+          </h1>
           <p className="mt-2 text-sm text-[var(--relay-muted)]">
-            Relay keeps a project brief ready so you never re-explain from scratch.
+            Relay keeps a project brief ready so you never re-explain from
+            scratch.
           </p>
           <div className="mt-8">
             <CreateProjectForm />
@@ -136,7 +148,9 @@ export default async function DashboardPage({
                       ))}
                     </ul>
                   ) : (
-                    <p className="px-3 text-sm text-[var(--relay-muted)]">None yet</p>
+                    <p className="px-3 text-sm text-[var(--relay-muted)]">
+                      None yet
+                    </p>
                   )}
                 </div>
 
@@ -158,7 +172,9 @@ export default async function DashboardPage({
                       ))}
                     </ul>
                   ) : (
-                    <p className="px-3 text-sm text-[var(--relay-muted)]">None yet</p>
+                    <p className="px-3 text-sm text-[var(--relay-muted)]">
+                      None yet
+                    </p>
                   )}
                 </div>
 
@@ -180,7 +196,9 @@ export default async function DashboardPage({
                       ))}
                     </ul>
                   ) : (
-                    <p className="px-3 text-sm text-[var(--relay-muted)]">None yet</p>
+                    <p className="px-3 text-sm text-[var(--relay-muted)]">
+                      None yet
+                    </p>
                   )}
                 </div>
               </div>
@@ -201,5 +219,5 @@ export default async function DashboardPage({
         </>
       )}
     </AppShell>
-  )
+  );
 }

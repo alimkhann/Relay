@@ -1,13 +1,13 @@
-"use client"
+"use client";
 
-import { useState, useTransition } from "react"
+import { useState, useTransition } from "react";
 
-import { authClient } from "@/lib/auth/client"
-import { Button } from "@/components/ui/button"
+import { authClient } from "@/lib/auth/client";
+import { Button } from "@/components/ui/button";
 
 export function GoogleSignInButton() {
-  const [pending, startTransition] = useTransition()
-  const [error, setError] = useState<string | null>(null)
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
 
   return (
     <div className="space-y-3">
@@ -16,21 +16,26 @@ export function GoogleSignInButton() {
         disabled={pending}
         onClick={() =>
           startTransition(async () => {
-            setError(null)
+            setError(null);
 
             try {
               await authClient.signIn.social({
                 provider: "google",
-                callbackURL: "/dashboard"
-              })
+                callbackURL: "/dashboard",
+              });
             } catch (cause) {
-              setError(cause instanceof Error ? cause.message : "Google sign-in failed.")
+              setError(
+                cause instanceof Error
+                  ? cause.message
+                  : "Google sign-in failed.",
+              );
             }
           })
-        }>
+        }
+      >
         {pending ? "Opening Google…" : "Continue with Google"}
       </Button>
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
     </div>
-  )
+  );
 }

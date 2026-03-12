@@ -2,78 +2,97 @@
 
 /* ─── Light theme (default) ─── */
 :root {
-  --relay-bg: #FAFAF8;
-  --relay-surface: #FFFFFF;
-  --relay-surface-raised: #FFFFFF;
+  --relay-bg: #fafaf8;
+  --relay-surface: #ffffff;
+  --relay-surface-raised: #ffffff;
   --relay-ink: #111210;
-  --relay-ink-secondary: #3D3F39;
-  --relay-muted: #7A7D73;
-  --relay-faint: #A8AAA1;
+  --relay-ink-secondary: #3d3f39;
+  --relay-muted: #7a7d73;
+  --relay-faint: #a8aaa1;
   --relay-line: rgba(17, 18, 16, 0.07);
   --relay-line-strong: rgba(17, 18, 16, 0.13);
-  --relay-accent: #1A1D1A;
-  --relay-accent-hover: #0A0C0A;
-  --relay-accent-text: #F5F5F3;
-  --relay-soft: #F2F1ED;
-  --relay-soft-hover: #ECEAE5;
-  --relay-success: #1B7A43;
-  --relay-warning: #B8860B;
-  --relay-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --relay-accent: #1a1d1a;
+  --relay-accent-hover: #0a0c0a;
+  --relay-accent-text: #f5f5f3;
+  --relay-soft: #f2f1ed;
+  --relay-soft-hover: #eceae5;
+  --relay-success: #1b7a43;
+  --relay-warning: #b8860b;
+  --relay-shadow-sm:
+    0 1px 2px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.04);
   --relay-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.06);
-  --relay-shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.04), 0 12px 40px rgba(0, 0, 0, 0.08);
+  --relay-shadow-lg:
+    0 2px 6px rgba(0, 0, 0, 0.04), 0 12px 40px rgba(0, 0, 0, 0.08);
   --relay-radius-sm: 8px;
   --relay-radius: 12px;
   --relay-radius-lg: 16px;
-  --relay-hero-overlay: linear-gradient(180deg, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.02) 40%, rgba(0,0,0,0.55) 100%);
+  --relay-hero-overlay: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.1) 0%,
+    rgba(0, 0, 0, 0.02) 40%,
+    rgba(0, 0, 0, 0.55) 100%
+  );
 }
 
 /* ─── Dark theme ─── */
 .dark {
   --relay-bg: #161716;
-  --relay-surface: #1C1D1C;
+  --relay-surface: #1c1d1c;
   --relay-surface-raised: #232423;
-  --relay-ink: #E8E8E4;
-  --relay-ink-secondary: #BCBDB6;
-  --relay-muted: #8B8E84;
-  --relay-faint: #5C5F56;
+  --relay-ink: #e8e8e4;
+  --relay-ink-secondary: #bcbdb6;
+  --relay-muted: #8b8e84;
+  --relay-faint: #5c5f56;
   --relay-line: rgba(255, 255, 255, 0.07);
   --relay-line-strong: rgba(255, 255, 255, 0.13);
-  --relay-accent: #E8E8E4;
-  --relay-accent-hover: #FFFFFF;
+  --relay-accent: #e8e8e4;
+  --relay-accent-hover: #ffffff;
   --relay-accent-text: #111210;
-  --relay-soft: #1A1B1A;
+  --relay-soft: #1a1b1a;
   --relay-soft-hover: #222322;
-  --relay-success: #2DA85C;
-  --relay-warning: #D4A017;
+  --relay-success: #2da85c;
+  --relay-warning: #d4a017;
   --relay-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
   --relay-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.2);
-  --relay-shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.3), 0 12px 40px rgba(0, 0, 0, 0.3);
-  --relay-hero-overlay: linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.08) 40%, rgba(0,0,0,0.70) 100%);
+  --relay-shadow-lg:
+    0 2px 6px rgba(0, 0, 0, 0.3), 0 12px 40px rgba(0, 0, 0, 0.3);
+  --relay-hero-overlay: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.25) 0%,
+    rgba(0, 0, 0, 0.08) 40%,
+    rgba(0, 0, 0, 0.7) 100%
+  );
 }
 
 /* ─── System preference auto-apply ─── */
 @media (prefers-color-scheme: dark) {
   :root:not(.light) {
     --relay-bg: #161716;
-    --relay-surface: #1C1D1C;
+    --relay-surface: #1c1d1c;
     --relay-surface-raised: #232423;
-    --relay-ink: #E8E8E4;
-    --relay-ink-secondary: #BCBDB6;
-    --relay-muted: #8B8E84;
-    --relay-faint: #5C5F56;
+    --relay-ink: #e8e8e4;
+    --relay-ink-secondary: #bcbdb6;
+    --relay-muted: #8b8e84;
+    --relay-faint: #5c5f56;
     --relay-line: rgba(255, 255, 255, 0.07);
     --relay-line-strong: rgba(255, 255, 255, 0.13);
-    --relay-accent: #E8E8E4;
-    --relay-accent-hover: #FFFFFF;
+    --relay-accent: #e8e8e4;
+    --relay-accent-hover: #ffffff;
     --relay-accent-text: #111210;
-    --relay-soft: #1A1B1A;
+    --relay-soft: #1a1b1a;
     --relay-soft-hover: #222322;
-    --relay-success: #2DA85C;
-    --relay-warning: #D4A017;
+    --relay-success: #2da85c;
+    --relay-warning: #d4a017;
     --relay-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
     --relay-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.2);
-    --relay-shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.3), 0 12px 40px rgba(0, 0, 0, 0.3);
-    --relay-hero-overlay: linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.08) 40%, rgba(0,0,0,0.70) 100%);
+    --relay-shadow-lg:
+      0 2px 6px rgba(0, 0, 0, 0.3), 0 12px 40px rgba(0, 0, 0, 0.3);
+    --relay-hero-overlay: linear-gradient(
+      180deg,
+      rgba(0, 0, 0, 0.25) 0%,
+      rgba(0, 0, 0, 0.08) 40%,
+      rgba(0, 0, 0, 0.7) 100%
+    );
   }
 }
 
@@ -86,13 +105,20 @@ body {
   min-height: 100vh;
   background: var(--relay-bg);
   color: var(--relay-ink);
-  font-family: "Outfit Variable", "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family:
+    "Outfit Variable",
+    "Outfit",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 .font-serif {
-  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  font-family:
+    "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
 }
 
 a,

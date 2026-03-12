@@ -20,7 +20,13 @@
   "manifest": {
     "name": "Relay",
     "description": "Keep project memory moving between ChatGPT, Claude, and Perplexity.",
-    "permissions": ["storage", "tabs", "activeTab", "sidePanel", "identity"],
+    "permissions": [
+      "storage",
+      "tabs",
+      "activeTab",
+      "sidePanel",
+      "identity"
+    ],
     "host_permissions": [
       "https://chatgpt.com/*",
       "https://chat.openai.com/*",
@@ -44,7 +50,9 @@
           "https://www.perplexity.ai/*",
           "https://claude.ai/*"
         ],
-        "js": ["../static/relay-content.js"],
+        "js": [
+          "../static/relay-content.js"
+        ],
         "run_at": "document_idle"
       }
     ],

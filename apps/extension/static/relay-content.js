@@ -1,49 +1,82 @@
 (function () {
-  const PAGE_STABLE_MS = 1800
-  const FRESH_CHAT_STABILIZE_MS = 800
+  const PAGE_STABLE_MS = 1800;
+  const FRESH_CHAT_STABILIZE_MS = 800;
 
   const siteConfigs = [
     {
       platform: "chatgpt",
       hosts: ["chatgpt.com", "chat.openai.com"],
       turnSelectors: ["[data-message-author-role]"],
-      promptSelectors: ["#prompt-textarea", "form #prompt-textarea", "form [contenteditable='true']", "form textarea", "main textarea"],
-      streamingSelectors: ["button[aria-label*='Stop']", "[data-testid='stop-button']"],
+      promptSelectors: [
+        "#prompt-textarea",
+        "form #prompt-textarea",
+        "form [contenteditable='true']",
+        "form textarea",
+        "main textarea",
+      ],
+      streamingSelectors: [
+        "button[aria-label*='Stop']",
+        "[data-testid='stop-button']",
+      ],
       getRole(node) {
-        return node.getAttribute("data-message-author-role") || "unknown"
-      }
+        return node.getAttribute("data-message-author-role") || "unknown";
+      },
     },
     {
       platform: "codex",
       hosts: ["codex.openai.com"],
       turnSelectors: ["[data-message-author-role]"],
-      promptSelectors: ["#prompt-textarea", "form #prompt-textarea", "form [contenteditable='true']", "form textarea", "main textarea"],
-      streamingSelectors: ["button[aria-label*='Stop']", "[data-testid='stop-button']"],
+      promptSelectors: [
+        "#prompt-textarea",
+        "form #prompt-textarea",
+        "form [contenteditable='true']",
+        "form textarea",
+        "main textarea",
+      ],
+      streamingSelectors: [
+        "button[aria-label*='Stop']",
+        "[data-testid='stop-button']",
+      ],
       getRole(node) {
-        return node.getAttribute("data-message-author-role") || "unknown"
-      }
+        return node.getAttribute("data-message-author-role") || "unknown";
+      },
     },
     {
       platform: "claude",
       hosts: ["claude.ai"],
-      turnSelectors: ["[data-is-streaming]", "main [data-testid='message-human']", "main [data-testid='message-assistant']"],
+      turnSelectors: [
+        "[data-is-streaming]",
+        "main [data-testid='message-human']",
+        "main [data-testid='message-assistant']",
+      ],
       promptSelectors: ["div[contenteditable='true']", "textarea"],
       streamingSelectors: ["[data-is-streaming='true']"],
       getRole(node) {
-        return node.getAttribute("data-testid") === "message-human" ? "user" : "assistant"
-      }
+        return node.getAttribute("data-testid") === "message-human"
+          ? "user"
+          : "assistant";
+      },
     },
     {
       platform: "perplexity",
       hosts: ["www.perplexity.ai", "perplexity.ai"],
-      turnSelectors: ["main [data-testid='answer']", "main [data-testid='query']", "main article"],
+      turnSelectors: [
+        "main [data-testid='answer']",
+        "main [data-testid='query']",
+        "main article",
+      ],
       promptSelectors: ["textarea", "[contenteditable='true']"],
-      streamingSelectors: ["button[aria-label*='Stop']", "[data-testid='stop-generating']"],
+      streamingSelectors: [
+        "button[aria-label*='Stop']",
+        "[data-testid='stop-generating']",
+      ],
       getRole(node) {
-        return node.getAttribute("data-testid") === "query" ? "user" : "assistant"
-      }
-    }
-  ]
+        return node.getAttribute("data-testid") === "query"
+          ? "user"
+          : "assistant";
+      },
+    },
+  ];
 
   const relayChipState = {
     dismissed: false,
@@ -59,8 +92,8 @@
     buttonError: "",
     exitTimer: null,
     resetButtonTimer: null,
-    mounted: false
-  }
+    mounted: false,
+  };
 
   function escapeHtml(value) {
     return String(value)
@@ -68,11 +101,11 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;")
+      .replace(/'/g, "&#39;");
   }
 
   function normalizeText(input) {
-    return (input || "").replace(/\s+/g, " ").trim()
+    return (input || "").replace(/\s+/g, " ").trim();
   }
 
   function cleanTurnContent(input) {
@@ -80,7 +113,7 @@
       .replace(/^You said:\s*/i, "")
       .replace(/^ChatGPT said:\s*/i, "")
       .replace(/^Claude said:\s*/i, "")
-      .replace(/^Codex said:\s*/i, "")
+      .replace(/^Codex said:\s*/i, "");
   }
 
   function computeSignature(turns, metadata, platform) {
@@ -91,204 +124,246 @@
       turns: turns.map((turn) => ({
         role: turn.role,
         content: turn.content,
-        turnIndex: turn.turnIndex
-      }))
-    })
+        turnIndex: turn.turnIndex,
+      })),
+    });
 
-    let hash = 0
+    let hash = 0;
     for (let index = 0; index < payload.length; index += 1) {
-      hash = (hash << 5) - hash + payload.charCodeAt(index)
-      hash |= 0
+      hash = (hash << 5) - hash + payload.charCodeAt(index);
+      hash |= 0;
     }
 
-    return String(hash)
+    return String(hash);
   }
 
   function getSiteConfig() {
-    const hostname = window.location.hostname
-    return siteConfigs.find((config) => config.hosts.includes(hostname)) || null
+    const hostname = window.location.hostname;
+    return (
+      siteConfigs.find((config) => config.hosts.includes(hostname)) || null
+    );
   }
 
   function collectTurns(config) {
-    const seenNodes = new Set()
-    const seenContent = new Set()
-    const turns = []
+    const seenNodes = new Set();
+    const seenContent = new Set();
+    const turns = [];
 
     for (const selector of config.turnSelectors) {
       for (const node of document.querySelectorAll(selector)) {
-        if (seenNodes.has(node)) continue
-        seenNodes.add(node)
+        if (seenNodes.has(node)) continue;
+        seenNodes.add(node);
 
-        const role = config.getRole(node)
-        const content = cleanTurnContent(node.textContent)
-        if (!content || role === "unknown") continue
+        const role = config.getRole(node);
+        const content = cleanTurnContent(node.textContent);
+        if (!content || role === "unknown") continue;
 
-        const contentKey = `${role}:${content.toLowerCase()}`
-        if (seenContent.has(contentKey)) continue
-        seenContent.add(contentKey)
+        const contentKey = `${role}:${content.toLowerCase()}`;
+        if (seenContent.has(contentKey)) continue;
+        seenContent.add(contentKey);
 
         turns.push({
           role,
           content,
           turnIndex: turns.length,
-          rawHtml: node.innerHTML || null
-        })
+          rawHtml: node.innerHTML || null,
+        });
       }
     }
 
-    return turns
+    return turns;
   }
 
   function getPageMetadata() {
-    const url = new URL(window.location.href)
+    const url = new URL(window.location.href);
     return {
       title: document.title || null,
       url: url.toString(),
       pathname: url.pathname,
       pageFingerprint: url.pathname.split("/").filter(Boolean).pop() || null,
-      domain: url.hostname
-    }
+      domain: url.hostname,
+    };
   }
 
   function findPrompt(config) {
     for (const selector of config.promptSelectors) {
-      const elements = Array.from(document.querySelectorAll(selector))
+      const elements = Array.from(document.querySelectorAll(selector));
 
       for (const element of elements) {
-        const rect = element.getBoundingClientRect()
-        const style = window.getComputedStyle(element)
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
         const isVisible =
           rect.width > 0 &&
           rect.height > 0 &&
           style.visibility !== "hidden" &&
           style.display !== "none" &&
-          !element.hasAttribute("disabled")
+          !element.hasAttribute("disabled");
 
-        if (!isVisible) continue
+        if (!isVisible) continue;
 
         return {
           element,
-          isContentEditable: Boolean(element.isContentEditable)
-        }
+          isContentEditable: Boolean(element.isContentEditable),
+        };
       }
     }
 
-    return null
+    return null;
   }
 
   function readPromptText(target) {
     if (target.isContentEditable) {
-      return normalizeText(target.element.textContent)
+      return normalizeText(target.element.textContent);
     }
 
     if ("value" in target.element) {
-      return normalizeText(target.element.value)
+      return normalizeText(target.element.value);
     }
 
-    return ""
+    return "";
   }
 
   function insertIntoPrompt(config, text) {
-    const target = findPrompt(config)
+    const target = findPrompt(config);
     if (!target) {
-      return { ok: false, reason: "Prompt not found." }
+      return { ok: false, reason: "Prompt not found." };
     }
 
-    const element = target.element
-    const expected = normalizeText(text)
+    const element = target.element;
+    const expected = normalizeText(text);
 
     if (target.isContentEditable) {
-      element.focus()
-      const selection = window.getSelection()
-      const range = document.createRange()
-      range.selectNodeContents(element)
-      selection.removeAllRanges()
-      selection.addRange(range)
+      element.focus();
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      selection.removeAllRanges();
+      selection.addRange(range);
 
-      let inserted = false
+      let inserted = false;
       if (typeof document.execCommand === "function") {
-        inserted = document.execCommand("insertText", false, text)
+        inserted = document.execCommand("insertText", false, text);
       }
 
       if (!inserted) {
         const html = text
           .split("\n")
           .map((line) => `<p>${line ? escapeHtml(line) : "<br>"}</p>`)
-          .join("")
+          .join("");
 
-        element.innerHTML = html
+        element.innerHTML = html;
       }
 
-      element.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, cancelable: true, data: text, inputType: "insertText" }))
-      element.dispatchEvent(new InputEvent("input", { bubbles: true, data: text, inputType: "insertText" }))
-      element.dispatchEvent(new Event("change", { bubbles: true }))
+      element.dispatchEvent(
+        new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          data: text,
+          inputType: "insertText",
+        }),
+      );
+      element.dispatchEvent(
+        new InputEvent("input", {
+          bubbles: true,
+          data: text,
+          inputType: "insertText",
+        }),
+      );
+      element.dispatchEvent(new Event("change", { bubbles: true }));
 
       return readPromptText(target).includes(expected)
         ? { ok: true }
-        : { ok: false, reason: "Prompt editor did not accept the inserted text." }
+        : {
+            ok: false,
+            reason: "Prompt editor did not accept the inserted text.",
+          };
     }
 
     if ("value" in element) {
-      element.focus()
+      element.focus();
       const prototype =
         element instanceof HTMLTextAreaElement
           ? HTMLTextAreaElement.prototype
           : element instanceof HTMLInputElement
             ? HTMLInputElement.prototype
-            : null
+            : null;
 
-      const descriptor = prototype ? Object.getOwnPropertyDescriptor(prototype, "value") : null
+      const descriptor = prototype
+        ? Object.getOwnPropertyDescriptor(prototype, "value")
+        : null;
       if (descriptor && typeof descriptor.set === "function") {
-        descriptor.set.call(element, text)
+        descriptor.set.call(element, text);
       } else {
-        element.value = text
+        element.value = text;
       }
-      element.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, cancelable: true, data: text, inputType: "insertText" }))
-      element.dispatchEvent(new InputEvent("input", { bubbles: true, data: text, inputType: "insertText" }))
-      element.dispatchEvent(new Event("change", { bubbles: true }))
+      element.dispatchEvent(
+        new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          data: text,
+          inputType: "insertText",
+        }),
+      );
+      element.dispatchEvent(
+        new InputEvent("input", {
+          bubbles: true,
+          data: text,
+          inputType: "insertText",
+        }),
+      );
+      element.dispatchEvent(new Event("change", { bubbles: true }));
 
       return readPromptText(target).includes(expected)
         ? { ok: true }
-        : { ok: false, reason: "Prompt textarea did not accept the inserted text." }
+        : {
+            ok: false,
+            reason: "Prompt textarea did not accept the inserted text.",
+          };
     }
 
-    return { ok: false, reason: "No editable prompt field found." }
+    return { ok: false, reason: "No editable prompt field found." };
   }
 
   function hasStreamingActivity(config) {
-    return config.streamingSelectors.some((selector) => document.querySelector(selector))
+    return config.streamingSelectors.some((selector) =>
+      document.querySelector(selector),
+    );
   }
 
   function inferFreshRoute(config, metadata) {
-    const pathname = metadata.pathname || "/"
+    const pathname = metadata.pathname || "/";
 
     if (config.platform === "claude") {
-      return pathname.includes("/new")
+      return pathname.includes("/new");
     }
 
-    return pathname === "/"
+    return pathname === "/";
   }
 
   function computePageState(config) {
     if (!config) {
-      return { supported: false }
+      return { supported: false };
     }
 
-    const turns = collectTurns(config)
-    const metadata = getPageMetadata()
-    const promptTarget = findPrompt(config)
-    const isFreshRoute = inferFreshRoute(config, metadata)
-    const promptReady = Boolean(promptTarget)
-    const candidateFresh = isFreshRoute && promptReady && turns.length === 0
+    const turns = collectTurns(config);
+    const metadata = getPageMetadata();
+    const promptTarget = findPrompt(config);
+    const isFreshRoute = inferFreshRoute(config, metadata);
+    const promptReady = Boolean(promptTarget);
+    const candidateFresh = isFreshRoute && promptReady && turns.length === 0;
 
     if (!candidateFresh) {
-      relayChipState.freshCandidateSince = 0
+      relayChipState.freshCandidateSince = 0;
     } else if (!relayChipState.freshCandidateSince) {
-      relayChipState.freshCandidateSince = Date.now()
+      relayChipState.freshCandidateSince = Date.now();
     }
 
-    const isStable = Date.now() - relayChipState.lastMeaningfulMutationAt >= PAGE_STABLE_MS
-    const isFreshChat = candidateFresh && Date.now() - relayChipState.freshCandidateSince >= FRESH_CHAT_STABILIZE_MS
+    const isStable =
+      Date.now() - relayChipState.lastMeaningfulMutationAt >= PAGE_STABLE_MS;
+    const isFreshChat =
+      candidateFresh &&
+      Date.now() - relayChipState.freshCandidateSince >=
+        FRESH_CHAT_STABILIZE_MS;
 
     return {
       supported: true,
@@ -304,8 +379,8 @@
       isFreshRoute,
       isFreshChat,
       isStable,
-      isStreaming: hasStreamingActivity(config)
-    }
+      isStreaming: hasStreamingActivity(config),
+    };
   }
 
   function buildPageStateKey(pageState) {
@@ -318,8 +393,8 @@
       isFreshRoute: pageState.isFreshRoute,
       isFreshChat: pageState.isFreshChat,
       isStable: pageState.isStable,
-      isStreaming: pageState.isStreaming
-    })
+      isStreaming: pageState.isStreaming,
+    });
   }
 
   function buildFallbackState(pageState) {
@@ -339,56 +414,58 @@
         updatedAt: null,
         updatedLabel: null,
         recentChatCount: 0,
-        savedContextCount: 0
+        savedContextCount: 0,
       },
       remoteStatus: "loading",
       issue: null,
-      insertKind: pageState.isFreshChat ? "fresh_chat_bootstrap" : "quick_continuity",
+      insertKind: pageState.isFreshChat
+        ? "fresh_chat_bootstrap"
+        : "quick_continuity",
       lastSuccessfulSyncAt: null,
-      capturePending: false
-    }
+      capturePending: false,
+    };
   }
 
   function isValidActiveProjectState(state) {
     return Boolean(
       state &&
-        typeof state === "object" &&
-        state.page &&
-        typeof state.page.supported === "boolean" &&
-        Array.isArray(state.projectOptions)
-    )
+      typeof state === "object" &&
+      state.page &&
+      typeof state.page.supported === "boolean" &&
+      Array.isArray(state.projectOptions),
+    );
   }
 
   function sendRuntimeMessage(message) {
     return new Promise((resolve) => {
       chrome.runtime.sendMessage(message, (response) => {
         if (chrome.runtime.lastError) {
-          resolve({ ok: false, error: chrome.runtime.lastError.message })
-          return
+          resolve({ ok: false, error: chrome.runtime.lastError.message });
+          return;
         }
 
-        resolve(response)
-      })
-    })
+        resolve(response);
+      });
+    });
   }
 
   function clearChipTimers() {
     if (relayChipState.exitTimer !== null) {
-      window.clearTimeout(relayChipState.exitTimer)
-      relayChipState.exitTimer = null
+      window.clearTimeout(relayChipState.exitTimer);
+      relayChipState.exitTimer = null;
     }
 
     if (relayChipState.resetButtonTimer !== null) {
-      window.clearTimeout(relayChipState.resetButtonTimer)
-      relayChipState.resetButtonTimer = null
+      window.clearTimeout(relayChipState.resetButtonTimer);
+      relayChipState.resetButtonTimer = null;
     }
   }
 
   function ensureInlineChipStyles() {
-    if (document.getElementById("relay-inline-chip-styles")) return
+    if (document.getElementById("relay-inline-chip-styles")) return;
 
-    const style = document.createElement("style")
-    style.id = "relay-inline-chip-styles"
+    const style = document.createElement("style");
+    style.id = "relay-inline-chip-styles";
     style.textContent = `
       .relay-inline-chip {
         width: min(340px, calc(100vw - 32px));
@@ -639,99 +716,106 @@
         -webkit-text-fill-color: transparent;
         animation: relay-shimmer 2s ease-in-out infinite;
       }
-    `
+    `;
 
-    document.head.appendChild(style)
+    document.head.appendChild(style);
   }
 
   function getInlineChipRoot() {
-    ensureInlineChipStyles()
-    let root = document.getElementById("relay-inline-chip")
+    ensureInlineChipStyles();
+    let root = document.getElementById("relay-inline-chip");
     if (!root) {
-      root = document.createElement("div")
-      root.id = "relay-inline-chip"
-      root.className = "relay-inline-chip relay-inline-chip--floating"
-      document.body.appendChild(root)
+      root = document.createElement("div");
+      root.id = "relay-inline-chip";
+      root.className = "relay-inline-chip relay-inline-chip--floating";
+      document.body.appendChild(root);
       requestAnimationFrame(() => {
-        root.classList.add("relay-inline-chip--visible")
-      })
+        root.classList.add("relay-inline-chip--visible");
+      });
     }
 
-    return root
+    return root;
   }
 
   function removeInlineChipImmediately() {
-    clearChipTimers()
-    const root = document.getElementById("relay-inline-chip")
+    clearChipTimers();
+    const root = document.getElementById("relay-inline-chip");
     if (root) {
-      root.remove()
+      root.remove();
     }
   }
 
   function hideInlineChipWithMotion() {
-    clearChipTimers()
-    const root = document.getElementById("relay-inline-chip")
-    if (!root) return
+    clearChipTimers();
+    const root = document.getElementById("relay-inline-chip");
+    if (!root) return;
 
-    root.classList.add("relay-inline-chip--exiting")
+    root.classList.add("relay-inline-chip--exiting");
     relayChipState.exitTimer = window.setTimeout(() => {
-      root.remove()
-      relayChipState.exitTimer = null
-    }, 210)
+      root.remove();
+      relayChipState.exitTimer = null;
+    }, 210);
   }
 
   function clamp(value, min, max) {
-    return Math.min(Math.max(value, min), max)
+    return Math.min(Math.max(value, min), max);
   }
 
   function setChipPlacement(config, root) {
-    const promptTarget = findPrompt(config)
+    const promptTarget = findPrompt(config);
 
     if (!promptTarget) {
-      root.classList.remove("relay-inline-chip--anchored")
-      root.classList.add("relay-inline-chip--floating")
-      root.style.left = ""
-      root.style.top = ""
-      return
+      root.classList.remove("relay-inline-chip--anchored");
+      root.classList.add("relay-inline-chip--floating");
+      root.style.left = "";
+      root.style.top = "";
+      return;
     }
 
-    const rect = promptTarget.element.getBoundingClientRect()
-    const chipWidth = Math.min(root.offsetWidth || 372, window.innerWidth - 32)
-    const chipHeight = root.offsetHeight || 200
-    const left = clamp(rect.right - chipWidth, 16, Math.max(16, window.innerWidth - chipWidth - 16))
+    const rect = promptTarget.element.getBoundingClientRect();
+    const chipWidth = Math.min(root.offsetWidth || 372, window.innerWidth - 32);
+    const chipHeight = root.offsetHeight || 200;
+    const left = clamp(
+      rect.right - chipWidth,
+      16,
+      Math.max(16, window.innerWidth - chipWidth - 16),
+    );
 
-    let top = rect.top - chipHeight - 12
+    let top = rect.top - chipHeight - 12;
     if (top < 16) {
-      top = rect.bottom + 12
+      top = rect.bottom + 12;
     }
     if (top + chipHeight > window.innerHeight - 16) {
-      top = Math.max(16, window.innerHeight - chipHeight - 16)
+      top = Math.max(16, window.innerHeight - chipHeight - 16);
     }
 
-    root.classList.remove("relay-inline-chip--floating")
-    root.classList.add("relay-inline-chip--anchored")
-    root.style.left = `${Math.round(left)}px`
-    root.style.top = `${Math.round(top)}px`
+    root.classList.remove("relay-inline-chip--floating");
+    root.classList.add("relay-inline-chip--anchored");
+    root.style.left = `${Math.round(left)}px`;
+    root.style.top = `${Math.round(top)}px`;
   }
 
   function getRenderableState() {
     if (isValidActiveProjectState(relayChipState.currentState)) {
-      return relayChipState.currentState
+      return relayChipState.currentState;
     }
 
     if (relayChipState.pageState && relayChipState.pageState.supported) {
-      return buildFallbackState(relayChipState.pageState)
+      return buildFallbackState(relayChipState.pageState);
     }
 
-    return null
+    return null;
   }
 
   function shouldRenderChip(activeState) {
-    if (!isValidActiveProjectState(activeState)) return false
-    if (!activeState.showCue || !activeState.page.supported) return false
-    if (relayChipState.dismissed) return false
+    if (!isValidActiveProjectState(activeState)) return false;
+    if (!activeState.showCue || !activeState.page.supported) return false;
+    if (relayChipState.dismissed) return false;
 
-    return Boolean(activeState.page.isFreshChat || relayChipState.forcedInsertKind === "quick_continuity")
+    return Boolean(
+      activeState.page.isFreshChat ||
+      relayChipState.forcedInsertKind === "quick_continuity",
+    );
   }
 
   function buildRenderKey(activeState) {
@@ -751,98 +835,114 @@
       canInsert: activeState.canInsert,
       capturePending: activeState.capturePending,
       freshnessText: activeState.freshnessText,
-      options: activeState.projectOptions.map((project) => project.id)
-    })
+      options: activeState.projectOptions.map((project) => project.id),
+    });
   }
 
   function getButtonLabel(activeState) {
     if (relayChipState.buttonMode === "loading") {
-      return '<span class="relay-inline-chip__shimmer">Inserting project brief…</span>'
+      return '<span class="relay-inline-chip__shimmer">Inserting project brief…</span>';
     }
 
     if (relayChipState.buttonMode === "success") {
-      return "Inserted"
+      return "Inserted";
     }
 
     if (relayChipState.buttonMode === "error" && relayChipState.buttonError) {
-      return escapeHtml(relayChipState.buttonError)
+      return escapeHtml(relayChipState.buttonError);
     }
 
     if (activeState.status === "updating") {
-      return "Updating your project brief"
+      return "Updating your project brief";
     }
 
     if (!activeState.canInsert) {
-      return "Project brief unavailable"
+      return "Project brief unavailable";
     }
 
-    return "Insert project brief"
+    return "Insert project brief";
   }
 
   async function invokeInsertFromChip() {
-    const activeState = getRenderableState()
+    const activeState = getRenderableState();
     if (!activeState || !activeState.canInsert) {
-      return { ok: false, reason: activeState?.issue?.detail ?? "Project brief unavailable." }
+      return {
+        ok: false,
+        reason: activeState?.issue?.detail ?? "Project brief unavailable.",
+      };
     }
 
-    clearChipTimers()
-    relayChipState.buttonMode = "loading"
-    relayChipState.buttonError = ""
-    renderInlineChip()
+    clearChipTimers();
+    relayChipState.buttonMode = "loading";
+    relayChipState.buttonError = "";
+    renderInlineChip();
 
-    const result = await sendRuntimeMessage({ type: "RELAY_INSERT_PROJECT_BRIEF" })
+    const result = await sendRuntimeMessage({
+      type: "RELAY_INSERT_PROJECT_BRIEF",
+    });
     if (!result || !result.ok) {
-      relayChipState.buttonMode = "error"
-      relayChipState.buttonError = result && result.reason ? result.reason : "Insert failed."
-      renderInlineChip()
+      relayChipState.buttonMode = "error";
+      relayChipState.buttonError =
+        result && result.reason ? result.reason : "Insert failed.";
+      renderInlineChip();
       relayChipState.resetButtonTimer = window.setTimeout(() => {
-        relayChipState.buttonMode = "idle"
-        relayChipState.buttonError = ""
-        renderInlineChip()
-      }, 1400)
-      return result
+        relayChipState.buttonMode = "idle";
+        relayChipState.buttonError = "";
+        renderInlineChip();
+      }, 1400);
+      return result;
     }
 
-    relayChipState.buttonMode = "success"
-    relayChipState.buttonError = ""
-    renderInlineChip()
+    relayChipState.buttonMode = "success";
+    relayChipState.buttonError = "";
+    renderInlineChip();
     relayChipState.exitTimer = window.setTimeout(() => {
-      relayChipState.dismissed = true
-      relayChipState.forcedInsertKind = null
-      hideInlineChipWithMotion()
-      relayChipState.buttonMode = "idle"
-    }, 120)
+      relayChipState.dismissed = true;
+      relayChipState.forcedInsertKind = null;
+      hideInlineChipWithMotion();
+      relayChipState.buttonMode = "idle";
+    }, 120);
 
-    return result
+    return result;
   }
 
   function renderInlineChip() {
-    const config = getSiteConfig()
-    const activeState = getRenderableState()
+    const config = getSiteConfig();
+    const activeState = getRenderableState();
 
     if (!config || !activeState || !shouldRenderChip(activeState)) {
-      removeInlineChipImmediately()
-      return
+      removeInlineChipImmediately();
+      return;
     }
 
-    const root = getInlineChipRoot()
-    const renderKey = buildRenderKey(activeState)
+    const root = getInlineChipRoot();
+    const renderKey = buildRenderKey(activeState);
     if (root.dataset.renderKey !== renderKey) {
       const projectOptions = activeState.projectOptions
         .map(
           (project) =>
-            `<option value="${escapeHtml(project.id)}"${project.id === activeState.projectId ? " selected" : ""}>${escapeHtml(project.name)}</option>`
+            `<option value="${escapeHtml(project.id)}"${project.id === activeState.projectId ? " selected" : ""}>${escapeHtml(project.name)}</option>`,
         )
-        .join("")
-      const shouldShowIssue = Boolean(activeState.issue) && (!activeState.canInsert || activeState.remoteStatus === "stale" || activeState.remoteStatus === "unavailable")
+        .join("");
+      const shouldShowIssue =
+        Boolean(activeState.issue) &&
+        (!activeState.canInsert ||
+          activeState.remoteStatus === "stale" ||
+          activeState.remoteStatus === "unavailable");
       const buttonClassName = [
         "relay-inline-chip__button",
-        relayChipState.buttonMode === "loading" ? "relay-inline-chip__button--loading" : "",
-        relayChipState.buttonMode === "success" ? "relay-inline-chip__button--success" : ""
+        relayChipState.buttonMode === "loading"
+          ? "relay-inline-chip__button--loading"
+          : "",
+        relayChipState.buttonMode === "success"
+          ? "relay-inline-chip__button--success"
+          : "",
       ]
         .filter(Boolean)
-        .join(" ")
-      const dotClass = activeState.canInsert ? "relay-inline-chip__dot--ready" : "relay-inline-chip__dot--waiting"
+        .join(" ");
+      const dotClass = activeState.canInsert
+        ? "relay-inline-chip__dot--ready"
+        : "relay-inline-chip__dot--waiting";
 
       root.innerHTML = `
         <div class="relay-inline-chip__body">
@@ -863,9 +963,12 @@
             }
           </div>
           <div class="relay-inline-chip__trust">
-            ${activeState.trust && (activeState.trust.recentChatCount > 0 || activeState.trust.savedContextCount > 0)
-              ? `<span>${activeState.trust.recentChatCount} chats · ${activeState.trust.savedContextCount} saved</span>`
-              : `<span>${escapeHtml(activeState.trustLine || "")}</span>`
+            ${
+              activeState.trust &&
+              (activeState.trust.recentChatCount > 0 ||
+                activeState.trust.savedContextCount > 0)
+                ? `<span>${activeState.trust.recentChatCount} chats · ${activeState.trust.savedContextCount} saved</span>`
+                : `<span>${escapeHtml(activeState.trustLine || "")}</span>`
             }${activeState.freshnessText ? ` · <span>${escapeHtml(activeState.freshnessText)}</span>` : ""}
           </div>
           <div class="relay-inline-chip__controls">
@@ -888,218 +991,241 @@
             }
           </div>
         </div>
-      `
+      `;
 
-      const closeButton = root.querySelector(".relay-inline-chip__close")
+      const closeButton = root.querySelector(".relay-inline-chip__close");
       if (closeButton) {
         closeButton.addEventListener("click", () => {
-          relayChipState.dismissed = true
-          relayChipState.forcedInsertKind = null
-          hideInlineChipWithMotion()
-        })
+          relayChipState.dismissed = true;
+          relayChipState.forcedInsertKind = null;
+          hideInlineChipWithMotion();
+        });
       }
 
-      const insertButton = root.querySelector(".relay-inline-chip__button")
+      const insertButton = root.querySelector(".relay-inline-chip__button");
       if (insertButton) {
         insertButton.addEventListener("click", async () => {
-          await invokeInsertFromChip()
-        })
+          await invokeInsertFromChip();
+        });
       }
 
-      const select = root.querySelector(".relay-inline-chip__select")
+      const select = root.querySelector(".relay-inline-chip__select");
       if (select) {
         select.addEventListener("change", async (event) => {
-          const nextProjectId = event.target.value
-          if (!nextProjectId) return
-          relayChipState.buttonMode = "idle"
-          relayChipState.buttonError = ""
+          const nextProjectId = event.target.value;
+          if (!nextProjectId) return;
+          relayChipState.buttonMode = "idle";
+          relayChipState.buttonError = "";
           await sendRuntimeMessage({
             type: "RELAY_SET_ACTIVE_PROJECT",
-            payload: { projectId: nextProjectId }
-          })
-        })
+            payload: { projectId: nextProjectId },
+          });
+        });
       }
 
-      root.dataset.renderKey = renderKey
+      root.dataset.renderKey = renderKey;
     }
 
     if (!root.classList.contains("relay-inline-chip--visible")) {
       requestAnimationFrame(() => {
-        root.classList.add("relay-inline-chip--visible")
-      })
+        root.classList.add("relay-inline-chip--visible");
+      });
     }
 
-    root.classList.remove("relay-inline-chip--exiting")
-    setChipPlacement(config, root)
+    root.classList.remove("relay-inline-chip--exiting");
+    setChipPlacement(config, root);
   }
 
   async function pushObservedPageState(force) {
-    const nextHref = window.location.href
+    const nextHref = window.location.href;
     if (relayChipState.href !== nextHref) {
-      relayChipState.href = nextHref
-      relayChipState.dismissed = false
-      relayChipState.forcedInsertKind = null
-      relayChipState.buttonMode = "idle"
-      relayChipState.buttonError = ""
-      relayChipState.currentState = null
-      relayChipState.lastPageStateKey = ""
-      relayChipState.freshCandidateSince = 0
-      clearChipTimers()
+      relayChipState.href = nextHref;
+      relayChipState.dismissed = false;
+      relayChipState.forcedInsertKind = null;
+      relayChipState.buttonMode = "idle";
+      relayChipState.buttonError = "";
+      relayChipState.currentState = null;
+      relayChipState.lastPageStateKey = "";
+      relayChipState.freshCandidateSince = 0;
+      clearChipTimers();
     }
 
-    const pageState = computePageState(getSiteConfig())
-    relayChipState.pageState = pageState
-    const nextKey = buildPageStateKey(pageState)
+    const pageState = computePageState(getSiteConfig());
+    relayChipState.pageState = pageState;
+    const nextKey = buildPageStateKey(pageState);
 
     if (force || relayChipState.lastPageStateKey !== nextKey) {
-      relayChipState.lastPageStateKey = nextKey
+      relayChipState.lastPageStateKey = nextKey;
       await sendRuntimeMessage({
         type: "RELAY_PAGE_STATE_UPDATE",
-        payload: pageState
-      })
+        payload: pageState,
+      });
     }
 
-    renderInlineChip()
+    renderInlineChip();
   }
 
   function queuePageObservation(force) {
-    if (relayChipState.observationTimer !== null) return
+    if (relayChipState.observationTimer !== null) return;
 
     relayChipState.observationTimer = window.setTimeout(() => {
-      relayChipState.observationTimer = null
-      void pushObservedPageState(force)
-    }, 120)
+      relayChipState.observationTimer = null;
+      void pushObservedPageState(force);
+    }, 120);
   }
 
   function markMeaningfulMutation() {
-    relayChipState.lastMeaningfulMutationAt = Date.now()
-    queuePageObservation(false)
+    relayChipState.lastMeaningfulMutationAt = Date.now();
+    queuePageObservation(false);
   }
 
   function scheduleObservation() {
-    if (relayChipState.mounted) return
-    relayChipState.mounted = true
+    if (relayChipState.mounted) return;
+    relayChipState.mounted = true;
 
-    queuePageObservation(true)
+    queuePageObservation(true);
     const observer = new MutationObserver((mutations) => {
       const shouldReact = mutations.some((mutation) => {
-        const target = mutation.target
+        const target = mutation.target;
         if (target instanceof Element && target.closest("#relay-inline-chip")) {
-          return false
+          return false;
         }
 
-        return [...mutation.addedNodes, ...mutation.removedNodes].some((node) => !(node instanceof Element) || !node.closest("#relay-inline-chip"))
-      })
+        return [...mutation.addedNodes, ...mutation.removedNodes].some(
+          (node) =>
+            !(node instanceof Element) || !node.closest("#relay-inline-chip"),
+        );
+      });
 
       if (shouldReact) {
-        markMeaningfulMutation()
+        markMeaningfulMutation();
       }
-    })
+    });
 
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true })
-    window.addEventListener("focus", () => queuePageObservation(true))
-    window.addEventListener("resize", () => queuePageObservation(false))
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    window.addEventListener("focus", () => queuePageObservation(true));
+    window.addEventListener("resize", () => queuePageObservation(false));
     window.addEventListener("popstate", () => {
-      relayChipState.lastMeaningfulMutationAt = Date.now()
-      queuePageObservation(true)
-    })
+      relayChipState.lastMeaningfulMutationAt = Date.now();
+      queuePageObservation(true);
+    });
     window.setInterval(() => {
-      queuePageObservation(false)
-    }, 1000)
+      queuePageObservation(false);
+    }, 1000);
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === "RELAY_ACTIVE_PROJECT_STATE_CHANGED") {
-      relayChipState.currentState = message.payload.state
-      renderInlineChip()
-      return false
+      relayChipState.currentState = message.payload.state;
+      renderInlineChip();
+      return false;
     }
 
     if (message.type === "RELAY_PAGE_STATE") {
-      const pageState = relayChipState.pageState ?? computePageState(getSiteConfig())
-      relayChipState.pageState = pageState
-      sendResponse(pageState)
-      return true
+      const pageState =
+        relayChipState.pageState ?? computePageState(getSiteConfig());
+      relayChipState.pageState = pageState;
+      sendResponse(pageState);
+      return true;
     }
 
     if (message.type === "RELAY_SHOW_INLINE_CHIP") {
-      const pageState = relayChipState.pageState ?? computePageState(getSiteConfig())
+      const pageState =
+        relayChipState.pageState ?? computePageState(getSiteConfig());
       if (!pageState.supported) {
-        sendResponse({ ok: false, status: "fallback" })
-        return true
+        sendResponse({ ok: false, status: "fallback" });
+        return true;
       }
 
-      relayChipState.forcedInsertKind = message.payload?.insertKind === "quick_continuity" ? "quick_continuity" : null
-      const wasDismissed = relayChipState.dismissed
-      relayChipState.dismissed = false
-      renderInlineChip()
-      void sendRuntimeMessage({ type: "RELAY_GET_ACTIVE_PROJECT_STATE" }).then((state) => {
-        if (isValidActiveProjectState(state)) {
-          relayChipState.currentState = state
-          renderInlineChip()
-        }
-      })
+      relayChipState.forcedInsertKind =
+        message.payload?.insertKind === "quick_continuity"
+          ? "quick_continuity"
+          : null;
+      const wasDismissed = relayChipState.dismissed;
+      relayChipState.dismissed = false;
+      renderInlineChip();
+      void sendRuntimeMessage({ type: "RELAY_GET_ACTIVE_PROJECT_STATE" }).then(
+        (state) => {
+          if (isValidActiveProjectState(state)) {
+            relayChipState.currentState = state;
+            renderInlineChip();
+          }
+        },
+      );
 
       sendResponse({
         ok: true,
-        status: wasDismissed ? "restored" : document.getElementById("relay-inline-chip") ? "already_visible" : "newly_opened"
-      })
-      return true
+        status: wasDismissed
+          ? "restored"
+          : document.getElementById("relay-inline-chip")
+            ? "already_visible"
+            : "newly_opened",
+      });
+      return true;
     }
 
     if (message.type === "RELAY_SHORTCUT_ACTION") {
-      const pageState = relayChipState.pageState ?? computePageState(getSiteConfig())
-      relayChipState.pageState = pageState
+      const pageState =
+        relayChipState.pageState ?? computePageState(getSiteConfig());
+      relayChipState.pageState = pageState;
 
       if (!pageState.supported || pageState.promptReady === false) {
-        sendResponse({ ok: true, action: "fallback" })
-        return true
+        sendResponse({ ok: true, action: "fallback" });
+        return true;
       }
 
-      const chipVisible = Boolean(document.getElementById("relay-inline-chip"))
+      const chipVisible = Boolean(document.getElementById("relay-inline-chip"));
       if (chipVisible) {
-        void invokeInsertFromChip()
-        sendResponse({ ok: true, action: "invoked_insert" })
-        return true
+        void invokeInsertFromChip();
+        sendResponse({ ok: true, action: "invoked_insert" });
+        return true;
       }
 
       if (pageState.isFreshChat) {
-        const action = relayChipState.dismissed ? "restored" : "opened"
-        relayChipState.forcedInsertKind = null
-        relayChipState.dismissed = false
-        renderInlineChip()
-        void sendRuntimeMessage({ type: "RELAY_GET_ACTIVE_PROJECT_STATE" }).then((state) => {
+        const action = relayChipState.dismissed ? "restored" : "opened";
+        relayChipState.forcedInsertKind = null;
+        relayChipState.dismissed = false;
+        renderInlineChip();
+        void sendRuntimeMessage({
+          type: "RELAY_GET_ACTIVE_PROJECT_STATE",
+        }).then((state) => {
           if (isValidActiveProjectState(state)) {
-            relayChipState.currentState = state
-            renderInlineChip()
+            relayChipState.currentState = state;
+            renderInlineChip();
           }
-        })
-        sendResponse({ ok: true, action })
-        return true
+        });
+        sendResponse({ ok: true, action });
+        return true;
       }
 
-      relayChipState.forcedInsertKind = "quick_continuity"
-      relayChipState.dismissed = false
-      renderInlineChip()
-      void sendRuntimeMessage({ type: "RELAY_GET_ACTIVE_PROJECT_STATE" }).then((state) => {
-        if (isValidActiveProjectState(state)) {
-          relayChipState.currentState = state
-          renderInlineChip()
-        }
-      })
-      sendResponse({ ok: true, action: "opened" })
-      return true
+      relayChipState.forcedInsertKind = "quick_continuity";
+      relayChipState.dismissed = false;
+      renderInlineChip();
+      void sendRuntimeMessage({ type: "RELAY_GET_ACTIVE_PROJECT_STATE" }).then(
+        (state) => {
+          if (isValidActiveProjectState(state)) {
+            relayChipState.currentState = state;
+            renderInlineChip();
+          }
+        },
+      );
+      sendResponse({ ok: true, action: "opened" });
+      return true;
     }
 
     if (message.type === "RELAY_CAPTURE_VISIBLE") {
-      const config = getSiteConfig()
+      const config = getSiteConfig();
       if (!config) {
-        sendResponse({ ok: false, reason: "Unsupported site." })
-        return true
+        sendResponse({ ok: false, reason: "Unsupported site." });
+        return true;
       }
 
-      const turns = collectTurns(config)
-      const metadata = getPageMetadata()
+      const turns = collectTurns(config);
+      const metadata = getPageMetadata();
 
       sendResponse({
         ok: true,
@@ -1109,32 +1235,38 @@
             title: metadata.title,
             url: metadata.url,
             pageFingerprint: metadata.pageFingerprint,
-            captureSignature: computeSignature(turns, metadata, config.platform),
+            captureSignature: computeSignature(
+              turns,
+              metadata,
+              config.platform,
+            ),
             metadata: {
               domain: metadata.domain,
-              pathname: metadata.pathname
-            }
+              pathname: metadata.pathname,
+            },
           },
-          turns
-        }
-      })
-      return true
+          turns,
+        },
+      });
+      return true;
     }
 
     if (message.type === "RELAY_GET_SELECTION") {
-      const config = getSiteConfig()
+      const config = getSiteConfig();
       if (!config) {
-        sendResponse({ ok: false, reason: "Unsupported site." })
-        return true
+        sendResponse({ ok: false, reason: "Unsupported site." });
+        return true;
       }
 
-      const text = normalizeText(window.getSelection ? window.getSelection().toString() : "")
+      const text = normalizeText(
+        window.getSelection ? window.getSelection().toString() : "",
+      );
       if (!text) {
-        sendResponse({ ok: false, reason: "Select text in the page first." })
-        return true
+        sendResponse({ ok: false, reason: "Select text in the page first." });
+        return true;
       }
 
-      const metadata = getPageMetadata()
+      const metadata = getPageMetadata();
       sendResponse({
         ok: true,
         text,
@@ -1142,25 +1274,25 @@
         metadata: {
           url: metadata.url,
           title: metadata.title,
-          pathname: metadata.pathname
-        }
-      })
-      return true
+          pathname: metadata.pathname,
+        },
+      });
+      return true;
     }
 
     if (message.type === "RELAY_INSERT_CONTEXT") {
-      const config = getSiteConfig()
+      const config = getSiteConfig();
       if (!config) {
-        sendResponse({ ok: false, reason: "Unsupported site." })
-        return true
+        sendResponse({ ok: false, reason: "Unsupported site." });
+        return true;
       }
 
-      sendResponse(insertIntoPrompt(config, message.payload.content))
-      return true
+      sendResponse(insertIntoPrompt(config, message.payload.content));
+      return true;
     }
 
-    return false
-  })
+    return false;
+  });
 
-  scheduleObservation()
-})()
+  scheduleObservation();
+})();
