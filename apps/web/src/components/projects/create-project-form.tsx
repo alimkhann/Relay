@@ -75,7 +75,7 @@ export function CreateProjectForm() {
       <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Create project</p>
       <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--relay-ink)]">Give Relay a project to hold onto.</h2>
       <p className="mt-3 text-sm leading-7 text-[var(--relay-muted)]">
-        Start with a name and optional one-line description. Relay uses this as the durable home for digests, project state, and bootstrap packets.
+        Start with a name and optional one-line description. Relay uses this as the durable home for saved context, recent chats, and project briefs.
       </p>
 
       <div className="mt-5 grid gap-4">

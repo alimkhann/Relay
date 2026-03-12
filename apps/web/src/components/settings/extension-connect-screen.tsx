@@ -87,7 +87,7 @@ export function ExtensionConnectScreen({ apiBase, extensionId, initialDeviceName
     <section className="grid gap-6 lg:grid-cols-[0.94fr_1.06fr]">
       <div className="rounded-[26px] border border-[var(--relay-line)] bg-[#141714] p-8 text-white">
         <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/58">Extension pairing</p>
-        <h1 className="mt-4 max-w-sm text-4xl font-semibold tracking-[-0.045em]">Connect this browser once, then get out of the way.</h1>
+        <h1 className="mt-4 max-w-sm text-4xl font-semibold tracking-[-0.045em]">Connect Relay in Chrome once, then get out of the way.</h1>
         <p className="mt-4 max-w-md text-base leading-8 text-white/78">
           Relay issues the extension a hidden device token behind the scenes. The normal setup flow no longer exposes raw auth material.
         </p>
@@ -95,7 +95,7 @@ export function ExtensionConnectScreen({ apiBase, extensionId, initialDeviceName
 
       <div className="rounded-[26px] border border-[var(--relay-line)] bg-white/88 p-8 shadow-[var(--relay-shadow)] backdrop-blur">
         <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--relay-muted)]">Connect</p>
-        <h2 className="mt-4 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">Pair Relay with this extension</h2>
+        <h2 className="mt-4 text-3xl font-semibold tracking-tight text-[var(--relay-ink)]">Connect Relay in Chrome</h2>
         <p className="mt-3 max-w-xl text-base leading-8 text-[var(--relay-muted)]">
           Chrome will hand the pairing grant directly to the installed Relay extension using external messaging.
         </p>

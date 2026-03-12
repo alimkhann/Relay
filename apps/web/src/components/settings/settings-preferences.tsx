@@ -19,7 +19,7 @@ const platformOptions = [
 
 export function SettingsPreferences({ initialSettings }: SettingsPreferencesProps) {
   const [settings, setSettings] = useState(initialSettings)
-  const [status, setStatus] = useState("Relay uses these defaults for auto-capture and target inference.")
+  const [status, setStatus] = useState("Relay uses these settings to decide where it works and how quietly it should help.")
   const [pending, startTransition] = useTransition()
 
   async function save(nextSettings: typeof settings) {
@@ -40,125 +40,128 @@ export function SettingsPreferences({ initialSettings }: SettingsPreferencesProp
 
   return (
     <div className="space-y-6 rounded-[24px] border border-[var(--relay-line)] bg-white/82 p-6 shadow-[var(--relay-shadow)]">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Preferences</p>
-        <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--relay-ink)]">Capture and routing defaults</h2>
-      </div>
+      <section className="space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Chrome connection</p>
+          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--relay-ink)]">Connect Relay in Chrome</h2>
+          <p className="mt-3 text-sm leading-7 text-[var(--relay-muted)]">
+            Open the extension sidepanel in Chrome and choose <span className="font-semibold text-[var(--relay-ink)]">Connect Relay</span>. The normal flow does not expose raw device tokens.
+          </p>
+        </div>
+      </section>
 
-      <div className="grid gap-3">
-        {platformOptions.map((platform) => {
-          const checked = settings.enabledPlatforms.includes(platform.key)
-          return (
-            <label key={platform.key} className="flex items-center justify-between rounded-[16px] border border-[var(--relay-line)] bg-[var(--relay-background)] px-4 py-3">
-              <span className="text-sm font-medium text-[var(--relay-ink)]">{platform.label}</span>
+      <section className="space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Where Relay works</p>
+          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--relay-ink)]">Choose the chats Relay should watch</h2>
+        </div>
+
+        <div className="grid gap-3">
+          {platformOptions.map((platform) => {
+            const checked = settings.enabledPlatforms.includes(platform.key)
+            return (
+              <label key={platform.key} className="flex items-center justify-between rounded-[16px] border border-[var(--relay-line)] bg-[var(--relay-background)] px-4 py-3">
+                <span className="text-sm font-medium text-[var(--relay-ink)]">{platform.label}</span>
+                <input
+                  checked={checked}
+                  type="checkbox"
+                  onChange={(event) => {
+                    const enabledPlatforms = event.target.checked
+                      ? [...settings.enabledPlatforms, platform.key]
+                      : settings.enabledPlatforms.filter((item) => item !== platform.key)
+
+                    const nextSettings = {
+                      ...settings,
+                      enabledPlatforms
+                    }
+
+                    startTransition(async () => {
+                      try {
+                        await save(nextSettings)
+                        setStatus("Where Relay works has been updated.")
+                      } catch (error) {
+                        setStatus(error instanceof Error ? error.message : "Settings update failed.")
+                      }
+                    })
+                  }}
+                />
+              </label>
+            )
+          })}
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Capture behavior</p>
+          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--relay-ink)]">Keep Relay quiet unless it is useful</h2>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="rounded-[16px] border border-[var(--relay-line)] bg-[var(--relay-background)] px-4 py-3">
+            <span className="text-sm font-medium text-[var(--relay-ink)]">Auto-capture</span>
+            <p className="mt-2 text-sm leading-6 text-[var(--relay-muted)]">Capture meaningful page changes in the background.</p>
+            <div className="mt-4">
               <input
-                checked={checked}
+                checked={settings.autoCapture}
                 type="checkbox"
                 onChange={(event) => {
-                  const enabledPlatforms = event.target.checked
-                    ? [...settings.enabledPlatforms, platform.key]
-                    : settings.enabledPlatforms.filter((item) => item !== platform.key)
-
                   const nextSettings = {
                     ...settings,
-                    enabledPlatforms
+                    autoCapture: event.target.checked
                   }
 
                   startTransition(async () => {
                     try {
                       await save(nextSettings)
-                      setStatus("Platform defaults updated.")
+                      setStatus("Auto-capture updated.")
                     } catch (error) {
                       setStatus(error instanceof Error ? error.message : "Settings update failed.")
                     }
                   })
                 }}
               />
-            </label>
-          )
-        })}
-      </div>
+            </div>
+          </label>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <label className="rounded-[16px] border border-[var(--relay-line)] bg-[var(--relay-background)] px-4 py-3">
-          <span className="text-sm font-medium text-[var(--relay-ink)]">Auto-capture</span>
-          <p className="mt-2 text-sm leading-6 text-[var(--relay-muted)]">Capture meaningful page changes in the background when Relay is connected.</p>
-          <div className="mt-4">
-            <input
-              checked={settings.autoCapture}
-              type="checkbox"
-              onChange={(event) => {
-                const nextSettings = {
-                  ...settings,
-                  autoCapture: event.target.checked
-                }
-
-                startTransition(async () => {
-                  try {
-                    await save(nextSettings)
-                    setStatus("Auto-capture preference updated.")
-                  } catch (error) {
-                    setStatus(error instanceof Error ? error.message : "Settings update failed.")
+          <label className="rounded-[16px] border border-[var(--relay-line)] bg-[var(--relay-background)] px-4 py-3">
+            <span className="text-sm font-medium text-[var(--relay-ink)]">Quiet cues</span>
+            <p className="mt-2 text-sm leading-6 text-[var(--relay-muted)]">Show inline help on supported fresh chats without interrupting your normal flow.</p>
+            <div className="mt-4">
+              <input
+                checked={settings.showSidepanelOnSupportedSites}
+                type="checkbox"
+                onChange={(event) => {
+                  const nextSettings = {
+                    ...settings,
+                    showSidepanelOnSupportedSites: event.target.checked
                   }
-                })
-              }}
-            />
-          </div>
-        </label>
 
-        <label className="rounded-[16px] border border-[var(--relay-line)] bg-[var(--relay-background)] px-4 py-3">
-          <span className="text-sm font-medium text-[var(--relay-ink)]">Quiet sidepanel cues</span>
-          <p className="mt-2 text-sm leading-6 text-[var(--relay-muted)]">Show Relay’s sidepanel affordance on supported sites without interrupting the normal browsing flow.</p>
-          <div className="mt-4">
-            <input
-              checked={settings.showSidepanelOnSupportedSites}
-              type="checkbox"
-              onChange={(event) => {
-                const nextSettings = {
-                  ...settings,
-                  showSidepanelOnSupportedSites: event.target.checked
-                }
+                  startTransition(async () => {
+                    try {
+                      await save(nextSettings)
+                      setStatus("Quiet cues updated.")
+                    } catch (error) {
+                      setStatus(error instanceof Error ? error.message : "Settings update failed.")
+                    }
+                  })
+                }}
+              />
+            </div>
+          </label>
+        </div>
+      </section>
 
-                startTransition(async () => {
-                  try {
-                    await save(nextSettings)
-                    setStatus("Sidepanel preference updated.")
-                  } catch (error) {
-                    setStatus(error instanceof Error ? error.message : "Settings update failed.")
-                  }
-                })
-              }}
-            />
-          </div>
-        </label>
-      </div>
+      <section className="space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Fallback behavior</p>
+          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--relay-ink)]">Relay should still help when AI is unavailable</h2>
+        </div>
 
-      <label className="grid gap-3">
-        <span className="text-sm font-medium text-[var(--relay-ink)]">Default target profile</span>
-        <select
-          className="rounded-[16px] border border-[var(--relay-line)] bg-[var(--relay-background)] px-4 py-3 text-[var(--relay-ink)]"
-          value={settings.defaultTargetProfileKey}
-          onChange={(event) => {
-            const nextSettings = {
-              ...settings,
-              defaultTargetProfileKey: event.target.value
-            }
-
-            startTransition(async () => {
-              try {
-                await save(nextSettings)
-                setStatus("Default target profile updated.")
-              } catch (error) {
-                setStatus(error instanceof Error ? error.message : "Settings update failed.")
-              }
-            })
-          }}>
-          <option value="chatgpt_planning">ChatGPT planning</option>
-          <option value="claude_code_build">Claude build</option>
-          <option value="codex_implementation">Codex build</option>
-          <option value="perplexity_research">Perplexity research</option>
-        </select>
-      </label>
+        <div className="rounded-[16px] border border-[var(--relay-line)] bg-[var(--relay-background)] px-4 py-4 text-sm leading-7 text-[var(--relay-muted)]">
+          AI-generated briefs stay on when available. If Relay cannot reach AI, it still inserts a bounded project brief from saved project context.
+        </div>
+      </section>
 
       <div className="flex flex-wrap gap-3">
         <Button asChild variant="secondary">

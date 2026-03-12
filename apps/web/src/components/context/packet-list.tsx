@@ -6,7 +6,7 @@ export function PacketList({ packets }: { packets: Array<ContextPacketDto | Boot
   if (packets.length === 0) {
     return (
       <div className="rounded-[18px] border border-dashed border-[var(--relay-line)] bg-white/70 p-5 text-sm text-[var(--relay-muted)]">
-        No bootstrap packets yet. Relay will render one after the next fresh-chat handoff request.
+        No project brief yet. Relay will prepare one after the next meaningful chat.
       </div>
     )
   }
@@ -19,7 +19,7 @@ export function PacketList({ packets }: { packets: Array<ContextPacketDto | Boot
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--relay-muted)]">{packet.targetProfileKey}</p>
             {"kind" in packet ? (
               <span className="rounded-[999px] bg-[var(--relay-soft)] px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-[var(--relay-muted)]">
-                {packet.kind.replaceAll("_", " ")} · {packet.renderer}
+                {packet.kind === "fresh_chat_bootstrap" ? "Fresh chat brief" : "Continuation brief"}
               </span>
             ) : null}
           </div>

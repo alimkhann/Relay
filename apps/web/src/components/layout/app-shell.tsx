@@ -17,7 +17,7 @@ export async function AppShell({ children }: PropsWithChildren) {
             <Link href="/" className="inline-flex items-center rounded-[10px] bg-[var(--relay-accent)] px-3 py-2 text-sm font-semibold uppercase tracking-[0.22em] text-white">
               Relay
             </Link>
-            <p className="text-sm text-[var(--relay-muted)]">Fresh-chat continuity for AI work that refuses to stay still.</p>
+            <p className="text-sm text-[var(--relay-muted)]">Keep your project brief ready for the next fresh chat.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <nav className="flex flex-wrap items-center gap-2 rounded-[14px] border border-[var(--relay-line)] bg-white/56 px-2 py-2 text-sm text-[var(--relay-muted)]">

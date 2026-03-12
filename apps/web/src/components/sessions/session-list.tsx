@@ -2,11 +2,20 @@ import type { RecentSessionDto } from "@relay/shared"
 
 import { Card } from "@/components/ui/card"
 
+function formatCapturedAt(value: string) {
+  return new Date(value).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  })
+}
+
 export function SessionList({ sessions }: { sessions: RecentSessionDto[] }) {
   if (sessions.length === 0) {
     return (
       <div className="rounded-[18px] border border-dashed border-[var(--relay-line)] bg-white/70 p-5 text-sm text-[var(--relay-muted)]">
-        No captures yet. Once Relay is connected, supported chats can be captured quietly in the background.
+        No recent chats yet. Once Relay is connected, supported chats will appear here automatically.
       </div>
     )
   }
@@ -19,6 +28,7 @@ export function SessionList({ sessions }: { sessions: RecentSessionDto[] }) {
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--relay-muted)]">{session.platform}</p>
               <h3 className="mt-2 text-lg font-semibold text-[var(--relay-ink)]">{session.title ?? session.url}</h3>
+              <p className="mt-2 text-xs uppercase tracking-[0.2em] text-[var(--relay-muted)]">{formatCapturedAt(session.capturedAt)}</p>
             </div>
             <span className="rounded-full bg-[var(--relay-soft)] px-3 py-1 text-xs text-[var(--relay-muted)]">{session.turnCount} turns</span>
           </div>

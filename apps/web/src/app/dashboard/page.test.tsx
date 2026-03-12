@@ -81,9 +81,9 @@ vi.mock("@/server/services/project-service", () => ({
 import DashboardPage from "./page"
 
 describe("DashboardPage", () => {
-  it("renders the project overview heading", async () => {
+  it("renders the project index heading", async () => {
     render(await DashboardPage())
 
-    expect(screen.getByText("What should survive the next reset")).toBeTruthy()
+    expect(screen.getByText("Pick the project you want Relay to keep ready")).toBeTruthy()
   })
 })

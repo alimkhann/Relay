@@ -25,8 +25,8 @@ export function ProjectGrid({ projects }: { projects: ProjectSummaryDto[] }) {
               <span className="rounded-full bg-[var(--relay-soft)] px-3 py-1 text-xs text-[var(--relay-muted)]">{project.slug}</span>
             </div>
             <div className="mt-6 flex flex-wrap gap-3 text-sm text-[var(--relay-muted)]">
-              <span>{project.memoryCount} memory items</span>
-              <span>{project.sessionCount} sessions</span>
+              <span>{project.memoryCount} saved items</span>
+              <span>{project.sessionCount} recent chats</span>
             </div>
           </Card>
         </Link>

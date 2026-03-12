@@ -7,7 +7,7 @@ export function MemoryList({ items }: { items: MemoryItemDto[] }) {
   if (items.length === 0) {
     return (
       <div className="rounded-[18px] border border-dashed border-[var(--relay-line)] bg-white/70 p-5 text-sm text-[var(--relay-muted)]">
-        No pinned memory yet. Save a snippet from the extension and it will show up here.
+        No saved project context yet. Save something from the extension and it will appear here.
       </div>
     )
   }
