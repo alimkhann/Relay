@@ -93,6 +93,11 @@
     exitTimer: null,
     resetButtonTimer: null,
     mounted: false,
+    associationToast: {
+      payload: null,
+      hideTimer: null,
+      removeTimer: null,
+    },
   };
 
   function escapeHtml(value) {
@@ -172,6 +177,17 @@
     }
 
     return turns;
+  }
+
+  function getLatestMeaningfulUserTurnText(turns) {
+    for (let index = turns.length - 1; index >= 0; index -= 1) {
+      const turn = turns[index];
+      if (turn.role !== "user") continue;
+      if (!turn.content || turn.content.length < 8) continue;
+      return turn.content.slice(0, 280);
+    }
+
+    return null;
   }
 
   function getPageMetadata() {
@@ -375,6 +391,7 @@
       pageFingerprint: metadata.pageFingerprint,
       turns: turns.length,
       captureSignature: computeSignature(turns, metadata, config.platform),
+      recentUserTurnText: getLatestMeaningfulUserTurnText(turns),
       promptReady,
       isFreshRoute,
       isFreshChat,
@@ -389,6 +406,7 @@
       url: pageState.url,
       turns: pageState.turns,
       captureSignature: pageState.captureSignature,
+      recentUserTurnText: pageState.recentUserTurnText,
       promptReady: pageState.promptReady,
       isFreshRoute: pageState.isFreshRoute,
       isFreshChat: pageState.isFreshChat,
@@ -402,6 +420,7 @@
       projectId: null,
       projectName: "Checking project",
       projectOptions: [],
+      viewState: "connected-loading",
       showCue: true,
       status: "updating",
       message: "Checking this chat…",
@@ -423,6 +442,20 @@
         : "quick_continuity",
       lastSuccessfulSyncAt: null,
       capturePending: false,
+      contextPreview: {
+        decisions: [],
+        constraints: [],
+        tasks: [],
+      },
+      chatAssociation: {
+        status: "none",
+        projectId: null,
+        projectName: null,
+        sessionId: null,
+        reason: null,
+        capturedAt: null,
+      },
+      routingReview: null,
     };
   }
 
@@ -735,6 +768,75 @@
         background-clip: text;
         -webkit-text-fill-color: transparent;
         animation: relay-shimmer 2s ease-in-out infinite;
+      }
+
+      .relay-association-toast {
+        position: fixed;
+        top: 22px;
+        right: 0;
+        display: grid;
+        gap: 8px;
+        min-width: 220px;
+        max-width: min(320px, calc(100vw - 24px));
+        padding: 12px 14px 12px 16px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-right: none;
+        border-radius: 16px 0 0 16px;
+        background: rgba(17, 18, 16, 0.94);
+        color: #E8E8E4;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        z-index: 2147483001;
+        opacity: 0;
+        transform: translateX(12px);
+        transition: opacity 160ms ease, transform 160ms ease;
+        cursor: pointer;
+      }
+
+      .relay-association-toast--visible {
+        opacity: 1;
+        transform: translateX(0);
+      }
+
+      .relay-association-toast--hiding {
+        opacity: 0;
+        transform: translateX(14px);
+      }
+
+      .relay-association-toast__title {
+        margin: 0;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.4;
+      }
+
+      .relay-association-toast__meta {
+        margin: 0;
+        font-size: 11px;
+        line-height: 1.45;
+        color: #BCBDB6;
+      }
+
+      .relay-association-toast__cancel {
+        width: fit-content;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 999px;
+        background: transparent;
+        color: #E8E8E4;
+        padding: 4px 10px;
+        font-size: 11px;
+        font-weight: 600;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(-2px);
+        transition: opacity 120ms ease, transform 120ms ease;
+      }
+
+      .relay-association-toast:hover .relay-association-toast__cancel,
+      .relay-association-toast:focus-within .relay-association-toast__cancel {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateY(0);
       }
     `;
 
@@ -1102,6 +1204,82 @@
     setChipPlacement(config, root);
   }
 
+  function clearAssociationToastTimers() {
+    const toastState = relayChipState.associationToast;
+    if (toastState.hideTimer !== null) {
+      window.clearTimeout(toastState.hideTimer);
+      toastState.hideTimer = null;
+    }
+    if (toastState.removeTimer !== null) {
+      window.clearTimeout(toastState.removeTimer);
+      toastState.removeTimer = null;
+    }
+  }
+
+  function hideAssociationToast() {
+    clearAssociationToastTimers();
+    const root = document.getElementById("relay-association-toast");
+    if (!root) return;
+
+    root.classList.add("relay-association-toast--hiding");
+    relayChipState.associationToast.removeTimer = window.setTimeout(() => {
+      root.remove();
+      relayChipState.associationToast.removeTimer = null;
+      relayChipState.associationToast.payload = null;
+    }, 180);
+  }
+
+  function renderAssociationToast(payload) {
+    ensureInlineChipStyles();
+    relayChipState.associationToast.payload = payload;
+    clearAssociationToastTimers();
+
+    let root = document.getElementById("relay-association-toast");
+    if (!root) {
+      root = document.createElement("div");
+      root.id = "relay-association-toast";
+      root.className = "relay-association-toast";
+      document.body.appendChild(root);
+    }
+
+    root.innerHTML = `
+      <p class="relay-association-toast__title">Saved to ${escapeHtml(payload.projectName)}</p>
+      <p class="relay-association-toast__meta">Open the dashboard or cancel this association.</p>
+      <button class="relay-association-toast__cancel" type="button">Cancel save</button>
+    `;
+
+    root.onclick = () => {
+      window.open(payload.dashboardUrl, "_blank", "noopener,noreferrer");
+      hideAssociationToast();
+    };
+
+    const cancelButton = root.querySelector(".relay-association-toast__cancel");
+    if (cancelButton) {
+      cancelButton.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        await sendRuntimeMessage({
+          type: "RELAY_SET_CHAT_ASSOCIATION_ARCHIVED",
+          payload: {
+            projectId: payload.projectId,
+            sessionId: payload.sessionId,
+            archived: true,
+          },
+        });
+        hideAssociationToast();
+      });
+    }
+
+    requestAnimationFrame(() => {
+      root.classList.remove("relay-association-toast--hiding");
+      root.classList.add("relay-association-toast--visible");
+    });
+
+    relayChipState.associationToast.hideTimer = window.setTimeout(() => {
+      hideAssociationToast();
+    }, 5000);
+  }
+
   async function pushObservedPageState(force) {
     const nextHref = window.location.href;
     if (relayChipState.href !== nextHref) {
@@ -1244,6 +1422,12 @@
             ? "already_visible"
             : "newly_opened",
       });
+      return true;
+    }
+
+    if (message.type === "RELAY_SHOW_ASSOCIATION_TOAST") {
+      renderAssociationToast(message.payload);
+      sendResponse({ ok: true });
       return true;
     }
 

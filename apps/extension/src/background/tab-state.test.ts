@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest"
 import type { ProjectStateStatusDto } from "@relay/shared"
 
 import {
+  createEmptyChatAssociation,
+  createEmptyContextPreview,
   createEmptyTrustMetadata,
   decideShortcutAction,
   deriveRelayActiveProjectState,
@@ -46,6 +48,9 @@ describe("deriveRelayActiveProjectState", () => {
       remoteStatus: "stale",
       lastSuccessfulSyncAt: "2026-03-12T00:00:00.000Z",
       capturePending: false,
+      contextPreview: createEmptyContextPreview(),
+      chatAssociation: createEmptyChatAssociation(),
+      routingReview: null,
       lastError: "Failed to fetch"
     })
 
@@ -76,12 +81,48 @@ describe("deriveRelayActiveProjectState", () => {
       trust: createEmptyTrustMetadata(),
       remoteStatus: "ready",
       lastSuccessfulSyncAt: "2026-03-12T00:00:00.000Z",
-      capturePending: false
+      capturePending: false,
+      contextPreview: createEmptyContextPreview(),
+      chatAssociation: createEmptyChatAssociation(),
+      routingReview: null
     })
 
     expect(state.status).toBe("unavailable")
     expect(state.issue?.kind).toBe("digest")
     expect(state.issue?.detail).toContain("Gemini returned invalid JSON.")
+  })
+})
+
+describe("view states", () => {
+  it("uses connected-loading instead of empty onboarding while cached project identity is still revalidating", () => {
+    const state = deriveRelayActiveProjectState({
+      connected: true,
+      projectId: "project_123",
+      projectName: "Relay",
+      projectOptions: [{ id: "project_123", name: "Relay" }],
+      showCue: true,
+      page: {
+        supported: true,
+        platform: "chatgpt",
+        promptReady: true,
+        isFreshChat: false
+      },
+      stateStatus: makeStateStatus({
+        projectStateReady: false,
+        rawCapturePresent: false,
+        digestStatus: "idle"
+      }),
+      trust: createEmptyTrustMetadata(),
+      remoteStatus: "loading",
+      lastSuccessfulSyncAt: null,
+      capturePending: false,
+      contextPreview: createEmptyContextPreview(),
+      chatAssociation: createEmptyChatAssociation(),
+      routingReview: null
+    })
+
+    expect(state.viewState).toBe("connected-loading")
+    expect(state.message).toBe("Checking this chat…")
   })
 })
 

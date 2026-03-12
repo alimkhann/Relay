@@ -122,6 +122,13 @@
   letter-spacing: -0.02em;
 }
 
+.panelTopRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .copy {
   margin: 8px 0 0;
   font-size: 13px;
@@ -309,6 +316,118 @@
   font-size: 11px;
   line-height: 1.5;
   color: var(--faint);
+}
+
+.inlineLink,
+.ghostButton {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 120ms;
+}
+
+.inlineLink:hover,
+.ghostButton:hover {
+  color: var(--ink);
+}
+
+.associationHeader {
+  display: grid;
+  gap: 4px;
+}
+
+.metaText {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.cardActions {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.contextStack {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.contextSection {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  padding: 12px;
+}
+
+.contextSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.contextLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.emptyHint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.contextItem {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.contextText {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-secondary);
+}
+
+.contextActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.contextComposer {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.contextEditor {
+  width: 100%;
+  min-height: 74px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--ink);
+  padding: 10px 12px;
+  font: inherit;
+  outline: none;
+}
+
+.contextEditor:focus {
+  border-color: var(--ink);
 }
 
 /* ── Fields ── */

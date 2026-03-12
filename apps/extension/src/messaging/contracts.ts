@@ -3,10 +3,17 @@ import type { TelemetryEventInput } from "@relay/shared";
 export interface RelayProjectOption {
   id: string;
   name: string;
+  slug?: string | null;
 }
 
 export type RelayRemoteStatus = "loading" | "ready" | "stale" | "unavailable";
 export type RelayInsertKind = "fresh_chat_bootstrap" | "quick_continuity";
+export type RelaySidebarViewState =
+  | "connected-loading"
+  | "connected-ready"
+  | "connected-empty"
+  | "disconnected"
+  | "unsupported";
 
 export interface RelayIssue {
   kind:
@@ -27,10 +34,39 @@ export interface RelayTrustMetadata {
   savedContextCount: number;
 }
 
+export interface RelayContextPreviewItem {
+  key: string;
+  text: string;
+  source: "manual" | "derived";
+  memoryId?: string | null;
+}
+
+export interface RelayContextPreview {
+  decisions: RelayContextPreviewItem[];
+  constraints: RelayContextPreviewItem[];
+  tasks: RelayContextPreviewItem[];
+}
+
+export interface RelayChatAssociation {
+  status: "none" | "saved" | "held" | "archived" | "ignored";
+  projectId: string | null;
+  projectName: string | null;
+  sessionId: string | null;
+  reason: string | null;
+  capturedAt: string | null;
+}
+
+export interface RelayRoutingReview {
+  confidence: "high" | "medium" | "low";
+  score: number;
+  reasons: string[];
+}
+
 export interface RelayActiveProjectState {
   projectId: string | null;
   projectName: string | null;
   projectOptions: RelayProjectOption[];
+  viewState: RelaySidebarViewState;
   showCue: boolean;
   status: "ready" | "updating" | "unavailable";
   message: string;
@@ -45,6 +81,9 @@ export interface RelayActiveProjectState {
   insertKind: RelayInsertKind;
   lastSuccessfulSyncAt: string | null;
   capturePending: boolean;
+  contextPreview: RelayContextPreview;
+  chatAssociation: RelayChatAssociation;
+  routingReview: RelayRoutingReview | null;
 }
 
 export type RelayMessage =
@@ -64,6 +103,7 @@ export type RelayMessage =
       type: "RELAY_CAPTURE_VISIBLE";
       payload: { projectId: string; tabId?: number };
     }
+  | { type: "RELAY_DISMISS_CAPTURE_REVIEW"; payload?: { tabId?: number } }
   | { type: "RELAY_TRIGGER_AUTO_CAPTURE"; payload: { tabId?: number } }
   | {
       type: "RELAY_PIN_SELECTION";
@@ -87,12 +127,30 @@ export type RelayMessage =
       type: "RELAY_SET_ACTIVE_PROJECT";
       payload: { projectId: string; tabId?: number };
     }
+  | {
+      type: "RELAY_SET_CHAT_ASSOCIATION_ARCHIVED";
+      payload: {
+        projectId: string;
+        sessionId: string;
+        archived: boolean;
+        tabId?: number;
+      };
+    }
   | { type: "RELAY_REFRESH_SESSION" }
   | { type: "RELAY_OPEN_CONNECT"; payload: { deviceName: string; flowId?: string } }
   | { type: "RELAY_GOOGLE_SIGN_IN"; payload: { deviceName: string; flowId?: string } }
   | {
       type: "RELAY_CREATE_PROJECT";
       payload: { name: string; slug?: string; flowId?: string };
+    }
+  | {
+      type: "RELAY_SHOW_ASSOCIATION_TOAST";
+      payload: {
+        projectId: string;
+        projectName: string;
+        sessionId: string;
+        dashboardUrl: string;
+      };
     }
   | {
       type: "RELAY_LOG_TELEMETRY";
@@ -109,6 +167,7 @@ export interface RelayPageState {
   pageFingerprint?: string | null;
   turns?: number;
   captureSignature?: string;
+  recentUserTurnText?: string | null;
   promptReady?: boolean;
   isFreshRoute?: boolean;
   isFreshChat?: boolean;

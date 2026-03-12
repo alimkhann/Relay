@@ -1,24 +1,42 @@
 import { createFlowId } from "@relay/shared/utils/telemetry";
 import { slugify } from "@relay/shared/utils/text";
-import type { ProjectStateStatusDto } from "@relay/shared";
+import type { ProjectStateStatusDto, SupportedPlatform } from "@relay/shared";
 
 import type {
   RelayActiveProjectState,
+  RelayChatAssociation,
+  RelayContextPreview,
   RelayMessage,
   RelayPageState,
   RelayProjectOption,
   RelayRemoteStatus,
+  RelayRoutingReview,
   RelayTrustMetadata,
 } from "../messaging/contracts";
+import {
+  clearIgnoredChatKey,
+  isIgnoredChatKey,
+  readApprovedAssociations,
+  rememberApprovedAssociation,
+  rememberIgnoredChatKey,
+  removeApprovedAssociationBySession,
+} from "../storage/routing";
 import { getRelaySession, setRelaySession } from "../storage/session";
 import { relayFetch } from "../utils/api";
 import { resolveTargetProfile } from "../utils/target-profile";
 import {
+  buildAssociationKey,
+  evaluateProjectRouting,
+  type RelayRoutingDecision,
+  type RelayBoundProjectSignal,
+} from "./routing";
+import {
   createEmptyActiveProjectState,
+  createEmptyChatAssociation,
+  createEmptyContextPreview,
   createEmptyTrustMetadata,
   deriveRelayActiveProjectState,
   looksLikeFreshChatRoute,
-  RELAY_SHORTCUT_LABEL,
   shouldScheduleAutoCapture,
 } from "./tab-state";
 import {
@@ -39,12 +57,47 @@ interface ProjectDashboardPayload {
   stateStatus?: ProjectStateStatusDto;
   projectState?: {
     updatedAt?: string | null;
+    projectOverview?: string | null;
+    currentObjective?: string | null;
+    recentProgress?: string | null;
     decisions?: string[];
     constraints?: string[];
     openTasks?: string[];
   } | null;
-  recentSessions?: Array<unknown>;
-  memory?: Array<unknown>;
+  derivedProjectState?: {
+    decisions?: string[];
+    constraints?: string[];
+    openTasks?: string[];
+  } | null;
+  stateOverrides?: {
+    hiddenDecisions?: string[];
+    hiddenConstraints?: string[];
+    hiddenOpenTasks?: string[];
+  } | null;
+  recentSessions?: Array<{
+    id: string;
+    url: string;
+    pageFingerprint?: string | null;
+    captureSignature?: string | null;
+    capturedAt?: string;
+    isArchived?: boolean;
+    archivedAt?: string | null;
+  }>;
+  sessionHistory?: Array<{
+    id: string;
+    url: string;
+    pageFingerprint?: string | null;
+    captureSignature?: string | null;
+    capturedAt?: string;
+    isArchived?: boolean;
+    archivedAt?: string | null;
+  }>;
+  memory?: Array<{
+    id: string;
+    type?: string;
+    content?: string;
+    updatedAt?: string;
+  }>;
   packets?: Array<{ createdAt?: string | null }>;
 }
 
@@ -56,6 +109,10 @@ interface RelayTabState {
   projectOptions: RelayProjectOption[];
   trust: RelayTrustMetadata;
   stateStatus: ProjectStateStatusDto | null;
+  contextPreview: RelayContextPreview;
+  chatAssociation: RelayChatAssociation;
+  routingReview: RelayRoutingReview | null;
+  boundProject: RelayBoundProjectSignal | null;
   showCue: boolean;
   remoteStatus: RelayRemoteStatus;
   lastSuccessfulSyncAt: string | null;
@@ -69,6 +126,7 @@ interface RelayTabState {
   lastObservedTurns: number;
   lastCapturedSignature: string | null;
   lastCapturedTurns: number;
+  lastRoutedSignature: string | null;
 }
 
 const tabStates = new Map<number, RelayTabState>();
@@ -167,6 +225,158 @@ function buildTrustMetadata(
   };
 }
 
+function buildDashboardContextPreview(
+  dashboard: ProjectDashboardPayload | null | undefined,
+): RelayContextPreview {
+  if (!dashboard) {
+    return createEmptyContextPreview();
+  }
+
+  const hiddenDecisions = new Set(
+    (dashboard.stateOverrides?.hiddenDecisions ?? []).map((item) =>
+      item.toLowerCase(),
+    ),
+  );
+  const hiddenConstraints = new Set(
+    (dashboard.stateOverrides?.hiddenConstraints ?? []).map((item) =>
+      item.toLowerCase(),
+    ),
+  );
+  const hiddenTasks = new Set(
+    (dashboard.stateOverrides?.hiddenOpenTasks ?? []).map((item) =>
+      item.toLowerCase(),
+    ),
+  );
+
+  const manualDecisions = (dashboard.memory ?? [])
+    .filter((item) => item.type === "decision" && item.content)
+    .map((item) => ({
+      key: `manual:decision:${item.id}`,
+      text: item.content ?? "",
+      source: "manual" as const,
+      memoryId: item.id,
+    }));
+  const manualConstraints = (dashboard.memory ?? [])
+    .filter((item) => item.type === "constraint" && item.content)
+    .map((item) => ({
+      key: `manual:constraint:${item.id}`,
+      text: item.content ?? "",
+      source: "manual" as const,
+      memoryId: item.id,
+    }));
+  const manualTasks = (dashboard.memory ?? [])
+    .filter((item) => item.type === "task" && item.content)
+    .map((item) => ({
+      key: `manual:task:${item.id}`,
+      text: item.content ?? "",
+      source: "manual" as const,
+      memoryId: item.id,
+    }));
+
+  const derivedDecisions = (dashboard.derivedProjectState?.decisions ?? [])
+    .filter((item) => !hiddenDecisions.has(item.toLowerCase()))
+    .map((text) => ({
+      key: `derived:decision:${text}`,
+      text,
+      source: "derived" as const,
+      memoryId: null,
+    }));
+  const derivedConstraints = (dashboard.derivedProjectState?.constraints ?? [])
+    .filter((item) => !hiddenConstraints.has(item.toLowerCase()))
+    .map((text) => ({
+      key: `derived:constraint:${text}`,
+      text,
+      source: "derived" as const,
+      memoryId: null,
+    }));
+  const derivedTasks = (dashboard.derivedProjectState?.openTasks ?? [])
+    .filter((item) => !hiddenTasks.has(item.toLowerCase()))
+    .map((text) => ({
+      key: `derived:task:${text}`,
+      text,
+      source: "derived" as const,
+      memoryId: null,
+    }));
+
+  return {
+    decisions: [...manualDecisions, ...derivedDecisions].slice(0, 5),
+    constraints: [...manualConstraints, ...derivedConstraints].slice(0, 5),
+    tasks: [...manualTasks, ...derivedTasks].slice(0, 5),
+  };
+}
+
+function findMatchingSession(
+  sessions: ProjectDashboardPayload["sessionHistory"],
+  page: RelayPageState,
+) {
+  const candidates = sessions ?? [];
+  const matched =
+    candidates.find(
+      (session) =>
+        Boolean(page.pageFingerprint) &&
+        session.pageFingerprint === page.pageFingerprint,
+    ) ??
+    candidates.find(
+      (session) =>
+        Boolean(page.captureSignature) &&
+        session.captureSignature === page.captureSignature,
+    ) ??
+    candidates.find((session) => Boolean(page.url) && session.url === page.url);
+
+  return matched ?? null;
+}
+
+function buildSavedChatAssociation(
+  page: RelayPageState,
+  project: RelayProjectOption | null,
+  dashboard: ProjectDashboardPayload | null | undefined,
+): RelayChatAssociation {
+  if (!project || !dashboard) {
+    return createEmptyChatAssociation();
+  }
+
+  const matchingSession = findMatchingSession(dashboard.sessionHistory, page);
+  if (!matchingSession) {
+    return createEmptyChatAssociation();
+  }
+
+  return {
+    status: matchingSession.isArchived ? "archived" : "saved",
+    projectId: project.id,
+    projectName: project.name,
+    sessionId: matchingSession.id,
+    reason: matchingSession.isArchived
+      ? "This chat was detached from the project."
+      : "This chat is currently saved to the project.",
+    capturedAt: matchingSession.archivedAt ?? matchingSession.capturedAt ?? null,
+  };
+}
+
+function hydrateTabStateFromSession(state: RelayTabState, session: Awaited<ReturnType<typeof getRelaySession>>) {
+  const hasCachedProjects = session.projectOptions.length > 0;
+
+  if (!state.projectOptions.length && hasCachedProjects) {
+    state.projectOptions = session.projectOptions;
+  }
+
+  if (!state.projectId && session.assumedProjectId) {
+    state.projectId = session.assumedProjectId;
+    state.projectName =
+      state.projectName ||
+      session.assumedProjectName ||
+      session.projectOptions.find((project) => project.id === session.assumedProjectId)?.name ||
+      null;
+  }
+
+  if (!state.stateStatus && session.stateStatus) {
+    state.stateStatus = session.stateStatus;
+  }
+
+  if (!state.trust.updatedAt && session.trust.updatedAt) {
+    state.trust = session.trust;
+  }
+}
+
 function createTabState(tabId: number): RelayTabState {
   return {
     tabId,
@@ -176,6 +386,10 @@ function createTabState(tabId: number): RelayTabState {
     projectOptions: [],
     trust: createEmptyTrustMetadata(),
     stateStatus: null,
+    contextPreview: createEmptyContextPreview(),
+    chatAssociation: createEmptyChatAssociation(),
+    routingReview: null,
+    boundProject: null,
     showCue: true,
     remoteStatus: "unavailable",
     lastSuccessfulSyncAt: null,
@@ -189,6 +403,7 @@ function createTabState(tabId: number): RelayTabState {
     lastObservedTurns: 0,
     lastCapturedSignature: null,
     lastCapturedTurns: 0,
+    lastRoutedSignature: null,
   };
 }
 
@@ -273,7 +488,7 @@ async function loadSessionData() {
     }
 
     const projectsPayload = (await projectsResponse.json()) as {
-      projects: Array<{ id: string; name: string }>;
+      projects: Array<{ id: string; name: string; slug?: string | null }>;
     };
     const settingsPayload = (await settingsResponse.json()) as {
       settings: { settings: RemoteSettingsPayload["settings"] };
@@ -282,6 +497,7 @@ async function loadSessionData() {
     const projects = projectsPayload.projects.map((project) => ({
       id: project.id,
       name: project.name,
+      slug: project.slug ?? null,
     }));
     if (projects.length === 0) {
       recordBackgroundTelemetry({
@@ -305,6 +521,7 @@ async function loadSessionData() {
       targetMode: session.targetMode ?? "auto",
       targetProfileKey:
         session.targetMode === "manual" ? session.targetProfileKey : "",
+      projectOptions: projects,
     });
 
     const data = {
@@ -395,6 +612,7 @@ async function resolveBoundProject(tabId: number, pageState: RelayPageState) {
       project: {
         id: string;
         name: string;
+        slug?: string | null;
       };
     } | null;
   };
@@ -419,6 +637,12 @@ async function resolveActiveProject(tabId: number, pageState: RelayPageState) {
     projects: remote.projects,
     settings: remote.settings,
     activeProject,
+    boundProject: bound
+      ? {
+          projectId: bound.project.id,
+          bindingKind: bound.binding.bindingKind,
+        }
+      : null,
   };
 }
 
@@ -499,19 +723,32 @@ async function buildActiveProjectState(
     return createEmptyActiveProjectState();
   }
 
+  const effectiveProjectId =
+    state.projectId ?? (session.assumedProjectId || null);
+  const effectiveProjectName =
+    state.projectName ??
+    session.assumedProjectName ??
+    session.projectOptions.find((project) => project.id === effectiveProjectId)?.name ??
+    null;
+
   return deriveRelayActiveProjectState({
     connected: session.connected && Boolean(session.token),
-    projectId: state.projectId,
-    projectName: state.projectName,
-    projectOptions: state.projectOptions,
+    projectId: effectiveProjectId,
+    projectName: effectiveProjectName,
+    projectOptions: state.projectOptions.length
+      ? state.projectOptions
+      : session.projectOptions,
     showCue: state.showCue,
     page: state.page,
-    stateStatus: state.stateStatus,
-    trust: state.trust,
+    stateStatus: state.stateStatus ?? session.stateStatus,
+    trust: state.trust.updatedAt ? state.trust : session.trust,
     remoteStatus: state.remoteStatus,
     lastSuccessfulSyncAt: state.lastSuccessfulSyncAt,
     capturePending: state.capturePending,
     lastError: state.lastError,
+    contextPreview: state.contextPreview,
+    chatAssociation: state.chatAssociation,
+    routingReview: state.routingReview,
   });
 }
 
@@ -548,6 +785,7 @@ async function syncTabRemoteState(
 ) {
   const state = getOrCreateTabState(tabId);
   const session = await getRelaySession();
+  hydrateTabStateFromSession(state, session);
 
   if (!session.token) {
     state.remoteStatus = "unavailable";
@@ -579,24 +817,40 @@ async function syncTabRemoteState(
   await broadcastActiveProjectState(tabId);
 
   try {
-    const { connected, projects, activeProject, settings } =
+    const { connected, projects, activeProject, settings, boundProject } =
       await resolveActiveProject(tabId, state.page);
     const dashboard = activeProject
       ? await fetchProjectDashboard(activeProject.id)
       : null;
     const trust = dashboard ? buildTrustMetadata(dashboard) : state.trust;
+    const contextPreview = buildDashboardContextPreview(dashboard);
     const nextStateStatus =
       dashboard?.stateStatus ??
       state.stateStatus ??
       session.stateStatus ??
       null;
+    const nextChatAssociation = buildSavedChatAssociation(
+      state.page,
+      activeProject,
+      dashboard,
+    );
 
     state.projectOptions = projects;
     state.projectId = activeProject?.id ?? null;
     state.projectName = activeProject?.name ?? null;
+    state.boundProject = boundProject;
     state.showCue = settings?.settings.showSidepanelOnSupportedSites ?? true;
     state.trust = trust;
     state.stateStatus = nextStateStatus;
+    state.contextPreview = contextPreview;
+    if (nextChatAssociation.status !== "none") {
+      state.chatAssociation = nextChatAssociation;
+    } else if (
+      state.chatAssociation.status !== "held" &&
+      state.chatAssociation.status !== "ignored"
+    ) {
+      state.chatAssociation = createEmptyChatAssociation();
+    }
     state.remoteStatus = connected ? "ready" : "unavailable";
     state.lastSuccessfulSyncAt = new Date().toISOString();
     state.lastError = null;
@@ -609,6 +863,7 @@ async function syncTabRemoteState(
       assumedProjectName: activeProject?.name ?? "",
       stateStatus: nextStateStatus,
       trust,
+      projectOptions: projects,
     });
   } catch (cause) {
     state.lastError =
@@ -636,6 +891,9 @@ function updateTabPageState(tabId: number, page: RelayPageState) {
   if (routeChanged) {
     state.lastError = null;
     state.capturePending = false;
+    state.chatAssociation = createEmptyChatAssociation();
+    state.routingReview = null;
+    state.lastRoutedSignature = null;
     clearCaptureTimer(state);
   }
 }
@@ -669,10 +927,127 @@ async function captureTab(projectId: string, tabId: number) {
 
   return {
     ok: true,
+    sessionId: payload.session?.id ?? null,
     turns: payload.turns?.length ?? result.capture.turns?.length ?? 0,
     digestQueued: Boolean(payload.digestQueued),
+    digestStrategy: payload.digestStrategy ?? "skip",
     stateStatus: payload.stateStatus ?? null,
   };
+}
+
+async function showAssociationToast(
+  tabId: number,
+  projectId: string,
+  projectName: string,
+  sessionId: string,
+) {
+  const session = await getRelaySession();
+  const dashboardUrl = `${session.apiBase}/dashboard?project=${encodeURIComponent(projectId)}`;
+  const message: RelayMessage = {
+    type: "RELAY_SHOW_ASSOCIATION_TOAST",
+    payload: {
+      projectId,
+      projectName,
+      sessionId,
+      dashboardUrl,
+    },
+  };
+
+  void chrome.tabs.sendMessage(tabId, message).catch(() => undefined);
+}
+
+async function archiveChatAssociation(
+  tabId: number,
+  projectId: string,
+  sessionId: string,
+  archived: boolean,
+) {
+  const state = getOrCreateTabState(tabId);
+  const response = await relayFetch(`/api/projects/${projectId}/sessions/${sessionId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ archived }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await readErrorResponse(response, archived ? "Detach failed." : "Restore failed."),
+    );
+  }
+
+  if (archived) {
+    await removeApprovedAssociationBySession(sessionId);
+    state.chatAssociation = {
+      status: "archived",
+      projectId,
+      projectName: state.projectName,
+      sessionId,
+      reason: "This chat was detached from the project.",
+      capturedAt: new Date().toISOString(),
+    };
+  } else {
+    state.chatAssociation = {
+      status: "saved",
+      projectId,
+      projectName: state.projectName,
+      sessionId,
+      reason: "This chat is currently saved to the project.",
+      capturedAt: new Date().toISOString(),
+    };
+  }
+
+  invalidateProjectCache(projectId);
+  await syncTabRemoteState(tabId, {
+    force: true,
+    reason: archived ? "chat_detached" : "chat_restored",
+  });
+}
+
+async function dismissCaptureReview(tabId: number) {
+  const state = getOrCreateTabState(tabId);
+  const chatKey = buildAssociationKey(state.page);
+  await rememberIgnoredChatKey(chatKey);
+  state.lastRoutedSignature = state.page.captureSignature ?? chatKey;
+  state.routingReview = {
+    confidence: "low",
+    score: 0,
+    reasons: ["You dismissed this chat from automatic project capture."]
+  };
+  state.chatAssociation = {
+    status: "ignored",
+    projectId: null,
+    projectName: null,
+    sessionId: null,
+    reason: "Relay will ignore this chat until you save it manually.",
+    capturedAt: null,
+  };
+  await broadcastActiveProjectState(tabId);
+}
+
+async function resolveAutoCaptureRouting(
+  tabId: number,
+  state: RelayTabState,
+): Promise<RelayRoutingDecision> {
+  const chatKey = buildAssociationKey(state.page);
+  if (await isIgnoredChatKey(chatKey)) {
+    return {
+      mode: "ignore",
+      confidence: "low",
+      candidateProjectId: null,
+      candidateProjectName: null,
+      score: 0,
+      reasons: ["This chat was already dismissed from automatic capture."]
+    };
+  }
+
+  const approvedAssociations = await readApprovedAssociations();
+  return evaluateProjectRouting({
+    page: state.page,
+    projects: state.projectOptions,
+    selectedProjectId: state.projectId,
+    lastTabProjectId: state.projectId,
+    boundProject: state.boundProject,
+    approvedAssociations
+  });
 }
 
 async function captureObservedChange(
@@ -681,11 +1056,12 @@ async function captureObservedChange(
 ) {
   const state = getOrCreateTabState(tabId);
   const session = await getRelaySession();
+  const chatKey = buildAssociationKey(state.page);
   state.capturePending = true;
   await broadcastActiveProjectState(tabId);
 
   try {
-    if (!session.connected || !session.token || !session.autoCapture) {
+    if (!session.connected || !session.token || (!explicitProjectId && !session.autoCapture)) {
       return { ok: false, reason: "Auto-capture is not ready." };
     }
 
@@ -696,21 +1072,106 @@ async function captureObservedChange(
       });
     }
 
-    const projectId = explicitProjectId ?? state.projectId;
+    let projectId = explicitProjectId ?? state.projectId;
+    let routingDecision: Awaited<ReturnType<typeof resolveAutoCaptureRouting>> | null =
+      null;
+    let autoAssociated = false;
+
+    if (!explicitProjectId) {
+      routingDecision = await resolveAutoCaptureRouting(tabId, state);
+      state.routingReview = {
+        confidence: routingDecision.confidence,
+        score: routingDecision.score,
+        reasons: [...routingDecision.reasons],
+      };
+
+      if (routingDecision.mode === "ignore") {
+        state.lastRoutedSignature = state.page.captureSignature ?? chatKey;
+        state.chatAssociation = {
+          status: "ignored",
+          projectId: null,
+          projectName: null,
+          sessionId: null,
+          reason:
+            routingDecision.reasons[0] ??
+            "Relay skipped this chat because it did not clearly map to a project.",
+          capturedAt: null,
+        };
+        return {
+          ok: true,
+          ignored: true,
+          captured: false,
+          reason: routingDecision.reasons[0] ?? "Ignored this chat.",
+        };
+      }
+
+      if (
+        routingDecision.mode === "hold" &&
+        routingDecision.candidateProjectId &&
+        routingDecision.candidateProjectName
+      ) {
+        await clearIgnoredChatKey(chatKey);
+        state.lastRoutedSignature = state.page.captureSignature ?? chatKey;
+        state.chatAssociation = {
+          status: "held",
+          projectId: routingDecision.candidateProjectId,
+          projectName: routingDecision.candidateProjectName,
+          sessionId: null,
+          reason:
+            routingDecision.reasons[0] ??
+            "Relay wants confirmation before saving this chat to a project.",
+          capturedAt: null,
+        };
+        return {
+          ok: true,
+          held: true,
+          captured: false,
+          projectId: routingDecision.candidateProjectId,
+          reason:
+            routingDecision.reasons[0] ??
+            "Waiting for review before saving this chat.",
+        };
+      }
+
+      projectId = routingDecision.candidateProjectId ?? projectId;
+      autoAssociated = Boolean(projectId);
+    }
+
     if (!projectId) {
       return { ok: false, reason: "Choose a project first." };
     }
 
     const result = await captureTab(projectId, tabId);
     if (result?.ok) {
+      const hadSavedAssociation =
+        state.chatAssociation.status === "saved" &&
+        state.chatAssociation.projectId === projectId;
+      const matchedProject =
+        state.projectOptions.find((project) => project.id === projectId) ??
+        session.projectOptions.find((project) => project.id === projectId) ??
+        null;
+      const projectName = matchedProject?.name ?? state.projectName ?? "";
+
       state.lastCapturedSignature =
         state.page.captureSignature ?? state.lastObservedSignature;
+      state.lastRoutedSignature = state.page.captureSignature ?? chatKey;
       state.lastCapturedTurns = state.page.turns ?? state.lastObservedTurns;
+      state.projectId = projectId;
+      state.projectName = projectName || state.projectName;
       state.stateStatus = result.stateStatus ?? state.stateStatus;
+      state.chatAssociation = {
+        status: "saved",
+        projectId,
+        projectName: projectName || null,
+        sessionId: result.sessionId ?? null,
+        reason: "This chat is currently saved to the project.",
+        capturedAt: new Date().toISOString(),
+      };
       invalidateProjectCache(projectId);
+      await clearIgnoredChatKey(chatKey);
       await setRelaySession({
         assumedProjectId: projectId,
-        assumedProjectName: state.projectName ?? "",
+        assumedProjectName: projectName,
         resolvedTargetProfileKey: resolveTargetProfile({
           platform: state.page.platform,
           targetMode: session.targetMode,
@@ -718,6 +1179,29 @@ async function captureObservedChange(
         }),
         stateStatus: result.stateStatus ?? session.stateStatus,
       });
+      if (explicitProjectId) {
+        await rememberProjectSelection(projectId, tabId, state.page, projectName);
+      }
+      if (result.sessionId) {
+        await rememberApprovedAssociation({
+          key: chatKey,
+          projectId,
+          projectName,
+          projectSlug: matchedProject?.slug ?? null,
+          platform: (state.page.platform ?? null) as SupportedPlatform | null,
+          domain: state.page.domain ?? null,
+          pathname: state.page.pathname ?? null,
+          pageFingerprint: state.page.pageFingerprint ?? null,
+          url: state.page.url ?? null,
+          title: state.page.title ?? null,
+          recentUserTurnText: state.page.recentUserTurnText ?? null,
+          sessionId: result.sessionId,
+          approvedAt: new Date().toISOString(),
+        });
+      }
+      if (autoAssociated && result.sessionId && projectName && !hadSavedAssociation) {
+        await showAssociationToast(tabId, projectId, projectName, result.sessionId);
+      }
       await syncTabRemoteState(tabId, {
         force: true,
         reason: "capture_complete",
@@ -727,6 +1211,8 @@ async function captureObservedChange(
         turns: result.turns ?? state.page.turns ?? 0,
         digestQueued: Boolean(result.digestQueued),
         captured: true,
+        autoAssociated,
+        sessionId: result.sessionId ?? null,
         stateStatus: result.stateStatus ?? session.stateStatus,
       };
     }
@@ -745,8 +1231,10 @@ function scheduleAutoCapture(
   options: { immediate?: boolean } = {},
 ) {
   const state = getOrCreateTabState(tabId);
+  const currentSignature = state.page.captureSignature ?? null;
 
   if (
+    (currentSignature && currentSignature === state.lastRoutedSignature) ||
     !shouldScheduleAutoCapture({
       page: state.page,
       capturePending: state.capturePending,
@@ -1358,14 +1846,24 @@ chrome.runtime.onMessage.addListener(
           }
 
           const state = getOrCreateTabState(tabId);
+          const session = await getRelaySession();
+          hydrateTabStateFromSession(state, session);
+          if (
+            state.page.supported &&
+            session.connected &&
+            (state.remoteStatus === "unavailable" || !state.lastSuccessfulSyncAt)
+          ) {
+            state.remoteStatus = "loading";
+          }
+
+          sendResponse(await buildActiveProjectState(tabId));
+
           if (state.remoteStatus !== "ready" || !state.projectOptions.length) {
-            await syncTabRemoteState(tabId, {
+            void syncTabRemoteState(tabId, {
               force: true,
               reason: "active_state_request",
             });
           }
-
-          sendResponse(await buildActiveProjectState(tabId));
           return;
         }
 
@@ -1377,16 +1875,22 @@ chrome.runtime.onMessage.addListener(
             : tabId !== null
               ? await requestPageStateFromTab(tabId)
               : ({ supported: false } satisfies RelayPageState);
+          const nextProjectName =
+            state?.projectOptions.find(
+              (project) => project.id === message.payload.projectId,
+            )?.name ?? state?.projectName;
 
           await rememberProjectSelection(
             message.payload.projectId,
             tabId,
             pageState,
-            state?.projectName,
+            nextProjectName,
           );
           if (state) {
             state.projectId = message.payload.projectId;
+            state.projectName = nextProjectName ?? state.projectName;
             state.lastError = null;
+            state.routingReview = null;
           }
           invalidateProjectCache(message.payload.projectId);
 
@@ -1399,6 +1903,41 @@ chrome.runtime.onMessage.addListener(
           } else {
             sendResponse({ ok: true });
           }
+          return;
+        }
+
+        if (message.type === "RELAY_DISMISS_CAPTURE_REVIEW") {
+          const tabId = message.payload?.tabId ?? sender.tab?.id;
+          if (!tabId) {
+            sendResponse({
+              ok: false,
+              reason: "No supported tab was provided for review dismissal.",
+            });
+            return;
+          }
+
+          await dismissCaptureReview(tabId);
+          sendResponse({ ok: true });
+          return;
+        }
+
+        if (message.type === "RELAY_SET_CHAT_ASSOCIATION_ARCHIVED") {
+          const tabId = message.payload.tabId ?? sender.tab?.id;
+          if (!tabId) {
+            sendResponse({
+              ok: false,
+              reason: "No supported tab was provided for chat detachment.",
+            });
+            return;
+          }
+
+          await archiveChatAssociation(
+            tabId,
+            message.payload.projectId,
+            message.payload.sessionId,
+            message.payload.archived,
+          );
+          sendResponse({ ok: true });
           return;
         }
 

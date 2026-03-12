@@ -1,7 +1,7 @@
 import type { ProjectStateStatusDto } from "@relay/shared"
 
 import type { RelayTargetMode } from "../utils/target-profile"
-import type { RelayTrustMetadata } from "../messaging/contracts"
+import type { RelayProjectOption, RelayTrustMetadata } from "../messaging/contracts"
 
 const storage = typeof chrome !== "undefined" ? chrome.storage.local : null
 
@@ -19,7 +19,8 @@ const keys = {
   stateStatus: "relay.stateStatus",
   assumedProjectId: "relay.assumedProjectId",
   assumedProjectName: "relay.assumedProjectName",
-  trust: "relay.trust"
+  trust: "relay.trust",
+  projectOptions: "relay.projectOptions"
 } as const
 
 export interface RelaySessionState {
@@ -37,6 +38,7 @@ export interface RelaySessionState {
   assumedProjectId: string
   assumedProjectName: string
   trust: RelayTrustMetadata
+  projectOptions: RelayProjectOption[]
 }
 
 export function normalizeRelaySession(values: Record<string, unknown>): RelaySessionState {
@@ -64,7 +66,10 @@ export function normalizeRelaySession(values: Record<string, unknown>): RelaySes
         updatedLabel: null,
         recentChatCount: 0,
         savedContextCount: 0
-      }
+      },
+    projectOptions: Array.isArray(values[keys.projectOptions])
+      ? (values[keys.projectOptions] as RelayProjectOption[])
+      : []
   }
 }
 
@@ -89,7 +94,8 @@ export async function getRelaySession() {
         updatedLabel: null,
         recentChatCount: 0,
         savedContextCount: 0
-      }
+      },
+      projectOptions: []
     }
   }
 
@@ -116,6 +122,7 @@ export async function setRelaySession(input: Partial<RelaySessionState>) {
   if (input.assumedProjectId !== undefined) payload[keys.assumedProjectId] = input.assumedProjectId
   if (input.assumedProjectName !== undefined) payload[keys.assumedProjectName] = input.assumedProjectName
   if (input.trust !== undefined) payload[keys.trust] = input.trust
+  if (input.projectOptions !== undefined) payload[keys.projectOptions] = input.projectOptions
 
   if (Object.keys(payload).length > 0) {
     await storage.set(payload)

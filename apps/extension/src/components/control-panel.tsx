@@ -4,6 +4,7 @@ import { slugify } from "@relay/shared/utils/text";
 
 import type { RelayActiveProjectState } from "../messaging/contracts";
 import { getActiveTab } from "../utils/browser";
+import { relayFetch } from "../utils/api";
 import {
   getRelaySession,
   setRelaySession,
@@ -23,6 +24,36 @@ interface ControlPanelProps {
   compact?: boolean;
 }
 
+type ContextSection = "decisions" | "constraints" | "tasks";
+type ContextItem = RelayActiveProjectState["contextPreview"][ContextSection][number];
+
+const sectionLabels: Record<ContextSection, string> = {
+  decisions: "Decisions",
+  constraints: "Constraints",
+  tasks: "Tasks",
+};
+
+const memoryTypeBySection = {
+  decisions: "decision",
+  constraints: "constraint",
+  tasks: "task",
+} as const;
+
+const hiddenFieldBySection = {
+  decisions: "hiddenDecisions",
+  constraints: "hiddenConstraints",
+  tasks: "hiddenOpenTasks",
+} as const;
+
+async function readErrorMessage(response: Response, fallback: string) {
+  try {
+    const payload = (await response.json()) as { error?: string; message?: string };
+    return payload.error ?? payload.message ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function defaultDeviceName() {
   const platform = navigator.userAgent.includes("Mac")
     ? "Mac"
@@ -34,6 +65,7 @@ const emptyActiveState: RelayActiveProjectState = {
   projectId: null,
   projectName: null,
   projectOptions: [],
+  viewState: "unsupported",
   showCue: true,
   status: "unavailable",
   message: "Open ChatGPT, Claude, Codex, or Perplexity to use Relay.",
@@ -53,6 +85,20 @@ const emptyActiveState: RelayActiveProjectState = {
   insertKind: "fresh_chat_bootstrap",
   lastSuccessfulSyncAt: null,
   capturePending: false,
+  contextPreview: {
+    decisions: [],
+    constraints: [],
+    tasks: [],
+  },
+  chatAssociation: {
+    status: "none",
+    projectId: null,
+    projectName: null,
+    sessionId: null,
+    reason: null,
+    capturedAt: null,
+  },
+  routingReview: null,
 };
 
 function isRelayActiveProjectState(
@@ -77,6 +123,20 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [deviceName, setDeviceName] = useState("");
   const [projectSwitcherOpen, setProjectSwitcherOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
+  const [expandedSections, setExpandedSections] = useState<
+    Record<ContextSection, boolean>
+  >({
+    decisions: false,
+    constraints: false,
+    tasks: false,
+  });
+  const [drafts, setDrafts] = useState<Record<ContextSection, string>>({
+    decisions: "",
+    constraints: "",
+    tasks: "",
+  });
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState("");
   const activeStateRequestInFlight = useRef(false);
 
   useEffect(() => {
@@ -194,9 +254,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       current
         ? {
             ...current,
+            projectId: nextState.projectId ?? current.projectId,
             assumedProjectId: nextState.projectId ?? "",
             assumedProjectName: nextState.projectName ?? "",
             trust: nextState.trust,
+            projectOptions: nextState.projectOptions,
           }
         : current,
     );
@@ -601,6 +663,256 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
   }
 
+  async function runBusyAction(
+    pendingMessage: string,
+    successMessage: string,
+    task: () => Promise<void>,
+  ) {
+    setBusy(true);
+    setStatus(pendingMessage);
+
+    try {
+      await task();
+      setStatus(successMessage);
+      await refreshLocalSession();
+      await refreshActiveProjectState();
+    } catch (cause) {
+      setStatus(cause instanceof Error ? cause.message : "Request failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function patchProjectState(payload: Record<string, unknown>) {
+    const projectId = activeState.projectId ?? session?.projectId ?? "";
+    if (!projectId) {
+      throw new Error("Choose a project first.");
+    }
+
+    const response = await relayFetch(`/api/projects/${projectId}/state`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response, "Project state update failed."));
+    }
+  }
+
+  async function loadHiddenItems(section: ContextSection) {
+    const projectId = activeState.projectId ?? session?.projectId ?? "";
+    if (!projectId) {
+      return [];
+    }
+
+    const response = await relayFetch(`/api/projects/${projectId}`);
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response, "Project state lookup failed."));
+    }
+
+    const payload = (await response.json()) as {
+      dashboard?: {
+        stateOverrides?: {
+          hiddenDecisions?: string[];
+          hiddenConstraints?: string[];
+          hiddenOpenTasks?: string[];
+        } | null;
+      };
+    };
+
+    const stateOverrides = payload.dashboard?.stateOverrides;
+    return (
+      stateOverrides?.[hiddenFieldBySection[section]]?.slice() ?? []
+    );
+  }
+
+  async function addContext(section: ContextSection) {
+    const projectId = activeState.projectId ?? session?.projectId ?? "";
+    const content = drafts[section].trim();
+    if (!projectId || !content) return;
+
+    await runBusyAction(
+      `Saving ${sectionLabels[section].toLowerCase()}…`,
+      `${sectionLabels[section]} updated.`,
+      async () => {
+        const response = await relayFetch(`/api/projects/${projectId}/memory`, {
+          method: "POST",
+          body: JSON.stringify({
+            type: memoryTypeBySection[section],
+            title: null,
+            content,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(await readErrorMessage(response, "Context item creation failed."));
+        }
+
+        setDrafts((current) => ({
+          ...current,
+          [section]: "",
+        }));
+      },
+    );
+  }
+
+  async function removeContextItem(section: ContextSection, item: ContextItem) {
+    await runBusyAction(
+      "Updating project context…",
+      "Project context updated.",
+      async () => {
+        if (item.source === "manual" && item.memoryId) {
+          const response = await relayFetch(`/api/memory/${item.memoryId}`, {
+            method: "DELETE",
+          });
+          if (!response.ok) {
+            throw new Error(await readErrorMessage(response, "Manual context removal failed."));
+          }
+          return;
+        }
+
+        const hiddenItems = await loadHiddenItems(section);
+        await patchProjectState({
+          [hiddenFieldBySection[section]]: Array.from(new Set([...hiddenItems, item.text])),
+        });
+      },
+    );
+  }
+
+  function startEdit(item: ContextItem) {
+    setEditingKey(item.key);
+    setEditingText(item.text);
+  }
+
+  async function saveEdit(section: ContextSection, item: ContextItem) {
+    const nextText = editingText.trim();
+    if (!nextText) return;
+
+    await runBusyAction(
+      "Saving context change…",
+      "Project context updated.",
+      async () => {
+        if (item.source === "manual" && item.memoryId) {
+          const response = await relayFetch(`/api/memory/${item.memoryId}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              content: nextText,
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error(await readErrorMessage(response, "Manual context update failed."));
+          }
+        } else {
+          const projectId = activeState.projectId ?? session?.projectId ?? "";
+          const createResponse = await relayFetch(`/api/projects/${projectId}/memory`, {
+            method: "POST",
+            body: JSON.stringify({
+              type: memoryTypeBySection[section],
+              title: null,
+              content: nextText,
+            }),
+          });
+          if (!createResponse.ok) {
+            throw new Error(await readErrorMessage(createResponse, "Manual replacement failed."));
+          }
+
+          const hiddenItems = await loadHiddenItems(section);
+          await patchProjectState({
+            [hiddenFieldBySection[section]]: Array.from(new Set([...hiddenItems, item.text])),
+          });
+        }
+
+        setEditingKey(null);
+        setEditingText("");
+      },
+    );
+  }
+
+  async function updateChatAssociation(archived: boolean) {
+    const tab = await getActiveTab();
+    const association = activeState.chatAssociation;
+    if (!tab?.id || !association.projectId || !association.sessionId) {
+      setStatus("This chat is not currently attached to a saved Relay session.");
+      return;
+    }
+
+    const confirmMessage = archived
+      ? "Detach this chat from the project and rebuild the project state?"
+      : "Restore this chat back into the project state?";
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    await runBusyAction(
+      archived ? "Detaching this chat…" : "Restoring this chat…",
+      archived ? "Chat detached from the project." : "Chat restored to the project.",
+      async () => {
+        const result = (await chrome.runtime.sendMessage({
+          type: "RELAY_SET_CHAT_ASSOCIATION_ARCHIVED",
+          payload: {
+            tabId: tab.id,
+            projectId: association.projectId,
+            sessionId: association.sessionId,
+            archived,
+          },
+        })) as { ok?: boolean; reason?: string };
+
+        if (!result?.ok) {
+          throw new Error(result?.reason ?? "Association update failed.");
+        }
+      },
+    );
+  }
+
+  async function approveHeldChat() {
+    const tab = await getActiveTab();
+    if (!tab?.id || !activeState.chatAssociation.projectId) {
+      setStatus("Relay needs a project candidate before you can approve this chat.");
+      return;
+    }
+
+    await runBusyAction(
+      "Saving this chat to the suggested project…",
+      "Chat saved to the suggested project.",
+      async () => {
+        const result = (await chrome.runtime.sendMessage({
+          type: "RELAY_CAPTURE_VISIBLE",
+          payload: {
+            tabId: tab.id,
+            projectId: activeState.chatAssociation.projectId,
+          },
+        })) as { ok?: boolean; reason?: string };
+
+        if (!result?.ok) {
+          throw new Error(result?.reason ?? "Capture failed.");
+        }
+      },
+    );
+  }
+
+  async function dismissHeldChat() {
+    const tab = await getActiveTab();
+    if (!tab?.id) {
+      setStatus("Open a supported AI chat first.");
+      return;
+    }
+
+    await runBusyAction(
+      "Ignoring this chat for automatic capture…",
+      "Relay will ignore this chat until you save it manually.",
+      async () => {
+        const result = (await chrome.runtime.sendMessage({
+          type: "RELAY_DISMISS_CAPTURE_REVIEW",
+          payload: { tabId: tab.id },
+        })) as { ok?: boolean; reason?: string };
+
+        if (!result?.ok) {
+          throw new Error(result?.reason ?? "Dismiss failed.");
+        }
+      },
+    );
+  }
+
   const resolvedTargetProfileKey = resolveTargetProfile({
     platform: activeState.page.platform,
     targetMode: session?.targetMode,
@@ -612,7 +924,22 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     codex_implementation: "Codex Build",
     perplexity_research: "Perplexity Research",
   }[resolvedTargetProfileKey];
-  const selectedProjectId = activeState.projectId ?? session?.projectId ?? "";
+  const selectedProjectId =
+    activeState.projectId ??
+    session?.projectId ??
+    session?.assumedProjectId ??
+    "";
+  const dashboardHref =
+    session?.apiBase && selectedProjectId
+      ? `${session.apiBase}/dashboard?project=${encodeURIComponent(selectedProjectId)}`
+      : session?.apiBase
+        ? `${session.apiBase}/dashboard`
+        : "#";
+  const contextSections: ContextSection[] = [
+    "decisions",
+    "tasks",
+    "constraints",
+  ];
   const shouldShowIssue =
     Boolean(activeState.issue) &&
     (!activeState.canInsert ||
@@ -634,7 +961,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         ) : null}
       </header>
 
-      {!session?.connected ? (
+      {activeState.viewState === "disconnected" || !session?.connected ? (
         /* ─── Connect state ─── */
         <section className={styles.panel}>
           <h2 className={styles.sectionTitle}>Sign in to Relay</h2>
@@ -665,7 +992,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             Pair via web
           </button>
         </section>
-      ) : activeState.projectOptions.length === 0 && !activeState.projectId ? (
+      ) : activeState.viewState === "connected-empty" ? (
         /* ─── No projects yet ─── */
         <>
           <section className={styles.panel}>
@@ -696,50 +1023,121 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             </button>
           </section>
         </>
+      ) : activeState.viewState === "connected-loading" ? (
+        <section className={styles.panel}>
+          <div className={styles.panelTopRow}>
+            <div>
+              <h2 className={styles.projectName}>
+                {activeState.projectName ?? "Checking project"}
+              </h2>
+              <p className={styles.copy}>
+                Relay is keeping the last known project while this chat reloads.
+              </p>
+            </div>
+            <a
+              className={styles.inlineLink}
+              href={dashboardHref}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Dashboard
+            </a>
+          </div>
+
+          <div className={styles.statusRow}>
+            <span className={`${styles.dot} ${styles.dotWaiting}`} />
+            <span className={styles.statusText}>Checking this chat…</span>
+          </div>
+
+          <div className={styles.trustLine}>
+            {activeState.trust.recentChatCount > 0 ||
+            activeState.trust.savedContextCount > 0 ? (
+              <span>
+                {activeState.trust.recentChatCount} chats ·{" "}
+                {activeState.trust.savedContextCount} saved items
+              </span>
+            ) : (
+              <span>{activeState.trustLine}</span>
+            )}
+            {activeState.freshnessText ? (
+              <span> · {activeState.freshnessText}</span>
+            ) : null}
+          </div>
+        </section>
+      ) : activeState.viewState === "unsupported" ? (
+        <section className={styles.panel}>
+          <div className={styles.panelTopRow}>
+            <div>
+              <h2 className={styles.sectionTitle}>Open a supported AI chat</h2>
+              <p className={styles.copy}>
+                Relay is ready, but this tab is not one of the supported chat
+                surfaces yet.
+              </p>
+            </div>
+            <a
+              className={styles.inlineLink}
+              href={dashboardHref}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Dashboard
+            </a>
+          </div>
+        </section>
       ) : (
         <>
           {/* ─── Project + Status ─── */}
           <section className={styles.panel}>
-            <div style={{ position: "relative" }}>
-              <div
-                className={styles.projectRow}
-                onClick={() =>
-                  activeState.projectOptions.length > 1 &&
-                  setProjectSwitcherOpen((v) => !v)
-                }
-              >
-                <h2 className={styles.projectName}>
-                  {activeState.projectName ?? "No project"}
-                </h2>
-                {activeState.projectOptions.length > 1 ? (
-                  <svg
-                    className={`${styles.projectChevron} ${projectSwitcherOpen ? styles.projectChevronOpen : ""}`}
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="4 6 8 10 12 6" />
-                  </svg>
+            <div className={styles.panelTopRow}>
+              <div style={{ position: "relative", flex: 1 }}>
+                <div
+                  className={styles.projectRow}
+                  onClick={() =>
+                    activeState.projectOptions.length > 1 &&
+                    setProjectSwitcherOpen((v) => !v)
+                  }
+                >
+                  <h2 className={styles.projectName}>
+                    {activeState.projectName ?? "No project"}
+                  </h2>
+                  {activeState.projectOptions.length > 1 ? (
+                    <svg
+                      className={`${styles.projectChevron} ${projectSwitcherOpen ? styles.projectChevronOpen : ""}`}
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="4 6 8 10 12 6" />
+                    </svg>
+                  ) : null}
+                </div>
+
+                {projectSwitcherOpen ? (
+                  <div className={styles.projectDropdown}>
+                    {activeState.projectOptions.map((project) => (
+                      <button
+                        key={project.id}
+                        className={`${styles.projectOption} ${project.id === selectedProjectId ? styles.projectOptionActive : ""}`}
+                        onClick={() => void handleProjectChange(project.id)}
+                      >
+                        {project.id === selectedProjectId ? "✓ " : ""}
+                        {project.name}
+                      </button>
+                    ))}
+                  </div>
                 ) : null}
               </div>
-
-              {projectSwitcherOpen ? (
-                <div className={styles.projectDropdown}>
-                  {activeState.projectOptions.map((project) => (
-                    <button
-                      key={project.id}
-                      className={`${styles.projectOption} ${project.id === selectedProjectId ? styles.projectOptionActive : ""}`}
-                      onClick={() => void handleProjectChange(project.id)}
-                    >
-                      {project.id === selectedProjectId ? "✓ " : ""}
-                      {project.name}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+              <a
+                className={styles.inlineLink}
+                href={dashboardHref}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Dashboard
+              </a>
             </div>
 
             <div className={styles.statusRow}>
@@ -804,6 +1202,197 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 <span> · {activeState.freshnessText}</span>
               ) : null}
               {activeState.capturePending ? <span> · updating…</span> : null}
+            </div>
+          </section>
+
+          {activeState.chatAssociation.status !== "none" ? (
+            <section className={styles.panel}>
+              <div className={styles.associationHeader}>
+                <div>
+                  <h2 className={styles.sectionTitle}>Chat association</h2>
+                  <p className={styles.copy}>
+                    {activeState.chatAssociation.status === "held"
+                      ? `Relay thinks this chat belongs to ${activeState.chatAssociation.projectName ?? "this project"}, but it is waiting for your approval.`
+                      : activeState.chatAssociation.status === "saved"
+                        ? `This chat is currently associated with ${activeState.chatAssociation.projectName ?? "the selected project"}.`
+                        : activeState.chatAssociation.status === "archived"
+                          ? "This chat was detached from the project. You can restore it if Relay should use it again."
+                          : activeState.chatAssociation.reason ?? "Relay is leaving this chat out of automatic capture."}
+                  </p>
+                </div>
+              </div>
+
+              {activeState.chatAssociation.reason ? (
+                <p className={styles.metaText}>
+                  {activeState.chatAssociation.reason}
+                </p>
+              ) : null}
+
+              <div className={styles.cardActions}>
+                {activeState.chatAssociation.status === "held" ? (
+                  <>
+                    <button
+                      className={styles.primaryButton}
+                      disabled={busy || !activeState.chatAssociation.projectId}
+                      onClick={() => void approveHeldChat()}
+                    >
+                      Approve save
+                    </button>
+                    <button
+                      className={styles.secondaryButton}
+                      disabled={busy}
+                      onClick={() => void dismissHeldChat()}
+                    >
+                      Ignore chat
+                    </button>
+                  </>
+                ) : null}
+                {activeState.chatAssociation.status === "saved" ? (
+                  <button
+                    className={styles.secondaryButton}
+                    disabled={busy}
+                    onClick={() => void updateChatAssociation(true)}
+                  >
+                    Detach chat
+                  </button>
+                ) : null}
+                {activeState.chatAssociation.status === "archived" ? (
+                  <button
+                    className={styles.secondaryButton}
+                    disabled={busy}
+                    onClick={() => void updateChatAssociation(false)}
+                  >
+                    Restore chat
+                  </button>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+
+          <section className={styles.panel}>
+            <div className={styles.panelTopRow}>
+              <div>
+                <h2 className={styles.sectionTitle}>Project context</h2>
+                <p className={styles.copy}>
+                  Quick edits here change the same carry-forward state the dashboard uses.
+                </p>
+              </div>
+              <a
+                className={styles.inlineLink}
+                href={dashboardHref}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open full dashboard
+              </a>
+            </div>
+
+            <div className={styles.contextStack}>
+              {contextSections.map((section) => {
+                const items = activeState.contextPreview[section];
+                const expanded = expandedSections[section];
+                const visibleItems = expanded ? items.slice(0, 5) : items.slice(0, 1);
+
+                return (
+                  <div key={section} className={styles.contextSection}>
+                    <div className={styles.contextSectionHeader}>
+                      <span className={styles.contextLabel}>{sectionLabels[section]}</span>
+                      <button
+                        className={styles.ghostButton}
+                        type="button"
+                        onClick={() =>
+                          setExpandedSections((current) => ({
+                            ...current,
+                            [section]: !current[section],
+                          }))
+                        }
+                      >
+                        {expanded ? "Collapse" : items.length > 1 ? "Expand" : "Add"}
+                      </button>
+                    </div>
+
+                    {visibleItems.length === 0 ? (
+                      <p className={styles.emptyHint}>Nothing saved yet.</p>
+                    ) : (
+                      visibleItems.map((item) => (
+                        <div key={item.key} className={styles.contextItem}>
+                          {editingKey === item.key ? (
+                            <>
+                              <textarea
+                                className={styles.contextEditor}
+                                value={editingText}
+                                onChange={(event) => setEditingText(event.target.value)}
+                              />
+                              <div className={styles.contextActions}>
+                                <button
+                                  className={styles.secondaryButton}
+                                  disabled={busy || !editingText.trim()}
+                                  onClick={() => void saveEdit(section, item)}
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  className={styles.ghostButton}
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingKey(null);
+                                    setEditingText("");
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <p className={styles.contextText}>{item.text}</p>
+                              <div className={styles.contextActions}>
+                                <button
+                                  className={styles.ghostButton}
+                                  type="button"
+                                  onClick={() => startEdit(item)}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  className={styles.ghostButton}
+                                  type="button"
+                                  onClick={() => void removeContextItem(section, item)}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))
+                    )}
+
+                    {expanded ? (
+                      <div className={styles.contextComposer}>
+                        <textarea
+                          className={styles.contextEditor}
+                          value={drafts[section]}
+                          placeholder={`Add a ${section.slice(0, -1)} Relay should keep.`}
+                          onChange={(event) =>
+                            setDrafts((current) => ({
+                              ...current,
+                              [section]: event.target.value,
+                            }))
+                          }
+                        />
+                        <button
+                          className={styles.secondaryButton}
+                          disabled={busy || !drafts[section].trim()}
+                          onClick={() => void addContext(section)}
+                        >
+                          Add {sectionLabels[section].slice(0, -1)}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           </section>
 

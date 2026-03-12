@@ -2,11 +2,15 @@ import type { ProjectStateStatusDto } from "@relay/shared"
 
 import type {
   RelayActiveProjectState,
+  RelayChatAssociation,
+  RelayContextPreview,
   RelayInsertKind,
   RelayIssue,
   RelayPageState,
   RelayProjectOption,
   RelayRemoteStatus,
+  RelayRoutingReview,
+  RelaySidebarViewState,
   RelayTrustMetadata
 } from "../messaging/contracts"
 
@@ -24,6 +28,9 @@ export interface BuildRelayActiveProjectStateInput {
   remoteStatus: RelayRemoteStatus
   lastSuccessfulSyncAt: string | null
   capturePending: boolean
+  contextPreview: RelayContextPreview
+  chatAssociation: RelayChatAssociation
+  routingReview: RelayRoutingReview | null
   lastError?: string | null
 }
 
@@ -49,6 +56,25 @@ export function createEmptyTrustMetadata(): RelayTrustMetadata {
   }
 }
 
+export function createEmptyContextPreview(): RelayContextPreview {
+  return {
+    decisions: [],
+    constraints: [],
+    tasks: []
+  }
+}
+
+export function createEmptyChatAssociation(): RelayChatAssociation {
+  return {
+    status: "none",
+    projectId: null,
+    projectName: null,
+    sessionId: null,
+    reason: null,
+    capturedAt: null
+  }
+}
+
 export function createEmptyActiveProjectState(
   overrides: Partial<RelayActiveProjectState> = {}
 ): RelayActiveProjectState {
@@ -56,6 +82,7 @@ export function createEmptyActiveProjectState(
     projectId: null,
     projectName: null,
     projectOptions: [],
+    viewState: "unsupported",
     showCue: true,
     status: "unavailable",
     message: "Open ChatGPT, Claude, Codex, or Perplexity to use Relay.",
@@ -70,6 +97,9 @@ export function createEmptyActiveProjectState(
     insertKind: "fresh_chat_bootstrap",
     lastSuccessfulSyncAt: null,
     capturePending: false,
+    contextPreview: createEmptyContextPreview(),
+    chatAssociation: createEmptyChatAssociation(),
+    routingReview: null,
     ...overrides
   }
 }
@@ -169,11 +199,35 @@ export function deriveRelayIssue(input: BuildRelayActiveProjectStateInput): Rela
   return null
 }
 
+function deriveViewState(input: BuildRelayActiveProjectStateInput): RelaySidebarViewState {
+  if (!input.connected) {
+    return "disconnected"
+  }
+
+  if (!input.page.supported) {
+    return "unsupported"
+  }
+
+  if (
+    input.remoteStatus === "ready" ||
+    (input.remoteStatus === "stale" &&
+      Boolean(input.lastSuccessfulSyncAt) &&
+      (Boolean(input.projectId) || input.projectOptions.length > 0))
+  ) {
+    return input.projectOptions.length === 0 && !input.projectId
+      ? "connected-empty"
+      : "connected-ready"
+  }
+
+  return "connected-loading"
+}
+
 export function deriveRelayActiveProjectState(input: BuildRelayActiveProjectStateInput): RelayActiveProjectState {
   const insertKind = inferInsertKind(input.page)
   const projectStateReady = Boolean(input.stateStatus?.projectStateReady)
   const activeDigest = isActiveDigest(input.stateStatus)
   const issue = deriveRelayIssue(input)
+  const viewState = deriveViewState(input)
 
   let status: RelayActiveProjectState["status"] = "unavailable"
   let message = "Open a supported AI chat to use Relay."
@@ -183,6 +237,9 @@ export function deriveRelayActiveProjectState(input: BuildRelayActiveProjectStat
     message = "Sign in once to keep your project ready."
   } else if (!input.page.supported) {
     message = "Open ChatGPT, Claude, Codex, or Perplexity to use Relay."
+  } else if (viewState === "connected-loading") {
+    status = "updating"
+    message = "Checking this chat…"
   } else if (!input.projectId) {
     message = "Choose a project to keep this chat ready."
   } else if (insertKind === "fresh_chat_bootstrap") {
@@ -215,6 +272,7 @@ export function deriveRelayActiveProjectState(input: BuildRelayActiveProjectStat
     projectId: input.projectId,
     projectName: input.projectName,
     projectOptions: input.projectOptions,
+    viewState,
     showCue: input.showCue,
     status,
     message,
@@ -228,7 +286,10 @@ export function deriveRelayActiveProjectState(input: BuildRelayActiveProjectStat
     issue,
     insertKind,
     lastSuccessfulSyncAt: input.lastSuccessfulSyncAt,
-    capturePending: input.capturePending
+    capturePending: input.capturePending,
+    contextPreview: input.contextPreview,
+    chatAssociation: input.chatAssociation,
+    routingReview: input.routingReview
   }
 }
 
