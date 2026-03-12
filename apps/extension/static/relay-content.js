@@ -391,19 +391,18 @@
     style.id = "relay-inline-chip-styles"
     style.textContent = `
       .relay-inline-chip {
-        width: min(372px, calc(100vw - 32px));
-        border: 1px solid rgba(19, 24, 19, 0.12);
-        border-radius: 20px;
-        background: rgba(248, 246, 238, 0.97);
-        color: #151915;
-        box-shadow: 0 22px 58px rgba(12, 17, 12, 0.15);
-        backdrop-filter: blur(18px);
-        font-family: "Avenir Next", "Neue Haas Grotesk Text", sans-serif;
+        width: min(340px, calc(100vw - 32px));
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 12px;
+        background: #ffffff;
+        color: #111111;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
         overflow: hidden;
         z-index: 2147483000;
         opacity: 0;
-        transform: translateY(8px);
-        transition: opacity 160ms ease-out, transform 160ms ease-out;
+        transform: translateY(6px);
+        transition: opacity 140ms ease-out, transform 140ms ease-out;
       }
 
       .relay-inline-chip--visible {
@@ -413,8 +412,8 @@
 
       .relay-inline-chip--exiting {
         opacity: 0;
-        transform: translateY(10px);
-        transition: opacity 200ms ease-in-out, transform 200ms ease-in-out;
+        transform: translateY(8px);
+        transition: opacity 180ms ease-in-out, transform 180ms ease-in-out;
       }
 
       .relay-inline-chip--anchored {
@@ -429,87 +428,91 @@
 
       .relay-inline-chip__body {
         display: grid;
-        gap: 12px;
+        gap: 10px;
         padding: 14px;
       }
 
       .relay-inline-chip__top {
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         justify-content: space-between;
-        gap: 12px;
-      }
-
-      .relay-inline-chip__label {
-        margin: 0;
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.22em;
-        text-transform: uppercase;
-        color: rgba(21, 25, 21, 0.54);
+        gap: 10px;
       }
 
       .relay-inline-chip__title {
-        margin: 6px 0 0;
-        font-size: 16px;
-        font-weight: 700;
-        line-height: 1.2;
+        margin: 0;
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.3;
+        letter-spacing: -0.01em;
       }
 
       .relay-inline-chip__close {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 24px;
-        height: 24px;
+        width: 22px;
+        height: 22px;
+        flex-shrink: 0;
         border: none;
-        border-radius: 999px;
-        background: rgba(21, 25, 21, 0.06);
-        color: rgba(21, 25, 21, 0.72);
+        border-radius: 6px;
+        background: transparent;
+        color: #888888;
+        font-size: 14px;
         cursor: pointer;
-        opacity: 0;
-        transition: opacity 160ms ease, background 160ms ease;
-      }
-
-      .relay-inline-chip:hover .relay-inline-chip__close,
-      .relay-inline-chip:focus-within .relay-inline-chip__close {
-        opacity: 1;
+        transition: background 120ms, color 120ms;
       }
 
       .relay-inline-chip__close:hover {
-        background: rgba(21, 25, 21, 0.12);
+        background: #f0f0f0;
+        color: #111111;
       }
 
       .relay-inline-chip__statusRow {
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         gap: 8px;
+      }
+
+      .relay-inline-chip__dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      .relay-inline-chip__dot--ready {
+        background: #22c55e;
+      }
+
+      .relay-inline-chip__dot--waiting {
+        background: #f59e0b;
       }
 
       .relay-inline-chip__status {
         margin: 0;
-        font-size: 13px;
+        font-size: 12px;
         line-height: 1.5;
-        color: rgba(21, 25, 21, 0.8);
+        color: #555555;
       }
 
       .relay-inline-chip__infoWrap {
         position: relative;
         display: inline-flex;
-        margin-top: 1px;
+        margin-left: auto;
       }
 
       .relay-inline-chip__info {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 18px;
-        height: 18px;
-        border: 1px solid rgba(21, 25, 21, 0.18);
+        width: 16px;
+        height: 16px;
+        border: 1px solid #e5e5e5;
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.7);
-        color: rgba(21, 25, 21, 0.75);
-        font-size: 11px;
+        background: transparent;
+        color: #aaaaaa;
+        font-size: 10px;
         font-weight: 700;
         cursor: help;
       }
@@ -517,18 +520,18 @@
       .relay-inline-chip__tooltip {
         position: absolute;
         right: 0;
-        top: calc(100% + 8px);
-        width: min(260px, calc(100vw - 48px));
-        border-radius: 12px;
-        background: rgba(17, 21, 18, 0.96);
-        color: #f7f5ee;
-        padding: 10px 12px;
-        font-size: 12px;
+        top: calc(100% + 6px);
+        width: min(240px, calc(100vw - 48px));
+        border-radius: 8px;
+        background: #111111;
+        color: #ffffff;
+        padding: 8px 10px;
+        font-size: 11px;
         line-height: 1.45;
-        box-shadow: 0 18px 36px rgba(10, 12, 11, 0.22);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
         opacity: 0;
         pointer-events: none;
-        transform: translateY(4px);
+        transform: translateY(3px);
         transition: opacity 120ms ease, transform 120ms ease;
       }
 
@@ -539,16 +542,14 @@
       }
 
       .relay-inline-chip__trust {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px 12px;
-        font-size: 12px;
-        color: rgba(21, 25, 21, 0.58);
+        font-size: 11px;
+        color: #aaaaaa;
+        line-height: 1.4;
       }
 
       .relay-inline-chip__controls {
         display: grid;
-        gap: 10px;
+        gap: 8px;
       }
 
       .relay-inline-chip__row {
@@ -559,69 +560,64 @@
 
       .relay-inline-chip__button {
         position: relative;
-        min-width: 174px;
+        flex: 1;
+        min-width: 0;
         border: none;
-        border-radius: 999px;
-        background: #171b17;
-        color: #f7f5ee;
-        padding: 11px 16px;
-        font-size: 14px;
-        font-weight: 700;
+        border-radius: 8px;
+        background: #111111;
+        color: #ffffff;
+        padding: 9px 14px;
+        font-size: 13px;
+        font-weight: 600;
         cursor: pointer;
-        transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease, background 160ms ease;
+        transition: background 120ms, opacity 120ms;
       }
 
       .relay-inline-chip__button:hover:not(:disabled) {
-        transform: translateY(-1px);
+        background: #222222;
       }
 
       .relay-inline-chip__button:disabled {
         cursor: default;
-        opacity: 0.58;
+        opacity: 0.4;
       }
 
       .relay-inline-chip__button--loading {
-        box-shadow: 0 0 0 6px rgba(23, 27, 23, 0.08);
+        opacity: 0.7;
       }
 
       .relay-inline-chip__button--success {
-        background: #1f7a4c;
-        box-shadow: 0 0 0 6px rgba(31, 122, 76, 0.12);
-        animation: relay-inline-chip-success 180ms ease-out;
-      }
-
-      @keyframes relay-inline-chip-success {
-        0% { transform: scale(1); }
-        55% { transform: scale(1.03); }
-        100% { transform: scale(1); }
-      }
-
-      .relay-inline-chip__select {
-        width: 100%;
-        border: 1px solid rgba(21, 25, 21, 0.12);
-        border-radius: 12px;
-        background: rgba(255, 255, 255, 0.74);
-        color: #151915;
-        padding: 9px 10px;
-        font-size: 13px;
+        background: #16a34a;
       }
 
       .relay-inline-chip__shortcut {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
-        margin-left: auto;
-        border-radius: 999px;
-        background: rgba(21, 25, 21, 0.06);
-        padding: 7px 10px;
-        color: rgba(21, 25, 21, 0.7);
-        font-size: 12px;
-        font-weight: 700;
+        gap: 6px;
+        flex-shrink: 0;
+        border-radius: 6px;
+        border: 1px solid #e5e5e5;
+        background: transparent;
+        padding: 6px 8px;
+        color: #aaaaaa;
+        font-size: 11px;
+        font-weight: 500;
       }
 
       .relay-inline-chip__shortcut svg {
-        width: 14px;
-        height: 14px;
+        width: 12px;
+        height: 12px;
+      }
+
+      .relay-inline-chip__select {
+        width: 100%;
+        border: 1px solid #e5e5e5;
+        border-radius: 8px;
+        background: #f8f8f7;
+        color: #111111;
+        padding: 7px 10px;
+        font-size: 12px;
+        font-family: inherit;
       }
     `
 
@@ -826,30 +822,31 @@
       ]
         .filter(Boolean)
         .join(" ")
+      const dotClass = activeState.canInsert ? "relay-inline-chip__dot--ready" : "relay-inline-chip__dot--waiting"
 
       root.innerHTML = `
         <div class="relay-inline-chip__body">
           <div class="relay-inline-chip__top">
-            <div>
-              <p class="relay-inline-chip__label">Current project</p>
-              <p class="relay-inline-chip__title">${escapeHtml(activeState.projectName || "Choose a project")}</p>
-            </div>
-            <button class="relay-inline-chip__close" type="button" aria-label="Dismiss Relay chip">×</button>
+            <p class="relay-inline-chip__title">${escapeHtml(activeState.projectName || "No project")}</p>
+            <button class="relay-inline-chip__close" type="button" aria-label="Dismiss">×</button>
           </div>
           <div class="relay-inline-chip__statusRow">
+            <span class="relay-inline-chip__dot ${dotClass}"></span>
             <p class="relay-inline-chip__status">${escapeHtml(activeState.message || "")}</p>
             ${
               shouldShowIssue
                 ? `<div class="relay-inline-chip__infoWrap">
-                    <button class="relay-inline-chip__info" type="button" aria-label="Relay issue details">i</button>
+                    <button class="relay-inline-chip__info" type="button" aria-label="Details">i</button>
                     <div class="relay-inline-chip__tooltip">${escapeHtml(activeState.issue.detail)}</div>
                   </div>`
                 : ""
             }
           </div>
           <div class="relay-inline-chip__trust">
-            <span>${escapeHtml(activeState.trustLine || "")}</span>
-            ${activeState.freshnessText ? `<span>${escapeHtml(activeState.freshnessText)}</span>` : ""}
+            ${activeState.trust && (activeState.trust.recentChatCount > 0 || activeState.trust.savedContextCount > 0)
+              ? `<span>${activeState.trust.recentChatCount} chats · ${activeState.trust.savedContextCount} saved</span>`
+              : `<span>${escapeHtml(activeState.trustLine || "")}</span>`
+            }${activeState.freshnessText ? ` · <span>${escapeHtml(activeState.freshnessText)}</span>` : ""}
           </div>
           <div class="relay-inline-chip__controls">
             <div class="relay-inline-chip__row">
@@ -865,8 +862,8 @@
               </div>
             </div>
             ${
-              projectOptions
-                ? `<select class="relay-inline-chip__select" aria-label="Current Relay project">${projectOptions}</select>`
+              activeState.projectOptions.length > 1
+                ? `<select class="relay-inline-chip__select" aria-label="Switch project">${projectOptions}</select>`
                 : ""
             }
           </div>

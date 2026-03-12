@@ -373,21 +373,21 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
   return (
     <div className={`${styles.shell} ${compact ? styles.compact : styles.expanded}`}>
-      <section className={styles.hero}>
-        <p className={styles.eyebrow}>Relay</p>
-        <h1 className={styles.title}>{session?.connected ? "Your project is ready for this chat" : "Keep your project ready for the next fresh chat"}</h1>
-        <p className={styles.pageState}>
-          {activeState.page.supported
-            ? `${activeState.page.platform} · ${activeState.page.turns ?? 0} visible turns${activeState.page.isFreshChat ? " · fresh chat detected" : ""}`
-            : "Open ChatGPT, Claude, Codex, or Perplexity to activate Relay."}
-        </p>
-      </section>
+      {/* ─── Header ─── */}
+      <header className={styles.header}>
+        <span className={styles.wordmark}>Relay</span>
+        {activeState.page.supported ? (
+          <span className={styles.pageBadge}>
+            {activeState.page.platform}{activeState.page.isFreshChat ? " · new chat" : ""}
+          </span>
+        ) : null}
+      </header>
 
       {!session?.connected ? (
-        <section className={`${styles.panel} ${styles.primaryPanel}`}>
-          <p className={styles.sectionLabel}>Connect Relay in Chrome</p>
-          <h2 className={styles.sectionTitle}>Sign in once and let Relay stay quiet.</h2>
-          <p className={styles.copy}>Relay auto-captures useful work and keeps the next fresh chat ready without token paste in the normal flow.</p>
+        /* ─── Connect state ─── */
+        <section className={styles.panel}>
+          <h2 className={styles.sectionTitle}>Connect your browser</h2>
+          <p className={styles.copy}>Sign in once. Relay captures useful work quietly and keeps your next chat ready.</p>
 
           <label className={styles.field}>
             <span>Device name</span>
@@ -395,48 +395,24 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           </label>
 
           <button className={styles.primaryButton} disabled={busy} onClick={() => void openConnectFlow()}>
-            {busy ? "Working…" : "Connect Relay"}
+            {busy ? "Connecting…" : "Connect Relay"}
           </button>
         </section>
       ) : (
         <>
-          <section className={`${styles.panel} ${styles.primaryPanel}`}>
+          {/* ─── Project + Status ─── */}
+          <section className={styles.panel}>
             <div className={styles.row}>
-              <div>
-                <p className={styles.sectionLabel}>Current project</p>
-                <h2 className={styles.sectionTitle}>{activeState.projectName ?? "Choose a project"}</h2>
-              </div>
-            </div>
-
-            <p className={styles.statusLine}>{activeState.message}</p>
-            {shouldShowIssue ? (
-              <div className={styles.infoWrap}>
-                <button className={styles.infoButton} type="button" aria-label="Relay issue details">
-                  i
+              <h2 className={styles.projectName}>{activeState.projectName ?? "No project"}</h2>
+              {activeState.projectOptions.length > 1 ? (
+                <button className={styles.switchButton} onClick={() => setProjectSwitcherOpen((v) => !v)}>
+                  Switch
                 </button>
-                <div className={styles.tooltip}>{activeState.issue?.detail}</div>
-              </div>
-            ) : null}
-
-            <div className={styles.actionGrid}>
-              <button className={styles.primaryButton} disabled={busy || !activeState.canInsert} onClick={() => void insertProjectBrief()}>
-                {busy ? "Working…" : "Insert project brief"}
-              </button>
-              <button
-                className={styles.secondaryButton}
-                disabled={busy || !activeState.projectId || !activeState.page.supported}
-                onClick={() => void saveToProject()}>
-                Save to project
-              </button>
+              ) : null}
             </div>
-
-            <button className={styles.linkButton} onClick={() => setProjectSwitcherOpen((value) => !value)}>
-              Switch project
-            </button>
 
             {projectSwitcherOpen ? (
               <label className={styles.field}>
-                <span>Project</span>
                 <select value={selectedProjectId} onChange={(event) => void handleProjectChange(event.target.value)}>
                   <option value="">Select a project</option>
                   {activeState.projectOptions.map((project) => (
@@ -448,20 +424,51 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               </label>
             ) : null}
 
+            <div className={styles.statusRow}>
+              <span className={`${styles.dot} ${activeState.canInsert ? styles.dotReady : styles.dotWaiting}`} />
+              <span className={styles.statusText}>{activeState.message}</span>
+            </div>
+
+            {shouldShowIssue ? (
+              <div className={styles.infoWrap}>
+                <button className={styles.infoButton} type="button" aria-label="Issue details">i</button>
+                <div className={styles.tooltip}>{activeState.issue?.detail}</div>
+              </div>
+            ) : null}
+
+            {/* Primary CTA */}
+            <button className={styles.primaryButton} disabled={busy || !activeState.canInsert} onClick={() => void insertProjectBrief()}>
+              {busy ? "Inserting…" : "Insert project brief"}
+            </button>
+
+            {/* Secondary action */}
+            <button
+              className={styles.linkButton}
+              disabled={busy || !activeState.projectId || !activeState.page.supported}
+              onClick={() => void saveToProject()}>
+              Save to project
+            </button>
+
+            {/* Trust line */}
             <div className={styles.trustLine}>
-              <span>{activeState.trustLine}</span>
-              {activeState.freshnessText ? <span>{activeState.freshnessText}</span> : null}
-              {activeState.capturePending ? <span>Refreshing from this chat</span> : null}
+              {activeState.trust.recentChatCount > 0 || activeState.trust.savedContextCount > 0 ? (
+                <span>
+                  {activeState.trust.recentChatCount} chats · {activeState.trust.savedContextCount} saved items
+                </span>
+              ) : (
+                <span>{activeState.trustLine}</span>
+              )}
+              {activeState.freshnessText ? <span> · {activeState.freshnessText}</span> : null}
+              {activeState.capturePending ? <span> · updating…</span> : null}
             </div>
           </section>
 
+          {/* ─── Debug ─── */}
           <details
-            className={`${styles.panel} ${styles.advancedPanel}`}
+            className={styles.debugPanel}
             open={advancedOpen}
             onToggle={(event) => setAdvancedOpen((event.target as HTMLDetailsElement).open)}>
-            <summary className={styles.summary}>
-              <span className={styles.summaryTitle}>Advanced</span>
-            </summary>
+            <summary className={styles.summary}>Debug</summary>
 
             <label className={styles.field}>
               <span>Target override</span>
@@ -496,11 +503,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             <div className={styles.debugCard}>
               <p>{status}</p>
               <p>Remote: {activeState.remoteStatus}</p>
-              <p>Target: {session?.targetMode === "manual" ? "Manual" : "Automatic"} · {resolvedTargetLabel}</p>
+              <p>Target: {session?.targetMode === "manual" ? "Manual" : "Auto"} · {resolvedTargetLabel}</p>
               <p>Shortcut: {activeState.shortcutLabel}</p>
               {activeState.issue ? <p>Issue: {activeState.issue.detail}</p> : null}
               {activeState.lastSuccessfulSyncAt ? <p>Last sync: {new Date(activeState.lastSuccessfulSyncAt).toLocaleTimeString()}</p> : null}
-              {session?.limitedMode ? <p>Fallback mode: using saved project context.</p> : null}
+              {session?.limitedMode ? <p>Fallback: saved context only</p> : null}
             </div>
           </details>
         </>
