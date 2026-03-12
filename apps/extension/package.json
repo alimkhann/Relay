@@ -21,6 +21,10 @@
     "name": "Relay",
     "description": "Keep project memory moving between ChatGPT, Claude, and Perplexity.",
     "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyttDVI0DMHgWJkJuaTkL1feX8lmuBsUWo8cSFTWWbkPNTDgp0KLiFAw1LBnoqFoj8FfNX7R1wYp1YJ0aVvKxpCyX4TDAFykb4s24Ssr8MBvTqXCZLTVSdZzi53pie1yiAXgp7Nan+GngoMbZQe/DelyZXTrMUIQ67DhLZf9KDqBJJjk2lwMqbPVzUOQIHp36ZeOZTKyDTD6uemNMcI6HWlQxyCdqvVQs8ooXfbcI2ot+PMh09r0NSxQSE/VlPu9slltBz+Ks7g6920d13iFP7v3lRMbcQJiJN2eFmWPDlanlpXnrQHb6Nyd9j8v03AQew75nJh3KV2IW3eNbnt7ybQIDAQAB",
+    "oauth2": {
+      "client_id": "859793262553-o9iuk7f4md3vb8740e6gjotigi52m1pa.apps.googleusercontent.com",
+      "scopes": ["openid", "email", "profile"]
+    },
     "permissions": [
       "storage",
       "tabs",

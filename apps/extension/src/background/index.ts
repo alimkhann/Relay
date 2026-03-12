@@ -957,50 +957,24 @@ chrome.runtime.onMessage.addListener(
         }
 
         if (message.type === "RELAY_GOOGLE_SIGN_IN") {
-          const googleClientId = process.env.PLASMO_PUBLIC_CRX_GOOGLE_CLIENT_ID;
-          if (!googleClientId) {
-            sendResponse({
-              ok: false,
-              reason: "Google sign-in is not configured for this extension.",
-            });
-            return;
-          }
-
-          const redirectUrl = chrome.identity.getRedirectURL();
-          const authUrl = new URL(
-            "https://accounts.google.com/o/oauth2/v2/auth",
-          );
-          authUrl.searchParams.set("client_id", googleClientId);
-          authUrl.searchParams.set("redirect_uri", redirectUrl);
-          authUrl.searchParams.set("response_type", "token");
-          authUrl.searchParams.set("scope", "openid email profile");
-          authUrl.searchParams.set("prompt", "select_account");
-
           try {
-            const callbackUrl = await chrome.identity.launchWebAuthFlow({
-              url: authUrl.toString(),
-              interactive: true,
+            const accessToken = await new Promise<string>((resolve, reject) => {
+              chrome.identity.getAuthToken(
+                { interactive: true, scopes: ["openid", "email", "profile"] },
+                (token) => {
+                  if (chrome.runtime.lastError || !token) {
+                    reject(
+                      new Error(
+                        chrome.runtime.lastError?.message ??
+                          "Google sign-in was cancelled.",
+                      ),
+                    );
+                  } else {
+                    resolve(token);
+                  }
+                },
+              );
             });
-
-            if (!callbackUrl) {
-              sendResponse({
-                ok: false,
-                reason: "Google sign-in was cancelled.",
-              });
-              return;
-            }
-
-            const hashParams = new URLSearchParams(
-              new URL(callbackUrl).hash.slice(1),
-            );
-            const accessToken = hashParams.get("access_token");
-            if (!accessToken) {
-              sendResponse({
-                ok: false,
-                reason: "Google sign-in did not return a token.",
-              });
-              return;
-            }
 
             const session = await getRelaySession();
             const apiBase =
