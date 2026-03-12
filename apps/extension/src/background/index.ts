@@ -958,23 +958,21 @@ chrome.runtime.onMessage.addListener(
 
         if (message.type === "RELAY_GOOGLE_SIGN_IN") {
           try {
-            const accessToken = await new Promise<string>((resolve, reject) => {
-              chrome.identity.getAuthToken(
-                { interactive: true, scopes: ["openid", "email", "profile"] },
-                (token) => {
-                  if (chrome.runtime.lastError || !token) {
-                    reject(
-                      new Error(
-                        chrome.runtime.lastError?.message ??
-                          "Google sign-in was cancelled.",
-                      ),
-                    );
-                  } else {
-                    resolve(token);
-                  }
-                },
-              );
+            // Use promise-based getAuthToken (MV3)
+            const authResult = await chrome.identity.getAuthToken({
+              interactive: true,
             });
+            const accessToken =
+              typeof authResult === "string"
+                ? authResult
+                : authResult?.token;
+            if (!accessToken) {
+              sendResponse({
+                ok: false,
+                reason: "Google sign-in was cancelled.",
+              });
+              return;
+            }
 
             const session = await getRelaySession();
             const apiBase =
