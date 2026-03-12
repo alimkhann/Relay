@@ -3,176 +3,174 @@ import Link from "next/link"
 import { ArrowRight } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { LandingAnimations } from "./landing-animations"
 
-const pillars = [
+const steps = [
   {
-    title: "Capture the useful moments",
-    copy: "Relay watches supported AI chats and saves the parts worth carrying forward."
+    num: "01",
+    title: "Relay saves useful parts of your AI chats automatically",
+    copy: "Work in ChatGPT, Claude, Codex, or Perplexity. Relay quietly captures what matters."
   },
   {
-    title: "Keep one project brief alive",
-    copy: "Recent chats turn into saved decisions, constraints, progress, and next steps."
+    num: "02",
+    title: "Decisions, progress, and next steps carry forward",
+    copy: "Your project brief updates itself as you work across sessions."
   },
   {
-    title: "Start the next chat without re-briefing",
-    copy: "Open a fresh chat and insert a ready project brief in one click."
+    num: "03",
+    title: "One click starts the next chat with full context",
+    copy: "Open a fresh chat. Insert your project brief. Keep building."
   }
 ]
 
+const platforms = ["ChatGPT", "Claude", "Codex", "Perplexity"]
+
 export default function MarketingPage() {
   return (
-    <main className="min-h-screen overflow-hidden bg-[var(--relay-app-bg)] text-[var(--relay-ink)]">
-      <section className="px-5 pt-6 lg:px-8 lg:pt-8">
-        <div className="mx-auto max-w-7xl rounded-[24px] border border-[var(--relay-line)] bg-white/58 p-4 shadow-[var(--relay-shadow)] backdrop-blur">
-          <header className="flex flex-wrap items-center justify-between gap-4 rounded-[18px] border border-white/70 bg-white/68 px-4 py-4">
-            <Link href="/" className="inline-flex items-center rounded-[10px] bg-[var(--relay-accent)] px-3 py-2 text-sm font-semibold uppercase tracking-[0.24em] text-white">
+    <LandingAnimations>
+      <main className="min-h-screen bg-[var(--relay-bg)] text-[var(--relay-ink)]">
+        {/* ─── Full-bleed Hero ─── */}
+        <section className="relative min-h-screen overflow-hidden">
+          {/* Background image */}
+          <Image
+            src="/images/hero-hills.jpg"
+            alt=""
+            fill
+            priority
+            className="object-cover object-center"
+            sizes="100vw"
+          />
+          {/* Gradient overlay */}
+          <div className="absolute inset-0 bg-[var(--relay-hero-overlay)]" />
+
+          {/* Transparent nav */}
+          <header className="relative z-20 flex items-center justify-between px-6 py-5 lg:px-10 lg:py-6" data-animate="nav">
+            <Link href="/" className="text-[15px] font-bold tracking-tight text-white">
               Relay
             </Link>
-            <nav className="flex items-center gap-2 text-sm text-[var(--relay-muted)]">
-              <a className="rounded-[10px] px-3 py-2 transition hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]" href="#product">
-                Product
-              </a>
-              <a className="rounded-[10px] px-3 py-2 transition hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]" href="#workflow">
-                Workflow
-              </a>
+            <nav className="hidden items-center gap-6 text-sm text-white/70 md:flex">
+              <a className="transition hover:text-white" href="#how-it-works">How it works</a>
+              <a className="transition hover:text-white" href="#product">Product</a>
             </nav>
             <div className="flex items-center gap-3">
-              <Link className="rounded-[12px] border border-[var(--relay-line)] bg-white/80 px-4 py-2 text-sm font-medium text-[var(--relay-muted)] transition hover:bg-white" href="/sign-in">
+              <Link className="hidden text-sm font-medium text-white/70 transition hover:text-white sm:inline" href="/sign-in">
                 Sign in
               </Link>
-              <Button asChild>
+              <Button asChild className="bg-white text-[#111210] hover:bg-white/90 shadow-none">
                 <Link href="/dashboard">
-                  Open Relay
-                  <ArrowRight className="ml-2 h-4 w-4" />
+                  Get started
+                  <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
                 </Link>
               </Button>
             </div>
           </header>
 
-          <div className="grid gap-8 px-2 pb-2 pt-10 lg:grid-cols-[1.02fr_0.98fr] lg:items-end">
-            <div className="space-y-8 px-4 pb-8 lg:px-8 lg:pb-10">
-              <div className="inline-flex rounded-[999px] border border-[var(--relay-line)] bg-white/72 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">
-                Project brief for fresh chats
-              </div>
-              <div className="space-y-5">
-                <h1 className="max-w-4xl text-5xl font-semibold leading-[0.92] tracking-[-0.06em] md:text-7xl">
-                  Stop rebuilding your project every time the chat resets.
-                </h1>
-                <p className="max-w-2xl text-lg leading-8 text-[var(--relay-muted)]">
-                  Relay saves what matters from your AI work and inserts a clean project brief into the next fresh chat.
-                </p>
-                <p className="max-w-2xl text-sm font-medium uppercase tracking-[0.2em] text-[var(--relay-muted)]">
-                  Works best for coding projects. Also useful for research and planning.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <Button asChild>
-                  <Link href="/dashboard">Open Relay</Link>
+          {/* Hero content — centered */}
+          <div className="relative z-10 flex min-h-[calc(100vh-80px)] flex-col items-center justify-center px-6 text-center">
+            <div className="max-w-3xl" data-animate="hero">
+              <p className="mb-5 text-xs font-semibold uppercase tracking-[0.25em] text-white/60">
+                For coding workflows
+              </p>
+              <h1 className="text-5xl font-bold leading-[1.02] tracking-[-0.035em] text-white md:text-7xl lg:text-8xl">
+                Discover hidden paths
+              </h1>
+              <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-white/75 md:text-xl">
+                Relay saves what matters from your AI work and inserts a clean project brief into the next fresh chat.
+              </p>
+              <p className="mt-4 text-sm font-medium text-white/45">
+                Works best for coding projects. Also useful for research and planning.
+              </p>
+              <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+                <Button asChild className="bg-white text-[#111210] hover:bg-white/90 shadow-none px-6 py-3">
+                  <Link href="/dashboard">Start Exploring</Link>
                 </Button>
-                <Button asChild variant="secondary">
-                  <a href="#workflow">See how it works</a>
+                <Button asChild variant="secondary" className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white">
+                  <a href="#how-it-works">View Adventures</a>
                 </Button>
               </div>
             </div>
 
-            <div className="relative min-h-[560px] overflow-hidden rounded-[22px] border border-white/60 bg-[#d8d7d0]">
-              <Image
-                src="/images/hero-hills.jpg"
-                alt="Misty hills behind the Relay product preview"
-                fill
-                priority
-                className="object-cover object-center"
-              />
-              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(247,245,238,0.88),rgba(247,245,238,0.18)_42%,rgba(20,22,18,0.36))]" />
-              <div className="absolute inset-0 p-6">
-                <div className="mx-auto max-w-[420px] rounded-[22px] border border-white/65 bg-[rgba(247,245,238,0.62)] p-5 shadow-[var(--relay-shadow)] backdrop-blur">
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Sidepanel preview</p>
-                  <div className="mt-5 rounded-[18px] border border-[var(--relay-line)] bg-[#161916] p-5 text-white">
-                    <p className="text-xs uppercase tracking-[0.26em] text-white/58">Current project</p>
-                    <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em]">Relay</h2>
-                    <p className="mt-3 text-sm leading-7 text-white/76">Ready for this chat</p>
-                    <div className="mt-5 grid gap-3">
-                      <div className="rounded-[14px] bg-white/8 px-4 py-3 text-sm">Insert project brief</div>
-                      <div className="rounded-[14px] border border-white/10 px-4 py-3 text-sm text-white/78">Save to project</div>
-                    </div>
-                    <p className="mt-4 text-xs uppercase tracking-[0.18em] text-white/52">Built from recent chats and saved project context</p>
+            {/* Platform bar at bottom of hero */}
+            <div className="absolute bottom-8 left-0 right-0 flex flex-col items-center gap-3" data-animate="platforms">
+              <p className="text-xs font-medium uppercase tracking-[0.2em] text-white/40">Our sponsors</p>
+              <div className="flex items-center gap-8">
+                {platforms.map((p) => (
+                  <span key={p} className="text-sm font-semibold tracking-wide text-white/50">{p}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ─── How it works ─── */}
+        <section id="how-it-works" className="px-6 py-24 lg:px-10 lg:py-32">
+          <div className="mx-auto max-w-4xl">
+            <div className="mb-16 max-w-2xl" data-animate="section">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--relay-muted)]">How it works</p>
+              <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">
+                A calmer loop than copy-pasting transcripts.
+              </h2>
+            </div>
+            <div className="space-y-1">
+              {steps.map((step) => (
+                <div key={step.num} className="group flex gap-6 border-b border-[var(--relay-line)] py-8 first:border-t md:gap-10" data-animate="step">
+                  <span className="mt-1 text-sm font-bold tabular-nums text-[var(--relay-faint)]">{step.num}</span>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold tracking-tight md:text-xl">{step.title}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-[var(--relay-muted)]">{step.copy}</p>
                   </div>
                 </div>
-              </div>
+              ))}
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section id="workflow" className="px-5 py-24 lg:px-8">
-        <div className="mx-auto max-w-7xl space-y-6">
-          <div className="max-w-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">How it works</p>
-            <h2 className="mt-3 text-4xl font-semibold tracking-[-0.04em]">A calmer loop than transcript copy and another round of re-explaining.</h2>
-          </div>
-          <div className="grid gap-4 lg:grid-cols-3">
-            {pillars.map((pillar) => (
-              <div key={pillar.title} className="rounded-[20px] border border-[var(--relay-line)] bg-white/78 p-6 shadow-[var(--relay-shadow)]">
-                <p className="text-lg font-semibold tracking-tight text-[var(--relay-ink)]">{pillar.title}</p>
-                <p className="mt-3 text-sm leading-7 text-[var(--relay-muted)]">{pillar.copy}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+        {/* ─── Product preview ─── */}
+        <section id="product" className="px-6 pb-32 lg:px-10">
+          <div className="mx-auto max-w-4xl">
+            <div className="mb-12" data-animate="section">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--relay-muted)]">Product</p>
+              <h2 className="mt-3 max-w-md text-3xl font-bold tracking-tight md:text-4xl">
+                The extension does the work. The dashboard stays out of the way.
+              </h2>
+            </div>
 
-      <section id="product" className="px-5 pb-28 lg:px-8">
-        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.92fr_1.08fr]">
-          <div className="space-y-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Project context first. Dashboard second.</p>
-            <h2 className="text-4xl font-semibold tracking-[-0.04em]">Project context first. Dashboard second.</h2>
-            <p className="max-w-xl text-base leading-8 text-[var(--relay-muted)]">
-              The sidepanel does the daily work. The web app stays calm and review-focused: saved context, recent chats, and the latest project brief.
-            </p>
-            <p className="max-w-xl text-sm font-medium uppercase tracking-[0.2em] text-[var(--relay-muted)]">Best for long-running coding work where fresh chats happen often.</p>
-          </div>
-
-          <div className="rounded-[22px] border border-[var(--relay-line)] bg-white/82 p-5 shadow-[var(--relay-shadow)]">
-            <div className="grid gap-4 lg:grid-cols-[0.98fr_1.02fr]">
-              <div className="rounded-[18px] bg-[var(--relay-soft)] p-5">
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Saved project context</p>
-                <div className="mt-4 space-y-3">
-                  {[
-                    ["Overview", "Long-running coding work that moves across fresh chats."],
-                    ["Current objective", "Ship the quiet assistant rewrite and inline insert flow."],
-                    ["Open task", "Make fresh-chat insertion feel immediate."]
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-[14px] bg-white/84 px-4 py-4">
-                      <p className="text-xs uppercase tracking-[0.22em] text-[var(--relay-muted)]">{label}</p>
-                      <p className="mt-2 text-sm leading-6 text-[var(--relay-ink)]">{value}</p>
+            {/* Sidepanel mockup */}
+            <div className="mx-auto max-w-sm" data-animate="mockup">
+              <div className="rounded-[var(--relay-radius-lg)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-6 shadow-[var(--relay-shadow-lg)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--relay-muted)]">Sidepanel</p>
+                <div className="mt-5 rounded-[var(--relay-radius)] bg-[var(--relay-accent)] p-5 text-[var(--relay-accent-text)]">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.2em] opacity-50">Current project</p>
+                  <h3 className="mt-2 text-2xl font-bold tracking-tight">Relay</h3>
+                  <p className="mt-2 text-sm opacity-60">Ready for this chat</p>
+                  <div className="mt-5 space-y-2.5">
+                    <div className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-accent-text)]/10 px-4 py-2.5 text-sm font-medium">
+                      Insert project brief
                     </div>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-4">
-                <div className="rounded-[18px] border border-[var(--relay-line)] bg-[#171915] p-5 text-white">
-                  <p className="text-xs uppercase tracking-[0.26em] text-white/56">Latest project brief</p>
-                  <p className="mt-3 text-sm leading-7 text-white/78">
-                    A clean fresh-chat brief with context, current objective, constraints, open tasks, and the next move.
-                  </p>
-                </div>
-                <div className="rounded-[18px] border border-[var(--relay-line)] bg-white p-5">
-                  <p className="text-xs uppercase tracking-[0.26em] text-[var(--relay-muted)]">Inline insert</p>
-                  <p className="mt-3 text-sm leading-7 text-[var(--relay-muted)]">
-                    Fresh chat detected. One click inserts the project brief. The sidepanel is there when you need it, not before.
-                  </p>
-                </div>
-                <div className="rounded-[18px] border border-[var(--relay-line)] bg-[var(--relay-soft)] p-5">
-                  <p className="text-xs uppercase tracking-[0.26em] text-[var(--relay-muted)]">Fallback</p>
-                  <p className="mt-3 text-sm leading-7 text-[var(--relay-muted)]">
-                    If AI is unavailable, Relay still inserts a bounded brief from saved project context instead of breaking the flow.
-                  </p>
+                    <div className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-accent-text)]/10 px-4 py-2.5 text-sm opacity-70">
+                      Save to project
+                    </div>
+                  </div>
+                  <p className="mt-4 text-[11px] opacity-35">5 chats · 12 saved items</p>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      </section>
-    </main>
+        </section>
+
+        {/* ─── Footer ─── */}
+        <footer className="border-t border-[var(--relay-line)] px-6 py-10 lg:px-10">
+          <div className="mx-auto flex max-w-4xl items-center justify-between">
+            <div>
+              <p className="text-sm font-bold tracking-tight">Relay</p>
+              <p className="mt-1 text-xs text-[var(--relay-muted)]">Built for long-running coding work.</p>
+            </div>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/dashboard">Open Dashboard</Link>
+            </Button>
+          </div>
+        </footer>
+      </main>
+    </LandingAnimations>
   )
 }
