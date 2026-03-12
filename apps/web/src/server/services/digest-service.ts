@@ -4,6 +4,7 @@ import { buildCaptureSignature, normalizeText } from "@relay/shared"
 
 import { describeGeminiError, GEMINI_MODELS, runGeminiJsonWithFallback, type GeminiStage } from "./gemini-service"
 import { mergeDigestIntoState } from "./project-state-service"
+import { resolveProjectAiBudget } from "./ai-budget-service"
 
 interface DigestModelShape extends SessionDigestShape {
   confidence?: number
@@ -30,6 +31,14 @@ interface DigestGenerationResult {
     failureMessage?: string | null
     lastGeminiStage?: GeminiStage | null
   }
+}
+
+export type DigestExecutionStrategy = "skip" | "deterministic" | "ai"
+
+export interface DigestStrategyDecision {
+  strategy: DigestExecutionStrategy
+  reason: string
+  deterministicDigest: DigestModelShape
 }
 
 function createDigestTimeoutError(timeoutMs: number) {
@@ -184,6 +193,100 @@ export function sanitizeDigest(input: DigestModelShape): DigestModelShape {
   }
 }
 
+function countDigestSignals(digest: DigestModelShape) {
+  return [
+    digest.projectOverviewDelta,
+    digest.currentObjectiveDelta,
+    digest.recentProgressDelta,
+    ...digest.newDecisions,
+    ...digest.newConstraints,
+    ...digest.newTasks
+  ].filter(Boolean).length
+}
+
+export async function decideDigestStrategy(
+  repositories: RepositoryBundle,
+  userId: string,
+  input: {
+    projectId: string
+    sessionId: string
+  }
+): Promise<DigestStrategyDecision> {
+  const session = await repositories.sessions.getById(input.sessionId)
+  if (!session) {
+    throw new Error("Session not found for digest strategy.")
+  }
+
+  const [project, turns, projectState, digests, budget] = await Promise.all([
+    repositories.projects.getById(input.projectId),
+    repositories.turns.listBySession(input.sessionId),
+    repositories.projectState.getByProject(input.projectId),
+    repositories.sessionDigests.listByProject(input.projectId, 10),
+    resolveProjectAiBudget(repositories, userId, input.projectId)
+  ])
+
+  if (!project) {
+    throw new Error("Project not found for digest strategy.")
+  }
+
+  const deterministic = deterministicDigest(session, turns, projectState)
+  const meaningfulUserTurns = prepareDigestTurns(turns).filter(
+    (turn) => turn.role === "user" && !isLowSignalUserTurn(turn.content)
+  ).length
+  const signalCount = countDigestSignals(deterministic)
+  const firstState = !projectState && digests.length === 0
+  const staleState = Boolean(
+    projectState?.lastBootstrapAt &&
+      new Date(projectState.lastBootstrapAt).getTime() <
+        Date.now() - 12 * 60 * 60 * 1000
+  )
+  const majorUpdate = deterministic.importanceScore >= 78 || signalCount >= 3
+
+  if (turns.length === 0 || (meaningfulUserTurns === 0 && deterministic.importanceScore < 28)) {
+    return {
+      strategy: "skip",
+      reason: "Capture is too low-signal to justify a digest.",
+      deterministicDigest: deterministic
+    }
+  }
+
+  if (!deterministic.shouldMerge && deterministic.importanceScore < 42) {
+    return {
+      strategy: "skip",
+      reason: "Capture changed too little to affect project state.",
+      deterministicDigest: deterministic
+    }
+  }
+
+  if ((firstState || staleState || majorUpdate) && budget.aiEligible) {
+    return {
+      strategy: "ai",
+      reason: firstState
+        ? "AI is needed to establish the first durable project state."
+        : staleState
+          ? "AI is refreshing a stale project state."
+          : "AI is justified for a major project update.",
+      deterministicDigest: deterministic
+    }
+  }
+
+  if (deterministic.importanceScore < 56 || !budget.aiEligible) {
+    return {
+      strategy: "deterministic",
+      reason: budget.aiEligible
+        ? "Deterministic digest is enough for this update."
+        : budget.reason ?? "AI digest budget is unavailable, using deterministic digest.",
+      deterministicDigest: deterministic
+    }
+  }
+
+  return {
+    strategy: "ai",
+    reason: "AI is allowed for a meaningful project update.",
+    deterministicDigest: deterministic
+  }
+}
+
 async function generateDigest(
   session: SourceSessionRow,
   turns: SourceTurnRow[],
@@ -289,6 +392,157 @@ async function patchDigestJobStage(
   })
 }
 
+async function persistDigestResult(
+  repositories: RepositoryBundle,
+  userId: string,
+  input: {
+    projectId: string
+    session: SourceSessionRow
+    projectState: ProjectStateRow | null
+    turns: SourceTurnRow[]
+    digest: DigestModelShape
+    signature: string
+  }
+) {
+  const project = await repositories.projects.getById(input.projectId)
+  if (!project) {
+    throw new Error("Project not found for digest persistence.")
+  }
+
+  const digest = await repositories.sessionDigests.create({
+    projectId: input.projectId,
+    sourceSessionId: input.session.id,
+    sourceSignature: input.signature,
+    summaryShort: input.digest.summaryShort,
+    structuredDigest: { ...input.digest },
+    confidence: input.digest.confidence ?? 0.65,
+    importanceScore: input.digest.importanceScore,
+    needsProjectStateMerge: input.digest.shouldMerge,
+    createdBy: userId
+  })
+
+  if (input.digest.shouldMerge) {
+    const nextState = mergeDigestIntoState(project, input.projectState, input.digest)
+    await repositories.projectState.upsert({
+      projectId: input.projectId,
+      projectOverview: nextState.projectOverview,
+      currentObjective: nextState.currentObjective,
+      stackDomain: nextState.stackDomain,
+      recentProgress: nextState.recentProgress,
+      decisions: nextState.decisions,
+      constraints: nextState.constraints,
+      openTasks: nextState.openTasks,
+      relevantTools: nextState.relevantTools,
+      dirty: nextState.dirty
+    })
+    await repositories.sessionDigests.markMerged(digest.id)
+  }
+
+  return digest
+}
+
+export async function runDeterministicDigestInline(
+  repositories: RepositoryBundle,
+  userId: string,
+  input: {
+    projectId: string
+    sessionId: string
+    captureSignature: string
+    digest?: DigestModelShape
+    reason?: string
+  }
+) {
+  const session = await repositories.sessions.getById(input.sessionId)
+  if (!session) {
+    throw new Error("Session not found for deterministic digest.")
+  }
+
+  const [project, turns, existingDigest, projectState] = await Promise.all([
+    repositories.projects.getById(input.projectId),
+    repositories.turns.listBySession(input.sessionId),
+    repositories.sessionDigests.getBySessionId(input.sessionId),
+    repositories.projectState.getByProject(input.projectId)
+  ])
+
+  if (!project) {
+    throw new Error("Project not found for deterministic digest.")
+  }
+
+  const signature =
+    session.captureSignature ??
+    input.captureSignature ??
+    buildCaptureSignature({
+      platform: session.platform,
+      url: session.url,
+      pageFingerprint: session.pageFingerprint,
+      turns: turns.map((turn) => ({
+        role: turn.role,
+        content: turn.content,
+        turnIndex: turn.turnIndex,
+        rawHtml: turn.rawHtml
+      }))
+    })
+
+  const job = await repositories.aiJobs.create({
+    projectId: input.projectId,
+    sessionId: input.sessionId,
+    createdBy: userId,
+    jobKind: "session_digest",
+    inputPayload: {
+      captureSignature: signature,
+      strategy: "deterministic"
+    }
+  })
+
+  await repositories.aiJobs.markRunning(job.id, 1)
+
+  if (existingDigest && existingDigest.sourceSignature === signature) {
+    await repositories.aiJobs.markCompleted(job.id, {
+      actualModel: "deterministic",
+      fallbackUsed: false,
+      tokenUsage: {},
+      outputPayload: buildJobProgress("completed", {
+        model: "deterministic",
+        digestId: existingDigest.id,
+        summaryShort: existingDigest.summaryShort,
+        skipped: true,
+        reason: "Digest already exists for this signature."
+      })
+    })
+
+    return job
+  }
+
+  const digestShape = sanitizeDigest(input.digest ?? deterministicDigest(session, turns, projectState))
+  await patchDigestJobStage(repositories, job.id, "merge_state", {
+    model: "deterministic",
+    summaryShort: digestShape.summaryShort,
+    reason: input.reason
+  })
+  const digest = await persistDigestResult(repositories, userId, {
+    projectId: input.projectId,
+    session,
+    projectState,
+    turns,
+    digest: digestShape,
+    signature
+  })
+
+  await repositories.aiJobs.markCompleted(job.id, {
+    actualModel: "deterministic",
+    fallbackUsed: false,
+    tokenUsage: {},
+    outputPayload: buildJobProgress("completed", {
+      model: "deterministic",
+      digestId: digest.id,
+      summaryShort: digest.summaryShort,
+      reason: input.reason
+    })
+  })
+
+  return job
+}
+
 async function runDigestJobInternal(
   repositories: RepositoryBundle,
   userId: string,
@@ -381,34 +635,14 @@ async function runDigestJobInternal(
       tokenUsage
     })
 
-    const digest = await repositories.sessionDigests.create({
+    const digest = await persistDigestResult(repositories, userId, {
       projectId: job.projectId,
-      sourceSessionId: session.id,
-      sourceSignature: signature,
-      summaryShort: generation.digest.summaryShort,
-      structuredDigest: { ...generation.digest },
-      confidence: generation.digest.confidence ?? 0.65,
-      importanceScore: generation.digest.importanceScore,
-      needsProjectStateMerge: generation.digest.shouldMerge,
-      createdBy: userId
+      session,
+      projectState,
+      turns,
+      digest: generation.digest,
+      signature
     })
-
-    if (generation.digest.shouldMerge) {
-      const nextState = mergeDigestIntoState(project, projectState, generation.digest)
-      await repositories.projectState.upsert({
-        projectId: job.projectId,
-        projectOverview: nextState.projectOverview,
-        currentObjective: nextState.currentObjective,
-        stackDomain: nextState.stackDomain,
-        recentProgress: nextState.recentProgress,
-        decisions: nextState.decisions,
-        constraints: nextState.constraints,
-        openTasks: nextState.openTasks,
-        relevantTools: nextState.relevantTools,
-        dirty: nextState.dirty
-      })
-      await repositories.sessionDigests.markMerged(digest.id)
-    }
 
     await repositories.aiJobs.markCompleted(job.id, {
       actualModel: generation.actualModel,

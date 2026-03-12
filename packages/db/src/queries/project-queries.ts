@@ -9,7 +9,7 @@ export async function getProjectSummaries(repositories: RepositoryBundle, ownerI
     projects.map(async (project) => {
       const [memoryItems, sessions] = await Promise.all([
         repositories.memory.listByProject(project.id),
-        repositories.sessions.listByProject(project.id)
+        repositories.sessions.listByProject(project.id, { includeArchived: false })
       ])
 
       return {

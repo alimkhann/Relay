@@ -6,26 +6,41 @@ import type { DatabaseProvider } from "../store/provider"
 export class SessionDigestRepository {
   constructor(private readonly provider: DatabaseProvider) {}
 
-  async listByProject(projectId: string, limit = 10): Promise<SessionDigestRow[]> {
+  async listByProject(projectId: string, limit = 10, input: { includeArchived?: boolean; ascending?: boolean } = {}): Promise<SessionDigestRow[]> {
+    const includeArchived = input.includeArchived ?? false
+    const direction = input.ascending ? "asc" : "desc"
     const rows = await this.provider.query(
       `select *
        from session_digests
        where project_id = $1
-       order by created_at desc
+         and ($3::boolean or exists (
+           select 1
+           from source_sessions
+           where source_sessions.id = session_digests.source_session_id
+             and source_sessions.is_archived = false
+         ))
+       order by created_at ${direction}
        limit $2`,
-      [projectId, limit]
+      [projectId, limit, includeArchived]
     )
 
     return rows.map((record) => toSessionDigestRow(record as Record<string, unknown>))
   }
 
-  async getBySessionId(sessionId: string): Promise<SessionDigestRow | null> {
+  async getBySessionId(sessionId: string, input: { includeArchived?: boolean } = {}): Promise<SessionDigestRow | null> {
+    const includeArchived = input.includeArchived ?? true
     const rows = await this.provider.query(
       `select *
        from session_digests
        where source_session_id = $1
+         and ($2::boolean or exists (
+           select 1
+           from source_sessions
+           where source_sessions.id = session_digests.source_session_id
+             and source_sessions.is_archived = false
+         ))
        limit 1`,
-      [sessionId]
+      [sessionId, includeArchived]
     )
 
     const row = rows[0]

@@ -10,6 +10,7 @@ import { MemoryRepository } from "../repositories/memory-repository"
 import { ProfileRepository } from "../repositories/profile-repository"
 import { ProjectRepository } from "../repositories/project-repository"
 import { ProjectStateRepository } from "../repositories/project-state-repository"
+import { ProjectStateOverrideRepository } from "../repositories/project-state-override-repository"
 import { SessionRepository } from "../repositories/session-repository"
 import { SessionDigestRepository } from "../repositories/session-digest-repository"
 import { SettingsRepository } from "../repositories/settings-repository"
@@ -29,6 +30,7 @@ export interface RepositoryBundle {
   contextPackets: ContextPacketRepository
   sessionDigests: SessionDigestRepository
   projectState: ProjectStateRepository
+  projectStateOverrides: ProjectStateOverrideRepository
   bootstrapPackets: BootstrapPacketRepository
   aiJobs: AiJobRunRepository
   bindings: BindingRepository
@@ -54,6 +56,7 @@ export function createRepositoryBundle(viewerUserId?: string): RepositoryBundle 
     contextPackets: new ContextPacketRepository(provider),
     sessionDigests: new SessionDigestRepository(provider),
     projectState: new ProjectStateRepository(provider),
+    projectStateOverrides: new ProjectStateOverrideRepository(provider),
     bootstrapPackets: new BootstrapPacketRepository(provider),
     aiJobs: new AiJobRunRepository(provider),
     bindings: new BindingRepository(provider),

@@ -1,5 +1,6 @@
 import { createRepositoryBundle } from "@relay/db"
 import { hashContent } from "@relay/shared"
+import { redirect } from "next/navigation"
 
 import { requireAuthServer } from "@/lib/auth/server"
 
@@ -84,4 +85,29 @@ export async function resolveOptionalViewer(authorizationHeader?: string | null)
 
 export function isAuthRequiredError(error: unknown): error is AuthRequiredError {
   return error instanceof AuthRequiredError || (error instanceof Error && error.message === "Authentication is required.")
+}
+
+export function buildSignInHref(nextPath = "/dashboard") {
+  const safeNextPath = nextPath.startsWith("/") ? nextPath : "/dashboard"
+  return `/sign-in?next=${encodeURIComponent(safeNextPath)}`
+}
+
+export function resolveSafeNextPath(value: string | null | undefined, fallback = "/dashboard") {
+  if (!value || !value.startsWith("/")) {
+    return fallback
+  }
+
+  return value
+}
+
+export async function requirePageViewer(nextPath = "/dashboard"): Promise<Viewer> {
+  try {
+    return await requireSessionViewer()
+  } catch (error) {
+    if (isAuthRequiredError(error)) {
+      redirect(buildSignInHref(nextPath))
+    }
+
+    throw error
+  }
 }

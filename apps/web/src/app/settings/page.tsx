@@ -1,12 +1,12 @@
 import { AppShell } from "@/components/layout/app-shell";
 import { SettingsPreferences } from "@/components/settings/settings-preferences";
-import { requireSessionViewer } from "@/server/policies/viewer";
+import { requirePageViewer } from "@/server/policies/viewer";
 import { getUserSettings } from "@/server/services/settings-service";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const viewer = await requireSessionViewer();
+  const viewer = await requirePageViewer("/settings");
   const settings = await getUserSettings(viewer.userId);
 
   return (

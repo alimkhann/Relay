@@ -59,6 +59,9 @@ export interface SourceSessionRow {
   pageFingerprint: string | null
   captureSignature: string | null
   metadata: Record<string, unknown>
+  isArchived: boolean
+  archivedAt: string | null
+  archivedBy: string | null
   capturedAt: string
   createdAt: string
 }
@@ -138,6 +141,18 @@ export interface ProjectStateRow {
   relevantTools: string[]
   lastBootstrapAt: string | null
   dirty: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ProjectStateOverrideRow {
+  projectId: string
+  projectOverviewOverride: string | null
+  currentObjectiveOverride: string | null
+  recentProgressOverride: string | null
+  hiddenDecisions: string[]
+  hiddenConstraints: string[]
+  hiddenOpenTasks: string[]
   createdAt: string
   updatedAt: string
 }

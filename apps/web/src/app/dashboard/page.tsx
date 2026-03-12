@@ -2,15 +2,13 @@ import Link from "next/link";
 import type { ProjectStateStatusDto } from "@relay/shared";
 
 import { AppShell } from "@/components/layout/app-shell";
-import { PacketList } from "@/components/context/packet-list";
 import { CreateProjectForm } from "@/components/projects/create-project-form";
 import { ProjectPicker } from "@/components/projects/project-picker";
 import { PageTelemetry } from "@/components/telemetry/page-telemetry";
-import { ActivityFeed } from "@/components/activity/activity-feed";
-import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Button } from "@/components/ui/button";
+import { ProjectGovernancePanel } from "@/features/projects/project-governance-panel";
 import { logServerEvent } from "@/server/logging/logger";
-import { requireSessionViewer } from "@/server/policies/viewer";
+import { requirePageViewer } from "@/server/policies/viewer";
 import {
   getProjectDashboardForUser,
   listProjectsForUser,
@@ -36,7 +34,7 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<{ project?: string }>;
 }) {
-  const viewer = await requireSessionViewer();
+  const viewer = await requirePageViewer("/dashboard");
   const projects = await listProjectsForUser(viewer.userId);
   const { project: selectedProjectId } = await searchParams;
   const currentProject =
@@ -48,10 +46,6 @@ export default async function DashboardPage({
   const dashboard = currentProject
     ? await getProjectDashboardForUser(viewer.userId, currentProject.id)
     : null;
-
-  const decisions = dashboard?.projectState?.decisions ?? [];
-  const constraints = dashboard?.projectState?.constraints ?? [];
-  const openTasks = dashboard?.projectState?.openTasks ?? [];
 
   const statusReady = dashboard?.stateStatus?.projectStateReady;
   const statusText = describeStatus(dashboard?.stateStatus);
@@ -137,108 +131,12 @@ export default async function DashboardPage({
             ) : null}
           </section>
 
-          {/* ─── Next chat brief ─── */}
-          <CollapsibleSection
-            title="Next chat brief"
-            action={
-              <Button asChild variant="ghost" size="sm">
-                <Link href={`/projects/${currentProject.id}`}>Full brief</Link>
-              </Button>
-            }
-          >
-            <PacketList packets={dashboard?.packets.slice(0, 1) ?? []} />
-          </CollapsibleSection>
-
-          {/* ─── Saved context — split into 3 sections ─── */}
-          <CollapsibleSection title="Saved context">
-            {decisions.length + constraints.length + openTasks.length > 0 ? (
-              <div className="grid gap-6 md:grid-cols-3">
-                {/* Decisions */}
-                <div>
-                  <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--relay-faint)]">
-                    <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                    Decisions
-                  </p>
-                  {decisions.length > 0 ? (
-                    <ul className="space-y-1">
-                      {decisions.map((text, i) => (
-                        <li
-                          key={i}
-                          className="rounded-[var(--relay-radius-sm)] px-3 py-2 text-sm leading-relaxed text-[var(--relay-ink-secondary)] transition hover:bg-[var(--relay-soft)]"
-                        >
-                          {text}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="px-3 text-sm text-[var(--relay-muted)]">
-                      None yet
-                    </p>
-                  )}
-                </div>
-
-                {/* Tasks */}
-                <div>
-                  <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--relay-faint)]">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                    Tasks
-                  </p>
-                  {openTasks.length > 0 ? (
-                    <ul className="space-y-1">
-                      {openTasks.map((text, i) => (
-                        <li
-                          key={i}
-                          className="rounded-[var(--relay-radius-sm)] px-3 py-2 text-sm leading-relaxed text-[var(--relay-ink-secondary)] transition hover:bg-[var(--relay-soft)]"
-                        >
-                          {text}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="px-3 text-sm text-[var(--relay-muted)]">
-                      None yet
-                    </p>
-                  )}
-                </div>
-
-                {/* Constraints */}
-                <div>
-                  <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--relay-faint)]">
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                    Constraints
-                  </p>
-                  {constraints.length > 0 ? (
-                    <ul className="space-y-1">
-                      {constraints.map((text, i) => (
-                        <li
-                          key={i}
-                          className="rounded-[var(--relay-radius-sm)] px-3 py-2 text-sm leading-relaxed text-[var(--relay-ink-secondary)] transition hover:bg-[var(--relay-soft)]"
-                        >
-                          {text}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="px-3 text-sm text-[var(--relay-muted)]">
-                      None yet
-                    </p>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-[var(--relay-muted)]">
-                Saved context will appear here as Relay learns from your chats.
-              </p>
-            )}
-          </CollapsibleSection>
-
-          {/* ─── Recent activity ─── */}
-          <CollapsibleSection title="Recent activity">
-            <ActivityFeed
-              sessions={dashboard?.recentSessions ?? []}
-              digests={dashboard?.recentDigests ?? []}
+          {dashboard ? (
+            <ProjectGovernancePanel
+              dashboard={dashboard}
+              projectId={currentProject.id}
             />
-          </CollapsibleSection>
+          ) : null}
         </>
       )}
     </AppShell>

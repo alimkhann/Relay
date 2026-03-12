@@ -4,8 +4,7 @@ import { notFound } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
 import { PacketList } from "@/components/context/packet-list";
 import { ActivityFeed } from "@/components/activity/activity-feed";
-import { Button } from "@/components/ui/button";
-import { requireSessionViewer } from "@/server/policies/viewer";
+import { requirePageViewer } from "@/server/policies/viewer";
 import { getProjectDashboardForUser } from "@/server/services/project-service";
 
 export const dynamic = "force-dynamic";
@@ -38,8 +37,8 @@ export default async function ProjectPage({
 }: {
   params: Promise<{ projectId: string }>;
 }) {
-  const viewer = await requireSessionViewer();
   const { projectId } = await params;
+  const viewer = await requirePageViewer(`/projects/${projectId}`);
   const dashboard = await getProjectDashboardForUser(viewer.userId, projectId);
 
   if (!dashboard) {

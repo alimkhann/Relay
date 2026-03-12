@@ -2,14 +2,14 @@ import { notFound } from "next/navigation"
 
 import { AppShell } from "@/components/layout/app-shell"
 import { MemoryList } from "@/components/memory/memory-list"
-import { requireSessionViewer } from "@/server/policies/viewer"
+import { requirePageViewer } from "@/server/policies/viewer"
 import { getProjectDashboardForUser } from "@/server/services/project-service"
 
 export const dynamic = "force-dynamic"
 
 export default async function ProjectMemoryPage({ params }: { params: Promise<{ projectId: string }> }) {
-  const viewer = await requireSessionViewer()
   const { projectId } = await params
+  const viewer = await requirePageViewer(`/projects/${projectId}/memory`)
   const dashboard = await getProjectDashboardForUser(viewer.userId, projectId)
 
   if (!dashboard) notFound()

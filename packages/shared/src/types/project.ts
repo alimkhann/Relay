@@ -26,12 +26,16 @@ export interface ProjectSummaryDto {
 export interface ProjectDashboardDto {
   project: ProjectSummaryDto
   projectState: ProjectStateDto | null
+  derivedProjectState: ProjectStateDto | null
+  stateOverrides: ProjectStateOverrideDto | null
   stateStatus: ProjectStateStatusDto
   recentSessions: RecentSessionDto[]
+  sessionHistory: RecentSessionDto[]
   recentDigests: SessionDigestDto[]
   memory: MemoryItemDto[]
   packets: BootstrapPacketDto[]
   legacyPackets: ContextPacketDto[]
+  aiBudget: ProjectAiBudgetDto
 }
 
 export interface ProjectStateStatusDto {
@@ -54,6 +58,10 @@ export interface RecentSessionDto {
   platform: SupportedPlatform
   title: string | null
   url: string
+  pageFingerprint: string | null
+  captureSignature: string | null
+  isArchived: boolean
+  archivedAt: string | null
   capturedAt: string
   turnCount: number
 }
@@ -97,6 +105,16 @@ export interface ProjectStateDto {
   updatedAt: string
 }
 
+export interface ProjectStateOverrideDto {
+  projectOverviewOverride: string | null
+  currentObjectiveOverride: string | null
+  recentProgressOverride: string | null
+  hiddenDecisions: string[]
+  hiddenConstraints: string[]
+  hiddenOpenTasks: string[]
+  updatedAt: string
+}
+
 export interface SessionDigestDto {
   id: string
   sourceSessionId: string
@@ -105,4 +123,15 @@ export interface SessionDigestDto {
   importanceScore: number
   shouldMerge: boolean
   createdAt: string
+}
+
+export interface ProjectAiBudgetDto {
+  plan: "free"
+  aiEligible: boolean
+  reason: string | null
+  dailyProjectAiUsed: number
+  dailyProjectAiLimit: number
+  dailyUserAiUsed: number
+  dailyUserAiLimit: number
+  nextAiAllowedAt: string | null
 }

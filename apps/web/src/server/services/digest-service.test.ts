@@ -17,6 +17,9 @@ function makeSession(): SourceSessionRow {
     pageFingerprint: "test",
     captureSignature: "sig",
     metadata: {},
+    isArchived: false,
+    archivedAt: null,
+    archivedBy: null,
     capturedAt: new Date().toISOString(),
     createdAt: new Date().toISOString()
   }

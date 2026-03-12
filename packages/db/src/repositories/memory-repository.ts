@@ -6,6 +6,19 @@ import type { DatabaseProvider } from "../store/provider"
 export class MemoryRepository {
   constructor(private readonly provider: DatabaseProvider) {}
 
+  async getById(id: string): Promise<MemoryItemRow | null> {
+    const rows = await this.provider.query(
+      `select *
+       from memory_items
+       where id = $1
+       limit 1`,
+      [id]
+    )
+
+    const row = rows[0]
+    return row ? toMemoryRow(row as Record<string, unknown>) : null
+  }
+
   async listByProject(projectId: string): Promise<MemoryItemRow[]> {
     const rows = await this.provider.query(
       `select *

@@ -88,4 +88,12 @@ export class ProjectStateRepository {
       [projectId]
     )
   }
+
+  async clear(projectId: string): Promise<void> {
+    await this.provider.query(
+      `delete from project_state
+       where project_id = $1`,
+      [projectId]
+    )
+  }
 }

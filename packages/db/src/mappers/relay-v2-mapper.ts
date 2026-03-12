@@ -2,6 +2,7 @@ import type {
   AiJobRunRow,
   BootstrapPacketRow,
   ExtensionConnectGrantRow,
+  ProjectStateOverrideRow,
   ProjectStateRow,
   SessionDigestRow
 } from "@relay/shared"
@@ -41,6 +42,20 @@ export function toProjectStateRow(record: Record<string, unknown>): ProjectState
     relevantTools: toStringArray(record.relevant_tools),
     lastBootstrapAt: record.last_bootstrap_at ? String(record.last_bootstrap_at) : null,
     dirty: Boolean(record.dirty),
+    createdAt: String(record.created_at),
+    updatedAt: String(record.updated_at)
+  }
+}
+
+export function toProjectStateOverrideRow(record: Record<string, unknown>): ProjectStateOverrideRow {
+  return {
+    projectId: String(record.project_id),
+    projectOverviewOverride: record.project_overview_override ? String(record.project_overview_override) : null,
+    currentObjectiveOverride: record.current_objective_override ? String(record.current_objective_override) : null,
+    recentProgressOverride: record.recent_progress_override ? String(record.recent_progress_override) : null,
+    hiddenDecisions: toStringArray(record.hidden_decisions),
+    hiddenConstraints: toStringArray(record.hidden_constraints),
+    hiddenOpenTasks: toStringArray(record.hidden_open_tasks),
     createdAt: String(record.created_at),
     updatedAt: String(record.updated_at)
   }

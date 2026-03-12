@@ -1,8 +1,6 @@
-import { redirect } from "next/navigation"
-
 import { ExtensionConnectScreen } from "@/components/settings/extension-connect-screen"
 import { AppShell } from "@/components/layout/app-shell"
-import { getAuthServer } from "@/lib/auth/server"
+import { requirePageViewer } from "@/server/policies/viewer"
 
 export const dynamic = "force-dynamic"
 
@@ -11,13 +9,8 @@ export default async function ExtensionConnectPage({
 }: {
   searchParams: Promise<{ extensionId?: string; deviceName?: string }>
 }) {
-  const auth = getAuthServer()
-  const { data } = auth ? await auth.getSession() : { data: null }
+  await requirePageViewer("/extension/connect")
   const params = await searchParams
-
-  if (!data?.user) {
-    redirect("/sign-in")
-  }
 
   const extensionId = params.extensionId ?? ""
   const initialDeviceName = params.deviceName ?? "Relay in Chrome"

@@ -3,6 +3,7 @@ import { projectInputSchema, slugify, updateProjectSchema } from "@relay/shared"
 
 import { BadRequestError } from "@/server/http/errors"
 import { logServerEvent } from "@/server/logging/logger"
+import { resolveProjectAiBudget } from "./ai-budget-service"
 
 const PROJECT_SLUG_MAX_LENGTH = 80
 
@@ -29,7 +30,13 @@ export async function listProjectsForUser(userId: string) {
 
 export async function getProjectDashboardForUser(userId: string, projectId: string) {
   const repositories = createRepositoryBundle(userId)
-  return getProjectDashboard(repositories, userId, projectId)
+  const dashboard = await getProjectDashboard(repositories, userId, projectId)
+  if (!dashboard) return null
+
+  return {
+    ...dashboard,
+    aiBudget: await resolveProjectAiBudget(repositories, userId, projectId)
+  }
 }
 
 export async function createProjectForUser(userId: string, input: unknown) {
@@ -127,6 +134,6 @@ export async function updateProjectForUser(userId: string, projectId: string, in
     name: parsed.name,
     slug,
     description: parsed.description,
-    isArchived: undefined
+    isArchived: parsed.isArchived
   })
 }

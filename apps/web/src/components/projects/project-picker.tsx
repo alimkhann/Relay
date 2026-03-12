@@ -151,7 +151,7 @@ export function ProjectPicker({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleDelete(p.id);
+                    void handleDelete(p.id);
                   }}
                   className="hidden rounded p-1 text-[var(--relay-faint)] transition hover:bg-red-50 hover:text-red-500 group-hover:block dark:hover:bg-red-500/10"
                 >
@@ -172,7 +172,7 @@ export function ProjectPicker({
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") handleCreate();
+                  if (e.key === "Enter") void handleCreate();
                   if (e.key === "Escape") setCreating(false);
                 }}
               />

@@ -13,6 +13,10 @@ vi.mock("@/components/layout/app-shell", () => ({
 }));
 
 vi.mock("@/server/policies/viewer", () => ({
+  requirePageViewer: vi.fn(async () => ({
+    userId: "user-1",
+    mode: "session",
+  })),
   requireSessionViewer: vi.fn(async () => ({
     userId: "user-1",
     mode: "session",
@@ -54,6 +58,28 @@ vi.mock("@/server/services/project-service", () => ({
       dirty: true,
       updatedAt: new Date().toISOString(),
     },
+    derivedProjectState: {
+      projectOverview: "Browser-first project memory sidecar.",
+      currentObjective: "Ship Relay v2.",
+      stackDomain: null,
+      recentProgress: "Server pipeline is in place.",
+      decisions: ["Use Neon"],
+      constraints: [],
+      openTasks: ["Finish redesign"],
+      relevantTools: ["Gemini"],
+      lastBootstrapAt: null,
+      dirty: true,
+      updatedAt: new Date().toISOString(),
+    },
+    stateOverrides: {
+      projectOverviewOverride: null,
+      currentObjectiveOverride: null,
+      recentProgressOverride: null,
+      hiddenDecisions: [],
+      hiddenConstraints: [],
+      hiddenOpenTasks: [],
+      updatedAt: new Date().toISOString(),
+    },
     stateStatus: {
       rawCapturePresent: true,
       digestStatus: "completed",
@@ -69,6 +95,7 @@ vi.mock("@/server/services/project-service", () => ({
       fallbackUsed: false,
     },
     recentSessions: [],
+    sessionHistory: [],
     recentDigests: [],
     memory: [
       {
@@ -82,6 +109,16 @@ vi.mock("@/server/services/project-service", () => ({
     ],
     packets: [],
     legacyPackets: [],
+    aiBudget: {
+      plan: "free",
+      aiEligible: true,
+      reason: null,
+      dailyProjectAiUsed: 0,
+      dailyProjectAiLimit: 8,
+      dailyUserAiUsed: 0,
+      dailyUserAiLimit: 24,
+      nextAiAllowedAt: null,
+    },
   })),
 }));
 

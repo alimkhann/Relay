@@ -1,7 +1,7 @@
 import { createRepositoryBundle } from "@relay/db"
 import { capturePayloadSchema, withCaptureSignature } from "@relay/shared"
 
-import { enqueueDigestJob, runDigestJobInline } from "./digest-service"
+import { decideDigestStrategy, enqueueDigestJob, runDeterministicDigestInline, runDigestJobInline } from "./digest-service"
 import { getProjectStateStatus } from "./state-status-service"
 
 export async function saveCapture(userId: string, input: unknown) {
@@ -54,15 +54,33 @@ export async function saveCapture(userId: string, input: unknown) {
 
   const shouldQueueDigest = latestComparable?.captureSignature !== normalizedInput.session.captureSignature
   let jobId: string | null = null
+  let digestStrategy: "skip" | "deterministic" | "ai" = "skip"
 
   if (shouldQueueDigest && normalizedInput.session.captureSignature) {
-    const job = await enqueueDigestJob(userId, {
+    const decision = await decideDigestStrategy(repositories, userId, {
       projectId: normalizedInput.projectId,
-      sessionId: session.id,
-      captureSignature: normalizedInput.session.captureSignature
+      sessionId: session.id
     })
-    jobId = job.id
-    await runDigestJobInline(repositories, userId, job)
+    digestStrategy = decision.strategy
+
+    if (decision.strategy === "ai") {
+      const job = await enqueueDigestJob(userId, {
+        projectId: normalizedInput.projectId,
+        sessionId: session.id,
+        captureSignature: normalizedInput.session.captureSignature
+      })
+      jobId = job.id
+      await runDigestJobInline(repositories, userId, job)
+    } else if (decision.strategy === "deterministic") {
+      const job = await runDeterministicDigestInline(repositories, userId, {
+        projectId: normalizedInput.projectId,
+        sessionId: session.id,
+        captureSignature: normalizedInput.session.captureSignature,
+        digest: decision.deterministicDigest,
+        reason: decision.reason
+      })
+      jobId = job.id
+    }
   }
 
   const stateStatus = await getProjectStateStatus(repositories, normalizedInput.projectId)
@@ -70,7 +88,8 @@ export async function saveCapture(userId: string, input: unknown) {
   return {
     session,
     turns,
-    digestQueued: shouldQueueDigest,
+    digestQueued: digestStrategy !== "skip",
+    digestStrategy,
     aiJobId: jobId,
     stateStatus
   }

@@ -72,4 +72,12 @@ export class BootstrapPacketRepository {
 
     return toBootstrapPacketRow(rows[0] as Record<string, unknown>)
   }
+
+  async clearProject(projectId: string): Promise<void> {
+    await this.provider.query(
+      `delete from bootstrap_packets
+       where project_id = $1`,
+      [projectId]
+    )
+  }
 }

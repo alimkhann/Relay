@@ -6,13 +6,15 @@ import type { DatabaseProvider } from "../store/provider"
 export class ProjectRepository {
   constructor(private readonly provider: DatabaseProvider) {}
 
-  async listByOwner(ownerId: string): Promise<ProjectRow[]> {
+  async listByOwner(ownerId: string, input: { includeArchived?: boolean } = {}): Promise<ProjectRow[]> {
+    const includeArchived = input.includeArchived ?? false
     const rows = await this.provider.query(
       `select *
        from projects
        where owner_id = $1
+         and ($2::boolean or is_archived = false)
        order by updated_at desc`,
-      [ownerId]
+      [ownerId, includeArchived]
     )
 
     return rows.map((record) => toProjectRow(record as Record<string, unknown>))

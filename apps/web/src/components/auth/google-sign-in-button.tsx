@@ -6,7 +6,7 @@ import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client";
 import { authClient } from "@/lib/auth/client";
 import { Button } from "@/components/ui/button";
 
-export function GoogleSignInButton() {
+export function GoogleSignInButton({ nextPath = "/dashboard" }: { nextPath?: string }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -32,7 +32,7 @@ export function GoogleSignInButton() {
             try {
               await authClient.signIn.social({
                 provider: "google",
-                callbackURL: "/dashboard",
+                callbackURL: nextPath,
               });
             } catch (cause) {
               logClientEvent({

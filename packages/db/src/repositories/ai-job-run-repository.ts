@@ -245,4 +245,52 @@ export class AiJobRunRepository {
       ]
     )
   }
+
+  async countRecentAiDigestRunsByProject(projectId: string, sinceHours = 24): Promise<number> {
+    const rows = await this.provider.query(
+      `select count(*)::int as count
+       from ai_job_runs
+       where project_id = $1
+         and job_kind = 'session_digest'
+         and actual_model is not null
+         and actual_model <> 'deterministic'
+         and created_at >= now() - make_interval(hours => $2)`,
+      [projectId, sinceHours]
+    )
+
+    return Number((rows[0] as { count?: number } | undefined)?.count ?? 0)
+  }
+
+  async countRecentAiDigestRunsByUser(userId: string, sinceHours = 24): Promise<number> {
+    const rows = await this.provider.query(
+      `select count(*)::int as count
+       from ai_job_runs
+       where created_by = $1
+         and job_kind = 'session_digest'
+         and actual_model is not null
+         and actual_model <> 'deterministic'
+         and created_at >= now() - make_interval(hours => $2)`,
+      [userId, sinceHours]
+    )
+
+    return Number((rows[0] as { count?: number } | undefined)?.count ?? 0)
+  }
+
+  async getLatestAiDigestRunByProject(projectId: string, sinceHours = 24): Promise<AiJobRunRow | null> {
+    const rows = await this.provider.query(
+      `select *
+       from ai_job_runs
+       where project_id = $1
+         and job_kind = 'session_digest'
+         and actual_model is not null
+         and actual_model <> 'deterministic'
+         and created_at >= now() - make_interval(hours => $2)
+       order by created_at desc
+       limit 1`,
+      [projectId, sinceHours]
+    )
+
+    const row = rows[0]
+    return row ? toAiJobRunRow(row as Record<string, unknown>) : null
+  }
 }

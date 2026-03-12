@@ -6,26 +6,35 @@ import type { DatabaseProvider } from "../store/provider"
 export class SessionRepository {
   constructor(private readonly provider: DatabaseProvider) {}
 
-  async getById(id: string): Promise<SourceSessionRow | null> {
+  async getById(id: string, input: { includeArchived?: boolean } = {}): Promise<SourceSessionRow | null> {
+    const includeArchived = input.includeArchived ?? true
     const rows = await this.provider.query(
       `select *
        from source_sessions
        where id = $1
+         and ($2::boolean or is_archived = false)
        limit 1`,
-      [id]
+      [id, includeArchived]
     )
 
     const row = rows[0]
     return row ? toSessionRow(row as Record<string, unknown>) : null
   }
 
-  async listByProject(projectId: string): Promise<SourceSessionRow[]> {
+  async listByProject(
+    projectId: string,
+    input: { includeArchived?: boolean; limit?: number } = {}
+  ): Promise<SourceSessionRow[]> {
+    const includeArchived = input.includeArchived ?? false
+    const limit = input.limit ?? 50
     const rows = await this.provider.query(
       `select *
        from source_sessions
        where project_id = $1
-       order by captured_at desc`,
-      [projectId]
+         and ($2::boolean or is_archived = false)
+       order by captured_at desc
+       limit $3`,
+      [projectId, includeArchived, limit]
     )
 
     return rows.map((record) => toSessionRow(record as Record<string, unknown>))
@@ -60,9 +69,25 @@ export class SessionRepository {
          and platform = $2
          and url = $3
          and coalesce(page_fingerprint, '') = coalesce($4, '')
+         and is_archived = false
        order by captured_at desc
        limit 1`,
       [projectId, platform, url, pageFingerprint ?? null]
+    )
+
+    const row = rows[0]
+    return row ? toSessionRow(row as Record<string, unknown>) : null
+  }
+
+  async archive(id: string, archivedBy: string, archived = true): Promise<SourceSessionRow | null> {
+    const rows = await this.provider.query(
+      `update source_sessions
+       set is_archived = $2,
+           archived_at = case when $2 then now() else null end,
+           archived_by = case when $2 then $3 else null end
+       where id = $1
+       returning *`,
+      [id, archived, archivedBy]
     )
 
     const row = rows[0]

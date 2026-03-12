@@ -1,12 +1,28 @@
 import Image from "next/image";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 import { PageTelemetry } from "@/components/telemetry/page-telemetry";
+import { getAuthServer } from "@/lib/auth/server";
+import { resolveSafeNextPath } from "@/server/policies/viewer";
 
 export const dynamic = "force-dynamic";
 
-export default async function SignInPage() {
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const auth = getAuthServer();
+  const { data } = auth ? await auth.getSession() : { data: null };
+  const params = await searchParams;
+  const nextPath = resolveSafeNextPath(params.next, "/dashboard");
+
+  if (data?.user) {
+    redirect(nextPath);
+  }
+
   const authConfigured = Boolean(
     process.env.NEON_AUTH_BASE_URL && process.env.NEON_AUTH_COOKIE_SECRET,
   );
@@ -37,7 +53,7 @@ export default async function SignInPage() {
 
         <div className="mt-8">
           {authConfigured ? (
-            <GoogleSignInButton />
+            <GoogleSignInButton nextPath={nextPath} />
           ) : (
             <p className="rounded-2xl bg-gray-100 px-4 py-4 text-sm text-gray-400">
               Add auth environment variables to enable sign-in.

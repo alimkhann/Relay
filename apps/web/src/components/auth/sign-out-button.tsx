@@ -1,12 +1,10 @@
 "use client"
 
 import { useTransition } from "react"
-import { useRouter } from "next/navigation"
 
 import { authClient } from "@/lib/auth/client"
 
 export function SignOutButton() {
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
 
   return (
@@ -16,8 +14,7 @@ export function SignOutButton() {
       onClick={() =>
         startTransition(async () => {
           await authClient.signOut()
-          router.push("/")
-          router.refresh()
+          window.location.assign("/sign-in")
         })
       }>
       {pending ? "Signing out…" : "Sign out"}
