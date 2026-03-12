@@ -959,26 +959,34 @@ chrome.runtime.onMessage.addListener(
         if (message.type === "RELAY_GOOGLE_SIGN_IN") {
           console.log("[Relay BG] RELAY_GOOGLE_SIGN_IN received");
           try {
-            console.log("[Relay BG] calling getAuthToken...");
-            const authResult = await Promise.race([
-              chrome.identity.getAuthToken({ interactive: true }),
-              new Promise((_, reject) =>
-                setTimeout(
-                  () => reject(new Error("Google sign-in timed out. Make sure your Google account is added as a test user in Google Cloud Console.")),
-                  15000,
-                ),
-              ),
-            ]);
-            console.log("[Relay BG] getAuthToken result:", authResult);
-            const accessToken =
-              typeof authResult === "string"
-                ? authResult
-                : (authResult as { token?: string })?.token;
+            const googleClientId = process.env.PLASMO_PUBLIC_CRX_GOOGLE_CLIENT_ID;
+            if (!googleClientId) {
+              sendResponse({ ok: false, reason: "Google sign-in is not configured (missing client ID)." });
+              return;
+            }
+            const redirectUrl = chrome.identity.getRedirectURL();
+            console.log("[Relay BG] redirect URL:", redirectUrl);
+            const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+            authUrl.searchParams.set("client_id", googleClientId);
+            authUrl.searchParams.set("redirect_uri", redirectUrl);
+            authUrl.searchParams.set("response_type", "token");
+            authUrl.searchParams.set("scope", "openid email profile");
+            authUrl.searchParams.set("prompt", "select_account");
+            console.log("[Relay BG] launching web auth flow...");
+            const callbackUrl = await chrome.identity.launchWebAuthFlow({
+              url: authUrl.toString(),
+              interactive: true,
+            });
+            console.log("[Relay BG] callbackUrl:", callbackUrl);
+            if (!callbackUrl) {
+              sendResponse({ ok: false, reason: "Google sign-in was cancelled." });
+              return;
+            }
+            const hashParams = new URLSearchParams(new URL(callbackUrl).hash.slice(1));
+            const accessToken = hashParams.get("access_token");
+            console.log("[Relay BG] accessToken present:", !!accessToken);
             if (!accessToken) {
-              sendResponse({
-                ok: false,
-                reason: "Google sign-in was cancelled.",
-              });
+              sendResponse({ ok: false, reason: "Google sign-in did not return a token." });
               return;
             }
 
