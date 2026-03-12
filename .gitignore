@@ -10,7 +10,7 @@ test-results
 *.tsbuildinfo
 .DS_Store
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!.env.*.example
 .vercel
-.env*.local
