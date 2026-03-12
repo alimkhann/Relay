@@ -34,6 +34,16 @@ interface BootstrapModelShape {
   firstAction: string | null
 }
 
+interface DigestSnapshotShape {
+  projectOverviewDelta: string | null
+  currentObjectiveDelta: string | null
+  recentProgressDelta: string | null
+  newDecisions: string[]
+  newConstraints: string[]
+  newTasks: string[]
+  relevantToolsDelta: string[]
+}
+
 function isLowSignalDigestSummary(summary: string) {
   const normalized = normalizeText(summary).toLowerCase()
   if (!normalized) return true
@@ -47,7 +57,7 @@ function sanitizeFirstAction(value: string | null | undefined, state: ProjectSta
 
   if (
     !normalized ||
-    /^(insert bootstrap|pin selection|connect relay|open settings|open project)$/i.test(normalized)
+    /^(insert (bootstrap|project brief)|pin selection|save to project|connect relay|open settings|open project)$/i.test(normalized)
   ) {
     return state?.openTasks[0] ?? "Review the project state and continue from the highest-priority open task."
   }
@@ -73,6 +83,62 @@ function sanitizeList(value: unknown) {
     : []
 }
 
+function mergeUnique(base: string[], extra: string[]) {
+  const seen = new Set(base.map((item) => item.toLowerCase()))
+  const merged = [...base]
+
+  for (const item of extra) {
+    const normalized = normalizeText(item)
+    if (!normalized) continue
+
+    const key = normalized.toLowerCase()
+    if (!seen.has(key)) {
+      seen.add(key)
+      merged.push(normalized)
+    }
+  }
+
+  return merged
+}
+
+function readDigestSnapshot(digest: SessionDigestRow | undefined): DigestSnapshotShape {
+  const payload = digest?.structuredDigest ?? {}
+
+  return {
+    projectOverviewDelta: payload.projectOverviewDelta ? normalizeText(String(payload.projectOverviewDelta)).slice(0, 500) : null,
+    currentObjectiveDelta: payload.currentObjectiveDelta ? normalizeText(String(payload.currentObjectiveDelta)).slice(0, 320) : null,
+    recentProgressDelta: payload.recentProgressDelta ? normalizeText(String(payload.recentProgressDelta)).slice(0, 500) : null,
+    newDecisions: sanitizeList(payload.newDecisions),
+    newConstraints: sanitizeList(payload.newConstraints),
+    newTasks: sanitizeList(payload.newTasks),
+    relevantToolsDelta: sanitizeList(payload.relevantToolsDelta)
+  }
+}
+
+function isDigestNewerThanState(digest: SessionDigestRow | undefined, state: ProjectStateRow | null) {
+  if (!digest) return false
+  if (!state?.updatedAt) return true
+
+  return new Date(digest.createdAt).getTime() > new Date(state.updatedAt).getTime()
+}
+
+export function shouldReuseLatestBootstrapPacket(input: {
+  latestCreatedAt: string | null
+  latestDigestCreatedAt: string | null
+  stateDirty: boolean
+  deep: boolean
+}) {
+  if (input.deep || input.stateDirty || !input.latestCreatedAt) {
+    return false
+  }
+
+  if (!input.latestDigestCreatedAt) {
+    return true
+  }
+
+  return new Date(input.latestCreatedAt).getTime() >= new Date(input.latestDigestCreatedAt).getTime()
+}
+
 function sanitizeBootstrapShape(input: BootstrapModelShape, state: ProjectStateRow | null): BootstrapModelShape {
   const decisions = sanitizeList(input.decisions)
   const constraints = sanitizeList(input.constraints)
@@ -91,16 +157,32 @@ function sanitizeBootstrapShape(input: BootstrapModelShape, state: ProjectStateR
   }
 }
 
-function deterministicBootstrap(state: ProjectStateRow | null, digests: SessionDigestRow[], profile: TargetProfileRow): BootstrapModelShape {
+export function deterministicBootstrap(state: ProjectStateRow | null, digests: SessionDigestRow[], profile: TargetProfileRow, kind: BootstrapRequest["kind"]): BootstrapModelShape {
   const latestDigest = digests[0]
+  const recentSummary = latestDigest?.summaryShort ?? null
+  const digestSnapshot = readDigestSnapshot(latestDigest)
+  const digestIsNewer = isDigestNewerThanState(latestDigest, state)
+  const digestCurrentObjective = digestIsNewer ? digestSnapshot.currentObjectiveDelta : null
+  const digestRecentProgress = digestIsNewer ? digestSnapshot.recentProgressDelta ?? recentSummary : recentSummary
+  const digestProjectOverview = digestIsNewer ? digestSnapshot.projectOverviewDelta ?? recentSummary : recentSummary
+  const decisions = digestIsNewer ? mergeUnique(state?.decisions ?? [], digestSnapshot.newDecisions) : state?.decisions ?? []
+  const constraints = digestIsNewer ? mergeUnique(state?.constraints ?? [], digestSnapshot.newConstraints) : state?.constraints ?? []
+  const openTasks = digestIsNewer ? mergeUnique(state?.openTasks ?? [], digestSnapshot.newTasks) : state?.openTasks ?? []
+  const relevantTools = digestIsNewer
+    ? mergeUnique(state?.relevantTools ?? [], digestSnapshot.relevantToolsDelta)
+    : state?.relevantTools ?? []
+
   return {
-    projectOverview: state?.projectOverview ?? latestDigest?.summaryShort ?? "Project context is available but not yet summarized.",
-    currentObjective: state?.currentObjective ?? latestDigest?.summaryShort ?? "Continue the current project thread.",
-    recentProgress: state?.recentProgress ?? latestDigest?.summaryShort ?? null,
-    decisions: state?.decisions ?? [],
-    constraints: state?.constraints ?? [],
-    openTasks: state?.openTasks ?? [],
-    relevantTools: state?.relevantTools.length ? state.relevantTools : [profile.name],
+    projectOverview: state?.projectOverview ?? digestProjectOverview ?? "Project context is available and ready to carry forward.",
+    currentObjective: digestCurrentObjective ?? state?.currentObjective ?? recentSummary ?? "Continue the current project thread.",
+    recentProgress:
+      kind === "fresh_chat_bootstrap"
+        ? digestRecentProgress ?? state?.recentProgress ?? null
+        : digestRecentProgress ?? state?.recentProgress ?? null,
+    decisions,
+    constraints,
+    openTasks,
+    relevantTools: relevantTools.length ? relevantTools : [profile.name],
     firstAction:
       profile.key === "perplexity_research"
         ? "Start by validating the current objective, then collect the missing facts before answering."
@@ -108,34 +190,64 @@ function deterministicBootstrap(state: ProjectStateRow | null, digests: SessionD
   }
 }
 
-function renderBootstrapMarkdown(shape: BootstrapModelShape, profile: TargetProfileRow) {
-  return [
-    `Target: ${profile.name}`,
+function appendListSection(lines: string[], title: string, items: string[]) {
+  if (!items.length) return
+  lines.push(`## ${title}`)
+  lines.push(...items.map((item) => `- ${item}`))
+  lines.push("")
+}
+
+function appendTextSection(lines: string[], title: string, value: string | null | undefined) {
+  if (!value) return
+  lines.push(`## ${title}`)
+  lines.push(value)
+  lines.push("")
+}
+
+function renderFreshChatMarkdown(shape: BootstrapModelShape, profile: TargetProfileRow) {
+  const lines = [
+    `Use this project brief for ${profile.name}.`,
     "",
-    "## Project Overview",
-    shape.projectOverview ?? "Not set.",
-    "",
-    "## Current Objective",
-    shape.currentObjective ?? "Not set.",
-    "",
-    "## Recent Progress",
-    shape.recentProgress ?? "No recent progress captured yet.",
-    "",
-    "## Decisions",
-    ...(shape.decisions.length ? shape.decisions.map((item) => `- ${item}`) : ["- None recorded."]),
-    "",
-    "## Constraints",
-    ...(shape.constraints.length ? shape.constraints.map((item) => `- ${item}`) : ["- None recorded."]),
-    "",
-    "## Open Tasks",
-    ...(shape.openTasks.length ? shape.openTasks.map((item) => `- ${item}`) : ["- None recorded."]),
-    "",
-    "## Tools / Sources To Consult",
-    ...(shape.relevantTools.length ? shape.relevantTools.map((item) => `- ${item}`) : ["- None recorded."]),
-    "",
-    "## What This Chat Should Do First",
-    shape.firstAction ?? "Review the project state and continue from the highest-priority open task."
-  ].join("\n")
+    "You are joining this project in a fresh chat. Use the saved project context below so the user does not need to re-explain the work.",
+    ""
+  ]
+
+  appendTextSection(lines, "What This Project Is", shape.projectOverview)
+  appendTextSection(lines, "Current Objective", shape.currentObjective)
+  appendTextSection(lines, "What Changed Recently", shape.recentProgress)
+  appendListSection(lines, "Decisions Already Made", shape.decisions)
+  appendListSection(lines, "Constraints To Respect", shape.constraints)
+  appendListSection(lines, "Open Tasks", shape.openTasks)
+  appendListSection(lines, "Useful Context", shape.relevantTools)
+  appendTextSection(lines, "How This Chat Should Continue", shape.firstAction)
+
+  return lines.join("\n").trim()
+}
+
+function renderContinuationMarkdown(shape: BootstrapModelShape, profile: TargetProfileRow) {
+  const lines = [`Continue this project in ${profile.name}.`, ""]
+
+  if (shape.currentObjective) {
+    lines.push(`Current objective: ${shape.currentObjective}`)
+  }
+
+  if (shape.recentProgress) {
+    lines.push(`Recent progress: ${shape.recentProgress}`)
+  }
+
+  if (shape.firstAction) {
+    lines.push(`Next step: ${shape.firstAction}`)
+  }
+
+  lines.push("")
+  appendListSection(lines, "Constraints", shape.constraints.slice(0, 5))
+  appendListSection(lines, "Open Tasks", shape.openTasks.slice(0, 5))
+
+  return lines.join("\n").trim()
+}
+
+export function renderBootstrapMarkdown(shape: BootstrapModelShape, profile: TargetProfileRow, kind: BootstrapRequest["kind"]) {
+  return kind === "quick_continuity" ? renderContinuationMarkdown(shape, profile) : renderFreshChatMarkdown(shape, profile)
 }
 
 function describeJobStage(stage: string | null) {
@@ -160,6 +272,7 @@ async function generateGeminiBootstrap(input: {
   state: ProjectStateRow | null
   digests: SessionDigestRow[]
   profile: TargetProfileRow
+  kind: BootstrapRequest["kind"]
 }) {
   const result = await runGeminiJsonWithFallback<BootstrapModelShape>({
     primaryModel: GEMINI_MODELS.bootstrap.primary,
@@ -167,11 +280,16 @@ async function generateGeminiBootstrap(input: {
     maxInputTokens: GEMINI_MODELS.bootstrap.maxInputTokens,
     maxOutputTokens: GEMINI_MODELS.bootstrap.maxOutputTokens,
     systemInstruction:
-      "You write fresh-chat bootstraps for AI tools. Return only JSON. Prefer durable project state, clear tasks, and concise sections over transcript detail.",
+      input.kind === "quick_continuity"
+        ? "You write short continuation briefs for ongoing AI chats. Return only JSON. Prefer immediate task continuity, recent progress, constraints, and the next action."
+        : "You write explanatory project briefs for fresh AI chats. Return only JSON. Prefer durable project state, clear tasks, and concise sections over transcript detail.",
     prompt: [
       "Return a JSON object with these keys exactly:",
       "projectOverview, currentObjective, recentProgress, decisions, constraints, openTasks, relevantTools, firstAction.",
       "Do not include markdown in the JSON values.",
+      input.kind === "quick_continuity"
+        ? "Make this continuation brief short, immediate, and task-focused."
+        : "Make this fresh-chat brief explanatory enough that a new chat can continue without a re-brief.",
       `Target profile: ${input.profile.name}`,
       `Project overview: ${input.state?.projectOverview ?? "None."}`,
       `Current objective: ${input.state?.currentObjective ?? "None."}`,
@@ -262,7 +380,15 @@ export async function generateBootstrapForProject(userId: string, projectId: str
   }
 
   const latest = await repositories.bootstrapPackets.getLatest(projectId, profile.id, parsed.kind)
-  if (latest && !state?.dirty && !parsed.deep) {
+  if (
+    latest &&
+    shouldReuseLatestBootstrapPacket({
+      latestCreatedAt: latest.createdAt,
+      latestDigestCreatedAt: digests[0]?.createdAt ?? null,
+      stateDirty: Boolean(state?.dirty),
+      deep: Boolean(parsed.deep)
+    })
+  ) {
     return {
       status: "ready",
       packet: latest,
@@ -273,7 +399,7 @@ export async function generateBootstrapForProject(userId: string, projectId: str
   }
 
   const preferredRenderer = inferRenderer(parsed, state)
-  const deterministic = deterministicBootstrap(state, digests, profile)
+  const deterministic = deterministicBootstrap(state, digests, profile, parsed.kind)
 
   let shape = deterministic
   let renderer: BootstrapPacketRow["renderer"] = "deterministic"
@@ -284,7 +410,7 @@ export async function generateBootstrapForProject(userId: string, projectId: str
 
   if (preferredRenderer === "gemini") {
     try {
-      const generated = await generateGeminiBootstrap({ state, digests, profile })
+      const generated = await generateGeminiBootstrap({ state, digests, profile, kind: parsed.kind })
       shape = generated.shape
       renderer = "gemini"
       actualModel = generated.actualModel
@@ -300,7 +426,7 @@ export async function generateBootstrapForProject(userId: string, projectId: str
     projectId,
     targetProfileId: profile.id,
     kind: parsed.kind,
-    content: renderBootstrapMarkdown(shape, profile),
+    content: renderBootstrapMarkdown(shape, profile, parsed.kind),
     structuredSnapshot: { ...shape },
     renderer,
     generationMetadata: {
