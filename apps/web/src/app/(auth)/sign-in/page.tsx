@@ -1,20 +1,15 @@
 import Image from "next/image";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 import { PageTelemetry } from "@/components/telemetry/page-telemetry";
-import { getAuthServer } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 
 export default async function SignInPage() {
-  const auth = getAuthServer();
-  const { data } = auth ? await auth.getSession() : { data: null };
-
-  if (data?.user) {
-    redirect("/dashboard");
-  }
+  const authConfigured = Boolean(
+    process.env.NEON_AUTH_BASE_URL && process.env.NEON_AUTH_COOKIE_SECRET,
+  );
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#FAFAF8] px-6">
@@ -41,7 +36,7 @@ export default async function SignInPage() {
         </p>
 
         <div className="mt-8">
-          {auth ? (
+          {authConfigured ? (
             <GoogleSignInButton />
           ) : (
             <p className="rounded-2xl bg-gray-100 px-4 py-4 text-sm text-gray-400">

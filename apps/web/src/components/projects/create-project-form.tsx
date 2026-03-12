@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 
-import { slugify } from "@relay/shared"
+import { slugify } from "@relay/shared/utils/text"
 
 import { Button } from "@/components/ui/button"
 import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client"

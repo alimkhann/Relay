@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Plus, Trash2, Check } from "lucide-react";
 
-import { slugify } from "@relay/shared";
+import { slugify } from "@relay/shared/utils/text";
 
 import { createClientFlowId } from "@/lib/telemetry/client";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
