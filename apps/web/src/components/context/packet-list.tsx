@@ -1,30 +1,28 @@
 import type { BootstrapPacketDto, ContextPacketDto } from "@relay/shared"
 
-import { Card } from "@/components/ui/card"
-
 export function PacketList({ packets }: { packets: Array<ContextPacketDto | BootstrapPacketDto> }) {
   if (packets.length === 0) {
     return (
-      <div className="rounded-[18px] border border-dashed border-[var(--relay-line)] bg-white/70 p-5 text-sm text-[var(--relay-muted)]">
-        No project brief yet. Relay will prepare one after the next meaningful chat.
-      </div>
+      <p className="text-sm text-[var(--relay-muted)]">
+        No project brief yet. Relay will prepare one after the next chat.
+      </p>
     )
   }
 
   return (
-    <div className="grid gap-4">
+    <div className="space-y-3">
       {packets.map((packet) => (
-        <Card key={packet.id} className="p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--relay-muted)]">{packet.targetProfileKey}</p>
+        <div key={packet.id} className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-4 shadow-[var(--relay-shadow-sm)]">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-medium text-[var(--relay-faint)]">Project brief</span>
             {"kind" in packet ? (
-              <span className="rounded-[999px] bg-[var(--relay-soft)] px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-[var(--relay-muted)]">
-                {packet.kind === "fresh_chat_bootstrap" ? "Fresh chat brief" : "Continuation brief"}
+              <span className="text-[11px] text-[var(--relay-faint)]">
+                {packet.kind === "fresh_chat_bootstrap" ? "Fresh chat" : "Continuation"}
               </span>
             ) : null}
           </div>
-          <pre className="mt-4 whitespace-pre-wrap text-sm leading-7 text-[var(--relay-muted)]">{packet.content}</pre>
-        </Card>
+          <pre className="mt-3 whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-[var(--relay-ink-secondary)]">{packet.content}</pre>
+        </div>
       ))}
     </div>
   )

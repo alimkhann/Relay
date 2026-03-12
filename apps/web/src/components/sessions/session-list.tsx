@@ -1,7 +1,5 @@
 import type { RecentSessionDto } from "@relay/shared"
 
-import { Card } from "@/components/ui/card"
-
 function formatCapturedAt(value: string) {
   return new Date(value).toLocaleString(undefined, {
     month: "short",
@@ -14,26 +12,26 @@ function formatCapturedAt(value: string) {
 export function SessionList({ sessions }: { sessions: RecentSessionDto[] }) {
   if (sessions.length === 0) {
     return (
-      <div className="rounded-[18px] border border-dashed border-[var(--relay-line)] bg-white/70 p-5 text-sm text-[var(--relay-muted)]">
-        No recent chats yet. Once Relay is connected, supported chats will appear here automatically.
-      </div>
+      <p className="text-sm text-[var(--relay-muted)]">
+        No recent chats yet. Supported chats will appear here automatically.
+      </p>
     )
   }
 
   return (
-    <div className="grid gap-4">
+    <div className="space-y-0.5">
       {sessions.map((session) => (
-        <Card key={session.id} className="p-5">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--relay-muted)]">{session.platform}</p>
-              <h3 className="mt-2 text-lg font-semibold text-[var(--relay-ink)]">{session.title ?? session.url}</h3>
-              <p className="mt-2 text-xs uppercase tracking-[0.2em] text-[var(--relay-muted)]">{formatCapturedAt(session.capturedAt)}</p>
-            </div>
-            <span className="rounded-full bg-[var(--relay-soft)] px-3 py-1 text-xs text-[var(--relay-muted)]">{session.turnCount} turns</span>
+        <div key={session.id} className="flex items-start gap-3 rounded-[var(--relay-radius-sm)] px-3 py-2.5 transition hover:bg-[var(--relay-soft)]">
+          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--relay-soft)] text-[10px] font-bold text-[var(--relay-muted)]">
+            {session.platform.charAt(0).toUpperCase()}
+          </span>
+          <div className="flex-1 min-w-0">
+            <p className="truncate text-sm font-medium text-[var(--relay-ink)]">{session.title ?? session.url}</p>
+            <p className="text-xs text-[var(--relay-faint)]">
+              {session.platform} · {session.turnCount} turns · {formatCapturedAt(session.capturedAt)}
+            </p>
           </div>
-          <p className="mt-3 truncate text-sm text-[var(--relay-muted)]">{session.url}</p>
-        </Card>
+        </div>
       ))}
     </div>
   )

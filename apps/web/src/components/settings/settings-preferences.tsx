@@ -4,8 +4,6 @@ import { useState, useTransition } from "react"
 
 import type { UserSettingsRow } from "@relay/shared"
 
-import { Button } from "@/components/ui/button"
-
 interface SettingsPreferencesProps {
   initialSettings: UserSettingsRow["settings"]
 }
@@ -17,159 +15,134 @@ const platformOptions = [
   { key: "perplexity", label: "Perplexity" }
 ] as const
 
+function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${
+        checked ? "bg-[var(--relay-accent)]" : "bg-[var(--relay-line-strong)]"
+      } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+    >
+      <span
+        className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+          checked ? "translate-x-4" : "translate-x-0"
+        }`}
+      />
+    </button>
+  )
+}
+
 export function SettingsPreferences({ initialSettings }: SettingsPreferencesProps) {
   const [settings, setSettings] = useState(initialSettings)
-  const [status, setStatus] = useState("Relay uses these settings to decide where it works and how quietly it should help.")
+  const [toast, setToast] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
   async function save(nextSettings: typeof settings) {
     const response = await fetch("/api/settings", {
       method: "PATCH",
-      headers: {
-        "content-type": "application/json"
-      },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(nextSettings)
     })
-
-    if (!response.ok) {
-      throw new Error("Settings update failed.")
-    }
-
+    if (!response.ok) throw new Error("Save failed")
     setSettings(nextSettings)
   }
 
+  function update(nextSettings: typeof settings, message: string) {
+    startTransition(async () => {
+      try {
+        await save(nextSettings)
+        setToast(message)
+        setTimeout(() => setToast(null), 2000)
+      } catch (error) {
+        setToast(error instanceof Error ? error.message : "Save failed")
+        setTimeout(() => setToast(null), 3000)
+      }
+    })
+  }
+
   return (
-    <div className="space-y-6 rounded-[24px] border border-[var(--relay-line)] bg-white/82 p-6 shadow-[var(--relay-shadow)]">
-      <section className="space-y-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Chrome connection</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--relay-ink)]">Connect Relay in Chrome</h2>
-          <p className="mt-3 text-sm leading-7 text-[var(--relay-muted)]">
-            Open the extension sidepanel in Chrome and choose <span className="font-semibold text-[var(--relay-ink)]">Connect Relay</span>. The normal flow does not expose raw device tokens.
-          </p>
-        </div>
+    <div className="space-y-8">
+      {/* ─── Connection ─── */}
+      <section className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-5 shadow-[var(--relay-shadow-sm)]">
+        <h2 className="text-sm font-semibold">Chrome extension</h2>
+        <p className="mt-1.5 text-sm leading-relaxed text-[var(--relay-muted)]">
+          Open the Relay sidepanel in Chrome and tap <strong className="text-[var(--relay-ink)]">Connect</strong> to pair your browser.
+        </p>
       </section>
 
-      <section className="space-y-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Where Relay works</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--relay-ink)]">Choose the chats Relay should watch</h2>
-        </div>
-
-        <div className="grid gap-3">
+      {/* ─── Platforms ─── */}
+      <section>
+        <h2 className="text-sm font-semibold">Platforms</h2>
+        <p className="mt-1 text-sm text-[var(--relay-muted)]">Choose which AI chats Relay watches.</p>
+        <div className="mt-3 divide-y divide-[var(--relay-line)] rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
           {platformOptions.map((platform) => {
             const checked = settings.enabledPlatforms.includes(platform.key)
             return (
-              <label key={platform.key} className="flex items-center justify-between rounded-[16px] border border-[var(--relay-line)] bg-[var(--relay-background)] px-4 py-3">
-                <span className="text-sm font-medium text-[var(--relay-ink)]">{platform.label}</span>
-                <input
+              <div key={platform.key} className="flex items-center justify-between px-4 py-3">
+                <span className="text-sm">{platform.label}</span>
+                <Toggle
                   checked={checked}
-                  type="checkbox"
-                  onChange={(event) => {
-                    const enabledPlatforms = event.target.checked
+                  disabled={pending}
+                  onChange={(on) => {
+                    const enabledPlatforms = on
                       ? [...settings.enabledPlatforms, platform.key]
-                      : settings.enabledPlatforms.filter((item) => item !== platform.key)
-
-                    const nextSettings = {
-                      ...settings,
-                      enabledPlatforms
-                    }
-
-                    startTransition(async () => {
-                      try {
-                        await save(nextSettings)
-                        setStatus("Where Relay works has been updated.")
-                      } catch (error) {
-                        setStatus(error instanceof Error ? error.message : "Settings update failed.")
-                      }
-                    })
+                      : settings.enabledPlatforms.filter((p) => p !== platform.key)
+                    update({ ...settings, enabledPlatforms }, `${platform.label} ${on ? "enabled" : "disabled"}`)
                   }}
                 />
-              </label>
+              </div>
             )
           })}
         </div>
       </section>
 
-      <section className="space-y-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Capture behavior</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--relay-ink)]">Keep Relay quiet unless it is useful</h2>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="rounded-[16px] border border-[var(--relay-line)] bg-[var(--relay-background)] px-4 py-3">
-            <span className="text-sm font-medium text-[var(--relay-ink)]">Auto-capture</span>
-            <p className="mt-2 text-sm leading-6 text-[var(--relay-muted)]">Capture meaningful page changes in the background.</p>
-            <div className="mt-4">
-              <input
-                checked={settings.autoCapture}
-                type="checkbox"
-                onChange={(event) => {
-                  const nextSettings = {
-                    ...settings,
-                    autoCapture: event.target.checked
-                  }
-
-                  startTransition(async () => {
-                    try {
-                      await save(nextSettings)
-                      setStatus("Auto-capture updated.")
-                    } catch (error) {
-                      setStatus(error instanceof Error ? error.message : "Settings update failed.")
-                    }
-                  })
-                }}
-              />
+      {/* ─── Behavior ─── */}
+      <section>
+        <h2 className="text-sm font-semibold">Behavior</h2>
+        <p className="mt-1 text-sm text-[var(--relay-muted)]">Fine-tune how Relay runs in the background.</p>
+        <div className="mt-3 divide-y divide-[var(--relay-line)] rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
+          <div className="flex items-center justify-between gap-4 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium">Auto-capture</p>
+              <p className="text-sm text-[var(--relay-muted)]">Save chat content automatically.</p>
             </div>
-          </label>
-
-          <label className="rounded-[16px] border border-[var(--relay-line)] bg-[var(--relay-background)] px-4 py-3">
-            <span className="text-sm font-medium text-[var(--relay-ink)]">Quiet cues</span>
-            <p className="mt-2 text-sm leading-6 text-[var(--relay-muted)]">Show inline help on supported fresh chats without interrupting your normal flow.</p>
-            <div className="mt-4">
-              <input
-                checked={settings.showSidepanelOnSupportedSites}
-                type="checkbox"
-                onChange={(event) => {
-                  const nextSettings = {
-                    ...settings,
-                    showSidepanelOnSupportedSites: event.target.checked
-                  }
-
-                  startTransition(async () => {
-                    try {
-                      await save(nextSettings)
-                      setStatus("Quiet cues updated.")
-                    } catch (error) {
-                      setStatus(error instanceof Error ? error.message : "Settings update failed.")
-                    }
-                  })
-                }}
-              />
+            <Toggle
+              checked={settings.autoCapture}
+              disabled={pending}
+              onChange={(on) => update({ ...settings, autoCapture: on }, `Auto-capture ${on ? "on" : "off"}`)}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-4 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium">Inline chip</p>
+              <p className="text-sm text-[var(--relay-muted)]">Show a brief-insert chip on new chats.</p>
             </div>
-          </label>
+            <Toggle
+              checked={settings.showSidepanelOnSupportedSites}
+              disabled={pending}
+              onChange={(on) => update({ ...settings, showSidepanelOnSupportedSites: on }, `Inline chip ${on ? "on" : "off"}`)}
+            />
+          </div>
         </div>
       </section>
 
-      <section className="space-y-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Fallback behavior</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--relay-ink)]">Relay should still help when AI is unavailable</h2>
-        </div>
-
-        <div className="rounded-[16px] border border-[var(--relay-line)] bg-[var(--relay-background)] px-4 py-4 text-sm leading-7 text-[var(--relay-muted)]">
-          AI-generated briefs stay on when available. If Relay cannot reach AI, it still inserts a bounded project brief from saved project context.
-        </div>
+      {/* ─── Fallback note ─── */}
+      <section className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-5 shadow-[var(--relay-shadow-sm)]">
+        <h2 className="text-sm font-semibold">Offline fallback</h2>
+        <p className="mt-1.5 text-sm leading-relaxed text-[var(--relay-muted)]">
+          When AI is unavailable, Relay inserts a bounded brief from saved project context.
+        </p>
       </section>
 
-      <div className="flex flex-wrap gap-3">
-        <Button asChild variant="secondary">
-          <a href="/dashboard">Back to dashboard</a>
-        </Button>
-      </div>
-
-      <p className="rounded-[16px] bg-[var(--relay-soft)] px-4 py-3 text-sm text-[var(--relay-muted)]">{pending ? "Saving…" : status}</p>
+      {/* ─── Toast ─── */}
+      {(toast || pending) && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-full bg-[var(--relay-ink)] px-4 py-2 text-sm text-[var(--relay-bg)] shadow-[var(--relay-shadow)]">
+          {pending ? "Saving…" : toast}
+        </div>
+      )}
     </div>
   )
 }
