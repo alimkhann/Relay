@@ -4,8 +4,9 @@ import type { ProjectStateStatusDto } from "@relay/shared"
 import { AppShell } from "@/components/layout/app-shell"
 import { PacketList } from "@/components/context/packet-list"
 import { CreateProjectForm } from "@/components/projects/create-project-form"
-import { ProjectGrid } from "@/components/projects/project-grid"
+import { ProjectPicker } from "@/components/projects/project-picker"
 import { ActivityFeed } from "@/components/activity/activity-feed"
+import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { Button } from "@/components/ui/button"
 import { requireSessionViewer } from "@/server/policies/viewer"
 import { getProjectDashboardForUser, listProjectsForUser } from "@/server/services/project-service"
@@ -21,17 +22,25 @@ function describeStatus(status: ProjectStateStatusDto | undefined) {
   return status.rawCapturePresent ? "Preparing brief…" : "Waiting for the first chat."
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ project?: string }>
+}) {
   const viewer = await requireSessionViewer()
   const projects = await listProjectsForUser(viewer.userId)
-  const currentProject = projects[0] ?? null
-  const dashboard = currentProject ? await getProjectDashboardForUser(viewer.userId, currentProject.id) : null
+  const { project: selectedProjectId } = await searchParams
+  const currentProject =
+    (selectedProjectId
+      ? projects.find((p) => p.id === selectedProjectId)
+      : projects[0]) ?? projects[0] ?? null
+  const dashboard = currentProject
+    ? await getProjectDashboardForUser(viewer.userId, currentProject.id)
+    : null
 
-  const savedContext = [
-    ...(dashboard?.projectState?.decisions ?? []).map((d) => ({ type: "Decision" as const, text: d })),
-    ...(dashboard?.projectState?.constraints ?? []).map((c) => ({ type: "Constraint" as const, text: c })),
-    ...(dashboard?.projectState?.openTasks ?? []).map((t) => ({ type: "Task" as const, text: t }))
-  ]
+  const decisions = dashboard?.projectState?.decisions ?? []
+  const constraints = dashboard?.projectState?.constraints ?? []
+  const openTasks = dashboard?.projectState?.openTasks ?? []
 
   const statusReady = dashboard?.stateStatus?.projectStateReady
   const statusText = describeStatus(dashboard?.stateStatus)
@@ -52,42 +61,40 @@ export default async function DashboardPage() {
       ) : (
         <>
           {/* ─── Project header ─── */}
-          <section className="flex flex-col gap-1">
-            {projects.length > 1 ? (
-              <div className="flex items-center gap-2 text-sm text-[var(--relay-muted)]">
-                {projects.map((p) => (
-                  <Link
-                    key={p.id}
-                    href={`/projects/${p.id}`}
-                    className={`rounded-[var(--relay-radius-sm)] px-2.5 py-1 transition ${p.id === currentProject.id ? "bg-[var(--relay-soft)] text-[var(--relay-ink)] font-medium" : "hover:bg-[var(--relay-soft)]"}`}
-                  >
-                    {p.name}
-                  </Link>
-                ))}
-              </div>
-            ) : null}
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h1 className="text-3xl font-bold tracking-tight">{currentProject.name}</h1>
-                <p className="mt-1 text-sm text-[var(--relay-muted)]">
-                  {dashboard?.projectState?.projectOverview ?? currentProject.description ?? "Add a project description to help Relay explain your work."}
-                </p>
-              </div>
-              <Button asChild variant="ghost" size="sm">
-                <Link href={`/projects/${currentProject.id}`}>View project</Link>
-              </Button>
+          <section className="flex items-start justify-between gap-4">
+            <div>
+              <ProjectPicker
+                projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+                currentId={currentProject.id}
+              />
+              <p className="mt-1 text-sm text-[var(--relay-muted)]">
+                {dashboard?.projectState?.projectOverview ??
+                  currentProject.description ??
+                  "Add a project description to help Relay explain your work."}
+              </p>
             </div>
+            <Button asChild variant="ghost" size="sm">
+              <Link href={`/projects/${currentProject.id}`}>View project</Link>
+            </Button>
           </section>
 
           {/* ─── Status + Objective ─── */}
           <section className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-5 shadow-[var(--relay-shadow-sm)]">
             <div className="flex items-center gap-3">
-              <span className={`h-2 w-2 rounded-full ${statusReady ? "bg-[var(--relay-success)]" : "bg-[var(--relay-warning)]"}`} />
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  statusReady
+                    ? "bg-[var(--relay-success)]"
+                    : "bg-[var(--relay-warning)]"
+                }`}
+              />
               <span className="text-sm font-medium">{statusText}</span>
             </div>
             {dashboard?.projectState?.currentObjective ? (
               <div className="mt-4 border-t border-[var(--relay-line)] pt-4">
-                <p className="text-xs font-medium uppercase tracking-wider text-[var(--relay-faint)]">Current objective</p>
+                <p className="text-xs font-medium uppercase tracking-wider text-[var(--relay-faint)]">
+                  Current objective
+                </p>
                 <p className="mt-1.5 text-sm leading-relaxed text-[var(--relay-ink-secondary)]">
                   {dashboard.projectState.currentObjective}
                 </p>
@@ -96,54 +103,101 @@ export default async function DashboardPage() {
           </section>
 
           {/* ─── Next chat brief ─── */}
-          <section>
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold tracking-tight">Next chat brief</h2>
+          <CollapsibleSection
+            title="Next chat brief"
+            action={
               <Button asChild variant="ghost" size="sm">
                 <Link href={`/projects/${currentProject.id}`}>Full brief</Link>
               </Button>
-            </div>
-            <div className="mt-3">
-              <PacketList packets={dashboard?.packets.slice(0, 1) ?? []} />
-            </div>
-          </section>
+            }
+          >
+            <PacketList packets={dashboard?.packets.slice(0, 1) ?? []} />
+          </CollapsibleSection>
 
-          {/* ─── Saved context ─── */}
-          <section>
-            <h2 className="text-lg font-semibold tracking-tight">Saved context</h2>
-            {savedContext.length > 0 ? (
-              <ul className="mt-3 space-y-0.5">
-                {savedContext.map((item, i) => (
-                  <li key={i} className="flex items-start gap-3 rounded-[var(--relay-radius-sm)] px-3 py-2.5 transition hover:bg-[var(--relay-soft)]">
-                    <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
-                      item.type === "Decision" ? "bg-blue-500" :
-                      item.type === "Constraint" ? "bg-amber-500" :
-                      "bg-emerald-500"
-                    }`} />
-                    <div className="flex-1 min-w-0">
-                      <span className="text-sm leading-relaxed text-[var(--relay-ink-secondary)]">{item.text}</span>
-                    </div>
-                    <span className="shrink-0 text-[11px] font-medium text-[var(--relay-faint)]">{item.type}</span>
-                  </li>
-                ))}
-              </ul>
+          {/* ─── Saved context — split into 3 sections ─── */}
+          <CollapsibleSection title="Saved context">
+            {decisions.length + constraints.length + openTasks.length > 0 ? (
+              <div className="grid gap-6 md:grid-cols-3">
+                {/* Decisions */}
+                <div>
+                  <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--relay-faint)]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                    Decisions
+                  </p>
+                  {decisions.length > 0 ? (
+                    <ul className="space-y-1">
+                      {decisions.map((text, i) => (
+                        <li
+                          key={i}
+                          className="rounded-[var(--relay-radius-sm)] px-3 py-2 text-sm leading-relaxed text-[var(--relay-ink-secondary)] transition hover:bg-[var(--relay-soft)]"
+                        >
+                          {text}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="px-3 text-sm text-[var(--relay-muted)]">None yet</p>
+                  )}
+                </div>
+
+                {/* Tasks */}
+                <div>
+                  <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--relay-faint)]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    Tasks
+                  </p>
+                  {openTasks.length > 0 ? (
+                    <ul className="space-y-1">
+                      {openTasks.map((text, i) => (
+                        <li
+                          key={i}
+                          className="rounded-[var(--relay-radius-sm)] px-3 py-2 text-sm leading-relaxed text-[var(--relay-ink-secondary)] transition hover:bg-[var(--relay-soft)]"
+                        >
+                          {text}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="px-3 text-sm text-[var(--relay-muted)]">None yet</p>
+                  )}
+                </div>
+
+                {/* Constraints */}
+                <div>
+                  <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--relay-faint)]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                    Constraints
+                  </p>
+                  {constraints.length > 0 ? (
+                    <ul className="space-y-1">
+                      {constraints.map((text, i) => (
+                        <li
+                          key={i}
+                          className="rounded-[var(--relay-radius-sm)] px-3 py-2 text-sm leading-relaxed text-[var(--relay-ink-secondary)] transition hover:bg-[var(--relay-soft)]"
+                        >
+                          {text}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="px-3 text-sm text-[var(--relay-muted)]">None yet</p>
+                  )}
+                </div>
+              </div>
             ) : (
-              <p className="mt-3 text-sm text-[var(--relay-muted)]">
+              <p className="text-sm text-[var(--relay-muted)]">
                 Saved context will appear here as Relay learns from your chats.
               </p>
             )}
-          </section>
+          </CollapsibleSection>
 
           {/* ─── Recent activity ─── */}
-          <section>
-            <h2 className="text-lg font-semibold tracking-tight">Recent activity</h2>
-            <div className="mt-3">
-              <ActivityFeed
-                sessions={dashboard?.recentSessions ?? []}
-                digests={dashboard?.recentDigests ?? []}
-              />
-            </div>
-          </section>
+          <CollapsibleSection title="Recent activity">
+            <ActivityFeed
+              sessions={dashboard?.recentSessions ?? []}
+              digests={dashboard?.recentDigests ?? []}
+            />
+          </CollapsibleSection>
         </>
       )}
     </AppShell>

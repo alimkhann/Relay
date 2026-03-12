@@ -58,6 +58,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [deviceName, setDeviceName] = useState("")
   const [projectSwitcherOpen, setProjectSwitcherOpen] = useState(false)
+  const [newProjectName, setNewProjectName] = useState("")
   const activeStateRequestInFlight = useRef(false)
 
   useEffect(() => {
@@ -217,6 +218,62 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       setStatus("Finish pairing in the Relay tab, then return here.")
     } catch (cause) {
       setStatus(cause instanceof Error ? cause.message : "Failed to open pairing flow.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function signInWithGoogle() {
+    setBusy(true)
+    setStatus("Signing in with Google…")
+
+    try {
+      const result = (await chrome.runtime.sendMessage({
+        type: "RELAY_GOOGLE_SIGN_IN",
+        payload: {
+          deviceName: deviceName || defaultDeviceName()
+        }
+      })) as { ok?: boolean; reason?: string }
+
+      if (!result?.ok) {
+        setStatus(result?.reason ?? "Google sign-in failed.")
+        return
+      }
+
+      setStatus("Signed in with Google.")
+      await refreshLocalSession()
+      await refreshActiveProjectState()
+    } catch (cause) {
+      setStatus(cause instanceof Error ? cause.message : "Google sign-in failed.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function createProject() {
+    const name = newProjectName.trim()
+    if (!name) return
+
+    setBusy(true)
+    setStatus("Creating project…")
+
+    try {
+      const result = (await chrome.runtime.sendMessage({
+        type: "RELAY_CREATE_PROJECT",
+        payload: { name }
+      })) as { ok?: boolean; reason?: string; project?: { id: string; name: string } }
+
+      if (!result?.ok) {
+        setStatus(result?.reason ?? "Project creation failed.")
+        return
+      }
+
+      setNewProjectName("")
+      setStatus(`Created project "${result.project?.name}".`)
+      await refreshLocalSession()
+      await refreshActiveProjectState()
+    } catch (cause) {
+      setStatus(cause instanceof Error ? cause.message : "Project creation failed.")
     } finally {
       setBusy(false)
     }
@@ -386,43 +443,86 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       {!session?.connected ? (
         /* ─── Connect state ─── */
         <section className={styles.panel}>
-          <h2 className={styles.sectionTitle}>Connect your browser</h2>
+          <h2 className={styles.sectionTitle}>Sign in to Relay</h2>
           <p className={styles.copy}>Sign in once. Relay captures useful work quietly and keeps your next chat ready.</p>
 
-          <label className={styles.field}>
-            <span>Device name</span>
-            <input value={deviceName} onChange={(event) => setDeviceName(event.target.value)} />
-          </label>
+          <button className={styles.primaryButton} disabled={busy} onClick={() => void signInWithGoogle()}>
+            {busy ? "Signing in…" : "Sign in with Google"}
+          </button>
 
-          <button className={styles.primaryButton} disabled={busy} onClick={() => void openConnectFlow()}>
-            {busy ? "Connecting…" : "Connect Relay"}
+          <div className={styles.dividerRow}>
+            <span className={styles.dividerLine} />
+            <span className={styles.dividerLabel}>or</span>
+            <span className={styles.dividerLine} />
+          </div>
+
+          <button className={styles.secondaryButton} disabled={busy} onClick={() => void openConnectFlow()}>
+            Pair via web
           </button>
         </section>
+      ) : activeState.projectOptions.length === 0 && !activeState.projectId ? (
+        /* ─── No projects yet ─── */
+        <>
+          <section className={styles.panel}>
+            <h2 className={styles.sectionTitle}>Create your first project</h2>
+            <p className={styles.copy}>Projects group your chats and context. Name it after what you are working on.</p>
+
+            <label className={styles.field}>
+              <span>Project name</span>
+              <input
+                value={newProjectName}
+                onChange={(event) => setNewProjectName(event.target.value)}
+                placeholder="e.g. My App"
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") void createProject()
+                }}
+              />
+            </label>
+
+            <button className={styles.primaryButton} disabled={busy || !newProjectName.trim()} onClick={() => void createProject()}>
+              {busy ? "Creating…" : "Create project"}
+            </button>
+          </section>
+        </>
       ) : (
         <>
           {/* ─── Project + Status ─── */}
           <section className={styles.panel}>
-            <div className={styles.row}>
-              <h2 className={styles.projectName}>{activeState.projectName ?? "No project"}</h2>
-              {activeState.projectOptions.length > 1 ? (
-                <button className={styles.switchButton} onClick={() => setProjectSwitcherOpen((v) => !v)}>
-                  Switch
-                </button>
+            <div style={{ position: "relative" }}>
+              <div
+                className={styles.projectRow}
+                onClick={() => activeState.projectOptions.length > 1 && setProjectSwitcherOpen((v) => !v)}
+              >
+                <h2 className={styles.projectName}>{activeState.projectName ?? "No project"}</h2>
+                {activeState.projectOptions.length > 1 ? (
+                  <svg
+                    className={`${styles.projectChevron} ${projectSwitcherOpen ? styles.projectChevronOpen : ""}`}
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="4 6 8 10 12 6" />
+                  </svg>
+                ) : null}
+              </div>
+
+              {projectSwitcherOpen ? (
+                <div className={styles.projectDropdown}>
+                  {activeState.projectOptions.map((project) => (
+                    <button
+                      key={project.id}
+                      className={`${styles.projectOption} ${project.id === selectedProjectId ? styles.projectOptionActive : ""}`}
+                      onClick={() => void handleProjectChange(project.id)}
+                    >
+                      {project.id === selectedProjectId ? "✓ " : ""}{project.name}
+                    </button>
+                  ))}
+                </div>
               ) : null}
             </div>
-
-            {projectSwitcherOpen ? (
-              <label className={styles.field}>
-                <select value={selectedProjectId} onChange={(event) => void handleProjectChange(event.target.value)}>
-                  <option value="">Select a project</option>
-                  {activeState.projectOptions.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
 
             <div className={styles.statusRow}>
               <span className={`${styles.dot} ${activeState.canInsert ? styles.dotReady : styles.dotWaiting}`} />
@@ -438,12 +538,13 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
             {/* Primary CTA */}
             <button className={styles.primaryButton} disabled={busy || !activeState.canInsert} onClick={() => void insertProjectBrief()}>
-              {busy ? "Inserting…" : "Insert project brief"}
+              {busy ? <span className={styles.shimmerText}>Inserting…</span> : "Insert project brief"}
             </button>
 
             {/* Secondary action */}
             <button
-              className={styles.linkButton}
+              className={styles.secondaryButton}
+              style={{ marginTop: 8 }}
               disabled={busy || !activeState.projectId || !activeState.page.supported}
               onClick={() => void saveToProject()}>
               Save to project

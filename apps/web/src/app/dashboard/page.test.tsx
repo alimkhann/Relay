@@ -82,7 +82,7 @@ import DashboardPage from "./page"
 
 describe("DashboardPage", () => {
   it("renders the project index heading", async () => {
-    render(await DashboardPage())
+    render(await DashboardPage({ searchParams: Promise.resolve({}) }))
 
     expect(screen.getByText("Pick the project you want Relay to keep ready")).toBeTruthy()
   })

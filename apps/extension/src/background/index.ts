@@ -825,6 +825,122 @@ chrome.runtime.onMessage.addListener((message: RelayMessage, sender: { tab?: { i
         return
       }
 
+      if (message.type === "RELAY_GOOGLE_SIGN_IN") {
+        const googleClientId = process.env.PLASMO_PUBLIC_CRX_GOOGLE_CLIENT_ID
+        if (!googleClientId) {
+          sendResponse({ ok: false, reason: "Google sign-in is not configured for this extension." })
+          return
+        }
+
+        const redirectUrl = chrome.identity.getRedirectURL()
+        const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth")
+        authUrl.searchParams.set("client_id", googleClientId)
+        authUrl.searchParams.set("redirect_uri", redirectUrl)
+        authUrl.searchParams.set("response_type", "token")
+        authUrl.searchParams.set("scope", "openid email profile")
+        authUrl.searchParams.set("prompt", "select_account")
+
+        try {
+          const callbackUrl = await chrome.identity.launchWebAuthFlow({
+            url: authUrl.toString(),
+            interactive: true
+          })
+
+          if (!callbackUrl) {
+            sendResponse({ ok: false, reason: "Google sign-in was cancelled." })
+            return
+          }
+
+          const hashParams = new URLSearchParams(new URL(callbackUrl).hash.slice(1))
+          const accessToken = hashParams.get("access_token")
+          if (!accessToken) {
+            sendResponse({ ok: false, reason: "Google sign-in did not return a token." })
+            return
+          }
+
+          const session = await getRelaySession()
+          const apiBase = session.apiBase || process.env.PLASMO_PUBLIC_RELAY_API_BASE || "http://localhost:3000"
+          const response = await fetch(`${apiBase}/api/extension/auth/google`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              googleAccessToken: accessToken,
+              deviceName: message.payload.deviceName
+            })
+          })
+
+          if (!response.ok) {
+            const reason = await readErrorResponse(response, "Google sign-in failed.")
+            sendResponse({ ok: false, reason })
+            return
+          }
+
+          const payload = (await response.json()) as {
+            token: string
+            apiBase: string
+            projectId: string
+            settings?: { settings?: { autoCapture?: boolean } }
+          }
+
+          sessionDataCache = null
+          await setRelaySession({
+            apiBase: payload.apiBase,
+            token: payload.token,
+            projectId: payload.projectId,
+            targetMode: "auto",
+            targetProfileKey: "",
+            resolvedTargetProfileKey: "",
+            connected: true,
+            autoCapture: payload.settings?.settings?.autoCapture ?? true,
+            limitedMode: false,
+            lastStatus: "Signed in with Google.",
+            stateStatus: null,
+            assumedProjectId: payload.projectId,
+            assumedProjectName: "",
+            trust: createEmptyTrustMetadata()
+          })
+
+          sendResponse({ ok: true })
+        } catch (cause) {
+          sendResponse({
+            ok: false,
+            reason: cause instanceof Error ? cause.message : "Google sign-in failed."
+          })
+        }
+        return
+      }
+
+      if (message.type === "RELAY_CREATE_PROJECT") {
+        try {
+          const response = await relayFetch("/api/projects", {
+            method: "POST",
+            body: JSON.stringify({ name: message.payload.name })
+          })
+
+          if (!response.ok) {
+            const reason = await readErrorResponse(response, "Project creation failed.")
+            sendResponse({ ok: false, reason })
+            return
+          }
+
+          const payload = (await response.json()) as { project: { id: string; name: string } }
+          sessionDataCache = null
+          await setRelaySession({
+            projectId: payload.project.id,
+            assumedProjectId: payload.project.id,
+            assumedProjectName: payload.project.name
+          })
+
+          sendResponse({ ok: true, project: payload.project })
+        } catch (cause) {
+          sendResponse({
+            ok: false,
+            reason: cause instanceof Error ? cause.message : "Project creation failed."
+          })
+        }
+        return
+      }
+
       if (message.type === "RELAY_REFRESH_SESSION") {
         const payload = await loadSessionData()
         sendResponse({ ok: true, ...payload })

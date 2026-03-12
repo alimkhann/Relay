@@ -5,13 +5,22 @@ import { animate, inView } from "motion"
 
 export function LandingAnimations({ children }: { children: ReactNode }) {
   useEffect(() => {
-    // Nav fade in
+    /* Track elements that have already been animated to prevent flicker on re-trigger */
+    const done = new WeakSet<Element>()
+
+    function once(el: HTMLElement, keyframes: Record<string, unknown>, options: Record<string, unknown>) {
+      if (done.has(el)) return
+      done.add(el)
+      animate(el, keyframes, options)
+    }
+
+    // ── Instant entrance: nav ──
     const nav = document.querySelector('[data-animate="nav"]')
     if (nav instanceof HTMLElement) {
       animate(nav, { opacity: [0, 1], y: [-12, 0] }, { duration: 0.5, delay: 0.1 })
     }
 
-    // Hero content — animate each child individually with staggered delay
+    // ── Instant entrance: hero children (staggered) ──
     const hero = document.querySelector('[data-animate="hero"]')
     if (hero) {
       Array.from(hero.children).forEach((child, i) => {
@@ -21,37 +30,41 @@ export function LandingAnimations({ children }: { children: ReactNode }) {
       })
     }
 
-    // Platform bar
+    // ── Instant entrance: platform bar ──
     const platforms = document.querySelector('[data-animate="platforms"]')
     if (platforms instanceof HTMLElement) {
       animate(platforms, { opacity: [0, 1] }, { duration: 0.8, delay: 1.0 })
     }
 
-    // Section headings
+    // ── Scroll-triggered (fire once): section headings ──
     document.querySelectorAll('[data-animate="section"]').forEach((el) => {
       if (el instanceof HTMLElement) {
+        el.style.opacity = "0"
         inView(el, () => {
-          animate(el, { opacity: [0, 1], y: [20, 0] }, { duration: 0.5 })
+          once(el, { opacity: [0, 1], y: [20, 0] }, { duration: 0.5 })
         }, { margin: "-10%" })
       }
     })
 
-    // Steps
+    // ── Scroll-triggered (fire once): steps ──
     document.querySelectorAll('[data-animate="step"]').forEach((el, i) => {
       if (el instanceof HTMLElement) {
+        el.style.opacity = "0"
         inView(el, () => {
-          animate(el, { opacity: [0, 1], x: [-16, 0] }, { duration: 0.45, delay: i * 0.08 })
+          once(el, { opacity: [0, 1], x: [-16, 0] }, { duration: 0.45, delay: i * 0.08 })
         }, { margin: "-5%" })
       }
     })
 
-    // Mockup
-    const mockup = document.querySelector('[data-animate="mockup"]')
-    if (mockup instanceof HTMLElement) {
-      inView(mockup, () => {
-        animate(mockup, { opacity: [0, 1], y: [30, 0], scale: [0.97, 1] }, { duration: 0.6 })
-      }, { margin: "-10%" })
-    }
+    // ── Scroll-triggered (fire once): FAQ items ──
+    document.querySelectorAll('[data-animate="faq-item"]').forEach((el, i) => {
+      if (el instanceof HTMLElement) {
+        el.style.opacity = "0"
+        inView(el, () => {
+          once(el, { opacity: [0, 1], y: [12, 0] }, { duration: 0.4, delay: i * 0.06 })
+        }, { margin: "-5%" })
+      }
+    })
   }, [])
 
   return <>{children}</>

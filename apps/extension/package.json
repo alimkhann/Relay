@@ -20,7 +20,7 @@
   "manifest": {
     "name": "Relay",
     "description": "Keep project memory moving between ChatGPT, Claude, and Perplexity.",
-    "permissions": ["storage", "tabs", "activeTab", "sidePanel"],
+    "permissions": ["storage", "tabs", "activeTab", "sidePanel", "identity"],
     "host_permissions": [
       "https://chatgpt.com/*",
       "https://chat.openai.com/*",

@@ -12,7 +12,7 @@ export function GoogleSignInButton() {
   return (
     <div className="space-y-3">
       <Button
-        className="min-w-[220px] bg-[#142114] px-6 py-3 text-white hover:bg-[#0f190f]"
+        className="w-full rounded-xl bg-[#111210] px-6 py-3 text-white shadow-sm hover:bg-[#2a2d2a] hover:shadow-md transition-all"
         disabled={pending}
         onClick={() =>
           startTransition(async () => {
@@ -30,7 +30,7 @@ export function GoogleSignInButton() {
         }>
         {pending ? "Opening Google…" : "Continue with Google"}
       </Button>
-      {error ? <p className="text-sm text-rose-700">{error}</p> : null}
+      {error ? <p className="text-sm text-rose-600">{error}</p> : null}
     </div>
   )
 }

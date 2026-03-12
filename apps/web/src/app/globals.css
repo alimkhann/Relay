@@ -29,9 +29,9 @@
 
 /* ─── Dark theme ─── */
 .dark {
-  --relay-bg: #0F100F;
-  --relay-surface: #181918;
-  --relay-surface-raised: #1F201F;
+  --relay-bg: #161716;
+  --relay-surface: #1C1D1C;
+  --relay-surface-raised: #232423;
   --relay-ink: #E8E8E4;
   --relay-ink-secondary: #BCBDB6;
   --relay-muted: #8B8E84;
@@ -54,9 +54,9 @@
 /* ─── System preference auto-apply ─── */
 @media (prefers-color-scheme: dark) {
   :root:not(.light) {
-    --relay-bg: #0F100F;
-    --relay-surface: #181918;
-    --relay-surface-raised: #1F201F;
+    --relay-bg: #161716;
+    --relay-surface: #1C1D1C;
+    --relay-surface-raised: #232423;
     --relay-ink: #E8E8E4;
     --relay-ink-secondary: #BCBDB6;
     --relay-muted: #8B8E84;

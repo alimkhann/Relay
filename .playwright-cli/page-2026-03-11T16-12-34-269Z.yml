@@ -1,0 +1,83 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - link "Relay" [ref=e6] [cursor=pointer]:
+          - /url: /
+        - navigation [ref=e7]:
+          - link "Product" [ref=e8] [cursor=pointer]:
+            - /url: "#product"
+          - link "Workflow" [ref=e9] [cursor=pointer]:
+            - /url: "#workflow"
+        - generic [ref=e10]:
+          - link "Sign in" [ref=e11] [cursor=pointer]:
+            - /url: /sign-in
+          - link "Open Relay" [ref=e12] [cursor=pointer]:
+            - /url: /dashboard
+            - text: Open Relay
+            - img [ref=e13]
+      - generic [ref=e15]:
+        - generic [ref=e16]:
+          - generic [ref=e17]: Fresh-chat bootstrap for AI work
+          - generic [ref=e18]:
+            - heading "Stop rebuilding your project every time the chat resets." [level=1] [ref=e19]
+            - paragraph [ref=e20]: Relay captures what matters, keeps project state alive, and restores the next ChatGPT, Claude, Codex, or Perplexity session with one clean bootstrap.
+          - generic [ref=e21]:
+            - link "View the dashboard" [ref=e22] [cursor=pointer]:
+              - /url: /dashboard
+            - link "See setup" [ref=e23] [cursor=pointer]:
+              - /url: /settings
+        - generic [ref=e24]:
+          - img "Misty hills behind the Relay product preview" [ref=e25]
+          - generic [ref=e28]:
+            - paragraph [ref=e29]: Sidepanel preview
+            - generic [ref=e30]:
+              - paragraph [ref=e31]: Current project
+              - heading "Relay" [level=2] [ref=e32]
+              - paragraph [ref=e33]: Fresh chat detected. Relay can insert a full bootstrap for the next coding session.
+              - generic [ref=e34]:
+                - generic [ref=e35]: Insert bootstrap
+                - generic [ref=e36]: Pin selection
+    - generic [ref=e38]:
+      - generic [ref=e39]:
+        - paragraph [ref=e40]: How it works
+        - heading "A calmer loop than transcript copy and token juggling." [level=2] [ref=e41]
+      - generic [ref=e42]:
+        - generic [ref=e43]:
+          - paragraph [ref=e44]: Capture the meaningful moments
+          - paragraph [ref=e45]: Relay watches supported AI chats, stores the source material, and avoids bloating the next prompt with transcript paste.
+        - generic [ref=e46]:
+          - paragraph [ref=e47]: Keep one project state alive
+          - paragraph [ref=e48]: Session digests merge into a durable project state with decisions, constraints, progress, tools, and open tasks.
+        - generic [ref=e49]:
+          - paragraph [ref=e50]: Restore the next fresh chat
+          - paragraph [ref=e51]: Open a new chat, tap one control, and Relay inserts a bounded bootstrap instead of making you re-brief the whole project.
+    - generic [ref=e53]:
+      - generic [ref=e54]:
+        - paragraph [ref=e55]: What Relay keeps nearby
+        - heading "Project state first. Dashboard second." [level=2] [ref=e56]
+        - paragraph [ref=e57]: "The sidepanel does the daily work. The web app stays calm and review-oriented: project overview, digests, open tasks, and the latest bootstrap packet."
+      - generic [ref=e59]:
+        - generic [ref=e60]:
+          - paragraph [ref=e61]: Project state
+          - generic [ref=e62]:
+            - generic [ref=e63]:
+              - paragraph [ref=e64]: Overview
+              - paragraph [ref=e65]: Cross-vendor continuity for long-running AI work.
+            - generic [ref=e66]:
+              - paragraph [ref=e67]: Objective
+              - paragraph [ref=e68]: Insert a bounded bootstrap into the next fresh chat.
+            - generic [ref=e69]:
+              - paragraph [ref=e70]: Open task
+              - paragraph [ref=e71]: Finish extension pairing and launch the redesign pass.
+        - generic [ref=e72]:
+          - generic [ref=e73]:
+            - paragraph [ref=e74]: Latest bootstrap
+            - paragraph [ref=e75]: A structured handoff with overview, current objective, constraints, open tasks, relevant tools, and the next action.
+          - generic [ref=e76]:
+            - paragraph [ref=e77]: Connection
+            - paragraph [ref=e78]: Pair the extension once from the sidepanel. No raw token paste in the normal setup path.
+          - generic [ref=e79]:
+            - paragraph [ref=e80]: Guardrails
+            - paragraph [ref=e81]: Count tokens before Gemini calls, route 3.x first, fall back to 2.5 only when rate limits are hit, and degrade gracefully when AI is unavailable.
+  - alert [ref=e82]

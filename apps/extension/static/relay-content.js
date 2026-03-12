@@ -392,11 +392,11 @@
     style.textContent = `
       .relay-inline-chip {
         width: min(340px, calc(100vw - 32px));
-        border: 1px solid rgba(0, 0, 0, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 12px;
-        background: #ffffff;
-        color: #111111;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+        background: #1E1F1E;
+        color: #E8E8E4;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
         font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
         overflow: hidden;
         z-index: 2147483000;
@@ -457,15 +457,15 @@
         border: none;
         border-radius: 6px;
         background: transparent;
-        color: #888888;
+        color: #5C5F56;
         font-size: 14px;
         cursor: pointer;
         transition: background 120ms, color 120ms;
       }
 
       .relay-inline-chip__close:hover {
-        background: #f0f0f0;
-        color: #111111;
+        background: rgba(255, 255, 255, 0.08);
+        color: #E8E8E4;
       }
 
       .relay-inline-chip__statusRow {
@@ -493,7 +493,7 @@
         margin: 0;
         font-size: 12px;
         line-height: 1.5;
-        color: #555555;
+        color: #BCBDB6;
       }
 
       .relay-inline-chip__infoWrap {
@@ -508,10 +508,10 @@
         justify-content: center;
         width: 16px;
         height: 16px;
-        border: 1px solid #e5e5e5;
+        border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 999px;
         background: transparent;
-        color: #aaaaaa;
+        color: #5C5F56;
         font-size: 10px;
         font-weight: 700;
         cursor: help;
@@ -523,8 +523,8 @@
         top: calc(100% + 6px);
         width: min(240px, calc(100vw - 48px));
         border-radius: 8px;
-        background: #111111;
-        color: #ffffff;
+        background: #E8E8E4;
+        color: #111210;
         padding: 8px 10px;
         font-size: 11px;
         line-height: 1.45;
@@ -543,7 +543,7 @@
 
       .relay-inline-chip__trust {
         font-size: 11px;
-        color: #aaaaaa;
+        color: #5C5F56;
         line-height: 1.4;
       }
 
@@ -564,8 +564,8 @@
         min-width: 0;
         border: none;
         border-radius: 8px;
-        background: #111111;
-        color: #ffffff;
+        background: #E8E8E4;
+        color: #111210;
         padding: 9px 14px;
         font-size: 13px;
         font-weight: 600;
@@ -574,7 +574,7 @@
       }
 
       .relay-inline-chip__button:hover:not(:disabled) {
-        background: #222222;
+        background: #ffffff;
       }
 
       .relay-inline-chip__button:disabled {
@@ -588,6 +588,7 @@
 
       .relay-inline-chip__button--success {
         background: #16a34a;
+        color: #ffffff;
       }
 
       .relay-inline-chip__shortcut {
@@ -596,10 +597,10 @@
         gap: 6px;
         flex-shrink: 0;
         border-radius: 6px;
-        border: 1px solid #e5e5e5;
+        border: 1px solid rgba(255, 255, 255, 0.08);
         background: transparent;
         padding: 6px 8px;
-        color: #aaaaaa;
+        color: #5C5F56;
         font-size: 11px;
         font-weight: 500;
       }
@@ -611,13 +612,32 @@
 
       .relay-inline-chip__select {
         width: 100%;
-        border: 1px solid #e5e5e5;
+        border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 8px;
-        background: #f8f8f7;
-        color: #111111;
+        background: #161716;
+        color: #E8E8E4;
         padding: 7px 10px;
         font-size: 12px;
         font-family: inherit;
+      }
+
+      @keyframes relay-shimmer {
+        0% { background-position: 200% center; }
+        100% { background-position: -200% center; }
+      }
+
+      .relay-inline-chip__button--loading {
+        opacity: 1;
+        background: #E8E8E4;
+      }
+
+      .relay-inline-chip__shimmer {
+        background: linear-gradient(90deg, #111210 0%, #111210 30%, rgba(255,255,255,0.6) 50%, #111210 70%, #111210 100%);
+        background-size: 200% auto;
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        animation: relay-shimmer 2s ease-in-out infinite;
       }
     `
 
@@ -737,7 +757,7 @@
 
   function getButtonLabel(activeState) {
     if (relayChipState.buttonMode === "loading") {
-      return "Inserting project brief…"
+      return '<span class="relay-inline-chip__shimmer">Inserting project brief…</span>'
     }
 
     if (relayChipState.buttonMode === "success") {
@@ -745,7 +765,7 @@
     }
 
     if (relayChipState.buttonMode === "error" && relayChipState.buttonError) {
-      return relayChipState.buttonError
+      return escapeHtml(relayChipState.buttonError)
     }
 
     if (activeState.status === "updating") {
@@ -851,7 +871,7 @@
           <div class="relay-inline-chip__controls">
             <div class="relay-inline-chip__row">
               <button class="${buttonClassName}" type="button" ${activeState.canInsert && relayChipState.buttonMode !== "loading" ? "" : "disabled"}>
-                ${escapeHtml(getButtonLabel(activeState))}
+                ${getButtonLabel(activeState)}
               </button>
               <div class="relay-inline-chip__shortcut" aria-label="${escapeHtml(activeState.shortcutLabel || "Mod+Shift+I")} shortcut">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

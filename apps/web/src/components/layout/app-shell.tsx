@@ -31,7 +31,7 @@ export async function AppShell({ children }: PropsWithChildren) {
             <ThemeToggle />
             {user ? (
               <>
-                <span className="hidden text-sm text-[var(--relay-muted)] sm:inline">
+                <span className="hidden text-sm text-[var(--relay-ink-secondary)] sm:inline">
                   {user.name || user.email || "Signed in"}
                 </span>
                 <SignOutButton />

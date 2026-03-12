@@ -10,7 +10,7 @@
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background: #f8f8f7;
+  background: #161716;
 }
 
 :global(*),
@@ -28,15 +28,15 @@
 /* ── Shell ── */
 
 .shell {
-  --bg: #f8f8f7;
-  --surface: #ffffff;
-  --ink: #111111;
-  --ink-secondary: #555555;
-  --muted: #888888;
-  --faint: #aaaaaa;
-  --line: #e5e5e5;
-  --accent: #111111;
-  --accent-text: #ffffff;
+  --bg: #161716;
+  --surface: #1E1F1E;
+  --ink: #E8E8E4;
+  --ink-secondary: #BCBDB6;
+  --muted: #8B8E84;
+  --faint: #5C5F56;
+  --line: rgba(255, 255, 255, 0.08);
+  --accent: #E8E8E4;
+  --accent-text: #111210;
   --radius: 12px;
   --radius-sm: 8px;
 
@@ -252,7 +252,7 @@
 }
 
 .primaryButton:hover:not(:disabled) {
-  background: #222222;
+  background: #ffffff;
 }
 
 .secondaryButton {
@@ -376,4 +376,131 @@
 .debugCard p {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+/* ── Divider ── */
+
+.dividerRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.dividerLine {
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.dividerLabel {
+  font-size: 11px;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Project hover trigger ── */
+
+.projectRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  margin: -4px -8px;
+  transition: background 120ms;
+}
+
+.projectRow:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.projectChevron {
+  width: 14px;
+  height: 14px;
+  color: var(--faint);
+  opacity: 0;
+  transition: opacity 150ms, transform 200ms;
+  flex-shrink: 0;
+}
+
+.projectRow:hover .projectChevron {
+  opacity: 1;
+}
+
+.projectChevronOpen {
+  opacity: 1;
+  transform: rotate(180deg);
+}
+
+/* ── Project dropdown ── */
+
+.projectDropdown {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: 10;
+  min-width: 200px;
+  max-width: 280px;
+  margin-top: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.projectOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 100ms;
+}
+
+.projectOption:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.projectOptionActive {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* ── Shiny text (inserting animation) ── */
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: -200% center;
+  }
+}
+
+.shimmerText {
+  background: linear-gradient(
+    90deg,
+    var(--accent-text) 0%,
+    var(--accent-text) 30%,
+    rgba(255, 255, 255, 0.7) 50%,
+    var(--accent-text) 70%,
+    var(--accent-text) 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 2s ease-in-out infinite;
 }

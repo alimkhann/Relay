@@ -9,9 +9,9 @@ export const metadata: Metadata = {
   title: "Relay",
   description: "Keep your project brief ready for every fresh AI chat.",
   icons: {
-    icon: "/icon.svg",
-    shortcut: "/icon.svg",
-    apple: "/icon.svg"
+    icon: "/images/relay_logo_white.png",
+    shortcut: "/images/relay_logo_white.png",
+    apple: "/images/relay_logo_white.png"
   }
 }
 

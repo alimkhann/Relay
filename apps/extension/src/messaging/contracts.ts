@@ -55,6 +55,8 @@ export type RelayMessage =
   | { type: "RELAY_SET_ACTIVE_PROJECT"; payload: { projectId: string; tabId?: number } }
   | { type: "RELAY_REFRESH_SESSION" }
   | { type: "RELAY_OPEN_CONNECT"; payload: { deviceName: string } }
+  | { type: "RELAY_GOOGLE_SIGN_IN"; payload: { deviceName: string } }
+  | { type: "RELAY_CREATE_PROJECT"; payload: { name: string } }
 
 export interface RelayPageState {
   supported: boolean
