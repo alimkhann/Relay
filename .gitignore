@@ -4,6 +4,7 @@ node_modules
 build
 dist
 coverage
+.playwright-cli
 playwright-report
 test-results
 *.tsbuildinfo
