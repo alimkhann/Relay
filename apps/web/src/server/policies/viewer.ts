@@ -17,6 +17,8 @@ export interface Viewer {
   email?: string | null
 }
 
+export type WebAuthIntent = "sign-in" | "sign-up"
+
 interface SessionUser {
   id: string
   email?: string | null
@@ -87,9 +89,24 @@ export function isAuthRequiredError(error: unknown): error is AuthRequiredError 
   return error instanceof AuthRequiredError || (error instanceof Error && error.message === "Authentication is required.")
 }
 
-export function buildSignInHref(nextPath = "/dashboard") {
+export function resolveWebAuthIntent(value: string | null | undefined): WebAuthIntent {
+  return value === "sign-up" ? "sign-up" : "sign-in"
+}
+
+export function buildSignInHref(
+  nextPath = "/dashboard",
+  options: { intent?: WebAuthIntent } = {}
+) {
   const safeNextPath = nextPath.startsWith("/") ? nextPath : "/dashboard"
-  return `/sign-in?next=${encodeURIComponent(safeNextPath)}`
+  const params = new URLSearchParams({
+    next: safeNextPath
+  })
+
+  if (options.intent === "sign-up") {
+    params.set("intent", "sign-up")
+  }
+
+  return `/sign-in?${params.toString()}`
 }
 
 export function resolveSafeNextPath(value: string | null | undefined, fallback = "/dashboard") {

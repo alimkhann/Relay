@@ -74,7 +74,7 @@ export default function MarketingPage() {
               </p>
               <div className="mt-10">
                 <Link
-                  href="/dashboard"
+                  href="/get-started"
                   className="group inline-flex items-center gap-2 rounded-full bg-white px-7 py-3.5 text-[15px] font-semibold text-[#111210] shadow-[0_2px_16px_rgba(0,0,0,0.12)] transition-all duration-300 hover:shadow-[0_6px_24px_rgba(0,0,0,0.2)] hover:-translate-y-0.5"
                 >
                   Get started

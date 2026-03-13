@@ -5,19 +5,23 @@ import { redirect } from "next/navigation";
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 import { PageTelemetry } from "@/components/telemetry/page-telemetry";
 import { getAuthServer } from "@/lib/auth/server";
-import { resolveSafeNextPath } from "@/server/policies/viewer";
+import {
+  resolveSafeNextPath,
+  resolveWebAuthIntent,
+} from "@/server/policies/viewer";
 
 export const dynamic = "force-dynamic";
 
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; intent?: string }>;
 }) {
   const auth = getAuthServer();
   const { data } = auth ? await auth.getSession() : { data: null };
   const params = await searchParams;
   const nextPath = resolveSafeNextPath(params.next, "/dashboard");
+  const intent = resolveWebAuthIntent(params.intent);
 
   if (data?.user) {
     redirect(nextPath);
@@ -45,15 +49,17 @@ export default async function SignInPage({
         />
 
         <h1 className="mt-6 text-2xl font-bold tracking-tight text-gray-900">
-          Sign in to Relay
+          {intent === "sign-up" ? "Create your Relay account" : "Sign in to Relay"}
         </h1>
         <p className="mt-2 text-sm text-gray-400">
-          Keep your project brief ready for every fresh AI chat.
+          {intent === "sign-up"
+            ? "Start with Google and land in your dashboard."
+            : "Keep your project brief ready for every fresh AI chat."}
         </p>
 
         <div className="mt-8">
           {authConfigured ? (
-            <GoogleSignInButton nextPath={nextPath} />
+            <GoogleSignInButton nextPath={nextPath} intent={intent} />
           ) : (
             <p className="rounded-2xl bg-gray-100 px-4 py-4 text-sm text-gray-400">
               Add auth environment variables to enable sign-in.

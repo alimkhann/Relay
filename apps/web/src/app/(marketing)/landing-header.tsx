@@ -46,7 +46,7 @@ export function LandingHeader() {
         </Link>
 
         <Link
-          href="/dashboard"
+          href="/get-started"
           className={`inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold transition-all duration-300 ${
             filled
               ? "bg-[#111210] text-white shadow-sm hover:bg-[#2a2d2a]"
