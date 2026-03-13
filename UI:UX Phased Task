@@ -1,0 +1,51 @@
+# Relay UI/UX Complete Redesign
+
+## Phase 1: Design System & Foundation
+- [/] Refine CSS design tokens (colors, radius, shadows, spacing) — keep monochrome/neutral, tighten radii, remove green, ensure theme sync
+- [/] Evaluate typography (Outfit vs Geist), install if switching
+- [ ] Create shared animation utilities (reactbits-inspired FadeText, subtle reveals)
+
+## Phase 2: Dashboard Layout & Navigation
+- [ ] Redesign `AppShell` with Linear-style sidebar (icon+text, collapsible, project picker at top)
+- [ ] Add sidebar nav: Projects list, Activity, Settings
+- [ ] Add command palette (⌘K) for quick project switching/actions
+- [ ] Implement project picker dropdown in sidebar header
+
+## Phase 3: Dashboard Pages
+- [ ] Redesign dashboard overview as bento-style single-screen layout (no scrolling)
+- [ ] Add pagination for context lists (max 5 items per page)
+- [ ] Bento panels drill into dedicated sub-pages (context, briefs, history)
+- [ ] Elegant session CRUD (detach/delete/restore with confirmation)
+- [ ] Redesign settings page to match new design system
+- [ ] Improve all empty states (first project, no sessions, no context)
+- [ ] Add quick stats (total chats, context items, brief freshness)
+- [ ] Add project delete/archive from dashboard
+- [ ] Add export brief as markdown
+- [ ] Add search across projects/sessions
+
+## Phase 4: Extension Sidebar
+- [ ] Retheme extension sidebar to match dashboard (softer dark, not pitch black)
+- [ ] Keep/improve corner radius, color-code context sections
+- [ ] Make edit/remove appear as hover icons
+- [ ] Improve secondary text contrast
+- [ ] Remove "open full dashboard" button, improve "Dashboard" placement
+- [ ] Replace wordmark with minimal logo icon
+
+## Phase 5: Inline Chip & Toast
+- [ ] Redesign inline chip: wider/thinner, organic attachment to prompt box
+- [ ] Retheme inline chip to match new design system
+- [ ] Fix association toast visibility (check conditions)
+- [ ] Make toast tap open sidebar for undo, keep hover cancel
+- [ ] Retheme toast to match design system
+
+## Phase 6: Animations
+- [ ] Add subtle fade-in-up / text reveal animations from reactbits
+- [ ] Apply to page transitions, empty states, dashboard load
+
+## Phase 7: Documentation & Deployment
+- [ ] Create `agents.md` with design system rules for other coding agents
+- [ ] Create `design-system.md` with detailed CSS variable reference
+- [ ] Update existing unit tests for new component structure
+- [ ] Screenshot + functional flow testing (click through all flows, seed data if needed)
+- [ ] Deploy
+- [ ] Commit logically
