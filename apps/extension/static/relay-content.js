@@ -432,6 +432,7 @@
         height: 6px;
         border-radius: 50%;
         flex-shrink: 0;
+        margin-top: 6px;
       }
 
       .relay-inline-chip__dot--ready {
@@ -456,13 +457,14 @@
         align-items: flex-start;
         gap: 6px;
         flex-wrap: wrap;
+        position: relative;
       }
 
       .relay-inline-chip__infoWrap {
-        position: relative;
+        position: static;
         display: inline-flex;
         flex: 0 0 auto;
-        margin-top: 1px;
+        margin-top: 2px;
       }
 
       .relay-inline-chip__info {
@@ -484,13 +486,16 @@
         position: absolute;
         right: 0;
         top: calc(100% + 6px);
-        width: min(240px, calc(100vw - 48px));
+        width: min(220px, calc(100% - 8px));
+        max-width: 220px;
         border-radius: 8px;
         background: #e4e4e7;
         color: #09090b;
         padding: 8px 10px;
         font-size: 11px;
         line-height: 1.45;
+        white-space: normal;
+        overflow-wrap: anywhere;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
         opacity: 0;
         pointer-events: none;

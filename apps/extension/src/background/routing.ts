@@ -35,6 +35,9 @@ interface EvaluateProjectRoutingInput {
   approvedAssociations: RelayApprovedAssociation[]
 }
 
+export const FRESH_PROJECT_BOOTSTRAP_REASON =
+  "This is the selected project for this tab, so Relay is seeding its first chat context."
+
 const STOP_WORDS = new Set([
   "about",
   "after",
@@ -114,6 +117,19 @@ function hasMeaningfulProjectContext(project: RelayProjectOption) {
   }
 
   return (project.sessionCount ?? 0) > 0 || (project.memoryCount ?? 0) > 0
+}
+
+function findSelectedFreshProject(projects: RelayProjectOption[], selectedProjectId?: string | null) {
+  if (!selectedProjectId) {
+    return null
+  }
+
+  const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null
+  if (!selectedProject || hasMeaningfulProjectContext(selectedProject)) {
+    return null
+  }
+
+  return selectedProject
 }
 
 function pushReason(candidate: CandidateScore, reason: string) {
@@ -357,6 +373,7 @@ export function evaluateProjectRouting(input: EvaluateProjectRoutingInput): Rela
 
   const top = candidates[0]
   const runnerUp = candidates[1]
+  const selectedFreshProject = findSelectedFreshProject(input.projects, input.selectedProjectId)
   if (!top) {
     return {
       mode: "ignore",
@@ -369,6 +386,21 @@ export function evaluateProjectRouting(input: EvaluateProjectRoutingInput): Rela
   }
 
   const confidence = resolveConfidence(top, runnerUp?.score ?? 0)
+
+  if (selectedFreshProject) {
+    const selectedProjectIsTopCandidate = top.projectId === selectedFreshProject.id
+    if (confidence === "low" || (confidence === "medium" && selectedProjectIsTopCandidate)) {
+      return {
+        mode: "hold",
+        confidence: "medium",
+        candidateProjectId: selectedFreshProject.id,
+        candidateProjectName: selectedFreshProject.name,
+        score: Math.max(top.score, 32),
+        reasons: [FRESH_PROJECT_BOOTSTRAP_REASON, ...(selectedProjectIsTopCandidate ? top.reasons : [])].slice(0, 4)
+      }
+    }
+  }
+
   return {
     mode: confidence === "high" ? "auto-save" : confidence === "medium" ? "hold" : "ignore",
     confidence,
