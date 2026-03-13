@@ -1146,6 +1146,9 @@ async function captureObservedChange(
       const hadSavedAssociation =
         state.chatAssociation.status === "saved" &&
         state.chatAssociation.projectId === projectId;
+      const wasHeldAssociation =
+        state.chatAssociation.status === "held" &&
+        state.chatAssociation.projectId === projectId;
       const matchedProject =
         state.projectOptions.find((project) => project.id === projectId) ??
         session.projectOptions.find((project) => project.id === projectId) ??
@@ -1199,7 +1202,12 @@ async function captureObservedChange(
           approvedAt: new Date().toISOString(),
         });
       }
-      if (autoAssociated && result.sessionId && projectName && !hadSavedAssociation) {
+      if (
+        (autoAssociated || wasHeldAssociation) &&
+        result.sessionId &&
+        projectName &&
+        !hadSavedAssociation
+      ) {
         await showAssociationToast(tabId, projectId, projectName, result.sessionId);
       }
       await syncTabRemoteState(tabId, {
@@ -1470,6 +1478,15 @@ chrome.runtime.onMessage.addListener(
   ) => {
     void (async () => {
       try {
+        if (message.type === "RELAY_OPEN_SIDE_PANEL") {
+          const tabId = sender.tab?.id;
+          if (tabId) {
+            await chrome.sidePanel.open({ tabId });
+          }
+          sendResponse({ ok: true });
+          return;
+        }
+
         if (message.type === "RELAY_OPEN_CONNECT") {
           const session = await getRelaySession();
           const url = `${session.apiBase}/extension/connect?extensionId=${chrome.runtime.id}&deviceName=${encodeURIComponent(message.payload.deviceName)}`;

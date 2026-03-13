@@ -521,11 +521,12 @@
     style.id = "relay-inline-chip-styles";
     style.textContent = `
       .relay-inline-chip {
-        width: min(340px, calc(100vw - 32px));
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        min-width: 280px;
+        max-width: min(600px, calc(100vw - 32px));
+        border: 1px solid rgba(255, 255, 255, 0.07);
         border-radius: 8px;
-        background: #090a0b;
-        color: #ededeb;
+        background: #1a1a1c;
+        color: #e4e4e7;
         box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
         font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
         overflow: hidden;
@@ -559,7 +560,7 @@
       .relay-inline-chip__body {
         display: grid;
         gap: 10px;
-        padding: 14px;
+        padding: 8px 12px;
       }
 
       .relay-inline-chip__top {
@@ -587,7 +588,7 @@
         border: none;
         border-radius: 6px;
         background: transparent;
-        color: #5C5F56;
+        color: #52525b;
         font-size: 14px;
         cursor: pointer;
         transition: background 120ms, color 120ms;
@@ -595,7 +596,7 @@
 
       .relay-inline-chip__close:hover {
         background: rgba(255, 255, 255, 0.08);
-        color: #E8E8E4;
+        color: #e4e4e7;
       }
 
       .relay-inline-chip__statusRow {
@@ -612,18 +613,18 @@
       }
 
       .relay-inline-chip__dot--ready {
-        background: #ededeb;
+        background: #e4e4e7;
       }
 
       .relay-inline-chip__dot--waiting {
-        background: #737370;
+        background: #71717a;
       }
 
       .relay-inline-chip__status {
         margin: 0;
         font-size: 12px;
         line-height: 1.5;
-        color: #BCBDB6;
+        color: #b4b4bb;
       }
 
       .relay-inline-chip__infoWrap {
@@ -638,10 +639,10 @@
         justify-content: center;
         width: 16px;
         height: 16px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.07);
         border-radius: 999px;
         background: transparent;
-        color: #5C5F56;
+        color: #52525b;
         font-size: 10px;
         font-weight: 700;
         cursor: help;
@@ -653,8 +654,8 @@
         top: calc(100% + 6px);
         width: min(240px, calc(100vw - 48px));
         border-radius: 8px;
-        background: #E8E8E4;
-        color: #111210;
+        background: #e4e4e7;
+        color: #09090b;
         padding: 8px 10px;
         font-size: 11px;
         line-height: 1.45;
@@ -673,7 +674,7 @@
 
       .relay-inline-chip__trust {
         font-size: 11px;
-        color: #5C5F56;
+        color: #52525b;
         line-height: 1.4;
       }
 
@@ -694,8 +695,8 @@
         min-width: 0;
         border: none;
         border-radius: 4px;
-        background: #ededeb;
-        color: #090a0b;
+        background: #e4e4e7;
+        color: #09090b;
         padding: 8px 14px;
         font-size: 13px;
         font-weight: 500;
@@ -717,8 +718,8 @@
       }
 
       .relay-inline-chip__button--success {
-        background: #737370;
-        color: #090a0b;
+        background: #71717a;
+        color: #09090b;
       }
 
       .relay-inline-chip__shortcut {
@@ -727,10 +728,10 @@
         gap: 6px;
         flex-shrink: 0;
         border-radius: 6px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.07);
         background: transparent;
         padding: 6px 8px;
-        color: #5C5F56;
+        color: #52525b;
         font-size: 11px;
         font-weight: 500;
       }
@@ -742,10 +743,10 @@
 
       .relay-inline-chip__select {
         width: 100%;
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.07);
         border-radius: 8px;
-        background: #161716;
-        color: #E8E8E4;
+        background: #202022;
+        color: #e4e4e7;
         padding: 7px 10px;
         font-size: 12px;
         font-family: inherit;
@@ -758,11 +759,11 @@
 
       .relay-inline-chip__button--loading {
         opacity: 1;
-        background: #E8E8E4;
+        background: #e4e4e7;
       }
 
       .relay-inline-chip__shimmer {
-        background: linear-gradient(90deg, #111210 0%, #111210 30%, rgba(255,255,255,0.6) 50%, #111210 70%, #111210 100%);
+        background: linear-gradient(90deg, #09090b 0%, #09090b 30%, rgba(255,255,255,0.6) 50%, #09090b 70%, #09090b 100%);
         background-size: 200% auto;
         -webkit-background-clip: text;
         background-clip: text;
@@ -779,11 +780,11 @@
         min-width: 220px;
         max-width: min(320px, calc(100vw - 24px));
         padding: 12px 14px 12px 16px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.07);
         border-right: none;
         border-radius: 16px 0 0 16px;
-        background: rgba(17, 18, 16, 0.94);
-        color: #E8E8E4;
+        background: rgba(26, 26, 28, 0.94);
+        color: #e4e4e7;
         box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
         font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
         z-index: 2147483001;
@@ -814,15 +815,15 @@
         margin: 0;
         font-size: 11px;
         line-height: 1.45;
-        color: #BCBDB6;
+        color: #b4b4bb;
       }
 
       .relay-association-toast__cancel {
         width: fit-content;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.07);
         border-radius: 999px;
         background: transparent;
-        color: #E8E8E4;
+        color: #e4e4e7;
         padding: 4px 10px;
         font-size: 11px;
         font-weight: 600;
@@ -891,16 +892,18 @@
       root.classList.add("relay-inline-chip--floating");
       root.style.left = "";
       root.style.top = "";
+      root.style.width = "";
       return;
     }
 
     const rect = promptTarget.element.getBoundingClientRect();
-    const chipWidth = Math.min(root.offsetWidth || 372, window.innerWidth - 32);
+    const dynamicWidth = clamp(rect.width, 280, Math.min(600, window.innerWidth - 32));
+    root.style.width = `${Math.round(dynamicWidth)}px`;
     const chipHeight = root.offsetHeight || 200;
     const left = clamp(
-      rect.right - chipWidth,
+      rect.left + (rect.width - dynamicWidth) / 2,
       16,
-      Math.max(16, window.innerWidth - chipWidth - 16),
+      Math.max(16, window.innerWidth - dynamicWidth - 16),
     );
 
     let top = rect.top - chipHeight - 12;
@@ -1249,7 +1252,7 @@
     `;
 
     root.onclick = () => {
-      window.open(payload.dashboardUrl, "_blank", "noopener,noreferrer");
+      sendRuntimeMessage({ type: "RELAY_OPEN_SIDE_PANEL" });
       hideAssociationToast();
     };
 
