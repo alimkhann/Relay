@@ -935,6 +935,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     session?.projectId ??
     session?.assumedProjectId ??
     "";
+  const relayLogoUrl = chrome.runtime.getURL("assets/relay_logo_white.png");
   const dashboardHref =
     session?.apiBase && selectedProjectId
       ? `${session.apiBase}/dashboard?project=${encodeURIComponent(selectedProjectId)}`
@@ -958,10 +959,12 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     >
       {/* ─── Header ─── */}
       <header className={styles.header}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+        <div className={styles.headerBrand}>
+          <img
+            className={styles.logoMark}
+            src={relayLogoUrl}
+            alt="Relay"
+          />
           <a
             className={styles.inlineLink}
             href={dashboardHref}
@@ -1135,23 +1138,24 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               <span
                 className={`${styles.dot} ${activeState.canInsert ? styles.dotReady : styles.dotWaiting}`}
               />
-              <span className={styles.statusText}>{activeState.message}</span>
-            </div>
-
-            {shouldShowIssue ? (
-              <div className={styles.infoWrap}>
-                <button
-                  className={styles.infoButton}
-                  type="button"
-                  aria-label="Issue details"
-                >
-                  i
-                </button>
-                <div className={styles.tooltip}>
-                  {activeState.issue?.detail}
-                </div>
+              <div className={styles.statusCopy}>
+                <span className={styles.statusText}>{activeState.message}</span>
+                {shouldShowIssue ? (
+                  <div className={styles.infoWrap}>
+                    <button
+                      className={styles.infoButton}
+                      type="button"
+                      aria-label="Issue details"
+                    >
+                      i
+                    </button>
+                    <div className={styles.tooltip}>
+                      {activeState.issue?.detail}
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
+            </div>
 
             {/* Primary CTA */}
             <button
@@ -1202,7 +1206,9 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 <div>
                   <h2 className={styles.sectionTitle}>Chat association</h2>
                   <p className={styles.copy}>
-                    {activeState.chatAssociation.status === "held"
+                    {activeState.chatAssociation.status === "pending"
+                      ? `Relay is ready to save this chat to ${activeState.chatAssociation.projectName ?? "the selected project"} unless you cancel the toast.`
+                      : activeState.chatAssociation.status === "held"
                       ? `Relay thinks this chat belongs to ${activeState.chatAssociation.projectName ?? "this project"}, but it is waiting for your approval.`
                       : activeState.chatAssociation.status === "saved"
                         ? `This chat is currently associated with ${activeState.chatAssociation.projectName ?? "the selected project"}.`

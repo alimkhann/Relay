@@ -48,12 +48,20 @@ export interface RelayContextPreview {
 }
 
 export interface RelayChatAssociation {
-  status: "none" | "saved" | "held" | "archived" | "ignored";
+  status: "none" | "pending" | "saved" | "held" | "archived" | "ignored";
   projectId: string | null;
   projectName: string | null;
   sessionId: string | null;
   reason: string | null;
   capturedAt: string | null;
+}
+
+export interface RelayAssociationToastPayload {
+  mode: "auto_save" | "held_review";
+  projectId: string;
+  projectName: string;
+  sessionId?: string | null;
+  expiresAt: number;
 }
 
 export interface RelayRoutingReview {
@@ -136,6 +144,15 @@ export type RelayMessage =
         tabId?: number;
       };
     }
+  | {
+      type: "RELAY_RESOLVE_ASSOCIATION_TOAST";
+      payload: {
+        action: "approve" | "cancel";
+        mode: "auto_save" | "held_review";
+        projectId: string;
+        tabId?: number;
+      };
+    }
   | { type: "RELAY_REFRESH_SESSION" }
   | { type: "RELAY_OPEN_SIDE_PANEL" }
   | { type: "RELAY_OPEN_CONNECT"; payload: { deviceName: string; flowId?: string } }
@@ -146,12 +163,7 @@ export type RelayMessage =
     }
   | {
       type: "RELAY_SHOW_ASSOCIATION_TOAST";
-      payload: {
-        projectId: string;
-        projectName: string;
-        sessionId: string;
-        dashboardUrl: string;
-      };
+      payload: RelayAssociationToastPayload;
     }
   | {
       type: "RELAY_LOG_TELEMETRY";

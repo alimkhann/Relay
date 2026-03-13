@@ -77,6 +77,19 @@
   padding: 0 0 4px 0;
 }
 
+.headerBrand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logoMark {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
 .wordmark {
   font-size: 14px;
   font-weight: 600;
@@ -141,7 +154,7 @@
 
 .statusRow {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   margin-top: 12px;
 }
@@ -164,6 +177,15 @@
 .statusText {
   font-size: 13px;
   color: var(--ink-secondary);
+}
+
+.statusCopy {
+  min-width: 0;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex: 1;
 }
 
 /* ── Row ── */
@@ -200,27 +222,28 @@
 .infoWrap {
   position: relative;
   display: inline-flex;
-  margin-top: 8px;
+  flex: 0 0 auto;
+  margin-top: 1px;
 }
 
 .infoButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--surface);
   color: var(--muted);
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 700;
   cursor: help;
 }
 
 .tooltip {
   position: absolute;
-  left: 0;
+  right: 0;
   top: calc(100% + 6px);
   z-index: 4;
   width: min(260px, calc(100vw - 48px));
