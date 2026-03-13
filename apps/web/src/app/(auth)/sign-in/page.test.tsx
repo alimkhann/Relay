@@ -26,8 +26,18 @@ vi.mock("@/components/auth/google-sign-in-button", () => ({
 }))
 
 vi.mock("@/components/auth/sign-in-session-gate", () => ({
-  SignInSessionGate: ({ nextPath }: { nextPath: string }) => (
-    <div data-testid="sign-in-session-gate" data-next-path={nextPath} />
+  SignInSessionGate: ({
+    nextPath,
+    allowExistingSession,
+  }: {
+    nextPath: string
+    allowExistingSession?: boolean
+  }) => (
+    <div
+      data-testid="sign-in-session-gate"
+      data-next-path={nextPath}
+      data-allow-existing-session={String(Boolean(allowExistingSession))}
+    />
   )
 }))
 
@@ -61,6 +71,11 @@ describe("SignInPage", () => {
     expect(screen.getByTestId("sign-in-session-gate").getAttribute("data-next-path")).toBe(
       "/projects/project-1"
     )
+    expect(
+      screen
+        .getByTestId("sign-in-session-gate")
+        .getAttribute("data-allow-existing-session"),
+    ).toBe("true")
   })
 
   it("passes signup intent to the Google button", async () => {
@@ -76,5 +91,10 @@ describe("SignInPage", () => {
     expect(screen.getByText("Create your Relay account")).toBeTruthy()
     expect(screen.getByTestId("google-sign-in-button").getAttribute("data-intent")).toBe("sign-up")
     expect(screen.getByTestId("google-sign-in-button").getAttribute("data-next-path")).toBe("/dashboard")
+    expect(
+      screen
+        .getByTestId("sign-in-session-gate")
+        .getAttribute("data-allow-existing-session"),
+    ).toBe("false")
   })
 })

@@ -10,6 +10,10 @@ vi.mock("next/navigation", () => ({
   redirect: redirectMock
 }))
 
+vi.mock("@/server/policies/viewer", () => ({
+  buildSignInHref: () => "/sign-in?next=%2Fdashboard&intent=sign-up"
+}))
+
 import GetStartedPage from "./page"
 
 describe("GetStartedPage", () => {
@@ -17,7 +21,9 @@ describe("GetStartedPage", () => {
     redirectMock.mockClear()
   })
 
-  it("redirects to the dashboard and lets middleware decide auth", async () => {
-    await expect(GetStartedPage()).rejects.toThrow("REDIRECT:/dashboard")
+  it("redirects to signup intent login instead of silently jumping into the dashboard", async () => {
+    await expect(GetStartedPage()).rejects.toThrow(
+      "REDIRECT:/sign-in?next=%2Fdashboard&intent=sign-up",
+    )
   })
 })

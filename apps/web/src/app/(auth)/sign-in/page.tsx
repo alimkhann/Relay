@@ -26,7 +26,10 @@ export default async function SignInPage({
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#FAFAF8] px-6">
-      <SignInSessionGate nextPath={nextPath} />
+      <SignInSessionGate
+        nextPath={nextPath}
+        allowExistingSession={intent !== "sign-up"}
+      />
       <PageTelemetry
         surface="web-auth"
         area="page"
