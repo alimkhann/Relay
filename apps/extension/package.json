@@ -19,7 +19,7 @@
   },
   "manifest": {
     "name": "Relay",
-    "description": "Keep project memory moving between ChatGPT, Claude, and Perplexity.",
+    "description": "Keep project memory moving between ChatGPT, Claude, Codex, and Perplexity.",
     "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyttDVI0DMHgWJkJuaTkL1feX8lmuBsUWo8cSFTWWbkPNTDgp0KLiFAw1LBnoqFoj8FfNX7R1wYp1YJ0aVvKxpCyX4TDAFykb4s24Ssr8MBvTqXCZLTVSdZzi53pie1yiAXgp7Nan+GngoMbZQe/DelyZXTrMUIQ67DhLZf9KDqBJJjk2lwMqbPVzUOQIHp36ZeOZTKyDTD6uemNMcI6HWlQxyCdqvVQs8ooXfbcI2ot+PMh09r0NSxQSE/VlPu9slltBz+Ks7g6920d13iFP7v3lRMbcQJiJN2eFmWPDlanlpXnrQHb6Nyd9j8v03AQew75nJh3KV2IW3eNbnt7ybQIDAQAB",
     "permissions": [
       "storage",
@@ -31,8 +31,9 @@
     "host_permissions": [
       "https://chatgpt.com/*",
       "https://chat.openai.com/*",
-      "https://codex.openai.com/*",
+      "https://perplexity.ai/*",
       "https://www.perplexity.ai/*",
+      "https://codex.openai.com/*",
       "https://claude.ai/*",
       "$PLASMO_PUBLIC_RELAY_API_BASE/*"
     ],
@@ -47,12 +48,13 @@
         "matches": [
           "https://chatgpt.com/*",
           "https://chat.openai.com/*",
-          "https://codex.openai.com/*",
+          "https://perplexity.ai/*",
           "https://www.perplexity.ai/*",
+          "https://codex.openai.com/*",
           "https://claude.ai/*"
         ],
         "js": [
-          "../static/relay-content.js"
+          "../contents/relay-content.ts"
         ],
         "run_at": "document_idle"
       }

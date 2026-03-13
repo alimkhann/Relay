@@ -1,8 +1,9 @@
-import type { SiteAdapter } from "@relay/shared"
+import type { SiteAdapter } from "@relay/shared/types/adapter"
+import type { SupportedPlatform } from "@relay/shared/types/database"
 
 export abstract class BaseSiteAdapter implements SiteAdapter {
   abstract canHandle(url: string): boolean
-  abstract getPlatform(): "chatgpt" | "perplexity" | "claude"
+  abstract getPlatform(): SupportedPlatform
   abstract extractVisibleTurns(doc?: Document): ReturnType<SiteAdapter["extractVisibleTurns"]>
   abstract findPromptInput(doc?: Document): ReturnType<SiteAdapter["findPromptInput"]>
   abstract insertTextIntoPrompt(

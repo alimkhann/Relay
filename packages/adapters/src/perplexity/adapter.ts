@@ -1,4 +1,4 @@
-import type { PageMetadata, ParsedTurn } from "@relay/shared"
+import type { PageMetadata, ParsedTurn } from "@relay/shared/types/capture"
 
 import { BaseSiteAdapter } from "../base/site-adapter"
 import { collectTurns, findPrompt, injectText } from "../base/dom-utils"
