@@ -1,24 +1,10 @@
 import { render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const { redirectMock, getSessionMock, getAuthServerMock } = vi.hoisted(() => ({
-  redirectMock: vi.fn((href: string) => {
-    throw new Error(`REDIRECT:${href}`)
-  }),
-  getSessionMock: vi.fn(),
-  getAuthServerMock: vi.fn()
-}))
-
-getAuthServerMock.mockImplementation(() => ({
-  getSession: getSessionMock
-}))
-
 vi.mock("next/navigation", () => ({
-  redirect: redirectMock
-}))
-
-vi.mock("@/lib/auth/server", () => ({
-  getAuthServer: getAuthServerMock
+  useRouter: () => ({
+    replace: vi.fn()
+  })
 }))
 
 vi.mock("next/image", () => ({
@@ -39,41 +25,45 @@ vi.mock("@/components/auth/google-sign-in-button", () => ({
   )
 }))
 
+vi.mock("@/components/auth/sign-in-session-gate", () => ({
+  SignInSessionGate: ({ nextPath }: { nextPath: string }) => (
+    <div data-testid="sign-in-session-gate" data-next-path={nextPath} />
+  )
+}))
+
 vi.mock("@/components/telemetry/page-telemetry", () => ({
   PageTelemetry: () => null
+}))
+
+vi.mock("@/server/policies/viewer", () => ({
+  resolveSafeNextPath: (value: string | null | undefined, fallback = "/dashboard") =>
+    value && value.startsWith("/") ? value : fallback,
+  resolveWebAuthIntent: (value: string | null | undefined) => (value === "sign-up" ? "sign-up" : "sign-in")
 }))
 
 import SignInPage from "./page"
 
 describe("SignInPage", () => {
   beforeEach(() => {
-    redirectMock.mockClear()
-    getSessionMock.mockReset()
     vi.stubEnv("NEON_AUTH_BASE_URL", "https://auth.example.com")
     vi.stubEnv("NEON_AUTH_COOKIE_SECRET", "secret")
   })
 
-  it("redirects authenticated users to the requested next path", async () => {
-    getSessionMock.mockResolvedValueOnce({
-      data: {
-        user: {
-          id: "user-1"
-        }
-      }
-    })
-
-    await expect(
-      SignInPage({
+  it("passes the requested next path to the session gate", async () => {
+    render(
+      await SignInPage({
         searchParams: Promise.resolve({
-          next: "/projects/project-1"
+          next: "/projects/project-1",
         })
       })
-    ).rejects.toThrow("REDIRECT:/projects/project-1")
+    )
+
+    expect(screen.getByTestId("sign-in-session-gate").getAttribute("data-next-path")).toBe(
+      "/projects/project-1"
+    )
   })
 
   it("passes signup intent to the Google button", async () => {
-    getSessionMock.mockResolvedValueOnce({ data: null })
-
     render(
       await SignInPage({
         searchParams: Promise.resolve({
