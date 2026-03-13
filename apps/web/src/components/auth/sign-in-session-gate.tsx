@@ -5,15 +5,21 @@ import { useRouter } from "next/navigation"
 
 import { authClient } from "@/lib/auth/client"
 
-export function SignInSessionGate({ nextPath }: { nextPath: string }) {
+export function SignInSessionGate({
+  nextPath,
+  allowExistingSession = true
+}: {
+  nextPath: string
+  allowExistingSession?: boolean
+}) {
   const router = useRouter()
   const session = authClient.useSession()
 
   useEffect(() => {
-    if (session.data?.user) {
+    if (allowExistingSession && session.data?.user) {
       router.replace(nextPath)
     }
-  }, [nextPath, router, session.data?.user])
+  }, [allowExistingSession, nextPath, router, session.data?.user])
 
   return null
 }
