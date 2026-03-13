@@ -2,81 +2,29 @@
   const PAGE_STABLE_MS = 1800;
   const FRESH_CHAT_STABILIZE_MS = 800;
 
-  const siteConfigs = [
-    {
-      platform: "chatgpt",
-      hosts: ["chatgpt.com", "chat.openai.com"],
-      turnSelectors: ["[data-message-author-role]"],
-      promptSelectors: [
-        "#prompt-textarea",
-        "form #prompt-textarea",
-        "form [contenteditable='true']",
-        "form textarea",
-        "main textarea",
-      ],
+  const platformUiConfigs = {
+    chatgpt: {
       streamingSelectors: [
         "button[aria-label*='Stop']",
         "[data-testid='stop-button']",
       ],
-      getRole(node) {
-        return node.getAttribute("data-message-author-role") || "unknown";
-      },
     },
-    {
-      platform: "codex",
-      hosts: ["codex.openai.com"],
-      turnSelectors: ["[data-message-author-role]"],
-      promptSelectors: [
-        "#prompt-textarea",
-        "form #prompt-textarea",
-        "form [contenteditable='true']",
-        "form textarea",
-        "main textarea",
-      ],
+    codex: {
       streamingSelectors: [
         "button[aria-label*='Stop']",
         "[data-testid='stop-button']",
       ],
-      getRole(node) {
-        return node.getAttribute("data-message-author-role") || "unknown";
-      },
     },
-    {
-      platform: "claude",
-      hosts: ["claude.ai"],
-      turnSelectors: [
-        "[data-is-streaming]",
-        "main [data-testid='message-human']",
-        "main [data-testid='message-assistant']",
-      ],
-      promptSelectors: ["div[contenteditable='true']", "textarea"],
+    claude: {
       streamingSelectors: ["[data-is-streaming='true']"],
-      getRole(node) {
-        return node.getAttribute("data-testid") === "message-human"
-          ? "user"
-          : "assistant";
-      },
     },
-    {
-      platform: "perplexity",
-      hosts: ["www.perplexity.ai", "perplexity.ai"],
-      turnSelectors: [
-        "main [data-testid='answer']",
-        "main [data-testid='query']",
-        "main article",
-      ],
-      promptSelectors: ["textarea", "[contenteditable='true']"],
+    perplexity: {
       streamingSelectors: [
         "button[aria-label*='Stop']",
         "[data-testid='stop-generating']",
       ],
-      getRole(node) {
-        return node.getAttribute("data-testid") === "query"
-          ? "user"
-          : "assistant";
-      },
     },
-  ];
+  };
 
   const relayChipState = {
     dismissed: false,
@@ -113,12 +61,8 @@
     return (input || "").replace(/\s+/g, " ").trim();
   }
 
-  function cleanTurnContent(input) {
-    return normalizeText(input)
-      .replace(/^You said:\s*/i, "")
-      .replace(/^ChatGPT said:\s*/i, "")
-      .replace(/^Claude said:\s*/i, "")
-      .replace(/^Codex said:\s*/i, "");
+  function getAdapterRuntime() {
+    return window.__relayAdapterRuntime || null;
   }
 
   function computeSignature(turns, metadata, platform) {
@@ -143,40 +87,23 @@
   }
 
   function getSiteConfig() {
-    const hostname = window.location.hostname;
-    return (
-      siteConfigs.find((config) => config.hosts.includes(hostname)) || null
-    );
+    const runtime = getAdapterRuntime();
+    const resolved = runtime ? runtime.resolve(window.location.href) : null;
+
+    if (!resolved) {
+      return null;
+    }
+
+    return {
+      platform: resolved.platform,
+      streamingSelectors:
+        platformUiConfigs[resolved.platform]?.streamingSelectors || [],
+    };
   }
 
   function collectTurns(config) {
-    const seenNodes = new Set();
-    const seenContent = new Set();
-    const turns = [];
-
-    for (const selector of config.turnSelectors) {
-      for (const node of document.querySelectorAll(selector)) {
-        if (seenNodes.has(node)) continue;
-        seenNodes.add(node);
-
-        const role = config.getRole(node);
-        const content = cleanTurnContent(node.textContent);
-        if (!content || role === "unknown") continue;
-
-        const contentKey = `${role}:${content.toLowerCase()}`;
-        if (seenContent.has(contentKey)) continue;
-        seenContent.add(contentKey);
-
-        turns.push({
-          role,
-          content,
-          turnIndex: turns.length,
-          rawHtml: node.innerHTML || null,
-        });
-      }
-    }
-
-    return turns;
+    const runtime = getAdapterRuntime();
+    return runtime ? runtime.collectTurns(document, window.location.href) : [];
   }
 
   function getLatestMeaningfulUserTurnText(turns) {
@@ -191,6 +118,15 @@
   }
 
   function getPageMetadata() {
+    const runtime = getAdapterRuntime();
+    const metadata = runtime
+      ? runtime.getPageMetadata(document, window.location.href)
+      : null;
+
+    if (metadata) {
+      return metadata;
+    }
+
     const url = new URL(window.location.href);
     return {
       title: document.title || null,
@@ -202,29 +138,8 @@
   }
 
   function findPrompt(config) {
-    for (const selector of config.promptSelectors) {
-      const elements = Array.from(document.querySelectorAll(selector));
-
-      for (const element of elements) {
-        const rect = element.getBoundingClientRect();
-        const style = window.getComputedStyle(element);
-        const isVisible =
-          rect.width > 0 &&
-          rect.height > 0 &&
-          style.visibility !== "hidden" &&
-          style.display !== "none" &&
-          !element.hasAttribute("disabled");
-
-        if (!isVisible) continue;
-
-        return {
-          element,
-          isContentEditable: Boolean(element.isContentEditable),
-        };
-      }
-    }
-
-    return null;
+    const runtime = getAdapterRuntime();
+    return runtime ? runtime.findPrompt(document, window.location.href) : null;
   }
 
   function readPromptText(target) {
@@ -239,105 +154,11 @@
     return "";
   }
 
-  function insertIntoPrompt(config, text) {
-    const target = findPrompt(config);
-    if (!target) {
-      return { ok: false, reason: "Prompt not found." };
-    }
-
-    const element = target.element;
-    const expected = normalizeText(text);
-
-    if (target.isContentEditable) {
-      element.focus();
-      const selection = window.getSelection();
-      const range = document.createRange();
-      range.selectNodeContents(element);
-      selection.removeAllRanges();
-      selection.addRange(range);
-
-      let inserted = false;
-      if (typeof document.execCommand === "function") {
-        inserted = document.execCommand("insertText", false, text);
-      }
-
-      if (!inserted) {
-        const html = text
-          .split("\n")
-          .map((line) => `<p>${line ? escapeHtml(line) : "<br>"}</p>`)
-          .join("");
-
-        element.innerHTML = html;
-      }
-
-      element.dispatchEvent(
-        new InputEvent("beforeinput", {
-          bubbles: true,
-          cancelable: true,
-          data: text,
-          inputType: "insertText",
-        }),
-      );
-      element.dispatchEvent(
-        new InputEvent("input", {
-          bubbles: true,
-          data: text,
-          inputType: "insertText",
-        }),
-      );
-      element.dispatchEvent(new Event("change", { bubbles: true }));
-
-      return readPromptText(target).includes(expected)
-        ? { ok: true }
-        : {
-            ok: false,
-            reason: "Prompt editor did not accept the inserted text.",
-          };
-    }
-
-    if ("value" in element) {
-      element.focus();
-      const prototype =
-        element instanceof HTMLTextAreaElement
-          ? HTMLTextAreaElement.prototype
-          : element instanceof HTMLInputElement
-            ? HTMLInputElement.prototype
-            : null;
-
-      const descriptor = prototype
-        ? Object.getOwnPropertyDescriptor(prototype, "value")
-        : null;
-      if (descriptor && typeof descriptor.set === "function") {
-        descriptor.set.call(element, text);
-      } else {
-        element.value = text;
-      }
-      element.dispatchEvent(
-        new InputEvent("beforeinput", {
-          bubbles: true,
-          cancelable: true,
-          data: text,
-          inputType: "insertText",
-        }),
-      );
-      element.dispatchEvent(
-        new InputEvent("input", {
-          bubbles: true,
-          data: text,
-          inputType: "insertText",
-        }),
-      );
-      element.dispatchEvent(new Event("change", { bubbles: true }));
-
-      return readPromptText(target).includes(expected)
-        ? { ok: true }
-        : {
-            ok: false,
-            reason: "Prompt textarea did not accept the inserted text.",
-          };
-    }
-
-    return { ok: false, reason: "No editable prompt field found." };
+  async function insertIntoPrompt(config, text) {
+    const runtime = getAdapterRuntime();
+    return runtime
+      ? runtime.insertText(text, document, window.location.href)
+      : { ok: false, reason: "Prompt not found." };
   }
 
   function hasStreamingActivity(config) {
@@ -1574,7 +1395,7 @@
         return true;
       }
 
-      sendResponse(insertIntoPrompt(config, message.payload.content));
+      void insertIntoPrompt(config, message.payload.content).then(sendResponse);
       return true;
     }
 

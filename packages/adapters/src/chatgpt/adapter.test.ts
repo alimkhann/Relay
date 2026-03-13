@@ -21,4 +21,10 @@ describe("ChatgptAdapter", () => {
     expect(turns[1]?.role).toBe("assistant")
     expect(adapter.findPromptInput(document)?.element.tagName).toBe("TEXTAREA")
   })
+
+  it("does not claim Codex routes on ChatGPT", () => {
+    const adapter = new ChatgptAdapter()
+
+    expect(adapter.canHandle("https://chatgpt.com/codex")).toBe(false)
+  })
 })

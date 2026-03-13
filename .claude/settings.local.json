@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat \"/Users/alim/Developer/Projects/Apps/Relay/apps/web/src/app/\\(marketing\\)/landing-animations.tsx\")",
+      "Bash(cat \"/Users/alim/Developer/Projects/Apps/Relay/apps/web/src/app/\\(auth\\)/sign-in/page.test.tsx\" | head -80)",
+      "Bash(pnpm typecheck:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm test:*)",
+      "mcp__plugin_playwright_playwright__browser_navigate",
+      "mcp__plugin_playwright_playwright__browser_take_screenshot",
+      "mcp__plugin_playwright_playwright__browser_click",
+      "Bash(find /Users/alim/Developer/Projects/Apps/Relay/apps/web/src/app -name \"layout.tsx\" | xargs ls -la)",
+      "Bash(ls -la /Users/alim/Developer/Projects/Apps/Relay/apps/web/src/app/projects/[projectId]/)"
+    ]
+  }
+}

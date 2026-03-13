@@ -9,7 +9,7 @@ const extensionPath = path.join(process.cwd(), "apps/extension/build/chrome-mv3-
 const fixturePath = path.join(process.cwd(), "tests/e2e/fixtures/chatgpt-fresh.html")
 
 test.describe("Relay inline chip", () => {
-  test.fixme("shows the chip on a fresh chat, allows switching projects, and inserts immediately", async () => {
+  test("shows the chip on a fresh chat, allows switching projects, and inserts immediately", async () => {
     test.setTimeout(60000)
 
     execSync("pnpm --filter @relay/extension build", {
@@ -193,17 +193,14 @@ test.describe("Relay inline chip", () => {
       const chip = page.locator("#relay-inline-chip")
       await expect(chip).toBeVisible()
       await expect(chip.getByText("Insert project brief")).toBeVisible()
-      await expect(chip.getByText("Built from recent chats and saved project context")).toBeVisible()
       await expect(chip.locator(".relay-inline-chip__title")).toHaveText("Project Alpha")
 
-      await chip.locator('select[aria-label="Current Relay project"]').evaluate((element) => {
-        const select = element as HTMLSelectElement
-        select.value = "project-2"
-        select.dispatchEvent(new Event("change", { bubbles: true }))
-      })
+      await chip.locator('select[aria-label="Switch project"]').selectOption("project-2")
       await expect(chip.locator(".relay-inline-chip__title")).toHaveText("Project Beta")
 
-      await page.getByRole("button", { name: "Insert project brief" }).click()
+      const insertButton = chip.locator(".relay-inline-chip__button")
+      await expect(insertButton).toBeEnabled()
+      await insertButton.click()
       await expect(page.locator("#prompt-textarea")).toHaveValue(/Project Beta brief/)
     } finally {
       await Promise.race([

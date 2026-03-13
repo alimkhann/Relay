@@ -2,7 +2,7 @@ import type { PageMetadata, ParsedTurn } from "@relay/shared/types/capture"
 
 import { BaseSiteAdapter } from "../base/site-adapter"
 import { collectTurns, findPrompt, injectText } from "../base/dom-utils"
-import { chatgptPromptSelectors, chatgptTurnSelectors } from "./selectors"
+import { codexPromptSelectors, codexTurnSelectors } from "./selectors"
 
 function isCodexRoute(url: URL) {
   return (
@@ -12,27 +12,21 @@ function isCodexRoute(url: URL) {
   )
 }
 
-export class ChatgptAdapter extends BaseSiteAdapter {
+export class CodexAdapter extends BaseSiteAdapter {
   canHandle(url: string): boolean {
-    const parsedUrl = new URL(url)
-
-    if (!/chatgpt\.com|chat\.openai\.com/.test(parsedUrl.hostname)) {
-      return false
-    }
-
-    return !isCodexRoute(parsedUrl)
+    return isCodexRoute(new URL(url))
   }
 
   getPlatform() {
-    return "chatgpt" as const
+    return "codex" as const
   }
 
   extractVisibleTurns(doc = document): ParsedTurn[] {
-    return collectTurns(doc, chatgptTurnSelectors).map(({ contentHash: _contentHash, ...turn }) => turn)
+    return collectTurns(doc, codexTurnSelectors).map(({ contentHash: _contentHash, ...turn }) => turn)
   }
 
   findPromptInput(doc = document) {
-    return findPrompt(doc, chatgptPromptSelectors)
+    return findPrompt(doc, codexPromptSelectors)
   }
 
   async insertTextIntoPrompt(text: string, doc = document) {
@@ -46,7 +40,7 @@ export class ChatgptAdapter extends BaseSiteAdapter {
       title: doc.title,
       url: url.toString(),
       pathname: url.pathname,
-      pageFingerprint: url.pathname.split("/").pop() ?? null,
+      pageFingerprint: url.pathname.split("/").filter(Boolean).pop() ?? null,
       domain: url.hostname
     }
   }
