@@ -164,6 +164,7 @@
   height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
+  margin-top: 7px;
 }
 
 .dotReady {
@@ -186,6 +187,7 @@
   gap: 6px;
   flex-wrap: wrap;
   flex: 1;
+  position: relative;
 }
 
 /* ── Row ── */
@@ -220,10 +222,10 @@
 /* ── Info tooltip ── */
 
 .infoWrap {
-  position: relative;
+  position: static;
   display: inline-flex;
   flex: 0 0 auto;
-  margin-top: 1px;
+  margin-top: 2px;
 }
 
 .infoButton {
@@ -246,13 +248,16 @@
   right: 0;
   top: calc(100% + 6px);
   z-index: 4;
-  width: min(260px, calc(100vw - 48px));
+  width: min(220px, calc(100% - 8px));
+  max-width: 220px;
   border-radius: var(--radius-sm);
   background: var(--ink);
   color: var(--accent-text);
   padding: 10px 12px;
   font-size: 12px;
   line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
   opacity: 0;
   pointer-events: none;

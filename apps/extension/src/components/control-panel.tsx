@@ -18,6 +18,7 @@ import {
   inferTargetProfile,
   resolveTargetProfile,
 } from "../utils/target-profile";
+import relayIconUrl from "../../assets/icon.png";
 import styles from "./control-panel.module.css";
 
 interface ControlPanelProps {
@@ -1014,7 +1015,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     session?.projectId ??
     session?.assumedProjectId ??
     "";
-  const relayLogoUrl = chrome.runtime.getURL("assets/icon.png");
   const dashboardHref =
     session?.apiBase && selectedProjectId
       ? `${session.apiBase}/dashboard?project=${encodeURIComponent(selectedProjectId)}`
@@ -1041,7 +1041,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         <div className={styles.headerBrand}>
           <img
             className={styles.logoMark}
-            src={relayLogoUrl}
+            src={relayIconUrl}
             alt="Relay"
           />
           <a
@@ -1288,7 +1288,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                     {activeState.chatAssociation.status === "pending"
                       ? `Relay is ready to save this chat to ${activeState.chatAssociation.projectName ?? "the selected project"} unless you cancel the toast.`
                       : activeState.chatAssociation.status === "held"
-                      ? `Relay thinks this chat belongs to ${activeState.chatAssociation.projectName ?? "this project"}, but it is waiting for your approval.`
+                      ? activeState.chatAssociation.reason?.includes(
+                          "seeding its first chat context",
+                        )
+                        ? `Relay is treating this as the first chat for ${activeState.chatAssociation.projectName ?? "this project"} and is waiting for your approval.`
+                        : `Relay thinks this chat belongs to ${activeState.chatAssociation.projectName ?? "this project"}, but it is waiting for your approval.`
                       : activeState.chatAssociation.status === "saved"
                         ? `This chat is currently associated with ${activeState.chatAssociation.projectName ?? "the selected project"}.`
                         : activeState.chatAssociation.status === "archived"

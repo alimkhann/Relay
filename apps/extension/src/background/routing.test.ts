@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest"
 
-import { evaluateProjectRouting, findApprovedAssociationMatch } from "./routing"
+import {
+  FRESH_PROJECT_BOOTSTRAP_REASON,
+  evaluateProjectRouting,
+  findApprovedAssociationMatch,
+} from "./routing"
 
 describe("evaluateProjectRouting", () => {
   it("recognizes an already approved chat before broader routing signals", () => {
@@ -155,6 +159,84 @@ describe("evaluateProjectRouting", () => {
     expect(result.candidateProjectId).toBe("project_relay")
     expect(["hold", "auto-save"]).toContain(result.mode)
     expect(["medium", "high"]).toContain(result.confidence)
+  })
+
+  it("holds the selected fresh project instead of ignoring the first ungrounded chat", () => {
+    const result = evaluateProjectRouting({
+      page: {
+        supported: true,
+        platform: "chatgpt",
+        pathname: "/c/new-topic",
+        title: "Abstract logo exploration",
+        recentUserTurnText: "nice, make it flat and transparent"
+      },
+      projects: [
+        {
+          id: "project_relay_brand",
+          name: "Relay Brand Refresh",
+          slug: "relay-brand-refresh",
+          memoryCount: 0,
+          sessionCount: 0,
+          routingContext: {
+            hasMeaningfulContext: false,
+            keywords: []
+          }
+        }
+      ],
+      selectedProjectId: "project_relay_brand",
+      lastTabProjectId: "project_relay_brand",
+      boundProject: { projectId: "project_relay_brand", bindingKind: "tab" },
+      approvedAssociations: []
+    })
+
+    expect(result.mode).toBe("hold")
+    expect(result.confidence).toBe("medium")
+    expect(result.candidateProjectId).toBe("project_relay_brand")
+    expect(result.reasons[0]).toBe(FRESH_PROJECT_BOOTSTRAP_REASON)
+  })
+
+  it("does not override stronger explicit routing evidence with the fresh-project bootstrap fallback", () => {
+    const result = evaluateProjectRouting({
+      page: {
+        supported: true,
+        platform: "chatgpt",
+        pathname: "/c/new-topic",
+        title: "Relay launch checklist",
+        recentUserTurnText: "Finalize Relay onboarding and extension routing."
+      },
+      projects: [
+        {
+          id: "project_selected",
+          name: "Garden Journal",
+          slug: "garden-journal",
+          memoryCount: 0,
+          sessionCount: 0,
+          routingContext: {
+            hasMeaningfulContext: false,
+            keywords: []
+          }
+        },
+        {
+          id: "project_relay",
+          name: "Relay",
+          slug: "relay",
+          memoryCount: 0,
+          sessionCount: 0,
+          routingContext: {
+            hasMeaningfulContext: false,
+            keywords: []
+          }
+        }
+      ],
+      selectedProjectId: "project_selected",
+      lastTabProjectId: "project_selected",
+      boundProject: { projectId: "project_selected", bindingKind: "tab" },
+      approvedAssociations: []
+    })
+
+    expect(result.mode).toBe("auto-save")
+    expect(result.candidateProjectId).toBe("project_relay")
+    expect(result.confidence).toBe("high")
   })
 
   it("ignores unrelated chats even when the same domain was linked to another project", () => {
