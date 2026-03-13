@@ -9,7 +9,7 @@ export function SignOutButton() {
 
   return (
     <button
-      className="rounded-full border border-[var(--relay-line)] bg-white/70 px-4 py-2 text-sm font-medium text-[var(--relay-muted)] transition hover:bg-white"
+      className="rounded-full border border-[var(--relay-line)] bg-[var(--relay-soft)] px-4 py-2 text-sm font-medium text-[var(--relay-ink)] transition hover:bg-white"
       disabled={pending}
       onClick={() =>
         startTransition(async () => {

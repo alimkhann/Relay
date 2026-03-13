@@ -37,12 +37,25 @@ export function GoogleSignInButton({
             });
 
             try {
-              await authClient.signIn.social({
+              const signInResult = await authClient.signIn.social({
                 provider: "google",
                 callbackURL: nextPath,
                 newUserCallbackURL: nextPath,
                 requestSignUp: intent === "sign-up",
+                disableRedirect: intent === "sign-up",
               });
+
+              if (intent === "sign-up") {
+                const authUrl = (signInResult.data as { url?: string } | null)?.url;
+
+                if (!authUrl) {
+                  throw new Error("Google sign-in did not return an authorization URL.");
+                }
+
+                const url = new URL(authUrl);
+                url.searchParams.set("prompt", "select_account");
+                window.location.assign(url.toString());
+              }
             } catch (cause) {
               logClientEvent({
                 level: "error",
