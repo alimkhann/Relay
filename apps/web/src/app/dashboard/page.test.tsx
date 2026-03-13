@@ -1,6 +1,22 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+vi.mock("motion/react", () => ({
+  motion: new Proxy(
+    {},
+    {
+      get: (_target, prop) => {
+        const Tag = String(prop);
+        return ({ children, ...props }: any) => {
+          const { initial, animate, transition, whileHover, whileTap, ...rest } = props;
+          return <Tag {...rest}>{children}</Tag>;
+        };
+      },
+    },
+  ),
+  AnimatePresence: ({ children }: any) => <>{children}</>,
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: vi.fn(),
