@@ -2,97 +2,115 @@
 
 /* ─── Light theme (default) ─── */
 :root {
-  --relay-bg: #fafaf8;
+  --relay-bg: #fafaf9;
   --relay-surface: #ffffff;
   --relay-surface-raised: #ffffff;
-  --relay-ink: #111210;
-  --relay-ink-secondary: #3d3f39;
-  --relay-muted: #7a7d73;
-  --relay-faint: #a8aaa1;
-  --relay-line: rgba(17, 18, 16, 0.07);
-  --relay-line-strong: rgba(17, 18, 16, 0.13);
-  --relay-accent: #1a1d1a;
-  --relay-accent-hover: #0a0c0a;
-  --relay-accent-text: #f5f5f3;
-  --relay-soft: #f2f1ed;
-  --relay-soft-hover: #eceae5;
-  --relay-success: #3d3f39;
-  --relay-warning: #7a7d73;
-  --relay-shadow-sm:
-    0 1px 2px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.04);
-  --relay-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.06);
-  --relay-shadow-lg:
-    0 2px 6px rgba(0, 0, 0, 0.04), 0 12px 40px rgba(0, 0, 0, 0.08);
-  --relay-radius-sm: 8px;
-  --relay-radius: 12px;
-  --relay-radius-lg: 16px;
-  --relay-hero-overlay: linear-gradient(
-    180deg,
-    rgba(0, 0, 0, 0.1) 0%,
-    rgba(0, 0, 0, 0.02) 40%,
-    rgba(0, 0, 0, 0.55) 100%
-  );
+  --relay-ink: #0f0f0f;
+  --relay-ink-secondary: #3a3a3a;
+  --relay-muted: #737373;
+  --relay-faint: #a3a3a3;
+  --relay-line: rgba(0, 0, 0, 0.06);
+  --relay-line-strong: rgba(0, 0, 0, 0.12);
+  --relay-accent: #171717;
+  --relay-accent-hover: #000000;
+  --relay-accent-text: #fafafa;
+  --relay-soft: #f4f4f3;
+  --relay-soft-hover: #ebebea;
+  --relay-success: #3a3a3a;
+  --relay-warning: #737373;
+  --relay-danger: #dc2626;
+  --relay-danger-soft: #fef2f2;
+  --relay-info: #2563eb;
+  --relay-info-soft: #eff6ff;
+
+  /* Section accents */
+  --relay-section-decision: #3b82f6;
+  --relay-section-constraint: #f59e0b;
+  --relay-section-task: #10b981;
+
+  --relay-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --relay-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 4px 12px rgba(0, 0, 0, 0.04);
+  --relay-shadow-lg: 0 2px 8px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.08);
+
+  /* Tighter radii — not bubbly */
+  --relay-radius-xs: 4px;
+  --relay-radius-sm: 6px;
+  --relay-radius: 8px;
+  --relay-radius-lg: 10px;
+
+  /* Layout */
+  --relay-sidebar-width: 240px;
+  --relay-sidebar-collapsed: 56px;
+
+  /* Timing */
+  --relay-transition-fast: 120ms ease;
+  --relay-transition: 180ms ease;
+  --relay-transition-slow: 280ms ease;
 }
 
 /* ─── Dark theme ─── */
 .dark {
-  --relay-bg: #161716;
-  --relay-surface: #1c1d1c;
-  --relay-surface-raised: #232423;
-  --relay-ink: #e8e8e4;
-  --relay-ink-secondary: #bcbdb6;
-  --relay-muted: #8b8e84;
-  --relay-faint: #5c5f56;
+  --relay-bg: #1a1a1c;
+  --relay-surface: #202022;
+  --relay-surface-raised: #27272a;
+  --relay-ink: #e4e4e7;
+  --relay-ink-secondary: #a1a1aa;
+  --relay-muted: #71717a;
+  --relay-faint: #52525b;
   --relay-line: rgba(255, 255, 255, 0.07);
   --relay-line-strong: rgba(255, 255, 255, 0.13);
-  --relay-accent: #e8e8e4;
+  --relay-accent: #e4e4e7;
   --relay-accent-hover: #ffffff;
-  --relay-accent-text: #111210;
-  --relay-soft: #1a1b1a;
-  --relay-soft-hover: #222322;
-  --relay-success: #bcbdb6;
-  --relay-warning: #8b8e84;
-  --relay-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
-  --relay-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.2);
-  --relay-shadow-lg:
-    0 2px 6px rgba(0, 0, 0, 0.3), 0 12px 40px rgba(0, 0, 0, 0.3);
-  --relay-hero-overlay: linear-gradient(
-    180deg,
-    rgba(0, 0, 0, 0.25) 0%,
-    rgba(0, 0, 0, 0.08) 40%,
-    rgba(0, 0, 0, 0.7) 100%
-  );
+  --relay-accent-text: #09090b;
+  --relay-soft: #27272a;
+  --relay-soft-hover: #303033;
+  --relay-success: #a1a1aa;
+  --relay-warning: #71717a;
+  --relay-danger: #ef4444;
+  --relay-danger-soft: rgba(239, 68, 68, 0.1);
+  --relay-info: #60a5fa;
+  --relay-info-soft: rgba(96, 165, 250, 0.1);
+
+  --relay-section-decision: #60a5fa;
+  --relay-section-constraint: #fbbf24;
+  --relay-section-task: #34d399;
+
+  --relay-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --relay-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.2);
+  --relay-shadow-lg: 0 2px 8px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.3);
 }
 
 /* ─── System preference auto-apply ─── */
 @media (prefers-color-scheme: dark) {
   :root:not(.light) {
-    --relay-bg: #161716;
-    --relay-surface: #1c1d1c;
-    --relay-surface-raised: #232423;
-    --relay-ink: #e8e8e4;
-    --relay-ink-secondary: #bcbdb6;
-    --relay-muted: #8b8e84;
-    --relay-faint: #5c5f56;
+    --relay-bg: #1a1a1c;
+    --relay-surface: #202022;
+    --relay-surface-raised: #27272a;
+    --relay-ink: #e4e4e7;
+    --relay-ink-secondary: #a1a1aa;
+    --relay-muted: #71717a;
+    --relay-faint: #52525b;
     --relay-line: rgba(255, 255, 255, 0.07);
     --relay-line-strong: rgba(255, 255, 255, 0.13);
-    --relay-accent: #e8e8e4;
+    --relay-accent: #e4e4e7;
     --relay-accent-hover: #ffffff;
-    --relay-accent-text: #111210;
-    --relay-soft: #1a1b1a;
-    --relay-soft-hover: #222322;
-    --relay-success: #bcbdb6;
-    --relay-warning: #8b8e84;
-    --relay-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
-    --relay-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.2);
-    --relay-shadow-lg:
-      0 2px 6px rgba(0, 0, 0, 0.3), 0 12px 40px rgba(0, 0, 0, 0.3);
-    --relay-hero-overlay: linear-gradient(
-      180deg,
-      rgba(0, 0, 0, 0.25) 0%,
-      rgba(0, 0, 0, 0.08) 40%,
-      rgba(0, 0, 0, 0.7) 100%
-    );
+    --relay-accent-text: #09090b;
+    --relay-soft: #27272a;
+    --relay-soft-hover: #303033;
+    --relay-success: #a1a1aa;
+    --relay-warning: #71717a;
+    --relay-danger: #ef4444;
+    --relay-danger-soft: rgba(239, 68, 68, 0.1);
+    --relay-info: #60a5fa;
+    --relay-info-soft: rgba(96, 165, 250, 0.1);
+
+    --relay-section-decision: #60a5fa;
+    --relay-section-constraint: #fbbf24;
+    --relay-section-task: #34d399;
+
+    --relay-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --relay-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.2);
+    --relay-shadow-lg: 0 2px 8px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.3);
   }
 }
 
@@ -106,19 +124,23 @@ body {
   background: var(--relay-bg);
   color: var(--relay-ink);
   font-family:
-    "Outfit Variable",
-    "Outfit",
+    var(--font-geist-sans),
     -apple-system,
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "rlig" 1, "calt" 1;
 }
 
-.font-serif {
+.font-mono {
   font-family:
-    "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+    var(--font-geist-mono),
+    ui-monospace,
+    "SF Mono",
+    "Cascadia Code",
+    monospace;
 }
 
 a,
@@ -127,9 +149,37 @@ button {
 }
 
 ::selection {
-  background: rgba(26, 29, 26, 0.12);
+  background: rgba(15, 15, 15, 0.1);
 }
 
 .dark ::selection {
-  background: rgba(232, 232, 228, 0.18);
+  background: rgba(228, 228, 231, 0.15);
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--relay-line-strong);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--relay-muted);
+}
+
+/* ─── Micro-interactions ─── */
+.relay-hover-lift {
+  transition: transform 120ms ease;
+}
+
+.relay-hover-lift:hover {
+  transform: translateY(-1px);
 }

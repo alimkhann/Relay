@@ -11,14 +11,13 @@ export default async function SettingsPage() {
 
   return (
     <AppShell>
-      <section>
-        <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-        <p className="mt-1.5 text-sm text-[var(--relay-muted)]">
-          Control where Relay works and how it behaves.
+      <div className="max-w-2xl">
+        <h1 className="text-lg font-semibold tracking-tight text-[var(--relay-ink)]">Settings</h1>
+        <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
+          Configure how Relay works across your chats.
         </p>
-      </section>
-
-      <SettingsPreferences initialSettings={settings.settings} />
+        <SettingsPreferences initialSettings={settings.settings} />
+      </div>
     </AppShell>
   );
 }
