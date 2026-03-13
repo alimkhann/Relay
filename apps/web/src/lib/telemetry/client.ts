@@ -3,51 +3,35 @@
 import type { TelemetryEventInput, TelemetrySurface } from "@relay/shared/types/telemetry"
 import { createFlowId, sanitizeTelemetryEvent } from "@relay/shared/utils/telemetry"
 
-const queue: TelemetryEventInput[] = []
-let flushTimer: ReturnType<typeof setTimeout> | null = null
-let flushInFlight = false
-
 function resolveWebSurface(pathname: string): TelemetrySurface {
   if (pathname === "/") return "web-landing"
   if (pathname.startsWith("/sign-in")) return "web-auth"
   return "web-dashboard"
 }
 
-function scheduleFlush() {
-  if (flushTimer) return
-
-  flushTimer = setTimeout(() => {
-    flushTimer = null
-    void flushTelemetryQueue()
-  }, 1200)
+export function flushTelemetryQueue() {
+  return Promise.resolve()
 }
 
-export function flushTelemetryQueue() {
-  if (flushInFlight || queue.length === 0 || typeof window === "undefined") {
-    return Promise.resolve()
+function writeConsoleEvent(event: TelemetryEventInput) {
+  const prefix = `[Relay Web] ${event.surface} ${event.event}`
+
+  if (event.level === "error") {
+    console.error(prefix, event)
+    return
   }
 
-  flushInFlight = true
-  const payload = queue.splice(0, 25)
+  if (event.level === "warn") {
+    console.warn(prefix, event)
+    return
+  }
 
-  return fetch("/api/telemetry/logs", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({ logs: payload }),
-    keepalive: true
-  })
-    .catch((error) => {
-      console.error("[Relay Web] telemetry flush failed", error)
-      queue.unshift(...payload)
-    })
-    .finally(() => {
-      flushInFlight = false
-      if (queue.length > 0) {
-        scheduleFlush()
-      }
-    })
+  if (event.level === "debug") {
+    console.debug(prefix, event)
+    return
+  }
+
+  console.info(prefix, event)
 }
 
 export function logClientEvent(
@@ -55,20 +39,13 @@ export function logClientEvent(
 ) {
   if (typeof window === "undefined") return
 
-  queue.push(
+  writeConsoleEvent(
     sanitizeTelemetryEvent({
       ...input,
       surface: input.surface ?? resolveWebSurface(window.location.pathname),
       url: input.url ?? window.location.pathname
     })
   )
-
-  if (queue.length >= 10) {
-    void flushTelemetryQueue()
-    return
-  }
-
-  scheduleFlush()
 }
 
 export function createClientFlowId(prefix = "web") {

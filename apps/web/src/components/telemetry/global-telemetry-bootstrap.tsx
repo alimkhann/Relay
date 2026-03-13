@@ -2,7 +2,7 @@
 
 import { useEffect } from "react"
 
-import { flushTelemetryQueue, logClientEvent } from "@/lib/telemetry/client"
+import { logClientEvent } from "@/lib/telemetry/client"
 
 export function GlobalTelemetryBootstrap() {
   useEffect(() => {
@@ -30,19 +30,12 @@ export function GlobalTelemetryBootstrap() {
         error: event.reason
       })
     }
-
-    function handleUnload() {
-      void flushTelemetryQueue()
-    }
-
     window.addEventListener("error", handleError)
     window.addEventListener("unhandledrejection", handleRejection)
-    window.addEventListener("beforeunload", handleUnload)
 
     return () => {
       window.removeEventListener("error", handleError)
       window.removeEventListener("unhandledrejection", handleRejection)
-      window.removeEventListener("beforeunload", handleUnload)
     }
   }, [])
 

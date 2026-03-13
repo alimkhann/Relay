@@ -1,64 +1,33 @@
 import type { TelemetryEventInput } from "@relay/shared/types/telemetry";
 import { sanitizeTelemetryEvent } from "@relay/shared/utils/telemetry";
 
-import { getRelaySession } from "../storage/session";
+function writeConsoleEvent(event: TelemetryEventInput) {
+  const prefix = `[Relay Extension] ${event.surface} ${event.event}`;
 
-const queue: TelemetryEventInput[] = [];
-let flushTimer: ReturnType<typeof setTimeout> | null = null;
-let flushInFlight = false;
+  if (event.level === "error") {
+    console.error(prefix, event);
+    return;
+  }
 
-function scheduleFlush() {
-  if (flushTimer) return;
+  if (event.level === "warn") {
+    console.warn(prefix, event);
+    return;
+  }
 
-  flushTimer = setTimeout(() => {
-    flushTimer = null;
-    void flushBackgroundTelemetry();
-  }, 1200);
+  if (event.level === "debug") {
+    console.debug(prefix, event);
+    return;
+  }
+
+  console.info(prefix, event);
 }
 
 export async function flushBackgroundTelemetry() {
-  if (flushInFlight || queue.length === 0) {
-    return;
-  }
-
-  flushInFlight = true;
-  const batch = queue.splice(0, 25);
-
-  try {
-    const session = await getRelaySession();
-    const response = await fetch(`${session.apiBase}/api/telemetry/logs`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(session.token ? { authorization: `Bearer ${session.token}` } : {}),
-      },
-      body: JSON.stringify({ logs: batch }),
-      keepalive: true,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Telemetry flush failed with status ${response.status}.`);
-    }
-  } catch (error) {
-    console.error("[Relay BG] telemetry flush failed:", error);
-    queue.unshift(...batch);
-  } finally {
-    flushInFlight = false;
-    if (queue.length > 0) {
-      scheduleFlush();
-    }
-  }
+  return Promise.resolve();
 }
 
 export function recordBackgroundTelemetry(input: TelemetryEventInput) {
-  queue.push(sanitizeTelemetryEvent(input));
-
-  if (queue.length >= 10) {
-    void flushBackgroundTelemetry();
-    return;
-  }
-
-  scheduleFlush();
+  writeConsoleEvent(sanitizeTelemetryEvent(input));
 }
 
 export function initializeBackgroundTelemetry() {

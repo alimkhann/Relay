@@ -248,34 +248,3 @@ export interface ExtensionApiTokenRow {
   createdAt: string
   revokedAt: string | null
 }
-
-export interface TelemetryLogRow {
-  id: string
-  level: "debug" | "info" | "warn" | "error"
-  surface:
-    | "web-landing"
-    | "web-dashboard"
-    | "web-auth"
-    | "web-api"
-    | "extension-background"
-    | "extension-sidebar"
-    | "extension-inline-chip"
-  area: string
-  event: string
-  message: string
-  requestId: string | null
-  flowId: string | null
-  userId: string | null
-  projectId: string | null
-  sessionId: string | null
-  tabId: number | null
-  url: string | null
-  context: Record<string, unknown>
-  error: {
-    name?: string | null
-    message?: string | null
-    stack?: string | null
-    cause?: string | null
-  } | null
-  createdAt: string
-}
