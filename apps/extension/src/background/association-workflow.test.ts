@@ -13,6 +13,7 @@ describe("association workflow", () => {
     const result = buildPendingAutoSaveAssociation({
       projectId: "project_relay",
       projectName: "Relay",
+      projectOptions: [{ id: "project_relay", name: "Relay" }],
       captureSignature: "sig_123",
       now: 100,
     });
@@ -36,6 +37,7 @@ describe("association workflow", () => {
     const result = buildHeldReviewAssociation({
       projectId: "project_relay",
       projectName: "Relay",
+      projectOptions: [{ id: "project_relay", name: "Relay" }],
       reason: "The latest user turn mentions the project.",
       now: 200,
     });
@@ -48,7 +50,7 @@ describe("association workflow", () => {
         mode: "held_review",
         action: "cancel",
       }),
-    ).toBe("noop");
+    ).toBe("dismiss");
   });
 
   it("approves a held-review toast into an immediate capture", () => {

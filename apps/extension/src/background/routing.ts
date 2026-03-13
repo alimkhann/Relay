@@ -22,6 +22,8 @@ interface CandidateScore {
   projectName: string
   score: number
   reasons: string[]
+  phase: "bootstrap" | "context-aware"
+  highConfidenceEligible: boolean
 }
 
 interface EvaluateProjectRoutingInput {
@@ -34,31 +36,36 @@ interface EvaluateProjectRoutingInput {
 }
 
 const STOP_WORDS = new Set([
-  "the",
-  "and",
-  "for",
-  "with",
-  "from",
-  "into",
-  "that",
-  "this",
   "about",
-  "your",
+  "after",
+  "again",
+  "also",
+  "and",
+  "build",
+  "chat",
+  "continue",
+  "current",
+  "from",
   "have",
+  "into",
+  "just",
+  "more",
+  "next",
+  "open",
+  "page",
+  "project",
+  "save",
+  "that",
+  "them",
+  "then",
+  "they",
+  "this",
   "what",
   "when",
   "where",
-  "why",
-  "will",
-  "just",
-  "then",
-  "than",
-  "them",
-  "they",
-  "chat",
+  "with",
   "work",
-  "page",
-  "open"
+  "your"
 ])
 
 function tokenize(value: string | null | undefined) {
@@ -94,6 +101,68 @@ function collectProjectTokens(project: RelayProjectOption) {
   return uniqueTokens([project.name, project.slug ?? null])
 }
 
+function collectProjectContextTokens(project: RelayProjectOption) {
+  return uniqueTokens([
+    project.description ?? null,
+    ...(project.routingContext?.keywords ?? [])
+  ])
+}
+
+function hasMeaningfulProjectContext(project: RelayProjectOption) {
+  if (project.routingContext) {
+    return project.routingContext.hasMeaningfulContext
+  }
+
+  return (project.sessionCount ?? 0) > 0 || (project.memoryCount ?? 0) > 0
+}
+
+function pushReason(candidate: CandidateScore, reason: string) {
+  if (!candidate.reasons.includes(reason)) {
+    candidate.reasons.push(reason)
+  }
+}
+
+function buildAssociationComparisonKey(page: Pick<RelayPageState, "platform" | "pageFingerprint" | "pathname" | "url">) {
+  const platform = page.platform ?? "unknown"
+  if (page.pageFingerprint) {
+    return `${platform}:fingerprint:${page.pageFingerprint}`
+  }
+
+  if (page.pathname) {
+    return `${platform}:path:${page.pathname}`
+  }
+
+  return `${platform}:url:${page.url ?? ""}`
+}
+
+export function buildAssociationKey(page: Pick<RelayPageState, "platform" | "pageFingerprint" | "pathname" | "url">) {
+  return buildAssociationComparisonKey(page)
+}
+
+export function findApprovedAssociationMatch(
+  page: Pick<RelayPageState, "platform" | "pageFingerprint" | "pathname" | "url">,
+  approvedAssociations: RelayApprovedAssociation[]
+) {
+  const exactKey = buildAssociationComparisonKey(page)
+
+  return (
+    approvedAssociations.find((association) => association.key === exactKey) ??
+    approvedAssociations.find(
+      (association) =>
+        Boolean(page.pageFingerprint) && association.pageFingerprint === page.pageFingerprint
+    ) ??
+    approvedAssociations.find((association) => Boolean(page.url) && association.url === page.url) ??
+    approvedAssociations.find(
+      (association) =>
+        Boolean(page.pathname) &&
+        Boolean(page.platform) &&
+        association.pathname === page.pathname &&
+        association.platform === page.platform
+    ) ??
+    null
+  )
+}
+
 function scoreApprovedAssociation(
   candidate: CandidateScore,
   input: EvaluateProjectRoutingInput,
@@ -104,26 +173,41 @@ function scoreApprovedAssociation(
   }
 
   const page = input.page
-  if (association.key && association.key === buildAssociationKey(page)) {
-    candidate.score += 90
-    candidate.reasons.push("Matched a previously approved chat fingerprint.")
+  if (association.key && association.key === buildAssociationComparisonKey(page)) {
+    candidate.score += 120
+    candidate.highConfidenceEligible = true
+    pushReason(candidate, "Matched a previously approved chat fingerprint.")
     return
   }
 
   if (page.pageFingerprint && association.pageFingerprint === page.pageFingerprint) {
-    candidate.score += 78
-    candidate.reasons.push("Matched an approved chat fingerprint on this platform.")
-  } else if (page.url && association.url === page.url) {
-    candidate.score += 64
-    candidate.reasons.push("Matched an approved chat URL.")
-  } else if (page.pathname && association.pathname === page.pathname && association.platform === page.platform) {
-    candidate.score += 52
-    candidate.reasons.push("Matched a recent approved path on this platform.")
+    candidate.score += 100
+    candidate.highConfidenceEligible = true
+    pushReason(candidate, "Matched an approved chat fingerprint on this platform.")
+    return
   }
 
-  if (page.domain && association.domain === page.domain && association.platform === page.platform) {
-    candidate.score += 18
-    candidate.reasons.push("Shares a recent approved domain and platform.")
+  if (page.url && association.url === page.url) {
+    candidate.score += 84
+    candidate.highConfidenceEligible = true
+    pushReason(candidate, "Matched an approved chat URL.")
+    return
+  }
+
+  if (page.pathname && association.pathname === page.pathname && association.platform === page.platform) {
+    candidate.score += 58
+    pushReason(candidate, "Matched a recent approved path on this platform.")
+    return
+  }
+
+  if (
+    candidate.phase === "context-aware" &&
+    page.domain &&
+    association.domain === page.domain &&
+    association.platform === page.platform
+  ) {
+    candidate.score += 8
+    pushReason(candidate, "Shares a recent approved domain and platform.")
   }
 }
 
@@ -135,9 +219,12 @@ function scoreProjectCandidate(
     projectId: project.id,
     projectName: project.name,
     score: 0,
-    reasons: []
+    reasons: [],
+    phase: hasMeaningfulProjectContext(project) ? "context-aware" : "bootstrap",
+    highConfidenceEligible: false
   }
   const projectTokens = collectProjectTokens(project)
+  const contextTokens = collectProjectContextTokens(project)
   const titleTokens = uniqueTokens([input.page.title])
   const pathTokens = uniqueTokens([input.page.pathname, input.page.url])
   const userTurnTokens = uniqueTokens([input.page.recentUserTurnText ?? null])
@@ -146,78 +233,110 @@ function scoreProjectCandidate(
     scoreApprovedAssociation(candidate, input, association)
   }
 
-  if (input.boundProject?.projectId === project.id) {
-    if (input.boundProject.bindingKind === "tab") {
-      candidate.score += 62
-      candidate.reasons.push("This tab is explicitly bound to the project.")
-    } else if (input.boundProject.bindingKind === "domain") {
-      candidate.score += 26
-      candidate.reasons.push("This domain was previously linked to the project.")
-    } else {
-      candidate.score += 18
-      candidate.reasons.push("This project was the last manual Relay choice.")
-    }
-  }
-
-  if (input.lastTabProjectId === project.id) {
-    candidate.score += 18
-    candidate.reasons.push("This tab was recently associated with the project.")
-  }
-
-  if (input.selectedProjectId === project.id) {
-    candidate.score += 10
-    candidate.reasons.push("This is the currently selected project.")
+  const verbatimNameMention =
+    hasProjectNameMention(project, input.page.title) ||
+    hasProjectNameMention(project, input.page.recentUserTurnText)
+  if (verbatimNameMention) {
+    candidate.score += candidate.phase === "bootstrap" ? 42 : 34
+    candidate.highConfidenceEligible = true
+    pushReason(candidate, "The project name appears verbatim in the current chat.")
   }
 
   const titleOverlap = overlapCount(projectTokens, titleTokens)
   if (titleOverlap > 0) {
-    candidate.score += Math.min(24, titleOverlap * 8)
-    candidate.reasons.push("Project name overlaps with the chat title.")
-  }
-
-  const pathOverlap = overlapCount(projectTokens, pathTokens)
-  if (pathOverlap > 0) {
-    candidate.score += Math.min(16, pathOverlap * 6)
-    candidate.reasons.push("Project name overlaps with the route or URL.")
+    candidate.score += Math.min(candidate.phase === "bootstrap" ? 42 : 24, titleOverlap * (candidate.phase === "bootstrap" ? 14 : 8))
+    if (titleOverlap >= 2) {
+      candidate.highConfidenceEligible = true
+    }
+    pushReason(candidate, "Project name overlaps with the chat title.")
   }
 
   const userTurnOverlap = overlapCount(projectTokens, userTurnTokens)
   if (userTurnOverlap > 0) {
-    candidate.score += Math.min(24, userTurnOverlap * 8)
-    candidate.reasons.push("The latest user turn mentions the project.")
+    candidate.score += Math.min(candidate.phase === "bootstrap" ? 48 : 28, userTurnOverlap * (candidate.phase === "bootstrap" ? 16 : 10))
+    if (userTurnOverlap >= 2) {
+      candidate.highConfidenceEligible = true
+    }
+    pushReason(candidate, "The latest user turn mentions the project.")
   }
 
-  if (hasProjectNameMention(project, input.page.title) || hasProjectNameMention(project, input.page.recentUserTurnText)) {
-    candidate.score += 12
-    candidate.reasons.push("The project name appears verbatim in the current chat.")
+  const pathOverlap = overlapCount(projectTokens, pathTokens)
+  if (pathOverlap > 0) {
+    candidate.score += Math.min(candidate.phase === "bootstrap" ? 18 : 12, pathOverlap * 6)
+    pushReason(candidate, "Project name overlaps with the route or URL.")
+  }
+
+  const contextTitleOverlap = overlapCount(contextTokens, titleTokens)
+  const contextUserOverlap = overlapCount(contextTokens, userTurnTokens)
+  const contextPathOverlap = overlapCount(contextTokens, pathTokens)
+  const reinforcedByContext =
+    candidate.phase === "context-aware" &&
+    contextTitleOverlap + contextUserOverlap + contextPathOverlap > 0
+
+  if (candidate.phase === "context-aware" && contextTitleOverlap > 0) {
+    candidate.score += Math.min(20, contextTitleOverlap * 5)
+    if (contextTitleOverlap >= 2) {
+      candidate.highConfidenceEligible = true
+    }
+    pushReason(candidate, "The chat title overlaps with saved project context.")
+  }
+
+  if (candidate.phase === "context-aware" && contextUserOverlap > 0) {
+    candidate.score += Math.min(30, contextUserOverlap * 6)
+    if (contextUserOverlap >= 2) {
+      candidate.highConfidenceEligible = true
+    }
+    pushReason(candidate, "The latest user turn overlaps with saved project context.")
+  }
+
+  if (candidate.phase === "context-aware" && contextPathOverlap > 0) {
+    candidate.score += Math.min(10, contextPathOverlap * 4)
+    pushReason(candidate, "The route overlaps with saved project context.")
+  }
+
+  const allowWeakAffinity = candidate.highConfidenceEligible || reinforcedByContext
+  if (input.boundProject?.projectId === project.id && allowWeakAffinity) {
+    if (input.boundProject.bindingKind === "tab") {
+      candidate.score += 10
+      pushReason(candidate, "This tab is already linked to the project.")
+    } else if (input.boundProject.bindingKind === "domain") {
+      candidate.score += candidate.phase === "context-aware" ? 6 : 3
+      pushReason(candidate, "This domain was previously linked to the project.")
+    } else {
+      candidate.score += 4
+      pushReason(candidate, "This project was manually chosen recently.")
+    }
+  }
+
+  if (input.lastTabProjectId === project.id && allowWeakAffinity) {
+    candidate.score += 3
+    pushReason(candidate, "This tab was recently associated with the project.")
+  }
+
+  if (input.selectedProjectId === project.id && allowWeakAffinity) {
+    candidate.score += 2
+    pushReason(candidate, "This is the currently selected project.")
   }
 
   return candidate
 }
 
-function resolveConfidence(topScore: number, runnerUpScore: number) {
-  if (topScore >= 70 && topScore - runnerUpScore >= 12) {
+function resolveConfidence(top: CandidateScore, runnerUpScore: number) {
+  const scoreGap = top.score - runnerUpScore
+
+  if (
+    top.highConfidenceEligible &&
+    top.score >= (top.phase === "bootstrap" ? 70 : 68) &&
+    scoreGap >= (top.phase === "bootstrap" ? 18 : 12)
+  ) {
     return "high" as const
   }
 
-  if (topScore >= 28) {
+  if (top.score >= (top.phase === "bootstrap" ? 30 : 28)) {
     return "medium" as const
   }
 
   return "low" as const
-}
-
-export function buildAssociationKey(page: Pick<RelayPageState, "platform" | "pageFingerprint" | "pathname" | "url">) {
-  const platform = page.platform ?? "unknown"
-  if (page.pageFingerprint) {
-    return `${platform}:fingerprint:${page.pageFingerprint}`
-  }
-
-  if (page.pathname) {
-    return `${platform}:path:${page.pathname}`
-  }
-
-  return `${platform}:url:${page.url ?? ""}`
 }
 
 export function evaluateProjectRouting(input: EvaluateProjectRoutingInput): RelayRoutingDecision {
@@ -249,13 +368,13 @@ export function evaluateProjectRouting(input: EvaluateProjectRoutingInput): Rela
     }
   }
 
-  const confidence = resolveConfidence(top.score, runnerUp?.score ?? 0)
+  const confidence = resolveConfidence(top, runnerUp?.score ?? 0)
   return {
     mode: confidence === "high" ? "auto-save" : confidence === "medium" ? "hold" : "ignore",
     confidence,
     candidateProjectId: confidence === "low" ? null : top.projectId,
     candidateProjectName: confidence === "low" ? null : top.projectName,
     score: top.score,
-    reasons: top.reasons.slice(0, 3)
+    reasons: top.reasons.slice(0, 4)
   }
 }

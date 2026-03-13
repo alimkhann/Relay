@@ -651,6 +651,34 @@
         line-height: 1.4;
       }
 
+      .relay-association-toast__header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .relay-association-toast__dismiss {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        flex-shrink: 0;
+        border: none;
+        border-radius: 999px;
+        background: transparent;
+        color: #71717a;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background 120ms ease, color 120ms ease;
+      }
+
+      .relay-association-toast__dismiss:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 0.08);
+        color: #e4e4e7;
+      }
+
       .relay-association-toast__meta {
         margin: 0;
         font-size: 11px;
@@ -658,9 +686,21 @@
         color: #b4b4bb;
       }
 
+      .relay-association-toast__select {
+        width: 100%;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 8px;
+        background: #202022;
+        color: #e4e4e7;
+        padding: 7px 10px;
+        font-size: 12px;
+        font-family: inherit;
+      }
+
       .relay-association-toast__actions {
         display: flex;
         align-items: center;
+        flex-wrap: wrap;
         gap: 8px;
       }
 
@@ -674,11 +714,30 @@
         font-size: 11px;
         font-weight: 600;
         cursor: pointer;
+        transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+      }
+
+      .relay-association-toast__button:hover:not(:disabled) {
+        opacity: 0.9;
+      }
+
+      .relay-association-toast__button:disabled,
+      .relay-association-toast__dismiss:disabled {
+        cursor: default;
+        opacity: 0.45;
       }
 
       .relay-association-toast__button--primary {
         background: #e4e4e7;
         color: #09090b;
+      }
+
+      .relay-association-toast__button--loading {
+        opacity: 1;
+      }
+
+      .relay-association-toast__button--subtle {
+        color: #b4b4bb;
       }
 
       .relay-association-toast__countdown {
@@ -808,6 +867,9 @@
       capturePending: activeState.capturePending,
       freshnessText: activeState.freshnessText,
       options: activeState.projectOptions.map((project) => project.id),
+      associationStatus: activeState.chatAssociation.status,
+      associationProjectId: activeState.chatAssociation.projectId,
+      associationProjectName: activeState.chatAssociation.projectName,
     });
   }
 
@@ -1032,24 +1094,46 @@
 
       const select = root.querySelector(".relay-inline-chip__select");
       if (select) {
+        select.addEventListener("click", (event) => {
+          event.stopPropagation();
+        });
         select.addEventListener("change", async (event) => {
           const nextProjectId = event.target.value;
           if (!nextProjectId) return;
+          const associationAware =
+            activeState.chatAssociation &&
+            ["pending", "held", "saved"].includes(
+              activeState.chatAssociation.status,
+            );
           emitInlineTelemetry({
             level: "info",
             area: "project",
-            event: "inline_project.switch",
-            message: "Switched the active project from the inline chip.",
+            event: associationAware
+              ? "inline_association.retarget"
+              : "inline_project.switch",
+            message: associationAware
+              ? "Retargeted the chat association from the inline chip."
+              : "Switched the active project from the inline chip.",
             context: {
               projectId: nextProjectId,
             },
           });
           relayChipState.buttonMode = "idle";
           relayChipState.buttonError = "";
-          await sendRuntimeMessage({
-            type: "RELAY_SET_ACTIVE_PROJECT",
-            payload: { projectId: nextProjectId },
-          });
+          await sendRuntimeMessage(
+            associationAware
+              ? {
+                  type: "RELAY_SET_CHAT_ASSOCIATION_PROJECT",
+                  payload: {
+                    projectId: nextProjectId,
+                    source: "inline_chip",
+                  },
+                }
+              : {
+                  type: "RELAY_SET_ACTIVE_PROJECT",
+                  payload: { projectId: nextProjectId },
+                },
+          );
         });
       }
 
@@ -1106,6 +1190,32 @@
     countdown.textContent = formatToastCountdown(payload.expiresAt);
   }
 
+  function setAssociationToastPending(root, payload) {
+    root.dataset.pendingAction = "approve";
+    const meta = root.querySelector(".relay-association-toast__meta");
+    if (meta) {
+      meta.textContent = `Saving this chat to ${payload.projectName}…`;
+    }
+
+    const buttons = root.querySelectorAll(
+      ".relay-association-toast__button, .relay-association-toast__dismiss",
+    );
+    buttons.forEach((button) => {
+      button.disabled = true;
+    });
+
+    const approveButton = root.querySelector('[data-action="approve"]');
+    if (approveButton) {
+      approveButton.textContent = "Approving…";
+      approveButton.classList.add("relay-association-toast__button--loading");
+    }
+
+    const countdown = root.querySelector(".relay-association-toast__countdown");
+    if (countdown) {
+      countdown.textContent = "Saving…";
+    }
+  }
+
   function renderAssociationToast(payload) {
     ensureInlineChipStyles();
     relayChipState.associationToast.payload = payload;
@@ -1118,6 +1228,7 @@
       root.className = "relay-association-toast";
       document.body.appendChild(root);
     }
+    delete root.dataset.pendingAction;
 
     const title =
       payload.mode === "auto_save"
@@ -1127,19 +1238,33 @@
       payload.mode === "auto_save"
         ? "Relay is confident about this chat. Cancel if this association is wrong."
         : "Relay is not fully sure. Approve now or review it later in the sidebar.";
+    const projectOptions = (payload.projectOptions || [])
+      .map(
+        (project) =>
+          `<option value="${escapeHtml(project.id)}"${project.id === payload.projectId ? " selected" : ""}>${escapeHtml(project.name)}</option>`,
+      )
+      .join("");
 
     root.classList.toggle(
       "relay-association-toast--clickable",
       payload.mode === "held_review",
     );
     root.innerHTML = `
-      <p class="relay-association-toast__title">${escapeHtml(title)}</p>
+      <div class="relay-association-toast__header">
+        <p class="relay-association-toast__title">${escapeHtml(title)}</p>
+        <button class="relay-association-toast__dismiss" type="button" aria-label="Dismiss association toast">×</button>
+      </div>
       <p class="relay-association-toast__meta">${escapeHtml(meta)}</p>
+      ${
+        payload.projectOptions && payload.projectOptions.length > 1
+          ? `<select class="relay-association-toast__select" aria-label="Change association project">${projectOptions}</select>`
+          : ""
+      }
       <div class="relay-association-toast__actions">
         ${
           payload.mode === "auto_save"
             ? '<button class="relay-association-toast__button" type="button" data-action="cancel">Cancel save</button>'
-            : '<button class="relay-association-toast__button relay-association-toast__button--primary" type="button" data-action="approve">Approve save</button>'
+            : '<button class="relay-association-toast__button relay-association-toast__button--primary" type="button" data-action="approve">Approve save</button><button class="relay-association-toast__button relay-association-toast__button--subtle" type="button" data-action="cancel">Not this chat</button>'
         }
         <span class="relay-association-toast__countdown">${formatToastCountdown(payload.expiresAt)}</span>
       </div>
@@ -1153,15 +1278,90 @@
       };
     }
 
-    const actionButton = root.querySelector("[data-action]");
-    if (actionButton) {
+    const select = root.querySelector(".relay-association-toast__select");
+    if (select) {
+      select.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      select.addEventListener("change", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (root.dataset.pendingAction) {
+          return;
+        }
+
+        const nextProjectId = event.target.value;
+        if (!nextProjectId || nextProjectId === payload.projectId) {
+          return;
+        }
+
+        const response = await sendRuntimeMessage({
+          type: "RELAY_SET_CHAT_ASSOCIATION_PROJECT",
+          payload: {
+            projectId: nextProjectId,
+            source: "toast",
+          },
+        });
+
+        if (!response?.ok) {
+          renderAssociationToast(payload);
+          return;
+        }
+
+        renderAssociationToast({
+          ...payload,
+          projectId: response.projectId ?? nextProjectId,
+          projectName: response.projectName ?? payload.projectName,
+          projectOptions: response.state?.projectOptions ?? payload.projectOptions,
+        });
+      });
+    }
+
+    root.querySelectorAll("[data-action]").forEach((actionButton) => {
       actionButton.addEventListener("click", async (event) => {
         event.preventDefault();
         event.stopPropagation();
+        const action = actionButton.getAttribute("data-action");
+        if (!action || root.dataset.pendingAction) {
+          return;
+        }
+
+        if (action === "approve") {
+          setAssociationToastPending(root, payload);
+        }
+
+        const response = await sendRuntimeMessage({
+          type: "RELAY_RESOLVE_ASSOCIATION_TOAST",
+          payload: {
+            action,
+            mode: payload.mode,
+            projectId: payload.projectId,
+          },
+        });
+
+        if (response?.ok === false && action === "approve") {
+          renderAssociationToast(payload);
+          return;
+        }
+
+        hideAssociationToast();
+      });
+    });
+
+    const dismissButton = root.querySelector(".relay-association-toast__dismiss");
+    if (dismissButton) {
+      dismissButton.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (root.dataset.pendingAction) {
+          return;
+        }
+
         await sendRuntimeMessage({
           type: "RELAY_RESOLVE_ASSOCIATION_TOAST",
           payload: {
-            action: actionButton.getAttribute("data-action"),
+            action: "cancel",
             mode: payload.mode,
             projectId: payload.projectId,
           },
@@ -1204,9 +1404,6 @@
     const nextKey = buildPageStateKey(pageState);
 
     if (force || relayChipState.lastPageStateKey !== nextKey) {
-      if (relayChipState.associationToast.payload) {
-        hideAssociationToast();
-      }
       relayChipState.lastPageStateKey = nextKey;
       await sendRuntimeMessage({
         type: "RELAY_PAGE_STATE_UPDATE",
@@ -1286,12 +1483,39 @@
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === "RELAY_ACTIVE_PROJECT_STATE_CHANGED") {
       relayChipState.currentState = message.payload.state;
-      if (
-        relayChipState.associationToast.payload &&
-        message.payload.state.chatAssociation.status !== "pending" &&
-        message.payload.state.chatAssociation.status !== "held"
-      ) {
-        hideAssociationToast();
+      if (relayChipState.associationToast.payload) {
+        const association = message.payload.state.chatAssociation;
+        if (
+          association.status !== "pending" &&
+          association.status !== "held"
+        ) {
+          hideAssociationToast();
+        } else if (
+          association.projectId &&
+          (
+            relayChipState.associationToast.payload.projectId !==
+              association.projectId ||
+            relayChipState.associationToast.payload.projectName !==
+              association.projectName ||
+            relayChipState.associationToast.payload.projectOptions
+              .map((project) => project.id)
+              .join(",") !==
+              message.payload.state.projectOptions
+                .map((project) => project.id)
+                .join(",")
+          )
+        ) {
+          renderAssociationToast({
+            ...relayChipState.associationToast.payload,
+            mode:
+              association.status === "pending" ? "auto_save" : "held_review",
+            projectId: association.projectId,
+            projectName:
+              association.projectName ||
+              relayChipState.associationToast.payload.projectName,
+            projectOptions: message.payload.state.projectOptions,
+          });
+        }
       }
       renderInlineChip();
       return false;

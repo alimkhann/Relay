@@ -20,6 +20,10 @@ export interface ProjectSummaryDto {
   description: string | null
   memoryCount: number
   sessionCount: number
+  routingContext: {
+    hasMeaningfulContext: boolean
+    keywords: string[]
+  } | null
   updatedAt: string
 }
 

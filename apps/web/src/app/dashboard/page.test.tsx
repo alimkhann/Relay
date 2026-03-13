@@ -48,6 +48,10 @@ vi.mock("@/server/services/project-service", () => ({
       description: "Browser-first project memory sidecar.",
       memoryCount: 3,
       sessionCount: 1,
+      routingContext: {
+        hasMeaningfulContext: true,
+        keywords: ["browser", "memory", "sidecar", "relay"],
+      },
       updatedAt: new Date().toISOString(),
     },
   ]),
@@ -59,6 +63,10 @@ vi.mock("@/server/services/project-service", () => ({
       description: "Browser-first project memory sidecar.",
       memoryCount: 3,
       sessionCount: 1,
+      routingContext: {
+        hasMeaningfulContext: true,
+        keywords: ["browser", "memory", "sidecar", "relay"],
+      },
       updatedAt: new Date().toISOString(),
     },
     projectState: {

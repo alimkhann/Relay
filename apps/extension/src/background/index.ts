@@ -35,6 +35,7 @@ import {
 import {
   buildAssociationKey,
   evaluateProjectRouting,
+  findApprovedAssociationMatch,
   type RelayRoutingDecision,
   type RelayBoundProjectSignal,
 } from "./routing";
@@ -362,6 +363,105 @@ function buildSavedChatAssociation(
   };
 }
 
+function getRetargetableAssociationProject(state: RelayTabState) {
+  if (
+    (state.chatAssociation.status === "pending" ||
+      state.chatAssociation.status === "held" ||
+      state.chatAssociation.status === "saved") &&
+    state.chatAssociation.projectId
+  ) {
+    return {
+      projectId: state.chatAssociation.projectId,
+      projectName: state.chatAssociation.projectName,
+    };
+  }
+
+  return null;
+}
+
+function findProjectOption(
+  state: RelayTabState,
+  session: Awaited<ReturnType<typeof getRelaySession>>,
+  projectId: string | null | undefined,
+) {
+  if (!projectId) return null;
+
+  return (
+    state.projectOptions.find((project) => project.id === projectId) ??
+    session.projectOptions.find((project) => project.id === projectId) ??
+    null
+  );
+}
+
+function resolveAssociationProjectOption(
+  state: RelayTabState,
+  session: Awaited<ReturnType<typeof getRelaySession>>,
+  projectId: string | null | undefined,
+) {
+  const matchedProject = findProjectOption(state, session, projectId);
+  if (!matchedProject || !projectId) {
+    return null;
+  }
+
+  const projectName = resolveAssociationProjectName({
+    matchedProjectName: matchedProject.name ?? null,
+    previousAssociationProjectName: state.chatAssociation.projectName,
+    routingCandidateProjectName: null,
+    stateProjectName: state.projectName,
+    sessionAssumedProjectName: session.assumedProjectName || null,
+  });
+
+  return {
+    projectId,
+    projectName,
+    projectSlug: matchedProject.slug ?? null,
+  };
+}
+
+function updateAssociationProjectState(
+  state: RelayTabState,
+  projectId: string,
+  projectName: string,
+) {
+  state.projectId = projectId;
+  state.projectName = projectName;
+
+  if (state.chatAssociation.status === "pending") {
+    state.chatAssociation = {
+      ...state.chatAssociation,
+      projectId,
+      projectName,
+      reason: `Relay will save this chat to ${projectName} in 20 seconds unless you cancel.`,
+    };
+  } else if (state.chatAssociation.status === "held") {
+    state.chatAssociation = {
+      ...state.chatAssociation,
+      projectId,
+      projectName,
+      reason: `Relay wants confirmation before saving this chat to ${projectName}.`,
+    };
+  }
+
+  if (state.pendingAssociation) {
+    state.pendingAssociation = {
+      ...state.pendingAssociation,
+      projectId,
+      projectName,
+    };
+  }
+}
+
+async function setSessionProjectTarget(
+  projectId: string,
+  projectName: string,
+) {
+  await setRelaySession({
+    projectId,
+    assumedProjectId: projectId,
+    assumedProjectName: projectName,
+  });
+}
+
 function hydrateTabStateFromSession(state: RelayTabState, session: Awaited<ReturnType<typeof getRelaySession>>) {
   const hasCachedProjects = session.projectOptions.length > 0;
 
@@ -519,7 +619,18 @@ async function loadSessionData() {
     }
 
     const projectsPayload = (await projectsResponse.json()) as {
-      projects: Array<{ id: string; name: string; slug?: string | null }>;
+      projects: Array<{
+        id: string;
+        name: string;
+        slug?: string | null;
+        description?: string | null;
+        memoryCount?: number;
+        sessionCount?: number;
+        routingContext?: {
+          hasMeaningfulContext: boolean;
+          keywords: string[];
+        } | null;
+      }>;
     };
     const settingsPayload = (await settingsResponse.json()) as {
       settings: { settings: RemoteSettingsPayload["settings"] };
@@ -529,6 +640,10 @@ async function loadSessionData() {
       id: project.id,
       name: project.name,
       slug: project.slug ?? null,
+      description: project.description ?? null,
+      memoryCount: project.memoryCount ?? 0,
+      sessionCount: project.sessionCount ?? 0,
+      routingContext: project.routingContext ?? null,
     }));
     if (projects.length === 0) {
       recordBackgroundTelemetry({
@@ -651,17 +766,25 @@ async function resolveBoundProject(tabId: number, pageState: RelayPageState) {
   return payload.binding ?? null;
 }
 
-async function resolveActiveProject(tabId: number, pageState: RelayPageState) {
+async function resolveActiveProject(
+  tabId: number,
+  pageState: RelayPageState,
+  preferredProjectId?: string | null,
+) {
   const session = await getRelaySession();
   const remote = await loadSessionData();
   const bound = remote.connected
     ? await resolveBoundProject(tabId, pageState)
     : null;
+  const preferredProject =
+    preferredProjectId
+      ? remote.projects.find((project) => project.id === preferredProjectId) ?? null
+      : null;
   const fallbackProject =
     remote.projects.find((project) => project.id === session.projectId) ??
     remote.projects[0] ??
     null;
-  const activeProject = bound?.project ?? fallbackProject;
+  const activeProject = preferredProject ?? bound?.project ?? fallbackProject;
 
   return {
     connected: remote.connected,
@@ -754,9 +877,13 @@ async function buildActiveProjectState(
     return createEmptyActiveProjectState();
   }
 
+  const associationProject = getRetargetableAssociationProject(state);
   const effectiveProjectId =
-    state.projectId ?? (session.assumedProjectId || null);
+    associationProject?.projectId ??
+    state.projectId ??
+    (session.assumedProjectId || null);
   const effectiveProjectName =
+    associationProject?.projectName ??
     state.projectName ??
     session.assumedProjectName ??
     session.projectOptions.find((project) => project.id === effectiveProjectId)?.name ??
@@ -848,8 +975,15 @@ async function syncTabRemoteState(
   await broadcastActiveProjectState(tabId);
 
   try {
+    const approvedAssociations = state.page.supported
+      ? await readApprovedAssociations()
+      : [];
+    const preferredProjectId =
+      getRetargetableAssociationProject(state)?.projectId ??
+      findApprovedAssociationMatch(state.page, approvedAssociations)?.projectId ??
+      null;
     const { connected, projects, activeProject, settings, boundProject } =
-      await resolveActiveProject(tabId, state.page);
+      await resolveActiveProject(tabId, state.page, preferredProjectId);
     const dashboard = activeProject
       ? await fetchProjectDashboard(activeProject.id)
       : null;
@@ -1058,6 +1192,7 @@ async function dismissCaptureReview(tabId: number) {
 async function resolveAutoCaptureRouting(
   tabId: number,
   state: RelayTabState,
+  approvedAssociationsInput?: Awaited<ReturnType<typeof readApprovedAssociations>>,
 ): Promise<RelayRoutingDecision> {
   const chatKey = buildAssociationKey(state.page);
   if (await isIgnoredChatKey(chatKey)) {
@@ -1071,7 +1206,8 @@ async function resolveAutoCaptureRouting(
     };
   }
 
-  const approvedAssociations = await readApprovedAssociations();
+  const approvedAssociations =
+    approvedAssociationsInput ?? (await readApprovedAssociations());
   return evaluateProjectRouting({
     page: state.page,
     projects: state.projectOptions,
@@ -1088,10 +1224,14 @@ async function schedulePendingAutoSaveAssociation(
   projectName: string,
 ) {
   const state = getOrCreateTabState(tabId);
+  const session = await getRelaySession();
   const captureSignature = state.page.captureSignature ?? null;
   const { chatAssociation, toast, pending } = buildPendingAutoSaveAssociation({
     projectId,
     projectName,
+    projectOptions: state.projectOptions.length
+      ? state.projectOptions
+      : session.projectOptions,
     captureSignature,
   });
 
@@ -1105,17 +1245,19 @@ async function schedulePendingAutoSaveAssociation(
 
   state.pendingAssociationTimer = setTimeout(() => {
     state.pendingAssociationTimer = null;
+    const pendingAssociation = state.pendingAssociation;
     const stillPending =
-      state.pendingAssociation &&
-      state.pendingAssociation.projectId === projectId &&
-      state.pendingAssociation.captureSignature === captureSignature;
+      pendingAssociation &&
+      pendingAssociation.mode === "auto_save" &&
+      pendingAssociation.captureSignature === captureSignature;
 
     if (!stillPending) {
       return;
     }
 
+    const nextProjectId = pendingAssociation.projectId;
     clearPendingAssociation(state, { clearChatAssociation: true });
-    void captureObservedChange(tabId, projectId, {
+    void captureObservedChange(tabId, nextProjectId, {
       manualSelection: false,
       skipAssociationToast: true,
     });
@@ -1128,9 +1270,13 @@ async function showHeldAssociationToast(
   projectName: string,
 ) {
   const state = getOrCreateTabState(tabId);
+  const session = await getRelaySession();
   const { chatAssociation, toast } = buildHeldReviewAssociation({
     projectId,
     projectName,
+    projectOptions: state.projectOptions.length
+      ? state.projectOptions
+      : session.projectOptions,
     reason:
       state.routingReview?.reasons[0] ??
       "Relay wants confirmation before saving this chat to a project.",
@@ -1154,7 +1300,7 @@ async function resolveAssociationToast(
   const state = getOrCreateTabState(tabId);
   const effect = resolveAssociationToastAction(payload);
 
-  if (payload.mode === "auto_save" && effect === "dismiss") {
+  if (effect === "dismiss") {
     await dismissCaptureReview(tabId);
     return { ok: true, action: "dismissed" as const };
   }
@@ -1172,6 +1318,128 @@ async function resolveAssociationToast(
   }
 
   return { ok: true, action: "noop" as const };
+}
+
+async function archiveSessionQuietly(projectId: string, sessionId: string) {
+  const response = await relayFetch(`/api/projects/${projectId}/sessions/${sessionId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ archived: true }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await readErrorResponse(response, "Failed to detach the previous chat association."),
+    );
+  }
+}
+
+async function retargetAssociation(
+  tabId: number,
+  projectId: string,
+  source: "toast" | "inline_chip" | "sidebar" = "sidebar",
+) {
+  const state = getOrCreateTabState(tabId);
+  const session = await getRelaySession();
+  const project = resolveAssociationProjectOption(state, session, projectId);
+  if (!project) {
+    return { ok: false, reason: "Choose a valid project first." };
+  }
+
+  const previousState = {
+    projectId: state.projectId,
+    projectName: state.projectName,
+    chatAssociation: state.chatAssociation,
+    pendingAssociation: state.pendingAssociation,
+  };
+
+  await setSessionProjectTarget(project.projectId, project.projectName);
+
+  if (
+    state.chatAssociation.status === "saved" &&
+    state.chatAssociation.projectId &&
+    state.chatAssociation.sessionId &&
+    state.chatAssociation.projectId !== project.projectId
+  ) {
+    const previousAssociation = state.chatAssociation;
+    const previousAssociationProjectId = previousAssociation.projectId;
+    const previousAssociationSessionId = previousAssociation.sessionId;
+    state.projectId = project.projectId;
+    state.projectName = project.projectName;
+    state.chatAssociation = {
+      status: "pending",
+      projectId: project.projectId,
+      projectName: project.projectName,
+      sessionId: null,
+      reason: `Moving this chat to ${project.projectName}…`,
+      capturedAt: null,
+    };
+    await broadcastActiveProjectState(tabId);
+
+    const result = await captureObservedChange(tabId, project.projectId, {
+      manualSelection: false,
+      skipAssociationToast: true,
+    });
+
+    if (!result?.ok) {
+      state.projectId = previousState.projectId;
+      state.projectName = previousState.projectName;
+      state.chatAssociation = previousState.chatAssociation;
+      state.pendingAssociation = previousState.pendingAssociation;
+      if (previousAssociationProjectId) {
+        await setSessionProjectTarget(
+          previousAssociationProjectId,
+          previousAssociation.projectName ??
+            previousState.projectName ??
+            project.projectName,
+        );
+      }
+      await broadcastActiveProjectState(tabId);
+      return result ?? { ok: false, reason: "Move failed." };
+    }
+
+    try {
+      await archiveSessionQuietly(
+        previousAssociationProjectId!,
+        previousAssociationSessionId!,
+      );
+      await removeApprovedAssociationBySession(previousAssociationSessionId!);
+    } catch (cause) {
+      recordBackgroundTelemetry({
+        level: "warn",
+        surface: "extension-background",
+        area: "association",
+        event: "association.move_detach_failed",
+        message:
+          cause instanceof Error
+            ? cause.message
+            : "Failed to detach the previous saved association after moving the chat.",
+        context: {
+          fromProjectId: previousAssociation.projectId,
+          toProjectId: project.projectId,
+          source,
+        },
+      });
+    }
+
+    return {
+      ok: true,
+      moved: true,
+      projectId: project.projectId,
+      projectName: project.projectName,
+      state: await buildActiveProjectState(tabId),
+    };
+  }
+
+  updateAssociationProjectState(state, project.projectId, project.projectName);
+  state.lastError = null;
+  await broadcastActiveProjectState(tabId);
+
+  return {
+    ok: true,
+    projectId: project.projectId,
+    projectName: project.projectName,
+    state: await buildActiveProjectState(tabId),
+  };
 }
 
 async function captureObservedChange(
@@ -1207,16 +1475,56 @@ async function captureObservedChange(
     let routingDecision: Awaited<ReturnType<typeof resolveAutoCaptureRouting>> | null =
       null;
     let autoAssociated = false;
+    const ignoredFromMemory = explicitProjectId
+      ? false
+      : await isIgnoredChatKey(chatKey);
+    const approvedAssociations = explicitProjectId
+      ? []
+      : await readApprovedAssociations();
+    const exactApprovedAssociation = explicitProjectId
+      ? null
+      : findApprovedAssociationMatch(state.page, approvedAssociations);
 
     if (!explicitProjectId) {
-      routingDecision = await resolveAutoCaptureRouting(tabId, state);
-      state.routingReview = {
-        confidence: routingDecision.confidence,
-        score: routingDecision.score,
-        reasons: [...routingDecision.reasons],
-      };
-
-      if (routingDecision.mode === "ignore") {
+      if (
+        state.chatAssociation.status === "saved" &&
+        state.chatAssociation.projectId
+      ) {
+        projectId = state.chatAssociation.projectId;
+        state.routingReview = {
+          confidence: "high",
+          score: 100,
+          reasons: ["This chat is already associated with the project."],
+        };
+      } else if (state.chatAssociation.status === "archived") {
+        clearPendingAssociation(state, { clearChatAssociation: false });
+        state.lastRoutedSignature = state.page.captureSignature ?? chatKey;
+        state.routingReview = {
+          confidence: "low",
+          score: 0,
+          reasons: ["This chat was detached from the project and will stay out of auto-capture."],
+        };
+        return {
+          ok: true,
+          ignored: true,
+          captured: false,
+          reason: "This chat was detached from the project.",
+        };
+      } else if (state.chatAssociation.status === "ignored") {
+        clearPendingAssociation(state, { clearChatAssociation: false });
+        state.lastRoutedSignature = state.page.captureSignature ?? chatKey;
+        state.routingReview = {
+          confidence: "low",
+          score: 0,
+          reasons: ["This chat was already dismissed from automatic capture."],
+        };
+        return {
+          ok: true,
+          ignored: true,
+          captured: false,
+          reason: "This chat was already dismissed from automatic capture.",
+        };
+      } else if (ignoredFromMemory) {
         clearPendingAssociation(state, { clearChatAssociation: true });
         state.lastRoutedSignature = state.page.captureSignature ?? chatKey;
         state.chatAssociation = {
@@ -1224,43 +1532,85 @@ async function captureObservedChange(
           projectId: null,
           projectName: null,
           sessionId: null,
-          reason:
-            routingDecision.reasons[0] ??
-            "Relay skipped this chat because it did not clearly map to a project.",
+          reason: "Relay will ignore this chat until you save it manually.",
           capturedAt: null,
+        };
+        state.routingReview = {
+          confidence: "low",
+          score: 0,
+          reasons: ["This chat was already dismissed from automatic capture."],
         };
         return {
           ok: true,
           ignored: true,
           captured: false,
-          reason: routingDecision.reasons[0] ?? "Ignored this chat.",
+          reason: "This chat was already dismissed from automatic capture.",
         };
-      }
-
-      if (
-        routingDecision.mode === "hold" &&
-        routingDecision.candidateProjectId &&
-        routingDecision.candidateProjectName
-      ) {
-        await clearIgnoredChatKey(chatKey);
-        await showHeldAssociationToast(
+      } else if (exactApprovedAssociation?.projectId) {
+        projectId = exactApprovedAssociation.projectId;
+        state.routingReview = {
+          confidence: "high",
+          score: 100,
+          reasons: ["Matched a previously approved chat fingerprint."],
+        };
+      } else {
+        routingDecision = await resolveAutoCaptureRouting(
           tabId,
-          routingDecision.candidateProjectId,
-          routingDecision.candidateProjectName,
+          state,
+          approvedAssociations,
         );
-        return {
-          ok: true,
-          held: true,
-          captured: false,
-          projectId: routingDecision.candidateProjectId,
-          reason:
-            routingDecision.reasons[0] ??
-            "Waiting for review before saving this chat.",
+        state.routingReview = {
+          confidence: routingDecision.confidence,
+          score: routingDecision.score,
+          reasons: [...routingDecision.reasons],
         };
-      }
 
-      projectId = routingDecision.candidateProjectId ?? projectId;
-      autoAssociated = Boolean(projectId);
+        if (routingDecision.mode === "ignore") {
+          clearPendingAssociation(state, { clearChatAssociation: true });
+          state.lastRoutedSignature = state.page.captureSignature ?? chatKey;
+          state.chatAssociation = {
+            status: "ignored",
+            projectId: null,
+            projectName: null,
+            sessionId: null,
+            reason:
+              routingDecision.reasons[0] ??
+              "Relay skipped this chat because it did not clearly map to a project.",
+            capturedAt: null,
+          };
+          return {
+            ok: true,
+            ignored: true,
+            captured: false,
+            reason: routingDecision.reasons[0] ?? "Ignored this chat.",
+          };
+        }
+
+        if (
+          routingDecision.mode === "hold" &&
+          routingDecision.candidateProjectId &&
+          routingDecision.candidateProjectName
+        ) {
+          await clearIgnoredChatKey(chatKey);
+          await showHeldAssociationToast(
+            tabId,
+            routingDecision.candidateProjectId,
+            routingDecision.candidateProjectName,
+          );
+          return {
+            ok: true,
+            held: true,
+            captured: false,
+            projectId: routingDecision.candidateProjectId,
+            reason:
+              routingDecision.reasons[0] ??
+              "Waiting for review before saving this chat.",
+          };
+        }
+
+        projectId = routingDecision.candidateProjectId ?? projectId;
+        autoAssociated = Boolean(projectId);
+      }
     }
 
     if (!projectId) {
@@ -2067,6 +2417,26 @@ chrome.runtime.onMessage.addListener(
           } else {
             sendResponse({ ok: true });
           }
+          return;
+        }
+
+        if (message.type === "RELAY_SET_CHAT_ASSOCIATION_PROJECT") {
+          const tabId = message.payload.tabId ?? sender.tab?.id;
+          if (!tabId) {
+            sendResponse({
+              ok: false,
+              reason: "No supported tab was provided for chat association retargeting.",
+            });
+            return;
+          }
+
+          sendResponse(
+            await retargetAssociation(
+              tabId,
+              message.payload.projectId,
+              message.payload.source,
+            ),
+          );
           return;
         }
 
