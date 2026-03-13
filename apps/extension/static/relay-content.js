@@ -45,6 +45,7 @@
       payload: null,
       hideTimer: null,
       removeTimer: null,
+      countdownTimer: null,
     },
   };
 
@@ -422,7 +423,7 @@
 
       .relay-inline-chip__statusRow {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         gap: 8px;
       }
 
@@ -448,23 +449,33 @@
         color: #b4b4bb;
       }
 
+      .relay-inline-chip__statusCopy {
+        min-width: 0;
+        flex: 1;
+        display: inline-flex;
+        align-items: flex-start;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+
       .relay-inline-chip__infoWrap {
         position: relative;
         display: inline-flex;
-        margin-left: auto;
+        flex: 0 0 auto;
+        margin-top: 1px;
       }
 
       .relay-inline-chip__info {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 16px;
-        height: 16px;
+        width: 14px;
+        height: 14px;
         border: 1px solid rgba(255, 255, 255, 0.07);
         border-radius: 999px;
         background: transparent;
         color: #52525b;
-        font-size: 10px;
+        font-size: 9px;
         font-weight: 700;
         cursor: help;
       }
@@ -506,19 +517,23 @@
 
       .relay-inline-chip__row {
         display: flex;
-        align-items: center;
+        align-items: stretch;
         gap: 8px;
       }
 
       .relay-inline-chip__button {
         position: relative;
         flex: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         min-width: 0;
+        min-height: 36px;
         border: none;
         border-radius: 4px;
         background: #e4e4e7;
         color: #09090b;
-        padding: 8px 14px;
+        padding: 0 14px;
         font-size: 13px;
         font-weight: 500;
         cursor: pointer;
@@ -546,12 +561,14 @@
       .relay-inline-chip__shortcut {
         display: inline-flex;
         align-items: center;
+        justify-content: center;
         gap: 6px;
         flex-shrink: 0;
+        min-height: 36px;
         border-radius: 6px;
         border: 1px solid rgba(255, 255, 255, 0.07);
         background: transparent;
-        padding: 6px 8px;
+        padding: 0 10px;
         color: #52525b;
         font-size: 11px;
         font-weight: 500;
@@ -594,35 +611,37 @@
 
       .relay-association-toast {
         position: fixed;
-        top: 22px;
-        right: 0;
+        top: 18px;
+        right: 18px;
         display: grid;
-        gap: 8px;
+        gap: 10px;
         min-width: 220px;
-        max-width: min(320px, calc(100vw - 24px));
-        padding: 12px 14px 12px 16px;
+        max-width: min(340px, calc(100vw - 36px));
+        padding: 12px 14px 12px 14px;
         border: 1px solid rgba(255, 255, 255, 0.07);
-        border-right: none;
-        border-radius: 16px 0 0 16px;
+        border-radius: 14px;
         background: rgba(26, 26, 28, 0.94);
         color: #e4e4e7;
         box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
         font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
         z-index: 2147483001;
         opacity: 0;
-        transform: translateX(12px);
+        transform: translateY(-8px);
         transition: opacity 160ms ease, transform 160ms ease;
-        cursor: pointer;
       }
 
       .relay-association-toast--visible {
         opacity: 1;
-        transform: translateX(0);
+        transform: translateY(0);
       }
 
       .relay-association-toast--hiding {
         opacity: 0;
-        transform: translateX(14px);
+        transform: translateY(-10px);
+      }
+
+      .relay-association-toast--clickable {
+        cursor: pointer;
       }
 
       .relay-association-toast__title {
@@ -639,7 +658,13 @@
         color: #b4b4bb;
       }
 
-      .relay-association-toast__cancel {
+      .relay-association-toast__actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .relay-association-toast__button {
         width: fit-content;
         border: 1px solid rgba(255, 255, 255, 0.07);
         border-radius: 999px;
@@ -648,17 +673,18 @@
         padding: 4px 10px;
         font-size: 11px;
         font-weight: 600;
-        opacity: 0;
-        pointer-events: none;
-        transform: translateY(-2px);
-        transition: opacity 120ms ease, transform 120ms ease;
+        cursor: pointer;
       }
 
-      .relay-association-toast:hover .relay-association-toast__cancel,
-      .relay-association-toast:focus-within .relay-association-toast__cancel {
-        opacity: 1;
-        pointer-events: auto;
-        transform: translateY(0);
+      .relay-association-toast__button--primary {
+        background: #e4e4e7;
+        color: #09090b;
+      }
+
+      .relay-association-toast__countdown {
+        margin-left: auto;
+        font-size: 11px;
+        color: #71717a;
       }
     `;
 
@@ -883,6 +909,24 @@
     return result;
   }
 
+  function dismissInlineChip(source) {
+    emitInlineTelemetry({
+      level: "info",
+      area: "chip",
+      event:
+        source === "keyboard"
+          ? "inline_chip.dismissed_escape"
+          : "inline_chip.dismissed",
+      message:
+        source === "keyboard"
+          ? "Dismissed the inline chip with Escape."
+          : "Dismissed the inline chip.",
+    });
+    relayChipState.dismissed = true;
+    relayChipState.forcedInsertKind = null;
+    hideInlineChipWithMotion();
+  }
+
   function renderInlineChip() {
     const config = getSiteConfig();
     const activeState = getRenderableState();
@@ -929,15 +973,17 @@
           </div>
           <div class="relay-inline-chip__statusRow">
             <span class="relay-inline-chip__dot ${dotClass}"></span>
-            <p class="relay-inline-chip__status">${escapeHtml(activeState.message || "")}</p>
-            ${
-              shouldShowIssue
-                ? `<div class="relay-inline-chip__infoWrap">
-                    <button class="relay-inline-chip__info" type="button" aria-label="Details">i</button>
-                    <div class="relay-inline-chip__tooltip">${escapeHtml(activeState.issue.detail)}</div>
-                  </div>`
-                : ""
-            }
+            <div class="relay-inline-chip__statusCopy">
+              <p class="relay-inline-chip__status">${escapeHtml(activeState.message || "")}</p>
+              ${
+                shouldShowIssue
+                  ? `<div class="relay-inline-chip__infoWrap">
+                      <button class="relay-inline-chip__info" type="button" aria-label="Details">i</button>
+                      <div class="relay-inline-chip__tooltip">${escapeHtml(activeState.issue.detail)}</div>
+                    </div>`
+                  : ""
+              }
+            </div>
           </div>
           <div class="relay-inline-chip__trust">
             ${
@@ -973,15 +1019,7 @@
       const closeButton = root.querySelector(".relay-inline-chip__close");
       if (closeButton) {
         closeButton.addEventListener("click", () => {
-          emitInlineTelemetry({
-            level: "info",
-            area: "chip",
-            event: "inline_chip.dismissed",
-            message: "Dismissed the inline chip.",
-          });
-          relayChipState.dismissed = true;
-          relayChipState.forcedInsertKind = null;
-          hideInlineChipWithMotion();
+          dismissInlineChip("button");
         });
       }
 
@@ -1038,6 +1076,10 @@
       window.clearTimeout(toastState.removeTimer);
       toastState.removeTimer = null;
     }
+    if (toastState.countdownTimer !== null) {
+      window.clearInterval(toastState.countdownTimer);
+      toastState.countdownTimer = null;
+    }
   }
 
   function hideAssociationToast() {
@@ -1053,6 +1095,17 @@
     }, 180);
   }
 
+  function formatToastCountdown(expiresAt) {
+    return `${Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000))}s`;
+  }
+
+  function updateAssociationToastCountdown(root, payload) {
+    const countdown = root.querySelector(".relay-association-toast__countdown");
+    if (!countdown) return;
+
+    countdown.textContent = formatToastCountdown(payload.expiresAt);
+  }
+
   function renderAssociationToast(payload) {
     ensureInlineChipStyles();
     relayChipState.associationToast.payload = payload;
@@ -1066,28 +1119,51 @@
       document.body.appendChild(root);
     }
 
+    const title =
+      payload.mode === "auto_save"
+        ? `Saving to ${payload.projectName}`
+        : `Approve save to ${payload.projectName}`;
+    const meta =
+      payload.mode === "auto_save"
+        ? "Relay is confident about this chat. Cancel if this association is wrong."
+        : "Relay is not fully sure. Approve now or review it later in the sidebar.";
+
+    root.classList.toggle(
+      "relay-association-toast--clickable",
+      payload.mode === "held_review",
+    );
     root.innerHTML = `
-      <p class="relay-association-toast__title">Saved to ${escapeHtml(payload.projectName)}</p>
-      <p class="relay-association-toast__meta">Open the dashboard or cancel this association.</p>
-      <button class="relay-association-toast__cancel" type="button">Cancel save</button>
+      <p class="relay-association-toast__title">${escapeHtml(title)}</p>
+      <p class="relay-association-toast__meta">${escapeHtml(meta)}</p>
+      <div class="relay-association-toast__actions">
+        ${
+          payload.mode === "auto_save"
+            ? '<button class="relay-association-toast__button" type="button" data-action="cancel">Cancel save</button>'
+            : '<button class="relay-association-toast__button relay-association-toast__button--primary" type="button" data-action="approve">Approve save</button>'
+        }
+        <span class="relay-association-toast__countdown">${formatToastCountdown(payload.expiresAt)}</span>
+      </div>
     `;
 
-    root.onclick = () => {
-      sendRuntimeMessage({ type: "RELAY_OPEN_SIDE_PANEL" });
-      hideAssociationToast();
-    };
+    root.onclick = null;
+    if (payload.mode === "held_review") {
+      root.onclick = () => {
+        sendRuntimeMessage({ type: "RELAY_OPEN_SIDE_PANEL" });
+        hideAssociationToast();
+      };
+    }
 
-    const cancelButton = root.querySelector(".relay-association-toast__cancel");
-    if (cancelButton) {
-      cancelButton.addEventListener("click", async (event) => {
+    const actionButton = root.querySelector("[data-action]");
+    if (actionButton) {
+      actionButton.addEventListener("click", async (event) => {
         event.preventDefault();
         event.stopPropagation();
         await sendRuntimeMessage({
-          type: "RELAY_SET_CHAT_ASSOCIATION_ARCHIVED",
+          type: "RELAY_RESOLVE_ASSOCIATION_TOAST",
           payload: {
+            action: actionButton.getAttribute("data-action"),
+            mode: payload.mode,
             projectId: payload.projectId,
-            sessionId: payload.sessionId,
-            archived: true,
           },
         });
         hideAssociationToast();
@@ -1099,9 +1175,13 @@
       root.classList.add("relay-association-toast--visible");
     });
 
+    updateAssociationToastCountdown(root, payload);
+    relayChipState.associationToast.countdownTimer = window.setInterval(() => {
+      updateAssociationToastCountdown(root, payload);
+    }, 250);
     relayChipState.associationToast.hideTimer = window.setTimeout(() => {
       hideAssociationToast();
-    }, 5000);
+    }, Math.max(0, payload.expiresAt - Date.now()));
   }
 
   async function pushObservedPageState(force) {
@@ -1116,6 +1196,7 @@
       relayChipState.lastPageStateKey = "";
       relayChipState.freshCandidateSince = 0;
       clearChipTimers();
+      hideAssociationToast();
     }
 
     const pageState = computePageState(getSiteConfig());
@@ -1123,6 +1204,9 @@
     const nextKey = buildPageStateKey(pageState);
 
     if (force || relayChipState.lastPageStateKey !== nextKey) {
+      if (relayChipState.associationToast.payload) {
+        hideAssociationToast();
+      }
       relayChipState.lastPageStateKey = nextKey;
       await sendRuntimeMessage({
         type: "RELAY_PAGE_STATE_UPDATE",
@@ -1175,6 +1259,19 @@
       subtree: true,
       characterData: true,
     });
+    window.addEventListener("keydown", (event) => {
+      if (
+        event.key === "Escape" &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        document.getElementById("relay-inline-chip")
+      ) {
+        event.preventDefault();
+        dismissInlineChip("keyboard");
+      }
+    });
     window.addEventListener("focus", () => queuePageObservation(true));
     window.addEventListener("resize", () => queuePageObservation(false));
     window.addEventListener("popstate", () => {
@@ -1189,6 +1286,13 @@
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === "RELAY_ACTIVE_PROJECT_STATE_CHANGED") {
       relayChipState.currentState = message.payload.state;
+      if (
+        relayChipState.associationToast.payload &&
+        message.payload.state.chatAssociation.status !== "pending" &&
+        message.payload.state.chatAssociation.status !== "held"
+      ) {
+        hideAssociationToast();
+      }
       renderInlineChip();
       return false;
     }
