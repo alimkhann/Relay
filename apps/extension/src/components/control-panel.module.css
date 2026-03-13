@@ -10,7 +10,7 @@
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background: #161716;
+  background: #1a1a1c;
 }
 
 :global(*),
@@ -28,15 +28,15 @@
 /* ── Shell ── */
 
 .shell {
-  --bg: #090a0b;
-  --surface: #0e0f10;
-  --ink: #ededeb;
-  --ink-secondary: #a3a3a0;
-  --muted: #737370;
-  --faint: #424240;
-  --line: rgba(255, 255, 255, 0.1);
-  --accent: #ededeb;
-  --accent-text: #090a0b;
+  --bg: #1a1a1c;
+  --surface: #202022;
+  --ink: #e4e4e7;
+  --ink-secondary: #b4b4bb;
+  --muted: #71717a;
+  --faint: #52525b;
+  --line: rgba(255, 255, 255, 0.07);
+  --accent: #e4e4e7;
+  --accent-text: #09090b;
   --radius: 8px;
   --radius-sm: 4px;
 
@@ -407,6 +407,12 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.contextItem:hover .contextActions {
+  opacity: 1;
 }
 
 .contextComposer {
@@ -612,6 +618,20 @@
 .projectOptionActive {
   color: var(--ink);
   font-weight: 600;
+}
+
+/* ── Section color-coded borders ── */
+
+.contextSectionDecisions {
+  border-left: 2px solid #60a5fa;
+}
+
+.contextSectionConstraints {
+  border-left: 2px solid #fbbf24;
+}
+
+.contextSectionTasks {
+  border-left: 2px solid #34d399;
 }
 
 /* ── Shiny text (inserting animation) ── */

@@ -27,6 +27,12 @@ interface ControlPanelProps {
 type ContextSection = "decisions" | "constraints" | "tasks";
 type ContextItem = RelayActiveProjectState["contextPreview"][ContextSection][number];
 
+const sectionColorClass: Record<ContextSection, string> = {
+  decisions: "contextSectionDecisions",
+  constraints: "contextSectionConstraints",
+  tasks: "contextSectionTasks",
+};
+
 const sectionLabels: Record<ContextSection, string> = {
   decisions: "Decisions",
   constraints: "Constraints",
@@ -952,7 +958,20 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     >
       {/* ─── Header ─── */}
       <header className={styles.header}>
-        <span className={styles.wordmark}>Relay</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <a
+            className={styles.inlineLink}
+            href={dashboardHref}
+            target="_blank"
+            rel="noreferrer"
+            style={{ fontSize: 11 }}
+          >
+            Dashboard
+          </a>
+        </div>
         {activeState.page.supported ? (
           <span className={styles.pageBadge}>
             {activeState.page.platform}
@@ -1025,23 +1044,13 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         </>
       ) : activeState.viewState === "connected-loading" ? (
         <section className={styles.panel}>
-          <div className={styles.panelTopRow}>
-            <div>
-              <h2 className={styles.projectName}>
-                {activeState.projectName ?? "Checking project"}
-              </h2>
-              <p className={styles.copy}>
-                Relay is keeping the last known project while this chat reloads.
-              </p>
-            </div>
-            <a
-              className={styles.inlineLink}
-              href={dashboardHref}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Dashboard
-            </a>
+          <div>
+            <h2 className={styles.projectName}>
+              {activeState.projectName ?? "Checking project"}
+            </h2>
+            <p className={styles.copy}>
+              Relay is keeping the last known project while this chat reloads.
+            </p>
           </div>
 
           <div className={styles.statusRow}>
@@ -1066,22 +1075,12 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         </section>
       ) : activeState.viewState === "unsupported" ? (
         <section className={styles.panel}>
-          <div className={styles.panelTopRow}>
-            <div>
-              <h2 className={styles.sectionTitle}>Open a supported AI chat</h2>
-              <p className={styles.copy}>
-                Relay is ready, but this tab is not one of the supported chat
-                surfaces yet.
-              </p>
-            </div>
-            <a
-              className={styles.inlineLink}
-              href={dashboardHref}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Dashboard
-            </a>
+          <div>
+            <h2 className={styles.sectionTitle}>Open a supported AI chat</h2>
+            <p className={styles.copy}>
+              Relay is ready, but this tab is not one of the supported chat
+              surfaces yet.
+            </p>
           </div>
         </section>
       ) : (
@@ -1130,14 +1129,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   </div>
                 ) : null}
               </div>
-              <a
-                className={styles.inlineLink}
-                href={dashboardHref}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Dashboard
-              </a>
             </div>
 
             <div className={styles.statusRow}>
@@ -1270,21 +1261,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           ) : null}
 
           <section className={styles.panel}>
-            <div className={styles.panelTopRow}>
-              <div>
-                <h2 className={styles.sectionTitle}>Project context</h2>
-                <p className={styles.copy}>
-                  Quick edits here change the same carry-forward state the dashboard uses.
-                </p>
-              </div>
-              <a
-                className={styles.inlineLink}
-                href={dashboardHref}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Open full dashboard
-              </a>
+            <div>
+              <h2 className={styles.sectionTitle}>Project context</h2>
+              <p className={styles.copy}>
+                Quick edits here change the same carry-forward state the dashboard uses.
+              </p>
             </div>
 
             <div className={styles.contextStack}>
@@ -1294,7 +1275,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 const visibleItems = expanded ? items.slice(0, 5) : items.slice(0, 1);
 
                 return (
-                  <div key={section} className={styles.contextSection}>
+                  <div key={section} className={`${styles.contextSection} ${styles[sectionColorClass[section]]}`}>
                     <div className={styles.contextSectionHeader}>
                       <span className={styles.contextLabel}>{sectionLabels[section]}</span>
                       <button
