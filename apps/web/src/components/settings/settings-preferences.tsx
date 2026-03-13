@@ -85,32 +85,32 @@ export function SettingsPreferences({
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-12 max-w-2xl pt-6">
       {/* ─── Connection ─── */}
-      <section className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-5 shadow-[var(--relay-shadow-sm)]">
-        <h2 className="text-sm font-semibold">Chrome extension</h2>
-        <p className="mt-1.5 text-sm leading-relaxed text-[var(--relay-muted)]">
+      <section className="border-t border-[var(--relay-line)] pt-8">
+        <h2 className="text-sm font-medium tracking-wide uppercase text-[var(--relay-ink)]">Chrome extension</h2>
+        <p className="mt-2 text-[15px] leading-relaxed text-[var(--relay-muted)]">
           Open the Relay sidepanel in Chrome and tap{" "}
-          <strong className="text-[var(--relay-ink)]">Connect</strong> to pair
+          <strong className="text-[var(--relay-ink)] font-semibold">Connect</strong> to pair
           your browser.
         </p>
       </section>
 
       {/* ─── Platforms ─── */}
-      <section>
-        <h2 className="text-sm font-semibold">Platforms</h2>
-        <p className="mt-1 text-sm text-[var(--relay-muted)]">
+      <section className="border-t border-[var(--relay-line)] pt-8">
+        <h2 className="text-sm font-medium tracking-wide uppercase text-[var(--relay-ink)]">Platforms</h2>
+        <p className="mt-1 text-[15px] text-[var(--relay-muted)]">
           Choose which AI chats Relay watches.
         </p>
-        <div className="mt-3 divide-y divide-[var(--relay-line)] rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
+        <div className="mt-6 divide-y divide-[var(--relay-line)] border-y border-[var(--relay-line)]">
           {platformOptions.map((platform) => {
             const checked = settings.enabledPlatforms.includes(platform.key);
             return (
               <div
                 key={platform.key}
-                className="flex items-center justify-between px-4 py-3"
+                className="flex items-center justify-between py-4"
               >
-                <span className="text-sm">{platform.label}</span>
+                <span className="text-[15px] font-medium text-[var(--relay-ink)]">{platform.label}</span>
                 <Toggle
                   checked={checked}
                   disabled={pending}
@@ -133,16 +133,16 @@ export function SettingsPreferences({
       </section>
 
       {/* ─── Behavior ─── */}
-      <section>
-        <h2 className="text-sm font-semibold">Behavior</h2>
-        <p className="mt-1 text-sm text-[var(--relay-muted)]">
+      <section className="border-t border-[var(--relay-line)] pt-8">
+        <h2 className="text-sm font-medium tracking-wide uppercase text-[var(--relay-ink)]">Behavior</h2>
+        <p className="mt-1 text-[15px] text-[var(--relay-muted)]">
           Fine-tune how Relay runs in the background.
         </p>
-        <div className="mt-3 divide-y divide-[var(--relay-line)] rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
-          <div className="flex items-center justify-between gap-4 px-4 py-3">
+        <div className="mt-6 divide-y divide-[var(--relay-line)] border-y border-[var(--relay-line)]">
+          <div className="flex items-center justify-between py-4">
             <div>
-              <p className="text-sm font-medium">Auto-capture</p>
-              <p className="text-sm text-[var(--relay-muted)]">
+              <p className="text-[15px] font-medium text-[var(--relay-ink)]">Auto-capture</p>
+              <p className="text-sm text-[var(--relay-muted)] mt-1">
                 Save chat content automatically.
               </p>
             </div>
@@ -157,10 +157,10 @@ export function SettingsPreferences({
               }
             />
           </div>
-          <div className="flex items-center justify-between gap-4 px-4 py-3">
+          <div className="flex items-center justify-between gap-4 py-4">
             <div>
-              <p className="text-sm font-medium">Inline chip</p>
-              <p className="text-sm text-[var(--relay-muted)]">
+              <p className="text-[15px] font-medium text-[var(--relay-ink)]">Inline chip</p>
+              <p className="text-sm text-[var(--relay-muted)] mt-1">
                 Show a brief-insert chip on new chats.
               </p>
             </div>
@@ -179,9 +179,9 @@ export function SettingsPreferences({
       </section>
 
       {/* ─── Fallback note ─── */}
-      <section className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-5 shadow-[var(--relay-shadow-sm)]">
-        <h2 className="text-sm font-semibold">Offline fallback</h2>
-        <p className="mt-1.5 text-sm leading-relaxed text-[var(--relay-muted)]">
+      <section className="border-t border-[var(--relay-line)] pt-8 pb-10">
+        <h2 className="text-sm font-medium tracking-wide uppercase text-[var(--relay-ink)]">Offline fallback</h2>
+        <p className="mt-2 text-[15px] leading-relaxed text-[var(--relay-muted)]">
           When AI is unavailable, Relay inserts a bounded brief from saved
           project context.
         </p>
@@ -189,7 +189,7 @@ export function SettingsPreferences({
 
       {/* ─── Toast ─── */}
       {(toast || pending) && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-full bg-[var(--relay-ink)] px-4 py-2 text-sm text-[var(--relay-bg)] shadow-[var(--relay-shadow)]">
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-5 py-2.5 text-[13px] font-medium text-[var(--relay-bg)] shadow-[var(--relay-shadow-lg)]">
           {pending ? "Saving…" : toast}
         </div>
       )}

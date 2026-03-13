@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "@fontsource-variable/outfit";
 import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 import { ThemeProvider } from "@/components/theme-provider";
 import { GlobalTelemetryBootstrap } from "@/components/telemetry/global-telemetry-bootstrap";
@@ -35,6 +36,7 @@ export default function RootLayout({
           {children}
         </ThemeProvider>
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

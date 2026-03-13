@@ -18,12 +18,12 @@ export function ProjectSummaryCard({
   }[icon]
 
   return (
-    <Card className="p-5">
+    <Card className="p-0 border-none py-0">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-stone-600">{title}</p>
-        <Icon className="h-4 w-4 text-stone-500" />
+        <p className="text-[13px] font-medium tracking-wide uppercase text-[var(--relay-ink)] opacity-70">{title}</p>
+        <Icon className="h-4 w-4 text-[var(--relay-ink-secondary)]" />
       </div>
-      <p className="mt-6 text-4xl font-semibold tracking-tight text-stone-950">{value}</p>
+      <p className="mt-4 text-3xl font-medium tracking-tight text-[var(--relay-ink)]">{value}</p>
     </Card>
   )
 }

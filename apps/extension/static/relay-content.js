@@ -522,11 +522,11 @@
     style.textContent = `
       .relay-inline-chip {
         width: min(340px, calc(100vw - 32px));
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 12px;
-        background: #1E1F1E;
-        color: #E8E8E4;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        background: #090a0b;
+        color: #ededeb;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
         font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
         overflow: hidden;
         z-index: 2147483000;
@@ -612,11 +612,11 @@
       }
 
       .relay-inline-chip__dot--ready {
-        background: #22c55e;
+        background: #ededeb;
       }
 
       .relay-inline-chip__dot--waiting {
-        background: #f59e0b;
+        background: #737370;
       }
 
       .relay-inline-chip__status {
@@ -693,18 +693,18 @@
         flex: 1;
         min-width: 0;
         border: none;
-        border-radius: 8px;
-        background: #E8E8E4;
-        color: #111210;
-        padding: 9px 14px;
+        border-radius: 4px;
+        background: #ededeb;
+        color: #090a0b;
+        padding: 8px 14px;
         font-size: 13px;
-        font-weight: 600;
+        font-weight: 500;
         cursor: pointer;
         transition: background 120ms, opacity 120ms;
       }
 
       .relay-inline-chip__button:hover:not(:disabled) {
-        background: #ffffff;
+        opacity: 0.9;
       }
 
       .relay-inline-chip__button:disabled {
@@ -717,8 +717,8 @@
       }
 
       .relay-inline-chip__button--success {
-        background: #16a34a;
-        color: #ffffff;
+        background: #737370;
+        color: #090a0b;
       }
 
       .relay-inline-chip__shortcut {

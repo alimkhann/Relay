@@ -16,8 +16,8 @@
   --relay-accent-text: #f5f5f3;
   --relay-soft: #f2f1ed;
   --relay-soft-hover: #eceae5;
-  --relay-success: #1b7a43;
-  --relay-warning: #b8860b;
+  --relay-success: #3d3f39;
+  --relay-warning: #7a7d73;
   --relay-shadow-sm:
     0 1px 2px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.04);
   --relay-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.06);
@@ -50,8 +50,8 @@
   --relay-accent-text: #111210;
   --relay-soft: #1a1b1a;
   --relay-soft-hover: #222322;
-  --relay-success: #2da85c;
-  --relay-warning: #d4a017;
+  --relay-success: #bcbdb6;
+  --relay-warning: #8b8e84;
   --relay-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
   --relay-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.2);
   --relay-shadow-lg:
@@ -81,8 +81,8 @@
     --relay-accent-text: #111210;
     --relay-soft: #1a1b1a;
     --relay-soft-hover: #222322;
-    --relay-success: #2da85c;
-    --relay-warning: #d4a017;
+    --relay-success: #bcbdb6;
+    --relay-warning: #8b8e84;
     --relay-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
     --relay-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.2);
     --relay-shadow-lg:

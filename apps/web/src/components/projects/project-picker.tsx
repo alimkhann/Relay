@@ -135,7 +135,7 @@ export function ProjectPicker({
                 className="flex flex-1 items-center gap-2 text-left"
               >
                 {p.id === currentId && (
-                  <Check className="h-3.5 w-3.5 text-[var(--relay-success)]" />
+                  <Check className="h-3.5 w-3.5 text-[var(--relay-ink)]" />
                 )}
                 <span
                   className={`text-sm ${

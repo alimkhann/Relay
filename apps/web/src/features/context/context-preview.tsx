@@ -4,9 +4,9 @@ import { Card } from "@/components/ui/card"
 
 export function ContextPreview({ packet }: { packet: ContextPacketDto | null }) {
   return (
-    <Card className="p-6">
-      <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">Latest packet</p>
-      <pre className="mt-4 whitespace-pre-wrap text-sm leading-6 text-stone-700">
+    <Card className="p-0 border-none py-0">
+      <p className="text-[13px] font-medium tracking-wide uppercase text-[var(--relay-ink)] opacity-70 mb-4">Latest packet</p>
+      <pre className="whitespace-pre-wrap text-[14px] leading-relaxed text-[var(--relay-ink-secondary)] bg-[var(--relay-soft)] p-4 rounded-[var(--relay-radius-sm)]">
         {packet?.content ?? "No context packet generated yet."}
       </pre>
     </Card>

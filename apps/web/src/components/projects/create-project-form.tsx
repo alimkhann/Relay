@@ -103,40 +103,42 @@ export function CreateProjectForm() {
   }
 
   return (
-    <div className="rounded-[20px] border border-[var(--relay-line)] bg-white/84 p-6 shadow-[var(--relay-shadow)]">
-      <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Create project</p>
-      <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--relay-ink)]">Give Relay a project to hold onto.</h2>
-      <p className="mt-3 text-sm leading-7 text-[var(--relay-muted)]">
-        Start with a name and optional one-line description. Relay uses this as the durable home for saved context, recent chats, and project briefs.
-      </p>
-
-      <div className="mt-5 grid gap-4">
-        <label className="space-y-2">
-          <span className="text-sm font-medium text-[var(--relay-muted)]">Project name</span>
+    <div className="max-w-xl">
+      <div className="space-y-6">
+        <label className="block space-y-2">
+          <span className="text-sm font-medium text-[var(--relay-ink)]">Name</span>
           <input
-            className="w-full rounded-[18px] border border-[var(--relay-line)] bg-white px-4 py-3 text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)]"
-            placeholder="Relay MVP"
+            className="w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-transparent px-3 py-2 text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)]"
+            placeholder="E.g., Acapella or Internal Tools"
             value={name}
             onChange={(event) => setName(event.target.value)}
+            disabled={pending}
+            autoFocus
           />
         </label>
 
-        <label className="space-y-2">
-          <span className="text-sm font-medium text-[var(--relay-muted)]">Description</span>
+        <label className="block space-y-2">
+          <span className="text-sm font-medium flex items-baseline gap-2">
+            <span className="text-[var(--relay-ink)]">Purpose</span>
+            <span className="text-xs text-[var(--relay-muted)] font-normal">Optional</span>
+          </span>
           <textarea
-            className="min-h-24 w-full rounded-[18px] border border-[var(--relay-line)] bg-white px-4 py-3 text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)]"
-            placeholder="Cross-AI project memory sidecar for browser workflows."
+            className="min-h-24 w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-transparent px-3 py-2 text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)] resize-y"
+            placeholder="A brief explanation of what this is and who it's for."
             value={description}
             onChange={(event) => setDescription(event.target.value)}
+            disabled={pending}
           />
         </label>
       </div>
 
-      <div className="mt-5 flex flex-wrap items-center gap-3">
-        <Button disabled={pending} onClick={() => void createProject()}>
-          {pending ? "Creating…" : "Create project"}
+      <div className="mt-8 flex flex-col items-start gap-3">
+        <Button disabled={pending} onClick={() => void createProject()} variant="default">
+          {pending ? "Creating…" : "Create"}
         </Button>
-        <p className="text-sm text-[var(--relay-muted)]">{status}</p>
+        {status && status !== "Create a project once, then let Relay keep the next fresh chat ready." && (
+          <p className="text-xs text-[var(--relay-muted)]">{status}</p>
+        )}
       </div>
     </div>
   )

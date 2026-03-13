@@ -394,18 +394,18 @@ export function ProjectGovernancePanel({
 
   return (
     <div className="grid gap-6">
-      <Card className="p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+      <Card className="p-0 border-none py-0">
+        <div className="flex flex-wrap items-start justify-between gap-4 pb-6 border-b border-[var(--relay-line)] mb-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--relay-faint)]">
+            <p className="text-[13px] font-medium tracking-wide uppercase text-[var(--relay-ink)] opacity-70">
               Effective state
             </p>
-            <h3 className="mt-2 text-xl font-semibold tracking-tight text-[var(--relay-ink)]">
-              Edit what Relay should carry forward
+            <h3 className="mt-2 text-xl font-medium tracking-tight text-[var(--relay-ink)]">
+              Context Memory
             </h3>
           </div>
-          <div className="rounded-full border border-[var(--relay-line)] bg-[var(--relay-soft)] px-3 py-1 text-xs text-[var(--relay-muted)]">
-            AI budget {dashboard.aiBudget.dailyProjectAiUsed}/{dashboard.aiBudget.dailyProjectAiLimit} project today
+          <div className="rounded-full border border-[var(--relay-line)] bg-[var(--relay-soft)] px-3 py-1 text-[11px] font-medium text-[var(--relay-muted)]">
+            AI Budget limit: {dashboard.aiBudget.dailyProjectAiUsed}/{dashboard.aiBudget.dailyProjectAiLimit} today
           </div>
         </div>
 
@@ -455,14 +455,14 @@ export function ProjectGovernancePanel({
         </div>
       </Card>
 
-      <div className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
-        <Card className="p-5">
-          <div className="flex items-center justify-between gap-3">
+      <div className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr] border-t border-[var(--relay-line)] pt-10">
+        <Card className="p-0 border-none py-0">
+          <div className="flex items-center justify-between gap-3 mb-6">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--relay-faint)]">
+              <p className="text-[13px] font-medium tracking-wide uppercase text-[var(--relay-ink)] opacity-70">
                 Context governance
               </p>
-              <h3 className="mt-2 text-xl font-semibold tracking-tight text-[var(--relay-ink)]">
+              <h3 className="mt-2 text-xl font-medium tracking-tight text-[var(--relay-ink)]">
                 Decisions, tasks, and constraints
               </h3>
             </div>
@@ -568,19 +568,19 @@ export function ProjectGovernancePanel({
           </div>
         </Card>
 
-        <div className="grid gap-6">
-          <Card className="p-5">
-            <div className="flex items-center justify-between gap-3">
+        <div className="grid gap-6 border-t border-[var(--relay-line)] pt-10">
+          <Card className="p-0 border-none py-0">
+            <div className="flex items-center justify-between gap-3 pb-6">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--relay-faint)]">
+                <p className="text-[13px] font-medium tracking-wide uppercase text-[var(--relay-ink)] opacity-70">
                   Project briefs
                 </p>
-                <h3 className="mt-2 text-xl font-semibold tracking-tight text-[var(--relay-ink)]">
+                <h3 className="mt-2 text-xl font-medium tracking-tight text-[var(--relay-ink)]">
                   Cached insertion packets
                 </h3>
               </div>
               <div className="flex items-center gap-2">
-                <Button disabled={pending} onClick={regenerateBriefs} size="sm">
+                <Button disabled={pending} onClick={regenerateBriefs} variant="secondary" size="sm" className="h-8 shadow-none bg-[var(--relay-soft)] text-xs border border-[var(--relay-line)] rounded-[var(--relay-radius-sm)]">
                   Regenerate
                 </Button>
                 <Button disabled={pending} onClick={clearBriefs} size="sm" variant="secondary">
@@ -593,14 +593,14 @@ export function ProjectGovernancePanel({
             </div>
           </Card>
 
-          <Card className="p-5">
-            <div className="flex items-center justify-between gap-3">
+          <Card className="p-0 border-none py-0">
+            <div className="flex items-center justify-between gap-3 mb-6">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--relay-faint)]">
+                <p className="text-[13px] font-medium tracking-wide uppercase text-[var(--relay-ink)] opacity-70">
                   Session history
                 </p>
-                <h3 className="mt-2 text-xl font-semibold tracking-tight text-[var(--relay-ink)]">
-                  Active and detached chats
+                <h3 className="mt-2 text-xl font-medium tracking-tight text-[var(--relay-ink)]">
+                  Active chats
                 </h3>
               </div>
             </div>
