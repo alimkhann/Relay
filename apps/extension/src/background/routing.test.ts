@@ -1,9 +1,39 @@
 import { describe, expect, it } from "vitest"
 
-import { evaluateProjectRouting } from "./routing"
+import { evaluateProjectRouting, findApprovedAssociationMatch } from "./routing"
 
 describe("evaluateProjectRouting", () => {
-  it("auto-saves when an approved chat fingerprint matches exactly", () => {
+  it("recognizes an already approved chat before broader routing signals", () => {
+    const approvedAssociations = [
+      {
+        key: "chatgpt:fingerprint:chat_123",
+        projectId: "project_relay",
+        projectName: "Relay",
+        projectSlug: "relay",
+        platform: "chatgpt" as const,
+        domain: "chatgpt.com",
+        pathname: "/c/chat_123",
+        pageFingerprint: "chat_123",
+        url: "https://chatgpt.com/c/chat_123",
+        title: "Relay architecture sync",
+        recentUserTurnText: "Let's finish the Relay extension routing fix.",
+        sessionId: "session_1",
+        approvedAt: "2026-03-13T00:00:00.000Z"
+      }
+    ]
+
+    expect(
+      findApprovedAssociationMatch(
+        {
+          platform: "chatgpt",
+          pageFingerprint: "chat_123",
+          pathname: "/c/chat_123",
+          url: "https://chatgpt.com/c/chat_123"
+        },
+        approvedAssociations
+      )?.projectId
+    ).toBe("project_relay")
+
     const result = evaluateProjectRouting({
       page: {
         supported: true,
@@ -14,29 +44,23 @@ describe("evaluateProjectRouting", () => {
         recentUserTurnText: "Let's finish the Relay extension routing fix."
       },
       projects: [
-        { id: "project_relay", name: "Relay", slug: "relay" },
-        { id: "project_misc", name: "Personal", slug: "personal" }
+        {
+          id: "project_relay",
+          name: "Relay",
+          slug: "relay",
+          memoryCount: 8,
+          sessionCount: 3,
+          routingContext: {
+            hasMeaningfulContext: true,
+            keywords: ["extension", "routing", "capture", "continuity"]
+          }
+        },
+        { id: "project_misc", name: "Personal", slug: "personal", memoryCount: 0, sessionCount: 0 }
       ],
       selectedProjectId: "project_misc",
       lastTabProjectId: "project_misc",
       boundProject: null,
-      approvedAssociations: [
-        {
-          key: "chatgpt:fingerprint:chat_123",
-          projectId: "project_relay",
-          projectName: "Relay",
-          projectSlug: "relay",
-          platform: "chatgpt",
-          domain: "chatgpt.com",
-          pathname: "/c/chat_123",
-          pageFingerprint: "chat_123",
-          url: "https://chatgpt.com/c/chat_123",
-          title: "Relay architecture sync",
-          recentUserTurnText: "Let's finish the Relay extension routing fix.",
-          sessionId: "session_1",
-          approvedAt: "2026-03-13T00:00:00.000Z"
-        }
-      ]
+      approvedAssociations
     })
 
     expect(result.mode).toBe("auto-save")
@@ -44,18 +68,38 @@ describe("evaluateProjectRouting", () => {
     expect(result.confidence).toBe("high")
   })
 
-  it("holds for review when only lightweight text overlap exists", () => {
+  it("allows bootstrap-phase auto-save only on strong explicit project-name evidence", () => {
     const result = evaluateProjectRouting({
       page: {
         supported: true,
         platform: "chatgpt",
         pathname: "/c/new-topic",
-        title: "Relay planning notes",
-        recentUserTurnText: "Need to think through Relay pricing and capture policy."
+        title: "Relay launch checklist",
+        recentUserTurnText: "List the remaining work for Relay onboarding and project capture."
       },
       projects: [
-        { id: "project_relay", name: "Relay", slug: "relay" },
-        { id: "project_other", name: "Garden Journal", slug: "garden-journal" }
+        {
+          id: "project_relay",
+          name: "Relay",
+          slug: "relay",
+          memoryCount: 0,
+          sessionCount: 0,
+          routingContext: {
+            hasMeaningfulContext: false,
+            keywords: []
+          }
+        },
+        {
+          id: "project_other",
+          name: "Garden Journal",
+          slug: "garden-journal",
+          memoryCount: 0,
+          sessionCount: 0,
+          routingContext: {
+            hasMeaningfulContext: false,
+            keywords: []
+          }
+        }
       ],
       selectedProjectId: "project_other",
       lastTabProjectId: "project_other",
@@ -63,24 +107,81 @@ describe("evaluateProjectRouting", () => {
       approvedAssociations: []
     })
 
-    expect(result.mode).toBe("hold")
+    expect(result.mode).toBe("auto-save")
     expect(result.candidateProjectId).toBe("project_relay")
-    expect(result.confidence).toBe("medium")
+    expect(result.confidence).toBe("high")
   })
 
-  it("ignores chats without meaningful project signals", () => {
+  it("uses saved project context to hold or auto-route context-aware chats", () => {
+    const result = evaluateProjectRouting({
+      page: {
+        supported: true,
+        platform: "chatgpt",
+        pathname: "/c/new-topic",
+        title: "Quiet assistant follow-up",
+        recentUserTurnText:
+          "Refine the continuity sidebar and keyboard dismiss flow for the quiet assistant rewrite."
+      },
+      projects: [
+        {
+          id: "project_relay",
+          name: "Relay",
+          slug: "relay",
+          memoryCount: 10,
+          sessionCount: 5,
+          routingContext: {
+            hasMeaningfulContext: true,
+            keywords: ["continuity", "quiet", "assistant", "sidebar", "dismiss", "rewrite"]
+          }
+        },
+        {
+          id: "project_fitness",
+          name: "Ramadan Full Body Workout",
+          slug: "ramadan-full-body-workout",
+          memoryCount: 2,
+          sessionCount: 1,
+          routingContext: {
+            hasMeaningfulContext: true,
+            keywords: ["ramadan", "protein", "deficit", "steps", "fat", "loss"]
+          }
+        }
+      ],
+      selectedProjectId: "project_fitness",
+      lastTabProjectId: "project_fitness",
+      boundProject: { projectId: "project_fitness", bindingKind: "domain" },
+      approvedAssociations: []
+    })
+
+    expect(result.candidateProjectId).toBe("project_relay")
+    expect(["hold", "auto-save"]).toContain(result.mode)
+    expect(["medium", "high"]).toContain(result.confidence)
+  })
+
+  it("ignores unrelated chats even when the same domain was linked to another project", () => {
     const result = evaluateProjectRouting({
       page: {
         supported: true,
         platform: "chatgpt",
         pathname: "/c/random",
-        title: "Weekend plans",
-        recentUserTurnText: "What should I cook for dinner tonight?"
+        title: "Fat loss reality check",
+        recentUserTurnText: "How much protein and daily walking do I need during Ramadan?"
       },
-      projects: [{ id: "project_relay", name: "Relay", slug: "relay" }],
-      selectedProjectId: null,
-      lastTabProjectId: null,
-      boundProject: null,
+      projects: [
+        {
+          id: "project_relay",
+          name: "Relay",
+          slug: "relay",
+          memoryCount: 8,
+          sessionCount: 4,
+          routingContext: {
+            hasMeaningfulContext: true,
+            keywords: ["extension", "routing", "context", "sidebar", "toast", "capture"]
+          }
+        }
+      ],
+      selectedProjectId: "project_relay",
+      lastTabProjectId: "project_relay",
+      boundProject: { projectId: "project_relay", bindingKind: "domain" },
       approvedAssociations: []
     })
 

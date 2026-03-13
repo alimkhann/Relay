@@ -1,9 +1,10 @@
 import type {
   RelayAssociationToastPayload,
   RelayChatAssociation,
+  RelayProjectOption,
 } from "../messaging/contracts";
 
-export const ASSOCIATION_TOAST_WINDOW_MS = 5_000;
+export const ASSOCIATION_TOAST_WINDOW_MS = 20_000;
 
 export interface PendingAssociationState {
   mode: "auto_save";
@@ -42,6 +43,7 @@ export function resolveAssociationProjectName(
 export function buildPendingAutoSaveAssociation(input: {
   projectId: string;
   projectName: string;
+  projectOptions: RelayProjectOption[];
   captureSignature: string | null;
   now?: number;
 }) {
@@ -52,13 +54,14 @@ export function buildPendingAutoSaveAssociation(input: {
     projectId: input.projectId,
     projectName: input.projectName,
     sessionId: null,
-    reason: `Relay will save this chat to ${input.projectName} in 5 seconds unless you cancel.`,
+    reason: `Relay will save this chat to ${input.projectName} in 20 seconds unless you cancel.`,
     capturedAt: null,
   };
   const toast: RelayAssociationToastPayload = {
     mode: "auto_save",
     projectId: input.projectId,
     projectName: input.projectName,
+    projectOptions: input.projectOptions,
     sessionId: null,
     expiresAt,
   };
@@ -76,6 +79,7 @@ export function buildPendingAutoSaveAssociation(input: {
 export function buildHeldReviewAssociation(input: {
   projectId: string;
   projectName: string;
+  projectOptions: RelayProjectOption[];
   reason?: string | null;
   now?: number;
 }) {
@@ -95,6 +99,7 @@ export function buildHeldReviewAssociation(input: {
     mode: "held_review",
     projectId: input.projectId,
     projectName: input.projectName,
+    projectOptions: input.projectOptions,
     sessionId: null,
     expiresAt,
   };
@@ -110,5 +115,5 @@ export function resolveAssociationToastAction(input: {
     return input.action === "cancel" ? "dismiss" : "noop";
   }
 
-  return input.action === "approve" ? "capture" : "noop";
+  return input.action === "approve" ? "capture" : "dismiss";
 }

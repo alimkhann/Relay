@@ -4,6 +4,13 @@ export interface RelayProjectOption {
   id: string;
   name: string;
   slug?: string | null;
+  description?: string | null;
+  memoryCount?: number;
+  sessionCount?: number;
+  routingContext?: {
+    hasMeaningfulContext: boolean;
+    keywords: string[];
+  } | null;
 }
 
 export type RelayRemoteStatus = "loading" | "ready" | "stale" | "unavailable";
@@ -60,6 +67,7 @@ export interface RelayAssociationToastPayload {
   mode: "auto_save" | "held_review";
   projectId: string;
   projectName: string;
+  projectOptions: RelayProjectOption[];
   sessionId?: string | null;
   expiresAt: number;
 }
@@ -151,6 +159,14 @@ export type RelayMessage =
         mode: "auto_save" | "held_review";
         projectId: string;
         tabId?: number;
+      };
+    }
+  | {
+      type: "RELAY_SET_CHAT_ASSOCIATION_PROJECT";
+      payload: {
+        projectId: string;
+        tabId?: number;
+        source?: "toast" | "inline_chip" | "sidebar";
       };
     }
   | { type: "RELAY_REFRESH_SESSION" }

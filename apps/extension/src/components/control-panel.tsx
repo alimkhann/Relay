@@ -128,6 +128,9 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [deviceName, setDeviceName] = useState("");
   const [projectSwitcherOpen, setProjectSwitcherOpen] = useState(false);
+  const [associationAction, setAssociationAction] = useState<
+    null | "approving_held"
+  >(null);
   const [newProjectName, setNewProjectName] = useState("");
   const [expandedSections, setExpandedSections] = useState<
     Record<ContextSection, boolean>
@@ -643,24 +646,78 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     if (!nextProjectId) return;
 
     const tab = await getActiveTab();
+    const associationAware =
+      activeState.chatAssociation.status === "pending" ||
+      activeState.chatAssociation.status === "held" ||
+      activeState.chatAssociation.status === "saved";
+    const nextProject =
+      activeState.projectOptions.find((project) => project.id === nextProjectId) ??
+      null;
+    const previousState = activeState;
     setBusy(true);
 
     try {
-      await chrome.runtime.sendMessage({
-        type: "RELAY_SET_ACTIVE_PROJECT",
-        payload: {
+      if (associationAware && nextProject) {
+        setActiveState((current) => ({
+          ...current,
           projectId: nextProjectId,
-          tabId: tab?.id,
-        },
-      });
+          projectName: nextProject.name,
+          chatAssociation: {
+            ...current.chatAssociation,
+            projectId: nextProjectId,
+            projectName: nextProject.name,
+            status:
+              current.chatAssociation.status === "saved"
+                ? "pending"
+                : current.chatAssociation.status,
+            reason:
+              current.chatAssociation.status === "saved"
+                ? `Moving this chat to ${nextProject.name}…`
+                : current.chatAssociation.status === "pending"
+                  ? `Relay will save this chat to ${nextProject.name} in 20 seconds unless you cancel.`
+                  : `Relay wants confirmation before saving this chat to ${nextProject.name}.`,
+          },
+        }));
+      }
+
+      const result = (await chrome.runtime.sendMessage(
+        associationAware
+          ? {
+              type: "RELAY_SET_CHAT_ASSOCIATION_PROJECT",
+              payload: {
+                projectId: nextProjectId,
+                tabId: tab?.id,
+                source: "sidebar",
+              },
+            }
+          : {
+              type: "RELAY_SET_ACTIVE_PROJECT",
+              payload: {
+                projectId: nextProjectId,
+                tabId: tab?.id,
+              },
+            },
+      )) as { ok?: boolean; reason?: string };
+      if (!result?.ok) {
+        throw new Error(result?.reason ?? "Project switch failed.");
+      }
       await setRelaySession({
         projectId: nextProjectId,
       });
-      setStatus("Project switched.");
+      setStatus(
+        associationAware
+          ? activeState.chatAssociation.status === "saved"
+            ? "Chat moved to the selected project."
+            : "Chat association updated."
+          : "Project switched.",
+      );
       setProjectSwitcherOpen(false);
       await refreshLocalSession();
       await refreshActiveProjectState();
     } catch (cause) {
+      if (associationAware) {
+        setActiveState(previousState);
+      }
       setStatus(
         cause instanceof Error ? cause.message : "Project switch failed.",
       );
@@ -877,23 +934,45 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       return;
     }
 
-    await runBusyAction(
-      "Saving this chat to the suggested project…",
-      "Chat saved to the suggested project.",
-      async () => {
-        const result = (await chrome.runtime.sendMessage({
-          type: "RELAY_CAPTURE_VISIBLE",
-          payload: {
-            tabId: tab.id,
-            projectId: activeState.chatAssociation.projectId,
-          },
-        })) as { ok?: boolean; reason?: string };
-
-        if (!result?.ok) {
-          throw new Error(result?.reason ?? "Capture failed.");
-        }
+    const previousAssociation = activeState.chatAssociation;
+    setAssociationAction("approving_held");
+    setBusy(true);
+    setStatus("Saving this chat to the suggested project…");
+    setActiveState((current) => ({
+      ...current,
+      chatAssociation: {
+        ...current.chatAssociation,
+        status: "pending",
+        reason: `Saving this chat to ${current.chatAssociation.projectName ?? "the selected project"}…`,
       },
-    );
+    }));
+
+    try {
+      const result = (await chrome.runtime.sendMessage({
+        type: "RELAY_CAPTURE_VISIBLE",
+        payload: {
+          tabId: tab.id,
+          projectId: previousAssociation.projectId,
+        },
+      })) as { ok?: boolean; reason?: string };
+
+      if (!result?.ok) {
+        throw new Error(result?.reason ?? "Capture failed.");
+      }
+
+      setStatus("Chat saved to the suggested project.");
+      await refreshLocalSession();
+      await refreshActiveProjectState();
+    } catch (cause) {
+      setStatus(cause instanceof Error ? cause.message : "Capture failed.");
+      setActiveState((current) => ({
+        ...current,
+        chatAssociation: previousAssociation,
+      }));
+    } finally {
+      setAssociationAction(null);
+      setBusy(false);
+    }
   }
 
   async function dismissHeldChat() {
@@ -935,7 +1014,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     session?.projectId ??
     session?.assumedProjectId ??
     "";
-  const relayLogoUrl = chrome.runtime.getURL("assets/relay_logo_white.png");
+  const relayLogoUrl = chrome.runtime.getURL("assets/icon.png");
   const dashboardHref =
     session?.apiBase && selectedProjectId
       ? `${session.apiBase}/dashboard?project=${encodeURIComponent(selectedProjectId)}`
@@ -1233,7 +1312,9 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                       disabled={busy || !activeState.chatAssociation.projectId}
                       onClick={() => void approveHeldChat()}
                     >
-                      Approve save
+                      {associationAction === "approving_held"
+                        ? "Approving…"
+                        : "Approve save"}
                     </button>
                     <button
                       className={styles.secondaryButton}
