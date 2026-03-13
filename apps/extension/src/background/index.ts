@@ -1308,6 +1308,7 @@ async function captureObservedChange(
         stateProjectName: state.projectName,
         sessionAssumedProjectName: session.assumedProjectName || null,
       });
+      const associationProjectName = projectName;
 
       state.lastCapturedSignature =
         state.page.captureSignature ?? state.lastObservedSignature;
@@ -1319,7 +1320,7 @@ async function captureObservedChange(
       state.chatAssociation = {
         status: "saved",
         projectId,
-        projectName: projectName || null,
+        projectName: associationProjectName,
         sessionId: result.sessionId ?? null,
         reason: "This chat is currently saved to the project.",
         capturedAt: new Date().toISOString(),
@@ -1343,7 +1344,7 @@ async function captureObservedChange(
         await rememberApprovedAssociation({
           key: chatKey,
           projectId,
-          projectName,
+          projectName: associationProjectName ?? projectName,
           projectSlug: matchedProject?.slug ?? null,
           platform: (state.page.platform ?? null) as SupportedPlatform | null,
           domain: state.page.domain ?? null,
