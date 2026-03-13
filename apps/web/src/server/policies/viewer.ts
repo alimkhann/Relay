@@ -3,6 +3,7 @@ import { hashContent } from "@relay/shared"
 import { redirect } from "next/navigation"
 
 import { requireAuthServer } from "@/lib/auth/server"
+import { reconcileProfileForAuthUser } from "@/server/services/auth-sync-service"
 
 export class AuthRequiredError extends Error {
   constructor(message = "Authentication is required.") {
@@ -27,13 +28,22 @@ interface SessionUser {
 }
 
 async function upsertProfile(user: SessionUser) {
-  const repositories = createRepositoryBundle(user.id)
-  await repositories.profiles.upsert({
-    id: user.id,
-    email: user.email ?? null,
-    displayName: user.name ?? null,
-    avatarUrl: user.image ?? null
-  })
+  if (user.email) {
+    await reconcileProfileForAuthUser({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      image: user.image
+    })
+  } else {
+    const repositories = createRepositoryBundle(user.id)
+    await repositories.profiles.upsert({
+      id: user.id,
+      email: null,
+      displayName: user.name ?? null,
+      avatarUrl: user.image ?? null
+    })
+  }
 }
 
 export async function requireSessionViewer(): Promise<Viewer> {
