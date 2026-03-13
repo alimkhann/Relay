@@ -24,6 +24,7 @@ import {
 import { getRelaySession, setRelaySession } from "../storage/session";
 import { relayFetch } from "../utils/api";
 import { resolveTargetProfile } from "../utils/target-profile";
+import { deriveAssociationToastState } from "./association-toast";
 import {
   buildAssociationKey,
   evaluateProjectRouting,
@@ -1143,6 +1144,7 @@ async function captureObservedChange(
 
     const result = await captureTab(projectId, tabId);
     if (result?.ok) {
+      const previousAssociationProjectName = state.chatAssociation.projectName;
       const hadSavedAssociation =
         state.chatAssociation.status === "saved" &&
         state.chatAssociation.projectId === projectId;
@@ -1154,6 +1156,19 @@ async function captureObservedChange(
         session.projectOptions.find((project) => project.id === projectId) ??
         null;
       const projectName = matchedProject?.name ?? state.projectName ?? "";
+      const toastState = deriveAssociationToastState({
+        autoAssociated,
+        wasHeldAssociation,
+        hadSavedAssociation,
+        sessionId: result.sessionId ?? null,
+        matchedProjectName: matchedProject?.name ?? null,
+        previousAssociationProjectName,
+        routingCandidateProjectName: routingDecision?.candidateProjectName ?? null,
+        stateProjectName: state.projectName,
+        sessionAssumedProjectName: session.assumedProjectName || null,
+      });
+      const associationProjectName =
+        projectName || (autoAssociated || wasHeldAssociation ? toastState.projectName : null);
 
       state.lastCapturedSignature =
         state.page.captureSignature ?? state.lastObservedSignature;
@@ -1165,7 +1180,7 @@ async function captureObservedChange(
       state.chatAssociation = {
         status: "saved",
         projectId,
-        projectName: projectName || null,
+        projectName: associationProjectName,
         sessionId: result.sessionId ?? null,
         reason: "This chat is currently saved to the project.",
         capturedAt: new Date().toISOString(),
@@ -1189,7 +1204,7 @@ async function captureObservedChange(
         await rememberApprovedAssociation({
           key: chatKey,
           projectId,
-          projectName,
+          projectName: associationProjectName ?? projectName,
           projectSlug: matchedProject?.slug ?? null,
           platform: (state.page.platform ?? null) as SupportedPlatform | null,
           domain: state.page.domain ?? null,
@@ -1202,13 +1217,13 @@ async function captureObservedChange(
           approvedAt: new Date().toISOString(),
         });
       }
-      if (
-        (autoAssociated || wasHeldAssociation) &&
-        result.sessionId &&
-        projectName &&
-        !hadSavedAssociation
-      ) {
-        await showAssociationToast(tabId, projectId, projectName, result.sessionId);
+      if (toastState.shouldShowToast && result.sessionId) {
+        await showAssociationToast(
+          tabId,
+          projectId,
+          toastState.projectName,
+          result.sessionId,
+        );
       }
       await syncTabRemoteState(tabId, {
         force: true,
