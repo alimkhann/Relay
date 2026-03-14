@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  ASSOCIATION_TOAST_WINDOW_MS,
+  AUTO_SAVE_ASSOCIATION_TOAST_WINDOW_MS,
   buildSavedAssociationFromMemory,
   buildHeldReviewAssociation,
   buildPendingAutoSaveAssociation,
   getPendingAssociationRemainingMs,
+  HELD_REVIEW_ASSOCIATION_TOAST_WINDOW_MS,
   pausePendingAutoSaveAssociation,
   resumePendingAutoSaveAssociation,
   resolveAssociationProjectName,
@@ -25,7 +26,9 @@ describe("association workflow", () => {
     expect(result.chatAssociation.status).toBe("pending");
     expect(result.pending.captureSignature).toBe("sig_123");
     expect(result.toast.mode).toBe("auto_save");
-    expect(result.toast.expiresAt).toBe(100 + ASSOCIATION_TOAST_WINDOW_MS);
+    expect(result.toast.expiresAt).toBe(
+      100 + AUTO_SAVE_ASSOCIATION_TOAST_WINDOW_MS,
+    );
   });
 
   it("routes canceling a pending auto-save toast to dismiss instead of capture", () => {
@@ -48,7 +51,9 @@ describe("association workflow", () => {
 
     expect(result.chatAssociation.status).toBe("held");
     expect(result.toast.mode).toBe("held_review");
-    expect(result.toast.expiresAt).toBe(200 + ASSOCIATION_TOAST_WINDOW_MS);
+    expect(result.toast.expiresAt).toBe(
+      200 + HELD_REVIEW_ASSOCIATION_TOAST_WINDOW_MS,
+    );
     expect(
       resolveAssociationToastAction({
         mode: "held_review",
@@ -90,13 +95,13 @@ describe("association workflow", () => {
     const paused = pausePendingAutoSaveAssociation(pending, 6_000);
     expect(paused.paused).toBe(true);
     expect(getPendingAssociationRemainingMs(paused, 12_000)).toBe(
-      ASSOCIATION_TOAST_WINDOW_MS - 5_000,
+      AUTO_SAVE_ASSOCIATION_TOAST_WINDOW_MS - 5_000,
     );
 
     const resumed = resumePendingAutoSaveAssociation(paused, 12_000);
     expect(resumed.paused).toBe(false);
     expect(resumed.expiresAt).toBe(
-      12_000 + (ASSOCIATION_TOAST_WINDOW_MS - 5_000),
+      12_000 + (AUTO_SAVE_ASSOCIATION_TOAST_WINDOW_MS - 5_000),
     );
   });
 

@@ -8,9 +8,12 @@ import type {
 
 import type {
   RelayActiveProjectState,
+  RelayAssociationTier,
   RelayAssociationToastPayload,
+  RelayAssociationToastState,
   RelayChatAssociation,
   RelayContextPreview,
+  RelayInsertState,
   RelayMessage,
   RelayPageState,
   RelayProjectOption,
@@ -53,9 +56,11 @@ import {
   type RelayBoundProjectSignal,
 } from "./routing";
 import {
+  createEmptyAssociationToast,
   createEmptyActiveProjectState,
   createEmptyChatAssociation,
   createEmptyContextPreview,
+  createEmptyInsertState,
   createEmptyTrustMetadata,
   deriveRelayActiveProjectState,
   looksLikeFreshChatRoute,
@@ -78,6 +83,15 @@ interface RemoteSettingsPayload {
 interface RemoteSettingsResponsePayload {
   settings: { settings: RemoteSettingsPayload["settings"] };
   onboarding?: RelayOnboardingState;
+}
+
+interface ExtensionAuthSessionPayload {
+  token: string;
+  apiBase: string;
+  projectId: string;
+  projects?: RelayProjectOption[];
+  onboarding?: RelayOnboardingState;
+  settings?: { settings?: { autoCapture?: boolean } };
 }
 
 interface ProjectDashboardPayload {
@@ -151,6 +165,11 @@ interface RelayTabState {
   captureTimer: ReturnType<typeof setTimeout> | null;
   pendingAssociation: PendingAssociationState | null;
   pendingAssociationTimer: ReturnType<typeof setTimeout> | null;
+  associationToast: RelayAssociationToastState;
+  associationToastTimer: ReturnType<typeof setTimeout> | null;
+  associationSuppressed: boolean;
+  insertState: RelayInsertState;
+  insertStateTimer: ReturnType<typeof setTimeout> | null;
   lastObservedSignature: string | null;
   lastObservedTurns: number;
   lastCapturedSignature: string | null;
@@ -291,6 +310,31 @@ async function resetStoredSession(reason: string) {
     projectOptions: [],
     lastStatus: reason,
     onboarding: createPendingOnboardingState(),
+  });
+}
+
+async function storeAuthenticatedExtensionSession(
+  payload: ExtensionAuthSessionPayload,
+  lastStatus: string,
+) {
+  sessionDataCache = null;
+  await setRelaySession({
+    apiBase: payload.apiBase,
+    token: payload.token,
+    projectId: payload.projectId,
+    targetMode: "auto",
+    targetProfileKey: "",
+    resolvedTargetProfileKey: "",
+    connected: true,
+    autoCapture: payload.settings?.settings?.autoCapture ?? true,
+    limitedMode: false,
+    lastStatus,
+    stateStatus: null,
+    assumedProjectId: payload.projectId,
+    assumedProjectName: "",
+    trust: createEmptyTrustMetadata(),
+    projectOptions: payload.projects ?? [],
+    onboarding: payload.onboarding ?? createPendingOnboardingState(),
   });
 }
 
@@ -538,7 +582,7 @@ function updateAssociationProjectState(
       ...state.chatAssociation,
       projectId,
       projectName,
-      reason: `Relay will save this chat to ${projectName} in 20 seconds unless you cancel.`,
+      reason: `Relay will save this chat to ${projectName} in 10 seconds unless you cancel.`,
     };
   } else if (state.chatAssociation.status === "held") {
     state.chatAssociation = {
@@ -556,6 +600,14 @@ function updateAssociationProjectState(
       projectName,
     };
   }
+
+  if (state.associationToast.visible) {
+    state.associationToast = {
+      ...state.associationToast,
+      projectId,
+      projectName,
+    };
+  }
 }
 
 async function setSessionProjectTarget(
@@ -567,6 +619,21 @@ async function setSessionProjectTarget(
     assumedProjectId: projectId,
     assumedProjectName: projectName,
   });
+}
+
+async function setEffectiveProjectTarget(
+  state: RelayTabState,
+  projectId: string,
+  projectName: string,
+  options: { persist?: boolean } = {},
+) {
+  state.projectId = projectId;
+  state.projectName = projectName;
+  updateAssociationProjectState(state, projectId, projectName);
+
+  if (options.persist !== false) {
+    await setSessionProjectTarget(projectId, projectName);
+  }
 }
 
 function hydrateTabStateFromSession(state: RelayTabState, session: Awaited<ReturnType<typeof getRelaySession>>) {
@@ -618,6 +685,11 @@ function createTabState(tabId: number): RelayTabState {
     captureTimer: null,
     pendingAssociation: null,
     pendingAssociationTimer: null,
+    associationToast: createEmptyAssociationToast(),
+    associationToastTimer: null,
+    associationSuppressed: false,
+    insertState: createEmptyInsertState(),
+    insertStateTimer: null,
     lastObservedSignature: null,
     lastObservedTurns: 0,
     lastCapturedSignature: null,
@@ -656,15 +728,113 @@ function clearPendingAssociationTimer(state: RelayTabState) {
   }
 }
 
+function clearAssociationToastTimer(state: RelayTabState) {
+  if (state.associationToastTimer) {
+    clearTimeout(state.associationToastTimer);
+    state.associationToastTimer = null;
+  }
+}
+
+function clearInsertStateTimer(state: RelayTabState) {
+  if (state.insertStateTimer) {
+    clearTimeout(state.insertStateTimer);
+    state.insertStateTimer = null;
+  }
+}
+
 function clearPendingAssociation(
   state: RelayTabState,
   options: { clearChatAssociation?: boolean } = {},
 ) {
   clearPendingAssociationTimer(state);
   state.pendingAssociation = null;
+  if (state.associationToast.mode === "auto_save") {
+    clearAssociationToast(state);
+  }
   if (options.clearChatAssociation && state.chatAssociation.status === "pending") {
     state.chatAssociation = createEmptyChatAssociation();
   }
+}
+
+function clearAssociationToast(state: RelayTabState) {
+  clearAssociationToastTimer(state);
+  state.associationToast = createEmptyAssociationToast();
+}
+
+function setInsertState(
+  state: RelayTabState,
+  input: {
+    status: RelayInsertState["status"];
+    source?: RelayInsertState["source"];
+    message?: string | null;
+  },
+) {
+  state.insertState = {
+    status: input.status,
+    source:
+      input.source === undefined ? state.insertState.source : input.source,
+    message: input.message ?? null,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function scheduleInsertStateReset(tabId: number, delayMs = 1200) {
+  const state = getOrCreateTabState(tabId);
+  clearInsertStateTimer(state);
+  state.insertStateTimer = setTimeout(() => {
+    state.insertStateTimer = null;
+    const latestState = getOrCreateTabState(tabId);
+    latestState.insertState = createEmptyInsertState();
+    void broadcastActiveProjectState(tabId);
+  }, delayMs);
+}
+
+function setAssociationToastState(
+  state: RelayTabState,
+  payload: RelayAssociationToastPayload,
+) {
+  state.associationToast = {
+    visible: true,
+    mode: payload.mode,
+    projectId: payload.projectId,
+    projectName: payload.projectName,
+    projectOptions: payload.projectOptions,
+    sessionId: payload.sessionId ?? null,
+    expiresAt: payload.expiresAt,
+    paused: payload.mode === "auto_save" ? state.pendingAssociation?.paused ?? false : false,
+  };
+}
+
+async function clearAssociationToastForTab(tabId: number) {
+  const state = getOrCreateTabState(tabId);
+  if (!state.associationToast.visible) {
+    return;
+  }
+
+  clearAssociationToast(state);
+  await broadcastActiveProjectState(tabId);
+}
+
+function scheduleAssociationToastExpiry(
+  tabId: number,
+  payload: RelayAssociationToastPayload,
+) {
+  const state = getOrCreateTabState(tabId);
+  clearAssociationToastTimer(state);
+
+  const delay = Math.max(0, payload.expiresAt - Date.now());
+  state.associationToastTimer = setTimeout(() => {
+    state.associationToastTimer = null;
+    const latestState = getOrCreateTabState(tabId);
+    if (
+      latestState.associationToast.visible &&
+      latestState.associationToast.projectId === payload.projectId &&
+      latestState.associationToast.mode === payload.mode &&
+      latestState.associationToast.expiresAt === payload.expiresAt
+    ) {
+      void clearAssociationToastForTab(tabId);
+    }
+  }, delay);
 }
 
 function describeApprovedAssociationReason(
@@ -700,12 +870,14 @@ function restoreApprovedAssociationState(
   association: Awaited<ReturnType<typeof readApprovedAssociations>>[number],
 ) {
   clearPendingAssociation(state);
+  clearAssociationToast(state);
   state.lastCapturedSignature =
     state.page.captureSignature ?? state.lastObservedSignature;
   state.lastCapturedTurns = state.page.turns ?? state.lastObservedTurns;
   state.lastRoutedSignature = state.page.captureSignature ?? buildAssociationKey(state.page);
   state.projectId = association.projectId;
   state.projectName = association.projectName;
+  state.associationSuppressed = false;
   state.chatAssociation = buildSavedAssociationFromMemory({
     projectId: association.projectId,
     projectName: association.projectName,
@@ -761,6 +933,8 @@ function clearTabState(tabId: number) {
   clearRetryTimer(state);
   clearCaptureTimer(state);
   clearPendingAssociationTimer(state);
+  clearAssociationToastTimer(state);
+  clearInsertStateTimer(state);
   tabStates.delete(tabId);
 }
 
@@ -1133,6 +1307,14 @@ async function buildActiveProjectState(
         session.projectOptions.find((project) => project.id === effectiveProjectId)?.name ??
         null
       : null;
+  const associationTier: RelayAssociationTier =
+    state.routingReview?.confidence ?? "none";
+  const associationToast =
+    state.associationToast.visible &&
+    state.associationToast.expiresAt &&
+    state.associationToast.expiresAt <= Date.now()
+      ? createEmptyAssociationToast()
+      : state.associationToast;
 
   return deriveRelayActiveProjectState({
     connected: session.connected && Boolean(session.token),
@@ -1152,6 +1334,10 @@ async function buildActiveProjectState(
     contextPreview: state.contextPreview,
     chatAssociation: state.chatAssociation,
     routingReview: state.routingReview,
+    associationTier,
+    associationToast,
+    associationSuppressed: state.associationSuppressed,
+    insertState: state.insertState,
     onboarding,
   });
 }
@@ -1232,7 +1418,10 @@ async function syncTabRemoteState(
   }
 
   state.syncInFlight = true;
-  state.remoteStatus = state.lastSuccessfulSyncAt ? "stale" : "loading";
+  state.remoteStatus =
+    state.lastSuccessfulSyncAt || session.projectOptions.length > 0 || session.assumedProjectId
+      ? "stale"
+      : "loading";
   await broadcastActiveProjectState(tabId);
 
   try {
@@ -1343,6 +1532,7 @@ function updateTabPageState(tabId: number, page: RelayPageState) {
 
   if (signatureChanged) {
     clearPendingAssociation(state, { clearChatAssociation: true });
+    clearAssociationToast(state);
   }
 
   if (routeChanged) {
@@ -1351,8 +1541,11 @@ function updateTabPageState(tabId: number, page: RelayPageState) {
     state.chatAssociation = createEmptyChatAssociation();
     state.routingReview = null;
     state.lastRoutedSignature = null;
+    state.associationSuppressed = false;
+    state.insertState = createEmptyInsertState();
     clearCaptureTimer(state);
     clearPendingAssociation(state);
+    clearAssociationToast(state);
   }
 }
 
@@ -1397,6 +1590,11 @@ async function showAssociationToast(
   tabId: number,
   payload: RelayAssociationToastPayload,
 ) {
+  const state = getOrCreateTabState(tabId);
+  setAssociationToastState(state, payload);
+  scheduleAssociationToastExpiry(tabId, payload);
+  await broadcastActiveProjectState(tabId);
+
   const message: RelayMessage = {
     type: "RELAY_SHOW_ASSOCIATION_TOAST",
     payload,
@@ -1425,6 +1623,7 @@ async function archiveChatAssociation(
 
   if (archived) {
     await removeApprovedAssociationBySession(sessionId);
+    state.associationSuppressed = true;
     state.chatAssociation = {
       status: "archived",
       projectId,
@@ -1434,6 +1633,7 @@ async function archiveChatAssociation(
       capturedAt: new Date().toISOString(),
     };
   } else {
+    state.associationSuppressed = false;
     state.chatAssociation = {
       status: "saved",
       projectId,
@@ -1443,6 +1643,8 @@ async function archiveChatAssociation(
       capturedAt: new Date().toISOString(),
     };
   }
+
+  clearAssociationToast(state);
 
   invalidateProjectCache(projectId);
   await syncTabRemoteState(tabId, {
@@ -1455,8 +1657,10 @@ async function dismissCaptureReview(tabId: number) {
   const state = getOrCreateTabState(tabId);
   const chatKey = buildAssociationKey(state.page);
   clearPendingAssociation(state, { clearChatAssociation: true });
+  clearAssociationToast(state);
   await rememberIgnoredChatKey(chatKey);
   state.lastRoutedSignature = state.page.captureSignature ?? chatKey;
+  state.associationSuppressed = true;
   state.routingReview = {
     confidence: "low",
     score: 0,
@@ -1522,9 +1726,9 @@ async function schedulePendingAutoSaveAssociation(
   clearPendingAssociation(state);
   state.lastRoutedSignature =
     state.page.captureSignature ?? buildAssociationKey(state.page);
+  state.associationSuppressed = false;
   state.chatAssociation = chatAssociation;
   state.pendingAssociation = pending;
-  await broadcastActiveProjectState(tabId);
   await showAssociationToast(tabId, toast);
   startPendingAssociationTimer(tabId, state);
 }
@@ -1549,8 +1753,8 @@ async function showHeldAssociationToast(
 
   state.lastRoutedSignature =
     state.page.captureSignature ?? buildAssociationKey(state.page);
+  state.associationSuppressed = false;
   state.chatAssociation = chatAssociation;
-  await broadcastActiveProjectState(tabId);
   await showAssociationToast(tabId, toast);
 }
 
@@ -1584,6 +1788,13 @@ async function setAssociationToastPaused(
     state.pendingAssociation = resumePendingAutoSaveAssociation(pendingAssociation);
     startPendingAssociationTimer(tabId, state);
   }
+
+  state.associationToast = {
+    ...state.associationToast,
+    paused: state.pendingAssociation.paused,
+    expiresAt: state.pendingAssociation.expiresAt,
+  };
+  await broadcastActiveProjectState(tabId);
 
   return {
     ok: true,
@@ -1653,6 +1864,9 @@ async function retargetAssociation(
     projectName: state.projectName,
     chatAssociation: state.chatAssociation,
     pendingAssociation: state.pendingAssociation,
+    associationToast: state.associationToast,
+    associationSuppressed: state.associationSuppressed,
+    insertState: state.insertState,
   };
 
   await setSessionProjectTarget(project.projectId, project.projectName);
@@ -1688,6 +1902,9 @@ async function retargetAssociation(
       state.projectName = previousState.projectName;
       state.chatAssociation = previousState.chatAssociation;
       state.pendingAssociation = previousState.pendingAssociation;
+      state.associationToast = previousState.associationToast;
+      state.associationSuppressed = previousState.associationSuppressed;
+      state.insertState = previousState.insertState;
       if (previousAssociationProjectId) {
         await setSessionProjectTarget(
           previousAssociationProjectId,
@@ -1794,12 +2011,14 @@ async function captureObservedChange(
         state.chatAssociation.projectId
       ) {
         projectId = state.chatAssociation.projectId;
+        state.associationSuppressed = false;
         state.routingReview = {
           confidence: "high",
           score: 100,
           reasons: ["This chat is already associated with the project."],
         };
         clearPendingAssociation(state);
+        clearAssociationToast(state);
         state.lastCapturedSignature =
           state.page.captureSignature ?? state.lastObservedSignature;
         state.lastCapturedTurns = state.page.turns ?? state.lastObservedTurns;
@@ -1814,6 +2033,8 @@ async function captureObservedChange(
         };
       } else if (state.chatAssociation.status === "archived") {
         clearPendingAssociation(state, { clearChatAssociation: false });
+        clearAssociationToast(state);
+        state.associationSuppressed = true;
         state.lastRoutedSignature = state.page.captureSignature ?? chatKey;
         state.routingReview = {
           confidence: "low",
@@ -1828,6 +2049,8 @@ async function captureObservedChange(
         };
       } else if (state.chatAssociation.status === "ignored") {
         clearPendingAssociation(state, { clearChatAssociation: false });
+        clearAssociationToast(state);
+        state.associationSuppressed = true;
         state.lastRoutedSignature = state.page.captureSignature ?? chatKey;
         state.routingReview = {
           confidence: "low",
@@ -1842,6 +2065,8 @@ async function captureObservedChange(
         };
       } else if (ignoredFromMemory) {
         clearPendingAssociation(state, { clearChatAssociation: true });
+        clearAssociationToast(state);
+        state.associationSuppressed = true;
         state.lastRoutedSignature = state.page.captureSignature ?? chatKey;
         state.chatAssociation = {
           status: "ignored",
@@ -1866,7 +2091,8 @@ async function captureObservedChange(
         restoreApprovedAssociationState(state, exactApprovedAssociation);
         projectId = exactApprovedAssociation.projectId;
         await clearIgnoredChatKey(chatKey);
-        await setSessionProjectTarget(
+        await setEffectiveProjectTarget(
+          state,
           exactApprovedAssociation.projectId,
           exactApprovedAssociation.projectName,
         );
@@ -1892,20 +2118,13 @@ async function captureObservedChange(
 
         if (routingDecision.mode === "ignore") {
           clearPendingAssociation(state, { clearChatAssociation: true });
+          clearAssociationToast(state);
+          state.associationSuppressed = false;
           state.lastRoutedSignature = state.page.captureSignature ?? chatKey;
-          state.chatAssociation = {
-            status: "ignored",
-            projectId: null,
-            projectName: null,
-            sessionId: null,
-            reason:
-              routingDecision.reasons[0] ??
-              "Relay skipped this chat because it did not clearly map to a project.",
-            capturedAt: null,
-          };
+          state.chatAssociation = createEmptyChatAssociation();
           return {
             ok: true,
-            ignored: true,
+            ignored: false,
             captured: false,
             reason: routingDecision.reasons[0] ?? "Ignored this chat.",
           };
@@ -1917,6 +2136,11 @@ async function captureObservedChange(
           routingDecision.candidateProjectName
         ) {
           await clearIgnoredChatKey(chatKey);
+          await setEffectiveProjectTarget(
+            state,
+            routingDecision.candidateProjectId,
+            routingDecision.candidateProjectName,
+          );
           await showHeldAssociationToast(
             tabId,
             routingDecision.candidateProjectId,
@@ -1959,19 +2183,21 @@ async function captureObservedChange(
       });
 
       await clearIgnoredChatKey(chatKey);
+      await setEffectiveProjectTarget(state, projectId, projectName);
       await schedulePendingAutoSaveAssociation(tabId, projectId, projectName);
       return {
         ok: true,
         pending: true,
         captured: false,
         projectId,
-        reason: `Relay will save this chat to ${projectName} unless you cancel.`,
+        reason: `Relay will save this chat to ${projectName} in 10 seconds unless you cancel.`,
       };
     }
 
     const result = await captureTab(projectId, tabId);
     if (result?.ok) {
       clearPendingAssociation(state);
+      clearAssociationToast(state);
       const matchedProject =
         state.projectOptions.find((project) => project.id === projectId) ??
         session.projectOptions.find((project) => project.id === projectId) ??
@@ -1989,6 +2215,7 @@ async function captureObservedChange(
         state.page.captureSignature ?? state.lastObservedSignature;
       state.lastRoutedSignature = state.page.captureSignature ?? chatKey;
       state.lastCapturedTurns = state.page.turns ?? state.lastObservedTurns;
+      state.associationSuppressed = false;
       state.projectId = projectId;
       state.projectName = projectName || state.projectName;
       state.stateStatus = result.stateStatus ?? state.stateStatus;
@@ -2091,7 +2318,11 @@ function scheduleAutoCapture(
   );
 }
 
-async function insertProjectBrief(tabId: number, explicitProjectId?: string) {
+async function insertProjectBrief(
+  tabId: number,
+  explicitProjectId?: string,
+  source: RelayInsertState["source"] = "sidebar",
+) {
   const state = getOrCreateTabState(tabId);
   const pageState = state.page.supported
     ? state.page
@@ -2117,6 +2348,14 @@ async function insertProjectBrief(tabId: number, explicitProjectId?: string) {
   if (!projectId) {
     return { ok: false, reason: "Choose a project first." };
   }
+
+  clearInsertStateTimer(state);
+  setInsertState(state, {
+    status: "inserting",
+    source,
+    message: "Inserting project brief…",
+  });
+  await broadcastActiveProjectState(tabId);
 
   const targetProfileKey = resolveTargetProfile({
     platform: pageState.platform,
@@ -2145,7 +2384,13 @@ async function insertProjectBrief(tabId: number, explicitProjectId?: string) {
     );
     state.lastError = reason;
     state.remoteStatus = state.lastSuccessfulSyncAt ? "stale" : "unavailable";
+    setInsertState(state, {
+      status: "error",
+      source,
+      message: reason,
+    });
     await broadcastActiveProjectState(tabId);
+    scheduleInsertStateReset(tabId);
     return { ok: false, reason };
   }
 
@@ -2165,6 +2410,13 @@ async function insertProjectBrief(tabId: number, explicitProjectId?: string) {
   }
 
   if (generated.status === "pending" || !generated.packet?.content) {
+    setInsertState(state, {
+      status: "error",
+      source,
+      message: generated.reason ?? "Relay is still preparing your project brief.",
+    });
+    await broadcastActiveProjectState(tabId);
+    scheduleInsertStateReset(tabId);
     return {
       ok: false,
       reason:
@@ -2178,6 +2430,13 @@ async function insertProjectBrief(tabId: number, explicitProjectId?: string) {
   });
 
   if (!inserted?.ok) {
+    setInsertState(state, {
+      status: "error",
+      source,
+      message: inserted?.reason ?? "Insert failed.",
+    });
+    await broadcastActiveProjectState(tabId);
+    scheduleInsertStateReset(tabId);
     return { ok: false, reason: inserted?.reason ?? "Insert failed." };
   }
 
@@ -2201,6 +2460,16 @@ async function insertProjectBrief(tabId: number, explicitProjectId?: string) {
     assumedProjectId: projectId,
     assumedProjectName: state.projectName ?? "",
   });
+
+  setInsertState(state, {
+    status: "inserted",
+    source,
+    message: limitedMode
+      ? "Inserted a limited project brief."
+      : "Inserted the project brief.",
+  });
+  await broadcastActiveProjectState(tabId);
+  scheduleInsertStateReset(tabId);
 
   await syncTabRemoteState(tabId, { force: true, reason: "insert_complete" });
 
@@ -2232,12 +2501,12 @@ chrome.runtime.onSuspend.addListener(() => {
 
 chrome.tabs.onActivated.addListener((activeInfo: { tabId: number }) => {
   void requestPageStateFromTab(activeInfo.tabId);
+  const state = tabStates.get(activeInfo.tabId);
   void syncTabRemoteState(activeInfo.tabId, {
-    force: true,
+    force: !state?.lastSuccessfulSyncAt,
     reason: "tab_focus",
   });
 
-  const state = tabStates.get(activeInfo.tabId);
   if (
     state &&
     state.lastObservedSignature &&
@@ -2288,7 +2557,7 @@ chrome.commands?.onCommand.addListener((command: string) => {
     }
 
     await requestPageStateFromTab(tab.id);
-    await insertProjectBrief(tab.id);
+    await insertProjectBrief(tab.id, undefined, "shortcut");
   })();
 });
 
@@ -2477,25 +2746,10 @@ chrome.runtime.onMessage.addListener(
               return;
             }
 
-            sessionDataCache = null;
-            await setRelaySession({
-              apiBase: payload.apiBase,
-              token: payload.token,
-              projectId: payload.projectId,
-              targetMode: "auto",
-              targetProfileKey: "",
-              resolvedTargetProfileKey: "",
-              connected: true,
-              autoCapture: payload.settings?.settings?.autoCapture ?? true,
-              limitedMode: false,
-              lastStatus: "Signed in with Google.",
-              stateStatus: null,
-              assumedProjectId: payload.projectId,
-              assumedProjectName: "",
-              trust: createEmptyTrustMetadata(),
-              projectOptions: payload.projects ?? [],
-              onboarding: payload.onboarding ?? createPendingOnboardingState(),
-            });
+            await storeAuthenticatedExtensionSession(
+              payload,
+              "Signed in with Google.",
+            );
             const storedSession = await getRelaySession();
             console.log("[Relay BG] stored session after Google auth:", {
               connected: storedSession.connected,
@@ -2534,6 +2788,106 @@ chrome.runtime.onMessage.addListener(
                 cause instanceof Error
                   ? cause.message
                   : "Google sign-in failed.",
+            });
+          }
+          return;
+        }
+
+        if (message.type === "RELAY_LOCAL_SIGN_IN") {
+          try {
+            const flowId = message.payload.flowId ?? createFlowId("ext-local-auth");
+            recordBackgroundTelemetry({
+              level: "info",
+              surface: "extension-background",
+              area: "auth",
+              event: "local_sign_in.started",
+              flowId,
+              message: "Received local sign-in request from the extension UI.",
+              context: {
+                deviceName: message.payload.deviceName,
+                email: message.payload.email,
+              },
+            });
+
+            const session = await getRelaySession();
+            const apiBase =
+              session.apiBase ||
+              process.env.PLASMO_PUBLIC_RELAY_API_BASE ||
+              "http://localhost:3000";
+            const response = await fetch(
+              `${apiBase}/api/extension/auth/local`,
+              {
+                method: "POST",
+                headers: {
+                  "content-type": "application/json",
+                  "x-relay-flow-id": flowId,
+                },
+                body: JSON.stringify({
+                  email: message.payload.email,
+                  name: message.payload.name ?? null,
+                  deviceName: message.payload.deviceName,
+                }),
+              },
+            );
+
+            recordBackgroundTelemetry({
+              level: response.ok ? "info" : "warn",
+              surface: "extension-background",
+              area: "auth",
+              event: "local_sign_in.api_response",
+              flowId,
+              message: `Extension local auth returned ${response.status}.`,
+              context: {
+                status: response.status,
+              },
+            });
+
+            if (!response.ok) {
+              const reason = await readErrorResponse(
+                response,
+                "Local sign-in failed.",
+              );
+              recordBackgroundTelemetry({
+                level: "error",
+                surface: "extension-background",
+                area: "auth",
+                event: "local_sign_in.failed",
+                flowId,
+                message: reason,
+              });
+              sendResponse({ ok: false, reason });
+              return;
+            }
+
+            const payload = (await response.json()) as ExtensionAuthSessionPayload;
+            if (!payload.token || !payload.apiBase) {
+              sendResponse({
+                ok: false,
+                reason: "Local sign-in completed but Relay did not return a valid session.",
+              });
+              return;
+            }
+
+            await storeAuthenticatedExtensionSession(
+              payload,
+              "Signed in locally.",
+            );
+            sendResponse({ ok: true });
+          } catch (cause) {
+            recordBackgroundTelemetry({
+              level: "error",
+              surface: "extension-background",
+              area: "auth",
+              event: "local_sign_in.exception",
+              message: "Local sign-in threw an exception in the background worker.",
+              error: cause,
+            });
+            sendResponse({
+              ok: false,
+              reason:
+                cause instanceof Error
+                  ? cause.message
+                  : "Local sign-in failed.",
             });
           }
           return;
@@ -2699,7 +3053,10 @@ chrome.runtime.onMessage.addListener(
             session.connected &&
             (state.remoteStatus === "unavailable" || !state.lastSuccessfulSyncAt)
           ) {
-            state.remoteStatus = "loading";
+            state.remoteStatus =
+              session.projectOptions.length > 0 || session.assumedProjectId
+                ? "stale"
+                : "loading";
           }
 
           sendResponse(await buildActiveProjectState(tabId));
@@ -2858,7 +3215,11 @@ chrome.runtime.onMessage.addListener(
           }
 
           sendResponse(
-            await insertProjectBrief(tabId, message.payload?.projectId),
+            await insertProjectBrief(
+              tabId,
+              message.payload?.projectId,
+              message.payload?.source ?? "sidebar",
+            ),
           );
           return;
         }

@@ -4,6 +4,8 @@ import { redirect } from "next/navigation"
 
 import { createRepositoryBundle } from "@relay/db"
 
+import { clearLocalSessionCookie } from "@/lib/auth/local-session"
+import { getAuthProvider } from "@/lib/auth/provider"
 import { requireAuthServer } from "@/lib/auth/server"
 import { requireSessionViewer } from "@/server/policies/viewer"
 
@@ -27,6 +29,13 @@ async function deleteAccountForUser(userId: string) {
 
 export async function deleteAccountAction() {
   const viewer = await requireSessionViewer()
+
+  if (getAuthProvider() === "local") {
+    const repositories = createRepositoryBundle()
+    await clearLocalSessionCookie()
+    await repositories.provider.query(`delete from profiles where id = $1`, [viewer.userId])
+    redirect("/get-started")
+  }
 
   const signOutResult = await requireAuthServer().signOut()
   if (signOutResult?.error) {

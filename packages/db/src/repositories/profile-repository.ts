@@ -6,6 +6,32 @@ import type { DatabaseProvider } from "../store/provider"
 export class ProfileRepository {
   constructor(private readonly provider: DatabaseProvider) {}
 
+  async getById(id: string): Promise<ProfileRow | null> {
+    const rows = await this.provider.query(
+      `select *
+       from profiles
+       where id = $1
+       limit 1`,
+      [id]
+    )
+
+    const row = rows[0]
+    return row ? toProfileRow(row as Record<string, unknown>) : null
+  }
+
+  async getByEmail(email: string): Promise<ProfileRow | null> {
+    const rows = await this.provider.query(
+      `select *
+       from profiles
+       where lower(email) = lower($1)
+       limit 1`,
+      [email]
+    )
+
+    const row = rows[0]
+    return row ? toProfileRow(row as Record<string, unknown>) : null
+  }
+
   async upsert(input: { id: string; email?: string | null; displayName?: string | null; avatarUrl?: string | null }): Promise<ProfileRow> {
     const rows = await this.provider.query(
       `insert into profiles (id, email, display_name, avatar_url)

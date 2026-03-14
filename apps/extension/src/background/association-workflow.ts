@@ -5,6 +5,8 @@ import type {
 } from "../messaging/contracts";
 
 export const ASSOCIATION_TOAST_WINDOW_MS = 20_000;
+export const AUTO_SAVE_ASSOCIATION_TOAST_WINDOW_MS = 10_000;
+export const HELD_REVIEW_ASSOCIATION_TOAST_WINDOW_MS = 20_000;
 
 export interface PendingAssociationState {
   mode: "auto_save";
@@ -50,13 +52,13 @@ export function buildPendingAutoSaveAssociation(input: {
   now?: number;
 }) {
   const now = input.now ?? Date.now();
-  const expiresAt = now + ASSOCIATION_TOAST_WINDOW_MS;
+  const expiresAt = now + AUTO_SAVE_ASSOCIATION_TOAST_WINDOW_MS;
   const chatAssociation: RelayChatAssociation = {
     status: "pending",
     projectId: input.projectId,
     projectName: input.projectName,
     sessionId: null,
-    reason: `Relay will save this chat to ${input.projectName} in 20 seconds unless you cancel.`,
+    reason: `Relay will save this chat to ${input.projectName} in 10 seconds unless you cancel.`,
     capturedAt: null,
   };
   const toast: RelayAssociationToastPayload = {
@@ -88,7 +90,7 @@ export function buildHeldReviewAssociation(input: {
   now?: number;
 }) {
   const now = input.now ?? Date.now();
-  const expiresAt = now + ASSOCIATION_TOAST_WINDOW_MS;
+  const expiresAt = now + HELD_REVIEW_ASSOCIATION_TOAST_WINDOW_MS;
   const chatAssociation: RelayChatAssociation = {
     status: "held",
     projectId: input.projectId,

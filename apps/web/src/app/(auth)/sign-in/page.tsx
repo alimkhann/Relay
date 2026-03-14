@@ -3,7 +3,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
+import { LocalSignInForm } from "@/components/auth/local-sign-in-form";
 import { SignInSessionGate } from "@/components/auth/sign-in-session-gate";
+import { getAuthProvider } from "@/lib/auth/provider";
 import { PageTelemetry } from "@/components/telemetry/page-telemetry";
 import {
   resolveAuthenticatedAppPath,
@@ -28,8 +30,10 @@ export default async function SignInPage({
     redirect(resolveAuthenticatedAppPath("/dashboard"));
   }
 
+  const authProvider = getAuthProvider();
   const authConfigured = Boolean(
-    process.env.NEON_AUTH_BASE_URL && process.env.NEON_AUTH_COOKIE_SECRET,
+    authProvider === "local" ||
+      (process.env.NEON_AUTH_BASE_URL && process.env.NEON_AUTH_COOKIE_SECRET),
   );
 
   return (
@@ -37,6 +41,7 @@ export default async function SignInPage({
       <SignInSessionGate
         nextPath={resolveAuthenticatedAppPath("/dashboard")}
         allowExistingSession
+        provider={authProvider}
       />
       <PageTelemetry
         surface="web-auth"
@@ -58,13 +63,21 @@ export default async function SignInPage({
         </h1>
         <p className="mt-2 text-sm text-gray-400">
           {intent === "sign-up"
-            ? "Start with Google and land in your dashboard."
-            : "Keep your project brief ready for every fresh AI chat."}
+            ? authProvider === "local"
+              ? "Use local dev auth and land in your dashboard."
+              : "Start with Google and land in your dashboard."
+            : authProvider === "local"
+              ? "Use local dev auth to keep your project brief ready."
+              : "Keep your project brief ready for every fresh AI chat."}
         </p>
 
         <div className="mt-8">
           {authConfigured ? (
-            <GoogleSignInButton nextPath={nextPath} intent={intent} />
+            authProvider === "local" ? (
+              <LocalSignInForm nextPath={nextPath} />
+            ) : (
+              <GoogleSignInButton nextPath={nextPath} intent={intent} />
+            )
           ) : (
             <p className="rounded-2xl bg-gray-100 px-4 py-4 text-sm text-gray-400">
               Add auth environment variables to enable sign-in.

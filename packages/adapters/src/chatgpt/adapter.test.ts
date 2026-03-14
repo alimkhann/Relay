@@ -27,4 +27,29 @@ describe("ChatgptAdapter", () => {
 
     expect(adapter.canHandle("https://chatgpt.com/codex")).toBe(false)
   })
+
+  it("treats delayed textarea acceptance as a successful insert", async () => {
+    document.body.innerHTML = `
+      <main>
+        <form><textarea></textarea></form>
+      </main>
+    `
+
+    const textarea = document.querySelector("textarea")
+    if (!textarea) {
+      throw new Error("Expected a textarea prompt for the test.")
+    }
+
+    textarea.addEventListener("input", () => {
+      const inserted = textarea.value
+      textarea.value = ""
+      window.setTimeout(() => {
+        textarea.value = inserted
+      }, 40)
+    })
+
+    const adapter = new ChatgptAdapter()
+
+    await expect(adapter.insertTextIntoPrompt("Insert this brief", document)).resolves.toEqual({ ok: true })
+  })
 })

@@ -2,8 +2,11 @@ import type { ProjectStateStatusDto, RelayOnboardingState } from "@relay/shared"
 
 import type {
   RelayActiveProjectState,
+  RelayAssociationTier,
+  RelayAssociationToastState,
   RelayChatAssociation,
   RelayContextPreview,
+  RelayInsertState,
   RelayInsertKind,
   RelayIssue,
   RelayPageState,
@@ -32,6 +35,10 @@ export interface BuildRelayActiveProjectStateInput {
   contextPreview: RelayContextPreview
   chatAssociation: RelayChatAssociation
   routingReview: RelayRoutingReview | null
+  associationTier: RelayAssociationTier
+  associationToast: RelayAssociationToastState
+  associationSuppressed: boolean
+  insertState: RelayInsertState
   lastError?: string | null
 }
 
@@ -76,6 +83,28 @@ export function createEmptyChatAssociation(): RelayChatAssociation {
   }
 }
 
+export function createEmptyAssociationToast(): RelayAssociationToastState {
+  return {
+    visible: false,
+    mode: null,
+    projectId: null,
+    projectName: null,
+    projectOptions: [],
+    sessionId: null,
+    expiresAt: null,
+    paused: false
+  }
+}
+
+export function createEmptyInsertState(): RelayInsertState {
+  return {
+    status: "idle",
+    source: null,
+    message: null,
+    updatedAt: null
+  }
+}
+
 export function createEmptyActiveProjectState(
   overrides: Partial<RelayActiveProjectState> = {}
 ): RelayActiveProjectState {
@@ -101,6 +130,10 @@ export function createEmptyActiveProjectState(
     contextPreview: createEmptyContextPreview(),
     chatAssociation: createEmptyChatAssociation(),
     routingReview: null,
+    associationTier: "none",
+    associationToast: createEmptyAssociationToast(),
+    associationSuppressed: false,
+    insertState: createEmptyInsertState(),
     onboarding: {
       status: "pending",
       completedProjectId: null,
@@ -301,6 +334,10 @@ export function deriveRelayActiveProjectState(input: BuildRelayActiveProjectStat
     contextPreview: input.contextPreview,
     chatAssociation: input.chatAssociation,
     routingReview: input.routingReview,
+    associationTier: input.associationTier,
+    associationToast: input.associationToast,
+    associationSuppressed: input.associationSuppressed,
+    insertState: input.insertState,
     onboarding: input.onboarding
   }
 }

@@ -1,6 +1,6 @@
 import { createRepositoryBundle } from "@relay/db"
-import type { BootstrapPacketDto, BootstrapRequest, BootstrapPacketRow, ProjectStateRow, ProjectStateStatusDto, SessionDigestRow, TargetProfileRow } from "@relay/shared"
-import { bootstrapRequestSchema, normalizeText } from "@relay/shared"
+import type { BootstrapPacketDto, BootstrapRequest, BootstrapPacketRow, ProjectRow, ProjectStateRow, ProjectStateStatusDto, SessionDigestRow, TargetProfileRow } from "@relay/shared"
+import { bootstrapRequestSchema, hashContent, normalizeText } from "@relay/shared"
 
 import { GEMINI_MODELS, runGeminiJsonWithFallback } from "./gemini-service"
 import { getProjectStateStatus } from "./state-status-service"
@@ -127,7 +127,13 @@ export function shouldReuseLatestBootstrapPacket(input: {
   latestDigestCreatedAt: string | null
   stateDirty: boolean
   deep: boolean
+  latestInputHash?: string | null
+  currentInputHash?: string | null
 }) {
+  if (input.latestInputHash && input.currentInputHash) {
+    return input.latestInputHash === input.currentInputHash
+  }
+
   if (input.deep || input.stateDirty || !input.latestCreatedAt) {
     return false
   }
@@ -155,6 +161,40 @@ function sanitizeBootstrapShape(input: BootstrapModelShape, state: ProjectStateR
     relevantTools: relevantTools.length ? relevantTools : state?.relevantTools ?? [],
     firstAction: sanitizeFirstAction(input.firstAction, state)
   }
+}
+
+export function computeBootstrapInputHash(input: {
+  project: ProjectRow
+  state: ProjectStateRow | null
+  digests: SessionDigestRow[]
+  profile: TargetProfileRow
+  kind: BootstrapRequest["kind"]
+}) {
+  return hashContent(
+    JSON.stringify({
+      kind: input.kind,
+      profileKey: input.profile.key,
+      projectDescription: input.project.description ?? null,
+      state: input.state
+        ? {
+            projectOverview: input.state.projectOverview,
+            currentObjective: input.state.currentObjective,
+            recentProgress: input.state.recentProgress,
+            decisions: input.state.decisions,
+            constraints: input.state.constraints,
+            openTasks: input.state.openTasks,
+            relevantTools: input.state.relevantTools,
+            updatedAt: input.state.updatedAt,
+          }
+        : null,
+      digests: input.digests.slice(0, 6).map((digest) => ({
+        id: digest.id,
+        createdAt: digest.createdAt,
+        summaryShort: digest.summaryShort,
+        structuredDigest: digest.structuredDigest,
+      })),
+    })
+  )
 }
 
 export function deterministicBootstrap(state: ProjectStateRow | null, digests: SessionDigestRow[], profile: TargetProfileRow, kind: BootstrapRequest["kind"]): BootstrapModelShape {
@@ -379,6 +419,13 @@ export async function generateBootstrapForProject(userId: string, projectId: str
     }
   }
 
+  const briefInputHash = computeBootstrapInputHash({
+    project,
+    state,
+    digests,
+    profile,
+    kind: parsed.kind,
+  })
   const latest = await repositories.bootstrapPackets.getLatest(projectId, profile.id, parsed.kind)
   if (
     latest &&
@@ -386,7 +433,12 @@ export async function generateBootstrapForProject(userId: string, projectId: str
       latestCreatedAt: latest.createdAt,
       latestDigestCreatedAt: digests[0]?.createdAt ?? null,
       stateDirty: Boolean(state?.dirty),
-      deep: Boolean(parsed.deep)
+      deep: Boolean(parsed.deep),
+      latestInputHash:
+        typeof latest.generationMetadata?.input_hash === "string"
+          ? String(latest.generationMetadata.input_hash)
+          : null,
+      currentInputHash: briefInputHash,
     })
   ) {
     return {
@@ -430,6 +482,7 @@ export async function generateBootstrapForProject(userId: string, projectId: str
     structuredSnapshot: { ...shape },
     renderer,
     generationMetadata: {
+      input_hash: briefInputHash,
       primary_model: primaryModel,
       actual_model: actualModel,
       fallback_used: fallbackUsed,

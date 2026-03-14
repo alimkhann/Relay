@@ -17,10 +17,29 @@ pnpm dev:web
 pnpm dev:extension
 ```
 
+## Local DB + Local Auth
+
+Set `AUTH_PROVIDER=local` and `PLASMO_PUBLIC_RELAY_AUTH_PROVIDER=local` in your local env, then use the local Postgres flow:
+
+```bash
+pnpm db:local:start
+pnpm db:local:migrate
+pnpm db:local:seed:user -- --email local@relay.test --name "Relay Local"
+pnpm dev:web
+pnpm dev:extension
+```
+
+Useful reset commands:
+
+```bash
+pnpm db:local:count
+pnpm db:local:reset
+```
+
 ## Tooling
 
 - Next.js App Router
-- Supabase Auth/Postgres
+- Neon-compatible Postgres storage
 - Tailwind CSS
 - shadcn/ui-style primitives
 - Vitest

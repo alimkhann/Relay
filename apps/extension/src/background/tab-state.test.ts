@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest"
 import type { ProjectStateStatusDto } from "@relay/shared"
 
 import {
+  createEmptyAssociationToast,
   createEmptyChatAssociation,
   createEmptyContextPreview,
+  createEmptyInsertState,
   createEmptyTrustMetadata,
   decideShortcutAction,
   deriveRelayActiveProjectState,
@@ -61,6 +63,10 @@ describe("deriveRelayActiveProjectState", () => {
       contextPreview: createEmptyContextPreview(),
       chatAssociation: createEmptyChatAssociation(),
       routingReview: null,
+      associationTier: "none",
+      associationToast: createEmptyAssociationToast(),
+      associationSuppressed: false,
+      insertState: createEmptyInsertState(),
       lastError: "Failed to fetch"
     })
 
@@ -95,7 +101,11 @@ describe("deriveRelayActiveProjectState", () => {
       capturePending: false,
       contextPreview: createEmptyContextPreview(),
       chatAssociation: createEmptyChatAssociation(),
-      routingReview: null
+      routingReview: null,
+      associationTier: "none",
+      associationToast: createEmptyAssociationToast(),
+      associationSuppressed: false,
+      insertState: createEmptyInsertState(),
     })
 
     expect(state.status).toBe("unavailable")
@@ -130,7 +140,11 @@ describe("view states", () => {
       capturePending: false,
       contextPreview: createEmptyContextPreview(),
       chatAssociation: createEmptyChatAssociation(),
-      routingReview: null
+      routingReview: null,
+      associationTier: "none",
+      associationToast: createEmptyAssociationToast(),
+      associationSuppressed: false,
+      insertState: createEmptyInsertState(),
     })
 
     expect(state.viewState).toBe("connected-loading")
@@ -160,7 +174,11 @@ describe("view states", () => {
       capturePending: false,
       contextPreview: createEmptyContextPreview(),
       chatAssociation: createEmptyChatAssociation(),
-      routingReview: null
+      routingReview: null,
+      associationTier: "none",
+      associationToast: createEmptyAssociationToast(),
+      associationSuppressed: false,
+      insertState: createEmptyInsertState(),
     })
 
     expect(state.viewState).toBe("connected-empty")

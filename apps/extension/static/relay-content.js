@@ -31,6 +31,7 @@
     dismissed: false,
     href: window.location.href,
     forcedInsertKind: null,
+    projectSwitcherSurface: null,
     observationTimer: null,
     lastMeaningfulMutationAt: Date.now(),
     freshCandidateSince: 0,
@@ -323,6 +324,24 @@
         capturedAt: null,
       },
       routingReview: null,
+      associationTier: "none",
+      associationToast: {
+        visible: false,
+        mode: null,
+        projectId: null,
+        projectName: null,
+        projectOptions: [],
+        sessionId: null,
+        expiresAt: null,
+        paused: false,
+      },
+      associationSuppressed: false,
+      insertState: {
+        status: "idle",
+        source: null,
+        message: null,
+        updatedAt: null,
+      },
     };
   }
 
@@ -379,6 +398,28 @@
       window.clearTimeout(relayChipState.resetButtonTimer);
       relayChipState.resetButtonTimer = null;
     }
+  }
+
+  function isProjectSwitcherOpen(surface) {
+    return relayChipState.projectSwitcherSurface === surface;
+  }
+
+  function closeProjectSwitcher() {
+    relayChipState.projectSwitcherSurface = null;
+  }
+
+  function rerenderSharedSurfaces() {
+    renderInlineChip();
+    if (relayChipState.associationToast.payload) {
+      renderAssociationToast(relayChipState.associationToast.payload);
+    }
+  }
+
+  function toggleProjectSwitcher(surface) {
+    relayChipState.projectSwitcherSurface = isProjectSwitcherOpen(surface)
+      ? null
+      : surface;
+    rerenderSharedSurfaces();
   }
 
   function ensureInlineChipStyles() {
@@ -464,12 +505,53 @@
         gap: 10px;
       }
 
+      .relay-inline-chip__titleWrap {
+        position: relative;
+        min-width: 0;
+        flex: 1;
+      }
+
       .relay-inline-chip__title {
         margin: 0;
         font-size: 14px;
         font-weight: 600;
         line-height: 1.3;
         letter-spacing: -0.01em;
+      }
+
+      .relay-inline-chip__titleButton {
+        width: fit-content;
+        max-width: 100%;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: none;
+        background: transparent;
+        padding: 0;
+        color: inherit;
+        cursor: pointer;
+      }
+
+      .relay-inline-chip__titleLabel {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .relay-inline-chip__titleChevron {
+        width: 13px;
+        height: 13px;
+        color: var(--relay-faint);
+        transition: transform 120ms ease, color 120ms ease;
+      }
+
+      .relay-inline-chip__titleButton:hover .relay-inline-chip__titleChevron,
+      .relay-inline-chip__titleButton:focus-visible .relay-inline-chip__titleChevron {
+        color: var(--relay-ink);
+      }
+
+      .relay-inline-chip__titleButton[aria-expanded="true"] .relay-inline-chip__titleChevron {
+        transform: rotate(180deg);
       }
 
       .relay-inline-chip__close {
@@ -656,15 +738,51 @@
         height: 12px;
       }
 
-      .relay-inline-chip__select {
-        width: 100%;
+      .relay-inline-chip__projectMenu,
+      .relay-association-toast__projectMenu {
+        display: grid;
+        gap: 6px;
+        padding: 8px;
         border: 1px solid var(--relay-line);
-        border-radius: 8px;
+        border-radius: 10px;
         background: var(--relay-surface);
+      }
+
+      .relay-inline-chip__projectMenu {
+        margin-top: 8px;
+      }
+
+      .relay-association-toast__projectMenu {
+        margin-top: -2px;
+      }
+
+      .relay-inline-chip__projectOption,
+      .relay-association-toast__projectOption {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        background: transparent;
         color: var(--relay-ink);
-        padding: 7px 10px;
+        padding: 8px 10px;
         font-size: 12px;
-        font-family: inherit;
+        text-align: left;
+        cursor: pointer;
+        transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+      }
+
+      .relay-inline-chip__projectOption:hover,
+      .relay-association-toast__projectOption:hover {
+        background: var(--relay-hover);
+      }
+
+      .relay-inline-chip__projectOption--active,
+      .relay-association-toast__projectOption--active {
+        border-color: var(--relay-line);
+        background: var(--relay-hover);
       }
 
       @keyframes relay-shimmer {
@@ -753,6 +871,48 @@
         line-height: 1.4;
       }
 
+      .relay-association-toast__titleWrap {
+        min-width: 0;
+        flex: 1;
+        display: grid;
+        gap: 8px;
+      }
+
+      .relay-association-toast__titleButton {
+        width: fit-content;
+        max-width: 100%;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: none;
+        background: transparent;
+        padding: 0;
+        color: inherit;
+        cursor: pointer;
+      }
+
+      .relay-association-toast__titleLabel {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .relay-association-toast__titleChevron {
+        width: 12px;
+        height: 12px;
+        color: var(--relay-muted);
+        transition: transform 120ms ease, color 120ms ease;
+      }
+
+      .relay-association-toast__titleButton:hover .relay-association-toast__titleChevron,
+      .relay-association-toast__titleButton:focus-visible .relay-association-toast__titleChevron {
+        color: var(--relay-ink);
+      }
+
+      .relay-association-toast__titleButton[aria-expanded="true"] .relay-association-toast__titleChevron {
+        transform: rotate(180deg);
+      }
+
       .relay-association-toast__header {
         display: flex;
         align-items: flex-start;
@@ -786,17 +946,6 @@
         font-size: 11px;
         line-height: 1.45;
         color: var(--relay-ink-secondary);
-      }
-
-      .relay-association-toast__select {
-        width: 100%;
-        border: 1px solid var(--relay-line);
-        border-radius: 8px;
-        background: var(--relay-surface);
-        color: var(--relay-ink);
-        padding: 7px 10px;
-        font-size: 12px;
-        font-family: inherit;
       }
 
       .relay-association-toast__actions {
@@ -1012,8 +1161,7 @@
       href: relayChipState.href,
       dismissed: relayChipState.dismissed,
       forcedInsertKind: relayChipState.forcedInsertKind,
-      buttonMode: relayChipState.buttonMode,
-      buttonError: relayChipState.buttonError,
+      chipProjectSwitcherOpen: isProjectSwitcherOpen("chip"),
       projectId: activeState.projectId,
       projectName: activeState.projectName,
       message: activeState.message,
@@ -1028,31 +1176,167 @@
       associationStatus: activeState.chatAssociation.status,
       associationProjectId: activeState.chatAssociation.projectId,
       associationProjectName: activeState.chatAssociation.projectName,
+      insertStatus: activeState.insertState?.status ?? "idle",
+      insertMessage: activeState.insertState?.message ?? null,
     });
   }
 
-  function getButtonLabel(activeState) {
+  function getInsertUiState(activeState) {
+    const sharedInsertState = activeState.insertState || {
+      status: "idle",
+      message: null,
+    };
+
+    if (sharedInsertState.status === "inserting") {
+      return {
+        mode: "loading",
+        message: '<span class="relay-inline-chip__shimmer">Inserting project brief…</span>',
+      };
+    }
+
+    if (sharedInsertState.status === "inserted") {
+      return {
+        mode: "success",
+        message: "Inserted",
+      };
+    }
+
+    if (sharedInsertState.status === "error" && sharedInsertState.message) {
+      return {
+        mode: "error",
+        message: escapeHtml(sharedInsertState.message),
+      };
+    }
+
     if (relayChipState.buttonMode === "loading") {
-      return '<span class="relay-inline-chip__shimmer">Inserting project brief…</span>';
+      return {
+        mode: "loading",
+        message: '<span class="relay-inline-chip__shimmer">Inserting project brief…</span>',
+      };
     }
 
     if (relayChipState.buttonMode === "success") {
-      return "Inserted";
+      return {
+        mode: "success",
+        message: "Inserted",
+      };
     }
 
     if (relayChipState.buttonMode === "error" && relayChipState.buttonError) {
-      return escapeHtml(relayChipState.buttonError);
+      return {
+        mode: "error",
+        message: escapeHtml(relayChipState.buttonError),
+      };
     }
 
     if (activeState.status === "updating") {
-      return "Updating your project brief";
+      return {
+        mode: "idle",
+        message: "Updating your project brief",
+      };
     }
 
     if (!activeState.canInsert) {
-      return "Project brief unavailable";
+      return {
+        mode: "idle",
+        message: "Project brief unavailable",
+      };
     }
 
-    return "Insert project brief";
+    return {
+      mode: "idle",
+      message: "Insert project brief",
+    };
+  }
+
+  function getButtonLabel(activeState) {
+    return getInsertUiState(activeState).message;
+  }
+
+  function syncSharedInsertState(activeState) {
+    const insertState = activeState?.insertState;
+    if (!insertState || insertState.status === "idle") {
+      relayChipState.buttonMode = "idle";
+      relayChipState.buttonError = "";
+      return;
+    }
+
+    if (insertState.status === "inserting") {
+      relayChipState.buttonMode = "loading";
+      relayChipState.buttonError = "";
+      return;
+    }
+
+    if (insertState.status === "inserted") {
+      relayChipState.buttonMode = "success";
+      relayChipState.buttonError = "";
+      return;
+    }
+
+    relayChipState.buttonMode = "error";
+    relayChipState.buttonError = insertState.message || "Insert failed.";
+  }
+
+  function buildAssociationToastPayloadFromState(activeState) {
+    const toastState = activeState?.associationToast;
+    if (
+      !toastState ||
+      !toastState.visible ||
+      !toastState.mode ||
+      !toastState.projectId ||
+      !toastState.projectName ||
+      !toastState.expiresAt
+    ) {
+      return null;
+    }
+
+    return {
+      mode: toastState.mode,
+      projectId: toastState.projectId,
+      projectName: toastState.projectName,
+      projectOptions:
+        toastState.projectOptions?.length > 0
+          ? toastState.projectOptions
+          : activeState.projectOptions || [],
+      sessionId: toastState.sessionId || null,
+      expiresAt: toastState.expiresAt,
+    };
+  }
+
+  function syncAssociationToastFromState(activeState) {
+    const payload = buildAssociationToastPayloadFromState(activeState);
+
+    if (!payload) {
+      if (relayChipState.associationToast.payload) {
+        hideAssociationToast();
+      }
+      return;
+    }
+
+    relayChipState.associationToast.paused =
+      activeState.associationToast?.paused === true;
+    if (!relayChipState.associationToast.paused) {
+      relayChipState.associationToast.remainingMs = null;
+    }
+    renderAssociationToast(payload);
+  }
+
+  function formatProjectSwitcherOptions(projectOptions, activeProjectId, className) {
+    return projectOptions
+      .map((project) => {
+        const active = project.id === activeProjectId;
+        return `
+          <button
+            class="${className}${active ? ` ${className}--active` : ""}"
+            type="button"
+            data-project-id="${escapeHtml(project.id)}"
+          >
+            <span>${escapeHtml(project.name)}</span>
+            <span>${active ? "Current" : "Switch"}</span>
+          </button>
+        `;
+      })
+      .join("");
   }
 
   async function invokeInsertFromChip() {
@@ -1079,6 +1363,9 @@
 
     const result = await sendRuntimeMessage({
       type: "RELAY_INSERT_PROJECT_BRIEF",
+      payload: {
+        source: "inline_chip",
+      },
     });
     if (!result || !result.ok) {
       emitInlineTelemetry({
@@ -1159,24 +1446,23 @@
     const root = getInlineChipRoot();
     const renderKey = buildRenderKey(activeState);
     if (root.dataset.renderKey !== renderKey) {
-      const projectOptions = activeState.projectOptions
-        .map(
-          (project) =>
-            `<option value="${escapeHtml(project.id)}"${project.id === activeState.projectId ? " selected" : ""}>${escapeHtml(project.name)}</option>`,
-        )
-        .join("");
       const shouldShowIssue =
         Boolean(activeState.issue) &&
         (!activeState.canInsert ||
           activeState.remoteStatus === "stale" ||
           activeState.remoteStatus === "unavailable");
+      const insertUiState = getInsertUiState(activeState);
+      const projectSwitcherOpen = isProjectSwitcherOpen("chip");
       const buttonClassName = [
         "relay-inline-chip__button",
-        relayChipState.buttonMode === "loading"
+        insertUiState.mode === "loading"
           ? "relay-inline-chip__button--loading"
           : "",
-        relayChipState.buttonMode === "success"
+        insertUiState.mode === "success"
           ? "relay-inline-chip__button--success"
+          : "",
+        insertUiState.mode === "error"
+          ? "relay-inline-chip__button--loading"
           : "",
       ]
         .filter(Boolean)
@@ -1184,11 +1470,34 @@
       const dotClass = activeState.canInsert
         ? "relay-inline-chip__dot--ready"
         : "relay-inline-chip__dot--waiting";
+      const chipTitle =
+        activeState.projectOptions.length > 1
+          ? `
+            <div class="relay-inline-chip__titleWrap">
+              <button
+                class="relay-inline-chip__titleButton"
+                type="button"
+                aria-label="Switch project"
+                aria-expanded="${projectSwitcherOpen ? "true" : "false"}"
+              >
+                <span class="relay-inline-chip__title relay-inline-chip__titleLabel">${escapeHtml(activeState.projectName || "No project")}</span>
+                <svg class="relay-inline-chip__titleChevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="4 6 8 10 12 6"></polyline>
+                </svg>
+              </button>
+              ${
+                projectSwitcherOpen
+                  ? `<div class="relay-inline-chip__projectMenu">${formatProjectSwitcherOptions(activeState.projectOptions, activeState.projectId, "relay-inline-chip__projectOption")}</div>`
+                  : ""
+              }
+            </div>
+          `
+          : `<div class="relay-inline-chip__titleWrap"><p class="relay-inline-chip__title">${escapeHtml(activeState.projectName || "No project")}</p></div>`;
 
       root.innerHTML = `
         <div class="relay-inline-chip__body">
           <div class="relay-inline-chip__top">
-            <p class="relay-inline-chip__title">${escapeHtml(activeState.projectName || "No project")}</p>
+            ${chipTitle}
             <button class="relay-inline-chip__close" type="button" aria-label="Dismiss">×</button>
           </div>
           <div class="relay-inline-chip__statusRow">
@@ -1216,7 +1525,7 @@
           </div>
           <div class="relay-inline-chip__controls">
             <div class="relay-inline-chip__row">
-              <button class="${buttonClassName}" type="button" ${activeState.canInsert && relayChipState.buttonMode !== "loading" ? "" : "disabled"}>
+              <button class="${buttonClassName}" type="button" ${activeState.canInsert && insertUiState.mode !== "loading" ? "" : "disabled"}>
                 ${getButtonLabel(activeState)}
               </button>
               <div class="relay-inline-chip__shortcut" aria-label="${escapeHtml(activeState.shortcutLabel || "Mod+Shift+I")} shortcut">
@@ -1227,11 +1536,6 @@
                 <span>${escapeHtml(activeState.shortcutLabel || "Mod+Shift+I")}</span>
               </div>
             </div>
-            ${
-              activeState.projectOptions.length > 1
-                ? `<select class="relay-inline-chip__select" aria-label="Switch project">${projectOptions}</select>`
-                : ""
-            }
           </div>
         </div>
       `;
@@ -1250,13 +1554,20 @@
         });
       }
 
-      const select = root.querySelector(".relay-inline-chip__select");
-      if (select) {
-        select.addEventListener("click", (event) => {
+      const titleButton = root.querySelector(".relay-inline-chip__titleButton");
+      if (titleButton) {
+        titleButton.addEventListener("click", (event) => {
+          event.preventDefault();
           event.stopPropagation();
+          toggleProjectSwitcher("chip");
         });
-        select.addEventListener("change", async (event) => {
-          const nextProjectId = event.target.value;
+      }
+
+      root.querySelectorAll(".relay-inline-chip__projectOption").forEach((button) => {
+        button.addEventListener("click", async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const nextProjectId = button.getAttribute("data-project-id");
           if (!nextProjectId) return;
           const associationAware =
             activeState.chatAssociation &&
@@ -1278,6 +1589,7 @@
           });
           relayChipState.buttonMode = "idle";
           relayChipState.buttonError = "";
+          closeProjectSwitcher();
           await sendRuntimeMessage(
             associationAware
               ? {
@@ -1293,7 +1605,7 @@
                 },
           );
         });
-      }
+      });
 
       root.dataset.renderKey = renderKey;
     }
@@ -1344,8 +1656,14 @@
   function hideAssociationToast() {
     clearAssociationToastTimers();
     const root = document.getElementById("relay-association-toast");
+    if (isProjectSwitcherOpen("toast")) {
+      closeProjectSwitcher();
+    }
     resetAssociationToastPauseState();
-    if (!root) return;
+    if (!root) {
+      relayChipState.associationToast.payload = null;
+      return;
+    }
 
     root.classList.add("relay-association-toast--hiding");
     relayChipState.associationToast.removeTimer = window.setTimeout(() => {
@@ -1515,12 +1833,30 @@
       payload.mode === "auto_save"
         ? "Relay is 100% sure about this chat. Cancel if this association is wrong."
         : "Relay is not fully sure. Approve now or review it later in the sidebar.";
-    const projectOptions = (payload.projectOptions || [])
-      .map(
-        (project) =>
-          `<option value="${escapeHtml(project.id)}"${project.id === payload.projectId ? " selected" : ""}>${escapeHtml(project.name)}</option>`,
-      )
-      .join("");
+    const toastProjectSwitcherOpen = isProjectSwitcherOpen("toast");
+    const titleMarkup =
+      payload.projectOptions && payload.projectOptions.length > 1
+        ? `
+          <div class="relay-association-toast__titleWrap">
+            <button
+              class="relay-association-toast__titleButton"
+              type="button"
+              aria-label="Switch association project"
+              aria-expanded="${toastProjectSwitcherOpen ? "true" : "false"}"
+            >
+              <span class="relay-association-toast__title relay-association-toast__titleLabel">${escapeHtml(title)}</span>
+              <svg class="relay-association-toast__titleChevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="4 6 8 10 12 6"></polyline>
+              </svg>
+            </button>
+            ${
+              toastProjectSwitcherOpen
+                ? `<div class="relay-association-toast__projectMenu">${formatProjectSwitcherOptions(payload.projectOptions, payload.projectId, "relay-association-toast__projectOption")}</div>`
+                : ""
+            }
+          </div>
+        `
+        : `<p class="relay-association-toast__title">${escapeHtml(title)}</p>`;
 
     root.classList.toggle(
       "relay-association-toast--clickable",
@@ -1528,15 +1864,10 @@
     );
     root.innerHTML = `
       <div class="relay-association-toast__header">
-        <p class="relay-association-toast__title">${escapeHtml(title)}</p>
+        ${titleMarkup}
         <button class="relay-association-toast__dismiss" type="button" aria-label="Dismiss association toast">×</button>
       </div>
       <p class="relay-association-toast__meta">${escapeHtml(meta)}</p>
-      ${
-        payload.projectOptions && payload.projectOptions.length > 1
-          ? `<select class="relay-association-toast__select" aria-label="Change association project">${projectOptions}</select>`
-          : ""
-      }
       <div class="relay-association-toast__actions">
         ${
           payload.mode === "auto_save"
@@ -1555,20 +1886,24 @@
       };
     }
 
-    const select = root.querySelector(".relay-association-toast__select");
-    if (select) {
-      select.addEventListener("click", (event) => {
+    const titleButton = root.querySelector(".relay-association-toast__titleButton");
+    if (titleButton) {
+      titleButton.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
+        toggleProjectSwitcher("toast");
       });
-      select.addEventListener("change", async (event) => {
+    }
+
+    root.querySelectorAll(".relay-association-toast__projectOption").forEach((button) => {
+      button.addEventListener("click", async (event) => {
         event.preventDefault();
         event.stopPropagation();
         if (root.dataset.pendingAction) {
           return;
         }
 
-        const nextProjectId = event.target.value;
+        const nextProjectId = button.getAttribute("data-project-id");
         if (!nextProjectId || nextProjectId === payload.projectId) {
           return;
         }
@@ -1586,6 +1921,7 @@
           return;
         }
 
+        closeProjectSwitcher();
         renderAssociationToast({
           ...payload,
           projectId: response.projectId ?? nextProjectId,
@@ -1593,7 +1929,7 @@
           projectOptions: response.state?.projectOptions ?? payload.projectOptions,
         });
       });
-    }
+    });
 
     root.querySelectorAll("[data-action]").forEach((actionButton) => {
       actionButton.addEventListener("click", async (event) => {
@@ -1693,6 +2029,7 @@
       relayChipState.href = nextHref;
       relayChipState.dismissed = false;
       relayChipState.forcedInsertKind = null;
+      closeProjectSwitcher();
       relayChipState.buttonMode = "idle";
       relayChipState.buttonError = "";
       relayChipState.currentState = null;
@@ -1772,7 +2109,29 @@
         dismissInlineChip("keyboard");
       }
     });
-    window.addEventListener("focus", () => queuePageObservation(true));
+    window.addEventListener("focus", () => queuePageObservation(false));
+    window.addEventListener("pointerdown", (event) => {
+      if (!relayChipState.projectSwitcherSurface) {
+        return;
+      }
+
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      if (
+        target.closest(".relay-inline-chip__titleButton") ||
+        target.closest(".relay-inline-chip__projectMenu") ||
+        target.closest(".relay-association-toast__titleButton") ||
+        target.closest(".relay-association-toast__projectMenu")
+      ) {
+        return;
+      }
+
+      closeProjectSwitcher();
+      rerenderSharedSurfaces();
+    });
     window.addEventListener("resize", () => queuePageObservation(false));
     window.addEventListener("popstate", () => {
       relayChipState.lastMeaningfulMutationAt = Date.now();
@@ -1786,40 +2145,8 @@
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === "RELAY_ACTIVE_PROJECT_STATE_CHANGED") {
       relayChipState.currentState = message.payload.state;
-      if (relayChipState.associationToast.payload) {
-        const association = message.payload.state.chatAssociation;
-        if (
-          association.status !== "pending" &&
-          association.status !== "held"
-        ) {
-          hideAssociationToast();
-        } else if (
-          association.projectId &&
-          (
-            relayChipState.associationToast.payload.projectId !==
-              association.projectId ||
-            relayChipState.associationToast.payload.projectName !==
-              association.projectName ||
-            relayChipState.associationToast.payload.projectOptions
-              .map((project) => project.id)
-              .join(",") !==
-              message.payload.state.projectOptions
-                .map((project) => project.id)
-                .join(",")
-          )
-        ) {
-          renderAssociationToast({
-            ...relayChipState.associationToast.payload,
-            mode:
-              association.status === "pending" ? "auto_save" : "held_review",
-            projectId: association.projectId,
-            projectName:
-              association.projectName ||
-              relayChipState.associationToast.payload.projectName,
-            projectOptions: message.payload.state.projectOptions,
-          });
-        }
-      }
+      syncSharedInsertState(message.payload.state);
+      syncAssociationToastFromState(message.payload.state);
       renderInlineChip();
       return false;
     }
@@ -1869,6 +2196,8 @@
         (state) => {
           if (isValidActiveProjectState(state)) {
             relayChipState.currentState = state;
+            syncSharedInsertState(state);
+            syncAssociationToastFromState(state);
             renderInlineChip();
           }
         },
@@ -1886,6 +2215,7 @@
     }
 
     if (message.type === "RELAY_SHOW_ASSOCIATION_TOAST") {
+      closeProjectSwitcher();
       renderAssociationToast(message.payload);
       sendResponse({ ok: true });
       return true;
@@ -1933,6 +2263,8 @@
         }).then((state) => {
           if (isValidActiveProjectState(state)) {
             relayChipState.currentState = state;
+            syncSharedInsertState(state);
+            syncAssociationToastFromState(state);
             renderInlineChip();
           }
         });
@@ -1953,6 +2285,8 @@
         (state) => {
           if (isValidActiveProjectState(state)) {
             relayChipState.currentState = state;
+            syncSharedInsertState(state);
+            syncAssociationToastFromState(state);
             renderInlineChip();
           }
         },

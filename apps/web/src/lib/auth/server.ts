@@ -1,8 +1,15 @@
 import { createNeonAuth } from "@neondatabase/auth/next/server"
 
+import { getAuthProvider } from "./provider"
+
 let authInstance: ReturnType<typeof createNeonAuth> | null | undefined
 
 export function getAuthServer() {
+  if (getAuthProvider() !== "neon") {
+    authInstance = null
+    return authInstance
+  }
+
   if (authInstance !== undefined) {
     return authInstance
   }

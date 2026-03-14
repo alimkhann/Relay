@@ -72,7 +72,13 @@ test.describe("Relay inline chip", () => {
                 defaultTargetProfileKey: "chatgpt_planning",
                 showSidepanelOnSupportedSites: true
               }
-            }
+            },
+            onboarding: {
+              status: "completed",
+              completedProjectId: "project-1",
+              completedVia: "web",
+              completedAt: "2026-03-12T00:00:00.000Z"
+            },
           })
         })
       })
@@ -195,7 +201,8 @@ test.describe("Relay inline chip", () => {
       await expect(chip.getByText("Insert project brief")).toBeVisible()
       await expect(chip.locator(".relay-inline-chip__title")).toHaveText("Project Alpha")
 
-      await chip.locator('select[aria-label="Switch project"]').selectOption("project-2")
+      await chip.getByRole("button", { name: "Switch project" }).click()
+      await chip.locator('.relay-inline-chip__projectOption[data-project-id="project-2"]').click()
       await expect(chip.locator(".relay-inline-chip__title")).toHaveText("Project Beta")
 
       const insertButton = chip.locator(".relay-inline-chip__button")

@@ -63,6 +63,20 @@ export function findPrompt(doc: Document, selectors: string[]): PromptTarget | n
   return null
 }
 
+async function waitForInsertedText(readCurrentValue: () => string, expected: string) {
+  const deadline = Date.now() + 350
+
+  while (Date.now() <= deadline) {
+    if (normalizeText(readCurrentValue()).includes(expected)) {
+      return true
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+
+  return normalizeText(readCurrentValue()).includes(expected)
+}
+
 export async function injectText(target: PromptTarget, value: string): Promise<{ ok: boolean; reason?: string }> {
   const expected = normalizeText(value)
 
@@ -95,7 +109,7 @@ export async function injectText(target: PromptTarget, value: string): Promise<{
     target.element.dispatchEvent(new InputEvent("input", { bubbles: true, data: value, inputType: "insertText" }))
     target.element.dispatchEvent(new Event("change", { bubbles: true }))
 
-    return normalizeText(target.element.textContent ?? "").includes(expected)
+    return (await waitForInsertedText(() => target.element.textContent ?? "", expected))
       ? { ok: true }
       : { ok: false, reason: "Prompt editor did not accept the inserted text." }
   }
@@ -129,7 +143,7 @@ export async function injectText(target: PromptTarget, value: string): Promise<{
     input.dispatchEvent(new InputEvent("input", { bubbles: true, data: value, inputType: "insertText" }))
     input.dispatchEvent(new Event("change", { bubbles: true }))
 
-    return normalizeText(input.value).includes(expected)
+    return (await waitForInsertedText(() => input.value, expected))
       ? { ok: true }
       : { ok: false, reason: "Prompt textarea did not accept the inserted text." }
   }
