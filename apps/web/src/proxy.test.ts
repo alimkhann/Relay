@@ -53,4 +53,29 @@ describe("proxy", () => {
     })
     expect(middlewareFn).toHaveBeenCalledWith(request)
   })
+
+  it("answers extension api preflight before auth middleware", async () => {
+    const request = {
+      method: "OPTIONS",
+      headers: {
+        get: vi.fn((name: string) =>
+          name.toLowerCase() === "origin"
+            ? "chrome-extension://capboopgpcmoakcilbjlbepmiobhdehj"
+            : null
+        )
+      },
+      nextUrl: {
+        pathname: "/api/extension/auth/local"
+      }
+    } as any
+
+    const response = await proxy(request)
+
+    expect(response.status).toBe(204)
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "chrome-extension://capboopgpcmoakcilbjlbepmiobhdehj"
+    )
+    expect(middlewareFactory).not.toHaveBeenCalled()
+    expect(middlewareFn).not.toHaveBeenCalled()
+  })
 })

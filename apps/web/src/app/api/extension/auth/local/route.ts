@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { createFlowId } from "@relay/shared"
 
 import { getAuthProvider } from "@/lib/auth/provider"
+import { applyExtensionCorsHeaders, buildExtensionPreflightResponse } from "@/server/http/extension-cors"
 import { logServerEvent } from "@/server/logging/logger"
 import { getRequestContext, withRequestContext } from "@/server/logging/request-context"
 import { resolveOrCreateLocalAuthUser } from "@/server/services/local-auth-service"
@@ -17,11 +18,18 @@ function withRequestId(response: NextResponse) {
   return response
 }
 
+export function OPTIONS(request: Request) {
+  return buildExtensionPreflightResponse(request.headers.get("origin"))
+}
+
 export async function POST(request: Request) {
   return withRequestContext(request, async () => {
     if (getAuthProvider() !== "local") {
-      return withRequestId(
+      return applyExtensionCorsHeaders(
+        withRequestId(
         NextResponse.json({ error: "Local auth is not enabled." }, { status: 404 })
+        ),
+        request.headers.get("origin")
       )
     }
 
@@ -71,19 +79,22 @@ export async function POST(request: Request) {
         },
       })
 
-      return withRequestId(
-        NextResponse.json(
-          {
-            token: tokenResult.token,
-            apiBase: appUrl,
-            projects,
-            settings,
-            onboarding,
-            projectId: selectedProjectId,
-            targetProfileKey: settings.settings.defaultTargetProfileKey,
-          },
-          { status: 201 }
-        )
+      return applyExtensionCorsHeaders(
+        withRequestId(
+          NextResponse.json(
+            {
+              token: tokenResult.token,
+              apiBase: appUrl,
+              projects,
+              settings,
+              onboarding,
+              projectId: selectedProjectId,
+              targetProfileKey: settings.settings.defaultTargetProfileKey,
+            },
+            { status: 201 }
+          )
+        ),
+        request.headers.get("origin")
       )
     } catch (error) {
       await logServerEvent({
@@ -96,13 +107,16 @@ export async function POST(request: Request) {
         error,
       })
 
-      return withRequestId(
-        NextResponse.json(
-          {
-            error: error instanceof Error ? error.message : "Local sign-in for extension failed.",
-          },
-          { status: 400 }
-        )
+      return applyExtensionCorsHeaders(
+        withRequestId(
+          NextResponse.json(
+            {
+              error: error instanceof Error ? error.message : "Local sign-in for extension failed.",
+            },
+            { status: 400 }
+          )
+        ),
+        request.headers.get("origin")
       )
     }
   })
