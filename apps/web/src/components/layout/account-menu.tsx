@@ -69,12 +69,12 @@ export function AccountMenu({ name, email }: AccountMenuProps) {
                   href="/settings"
                   onMouseEnter={() => router.prefetch("/settings")}
                   onClick={() => {
-                    setOpen(false)
+                    setOpen(false);
                     startWorkspaceNavigation({
                       href: "/settings",
                       cacheKey: "settings",
                       kind: "settings",
-                    })
+                    });
                   }}
                   className="flex items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-2.5 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition-colors hover:bg-[var(--relay-soft)]"
                 >

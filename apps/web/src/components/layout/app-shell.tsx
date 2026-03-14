@@ -37,7 +37,6 @@ export async function AppShell({
           </Link>
           <ThemeToggle />
         </div>
-
         {projects && projects.length > 0 && currentProjectId && (
           <SidebarProjectSwitcher
             projects={projects}
