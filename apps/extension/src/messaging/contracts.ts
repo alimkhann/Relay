@@ -238,6 +238,7 @@ export type RelayMessage =
 export interface RelayPageState {
   supported: boolean;
   platform?: string;
+  routeKind?: "fresh" | "chat" | "project_root" | "unknown";
   title?: string | null;
   url?: string;
   domain?: string;
@@ -246,6 +247,8 @@ export interface RelayPageState {
   turns?: number;
   captureSignature?: string;
   recentUserTurnText?: string | null;
+  recentRoutingText?: string | null;
+  fullVisibleRoutingText?: string | null;
   promptReady?: boolean;
   isFreshRoute?: boolean;
   isFreshChat?: boolean;

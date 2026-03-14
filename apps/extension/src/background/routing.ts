@@ -26,6 +26,7 @@ interface CandidateScore {
   highConfidenceEligible: boolean
   explicitNameSignal: boolean
   bootstrapDescriptionOverlap: number
+  wholeChatExactMention: boolean
 }
 
 interface EvaluateProjectRoutingInput {
@@ -112,6 +113,14 @@ function collectProjectContextTokens(project: RelayProjectOption) {
 
 function collectProjectDescriptionTokens(project: RelayProjectOption) {
   return uniqueTokens([project.description ?? null])
+}
+
+function getRecentRoutingText(page: RelayPageState) {
+  return page.recentRoutingText ?? page.recentUserTurnText ?? null
+}
+
+function getFullVisibleRoutingText(page: RelayPageState) {
+  return page.fullVisibleRoutingText ?? getRecentRoutingText(page)
 }
 
 function hasMeaningfulProjectContext(project: RelayProjectOption) {
@@ -230,13 +239,18 @@ function scoreProjectCandidate(
     highConfidenceEligible: false,
     explicitNameSignal: false,
     bootstrapDescriptionOverlap: 0,
+    wholeChatExactMention: false,
   }
   const projectTokens = collectProjectTokens(project)
   const descriptionTokens = collectProjectDescriptionTokens(project)
   const contextTokens = collectProjectContextTokens(project)
   const titleTokens = uniqueTokens([input.page.title])
   const pathTokens = uniqueTokens([input.page.pathname, input.page.url])
-  const userTurnTokens = uniqueTokens([input.page.recentUserTurnText ?? null])
+  const latestUserTokens = uniqueTokens([input.page.recentUserTurnText ?? null])
+  const routingText = getRecentRoutingText(input.page)
+  const recentWindowTokens = uniqueTokens([routingText])
+  const fullVisibleRoutingText = getFullVisibleRoutingText(input.page)
+  const fullVisibleTokens = uniqueTokens([fullVisibleRoutingText])
 
   for (const association of input.approvedAssociations) {
     scoreApprovedAssociation(candidate, input, association)
@@ -244,7 +258,7 @@ function scoreProjectCandidate(
 
   const verbatimNameMention =
     hasProjectNameMention(project, input.page.title) ||
-    hasProjectNameMention(project, input.page.recentUserTurnText)
+    hasProjectNameMention(project, routingText)
   if (verbatimNameMention) {
     candidate.score += candidate.phase === "bootstrap" ? 42 : 34
     candidate.highConfidenceEligible = true
@@ -262,14 +276,41 @@ function scoreProjectCandidate(
     pushReason(candidate, "Project name overlaps with the chat title.")
   }
 
-  const userTurnOverlap = overlapCount(projectTokens, userTurnTokens)
-  if (userTurnOverlap > 0) {
-    candidate.score += Math.min(candidate.phase === "bootstrap" ? 48 : 28, userTurnOverlap * (candidate.phase === "bootstrap" ? 16 : 10))
-    if (userTurnOverlap >= 2) {
+  const latestUserOverlap = overlapCount(projectTokens, latestUserTokens)
+  if (latestUserOverlap > 0) {
+    candidate.score += Math.min(
+      candidate.phase === "bootstrap" ? 32 : 20,
+      latestUserOverlap * (candidate.phase === "bootstrap" ? 12 : 7)
+    )
+    if (latestUserOverlap >= 2) {
       candidate.highConfidenceEligible = true
     }
     candidate.explicitNameSignal = true
     pushReason(candidate, "The latest user turn mentions the project.")
+  }
+
+  const recentWindowOverlap = overlapCount(projectTokens, recentWindowTokens)
+  if (recentWindowOverlap > 0) {
+    candidate.score += Math.min(
+      candidate.phase === "bootstrap" ? 20 : 14,
+      recentWindowOverlap * (candidate.phase === "bootstrap" ? 6 : 4)
+    )
+    if (recentWindowOverlap >= 2) {
+      candidate.highConfidenceEligible = true
+    }
+    candidate.explicitNameSignal = true
+    pushReason(candidate, "Recent chat turns mention the project.")
+  }
+
+  const exactWholeChatMention =
+    !verbatimNameMention &&
+    hasProjectNameMention(project, fullVisibleRoutingText)
+  if (exactWholeChatMention) {
+    candidate.score += candidate.phase === "bootstrap" ? 26 : 18
+    candidate.highConfidenceEligible = true
+    candidate.explicitNameSignal = true
+    candidate.wholeChatExactMention = true
+    pushReason(candidate, "A visible chat turn mentions the project by name.")
   }
 
   const pathOverlap = overlapCount(projectTokens, pathTokens)
@@ -295,21 +336,21 @@ function scoreProjectCandidate(
     pushReason(candidate, "The project description overlaps with the chat title.")
   }
 
-  const descriptionUserOverlap = overlapCount(descriptionTokens, userTurnTokens)
-  if (descriptionUserOverlap > 0) {
+  const descriptionRecentWindowOverlap = overlapCount(descriptionTokens, recentWindowTokens)
+  if (descriptionRecentWindowOverlap > 0) {
     candidate.score += Math.min(
       candidate.phase === "bootstrap" ? 34 : 16,
-      descriptionUserOverlap * (candidate.phase === "bootstrap" ? 10 : 5)
+      descriptionRecentWindowOverlap * (candidate.phase === "bootstrap" ? 10 : 5)
     )
     if (
       candidate.phase === "bootstrap"
-        ? descriptionUserOverlap >= 3
-        : descriptionUserOverlap >= 2
+        ? descriptionRecentWindowOverlap >= 3
+        : descriptionRecentWindowOverlap >= 2
     ) {
       candidate.highConfidenceEligible = true
     }
-    candidate.bootstrapDescriptionOverlap += descriptionUserOverlap
-    pushReason(candidate, "The latest user turn overlaps with the project description.")
+    candidate.bootstrapDescriptionOverlap += descriptionRecentWindowOverlap
+    pushReason(candidate, "Recent chat turns overlap with the project description.")
   }
 
   const descriptionPathOverlap = overlapCount(descriptionTokens, pathTokens)
@@ -322,8 +363,28 @@ function scoreProjectCandidate(
     pushReason(candidate, "The route overlaps with the project description.")
   }
 
+  const descriptionWholeChatOverlap =
+    descriptionRecentWindowOverlap === 0
+      ? overlapCount(descriptionTokens, fullVisibleTokens)
+      : 0
+  if (descriptionWholeChatOverlap > 0) {
+    candidate.score += Math.min(
+      candidate.phase === "bootstrap" ? 14 : 8,
+      descriptionWholeChatOverlap * (candidate.phase === "bootstrap" ? 4 : 2)
+    )
+    if (
+      candidate.phase === "bootstrap"
+        ? descriptionWholeChatOverlap >= 4
+        : descriptionWholeChatOverlap >= 3
+    ) {
+      candidate.highConfidenceEligible = true
+    }
+    candidate.bootstrapDescriptionOverlap += descriptionWholeChatOverlap
+    pushReason(candidate, "Visible chat turns overlap with the project description.")
+  }
+
   const contextTitleOverlap = overlapCount(contextTokens, titleTokens)
-  const contextUserOverlap = overlapCount(contextTokens, userTurnTokens)
+  const contextUserOverlap = overlapCount(contextTokens, recentWindowTokens)
   const contextPathOverlap = overlapCount(contextTokens, pathTokens)
   const reinforcedByContext =
     candidate.phase === "context-aware" &&
@@ -342,7 +403,7 @@ function scoreProjectCandidate(
     if (contextUserOverlap >= 2) {
       candidate.highConfidenceEligible = true
     }
-    pushReason(candidate, "The latest user turn overlaps with saved project context.")
+    pushReason(candidate, "Recent chat turns overlap with saved project context.")
   }
 
   if (candidate.phase === "context-aware" && contextPathOverlap > 0) {
@@ -384,9 +445,6 @@ function resolveConfidence(
 ) {
   const scoreGap = top.score - runnerUpScore
   const workspaceIsEffectivelySingleProject = input.projects.length === 1
-  const preferredProjectMatches =
-    input.selectedProjectId === top.projectId ||
-    input.boundProject?.projectId === top.projectId
   const strongBootstrapEvidence =
     top.explicitNameSignal || top.bootstrapDescriptionOverlap >= 3
 
@@ -401,9 +459,8 @@ function resolveConfidence(
   if (
     top.phase === "bootstrap" &&
     strongBootstrapEvidence &&
-    (workspaceIsEffectivelySingleProject || preferredProjectMatches) &&
     top.score >= 24 &&
-    scoreGap >= 6
+    scoreGap >= (workspaceIsEffectivelySingleProject ? 4 : 8)
   ) {
     return "high" as const
   }

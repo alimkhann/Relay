@@ -78,6 +78,8 @@ describe("evaluateProjectRouting", () => {
         platform: "chatgpt",
         pathname: "/c/new-topic",
         title: "Relay launch checklist",
+        recentRoutingText:
+          "Relay launch checklist\nuser: List the remaining work for Relay onboarding and project capture.",
         recentUserTurnText: "List the remaining work for Relay onboarding and project capture."
       },
       projects: [
@@ -122,6 +124,8 @@ describe("evaluateProjectRouting", () => {
         platform: "chatgpt",
         pathname: "/c/new-topic",
         title: "Quiet assistant follow-up",
+        recentRoutingText:
+          "Quiet assistant follow-up\nassistant: We should refine the continuity sidebar.\nuser: Refine the continuity sidebar and keyboard dismiss flow for the quiet assistant rewrite.",
         recentUserTurnText:
           "Refine the continuity sidebar and keyboard dismiss flow for the quiet assistant rewrite."
       },
@@ -160,6 +164,52 @@ describe("evaluateProjectRouting", () => {
     expect(["medium", "high"]).toContain(result.confidence)
   })
 
+  it("lets a recent assistant turn promote the right project when the user stops naming it", () => {
+    const result = evaluateProjectRouting({
+      page: {
+        supported: true,
+        platform: "chatgpt",
+        pathname: "/c/relay-review",
+        title: "Logo refinement",
+        recentRoutingText:
+          "Logo refinement\nassistant: For Relay, keep the extension branding abstract and reduce the visible R shape.\nuser: make it flatter and more transparent.",
+        recentUserTurnText: "make it flatter and more transparent."
+      },
+      projects: [
+        {
+          id: "project_relay",
+          name: "Relay",
+          slug: "relay",
+          memoryCount: 0,
+          sessionCount: 0,
+          description: "Abstract branding system for the Relay extension.",
+          routingContext: {
+            hasMeaningfulContext: false,
+            keywords: []
+          }
+        },
+        {
+          id: "project_other",
+          name: "Sunnad",
+          slug: "sunnad",
+          memoryCount: 0,
+          sessionCount: 0,
+          routingContext: {
+            hasMeaningfulContext: false,
+            keywords: []
+          }
+        }
+      ],
+      selectedProjectId: "project_other",
+      lastTabProjectId: "project_other",
+      boundProject: null,
+      approvedAssociations: []
+    })
+
+    expect(result.mode).toBe("auto-save")
+    expect(result.candidateProjectId).toBe("project_relay")
+  })
+
   it("uses project description overlap to route a fresh project without prior context", () => {
     const result = evaluateProjectRouting({
       page: {
@@ -167,6 +217,8 @@ describe("evaluateProjectRouting", () => {
         platform: "chatgpt",
         pathname: "/c/new-topic",
         title: "AI continuity assistant launch",
+        recentRoutingText:
+          "AI continuity assistant launch\nuser: Map the browser extension and project association flow for a quiet AI continuity assistant.",
         recentUserTurnText: "Map the browser extension and project association flow for a quiet AI continuity assistant."
       },
       projects: [
@@ -207,6 +259,8 @@ describe("evaluateProjectRouting", () => {
         platform: "chatgpt",
         pathname: "/c/new-topic",
         title: "Relay launch checklist",
+        recentRoutingText:
+          "Relay launch checklist\nuser: Finalize Relay onboarding and extension routing.",
         recentUserTurnText: "Finalize Relay onboarding and extension routing."
       },
       projects: [
@@ -251,6 +305,8 @@ describe("evaluateProjectRouting", () => {
         platform: "chatgpt",
         pathname: "/c/random",
         title: "Abstract logo exploration",
+        recentRoutingText:
+          "Abstract logo exploration\nuser: make it flatter and transparent",
         recentUserTurnText: "make it flatter and transparent"
       },
       projects: [
@@ -278,6 +334,58 @@ describe("evaluateProjectRouting", () => {
     expect(result.confidence).toBe("low")
   })
 
+  it("falls back to whole visible chat matches before using description overlap", () => {
+    const result = evaluateProjectRouting({
+      page: {
+        supported: true,
+        platform: "chatgpt",
+        pathname: "/c/relay-brand",
+        title: "Abstract logo exploration",
+        recentRoutingText:
+          "Abstract logo exploration\nuser: make it flatter and transparent",
+        recentUserTurnText: "make it flatter and transparent",
+        fullVisibleRoutingText:
+          "Abstract logo exploration\nuser: generate a logo for relay, make it abstract\nassistant: Here is a concept for Relay.\nuser: make it flatter and transparent"
+      },
+      projects: [
+        {
+          id: "project_relay_brand",
+          name: "Relay",
+          slug: "relay-brand-refresh",
+          memoryCount: 0,
+          sessionCount: 0,
+          description:
+            "Brand identity and browser extension visuals for Relay.",
+          routingContext: {
+            hasMeaningfulContext: false,
+            keywords: []
+          }
+        },
+        {
+          id: "project_other",
+          name: "Sunnad",
+          slug: "sunnad",
+          memoryCount: 0,
+          sessionCount: 0,
+          routingContext: {
+            hasMeaningfulContext: false,
+            keywords: []
+          }
+        }
+      ],
+      selectedProjectId: "project_other",
+      lastTabProjectId: "project_other",
+      boundProject: { projectId: "project_other", bindingKind: "tab" },
+      approvedAssociations: []
+    })
+
+    expect(result.mode).toBe("auto-save")
+    expect(result.candidateProjectId).toBe("project_relay_brand")
+    expect(
+      result.reasons.some((reason) => reason.includes("visible chat turn")),
+    ).toBe(true)
+  })
+
   it("ignores unrelated chats even when the same domain was linked to another project", () => {
     const result = evaluateProjectRouting({
       page: {
@@ -285,6 +393,8 @@ describe("evaluateProjectRouting", () => {
         platform: "chatgpt",
         pathname: "/c/random",
         title: "Fat loss reality check",
+        recentRoutingText:
+          "Fat loss reality check\nuser: How much protein and daily walking do I need during Ramadan?",
         recentUserTurnText: "How much protein and daily walking do I need during Ramadan?"
       },
       projects: [
@@ -308,5 +418,59 @@ describe("evaluateProjectRouting", () => {
 
     expect(result.mode).toBe("ignore")
     expect(result.confidence).toBe("low")
+  })
+
+  it("routes an existing chat from recent turns even when the latest user prompt is no longer explicit", () => {
+    const result = evaluateProjectRouting({
+      page: {
+        supported: true,
+        platform: "chatgpt",
+        pathname: "/c/chat_456",
+        title: "Cross-model context orchestrator",
+        recentRoutingText: [
+          "Cross-model context orchestrator",
+          "user: Please design the browser extension association flow for Relay's cross-model context orchestrator.",
+          "assistant: I will map the Relay toast, sidebar, and project association logic.",
+          "user: Now generate a logo for it and make it abstract.",
+          "assistant: Image created for Relay."
+        ].join("\n"),
+        recentUserTurnText: "Now generate a logo for it and make it abstract."
+      },
+      projects: [
+        {
+          id: "project_sunnad",
+          name: "Sunnad",
+          slug: "sunnad",
+          memoryCount: 0,
+          sessionCount: 0,
+          description: "Group-first Islamic habit tracking stripped of all visual noise.",
+          routingContext: {
+            hasMeaningfulContext: false,
+            keywords: []
+          }
+        },
+        {
+          id: "project_relay",
+          name: "Relay",
+          slug: "relay",
+          memoryCount: 0,
+          sessionCount: 0,
+          description:
+            "Relay is a browser-first cross-AI memory sidecar extension that keeps project context synchronized between ChatGPT, Claude, Perplexity, and other AIs autonomously.",
+          routingContext: {
+            hasMeaningfulContext: false,
+            keywords: []
+          }
+        }
+      ],
+      selectedProjectId: "project_sunnad",
+      lastTabProjectId: "project_sunnad",
+      boundProject: { projectId: "project_sunnad", bindingKind: "tab" },
+      approvedAssociations: []
+    })
+
+    expect(result.mode).toBe("auto-save")
+    expect(result.confidence).toBe("high")
+    expect(result.candidateProjectId).toBe("project_relay")
   })
 })

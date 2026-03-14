@@ -1,4 +1,8 @@
-import type { PageMetadata, ParsedTurn } from "@relay/shared/types/capture"
+import type {
+  PageMetadata,
+  PageRouteKind,
+  ParsedTurn,
+} from "@relay/shared/types/capture"
 
 import { BaseSiteAdapter } from "../base/site-adapter"
 import { collectTurns, findPrompt, injectText } from "../base/dom-utils"
@@ -34,12 +38,14 @@ export class ClaudeAdapter extends BaseSiteAdapter {
 
   getPageMetadata(doc = document): PageMetadata {
     const url = new URL(doc.location.href)
+    const routeKind: PageRouteKind = url.pathname.includes("/new") ? "fresh" : "chat"
     return {
       title: doc.title,
       url: url.toString(),
       pathname: url.pathname,
       pageFingerprint: url.pathname.split("/").pop() ?? null,
-      domain: url.hostname
+      domain: url.hostname,
+      routeKind,
     }
   }
 }

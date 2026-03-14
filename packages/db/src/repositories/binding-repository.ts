@@ -12,8 +12,8 @@ export class BindingRepository {
        from project_bindings
        where user_id = $1
          and binding_kind = $2
-         and coalesce(domain, '') = coalesce($3, '')
-         and coalesce(tab_id, '') = coalesce($4, '')
+         and domain is not distinct from $3
+         and tab_id is not distinct from $4
        limit 1`,
       [userId, input.bindingKind, input.domain ?? null, input.tabId ?? null]
     )
@@ -48,17 +48,17 @@ export class BindingRepository {
        from project_bindings
        where user_id = $1
          and (
-           (binding_kind = 'tab' and coalesce(tab_id, '') = coalesce($2, ''))
+           (binding_kind = 'tab' and tab_id is not distinct from $2)
            or
-           (binding_kind = 'domain' and coalesce(domain, '') = coalesce($3, ''))
+           (binding_kind = 'domain' and domain is not distinct from $3)
            or
            (binding_kind = 'manual')
          )
        order by
          case
-           when binding_kind = 'tab' and coalesce(tab_id, '') = coalesce($2, '') then 0
-           when binding_kind = 'domain' and coalesce(domain, '') = coalesce($3, '') and coalesce(platform, '') = coalesce($4, '') then 1
-           when binding_kind = 'domain' and coalesce(domain, '') = coalesce($3, '') then 2
+           when binding_kind = 'tab' and tab_id is not distinct from $2 then 0
+           when binding_kind = 'domain' and domain is not distinct from $3 and platform is not distinct from cast($4 as platform_type) then 1
+           when binding_kind = 'domain' and domain is not distinct from $3 then 2
            when binding_kind = 'manual' then 3
            else 4
          end,

@@ -10,6 +10,7 @@ import {
   createEmptyTrustMetadata,
   decideShortcutAction,
   deriveRelayActiveProjectState,
+  looksLikeFreshChatRoute,
   shouldScheduleAutoCapture,
   shouldScheduleAutoCaptureRouting,
 } from "./tab-state"
@@ -262,6 +263,19 @@ describe("shouldScheduleAutoCaptureRouting", () => {
         projectOptionsCount: 1,
         sessionProjectOptionsCount: 0
       })
+    ).toBe(true)
+  })
+})
+
+describe("looksLikeFreshChatRoute", () => {
+  it("treats project-root starter pages as fresh insertion surfaces", () => {
+    expect(
+      looksLikeFreshChatRoute({
+        supported: true,
+        platform: "chatgpt",
+        routeKind: "project_root",
+        pathname: "/g/g-123/project",
+      }),
     ).toBe(true)
   })
 })

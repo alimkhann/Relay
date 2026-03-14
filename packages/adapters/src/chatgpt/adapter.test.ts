@@ -28,6 +28,18 @@ describe("ChatgptAdapter", () => {
     expect(adapter.canHandle("https://chatgpt.com/codex")).toBe(false)
   })
 
+  it("classifies ChatGPT project roots as starter surfaces", () => {
+    const adapter = new ChatgptAdapter()
+    const fakeDocument = {
+      location: {
+        href: "https://chatgpt.com/g/g-1234567890-alim/project",
+      },
+      title: "Alim",
+    } as unknown as Document
+
+    expect(adapter.getPageMetadata(fakeDocument).routeKind).toBe("project_root")
+  })
+
   it("treats delayed textarea acceptance as a successful insert", async () => {
     document.body.innerHTML = `
       <main>

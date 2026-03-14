@@ -8,6 +8,7 @@ import { relayFetch } from "../utils/api";
 import {
   getRelaySession,
   setRelaySession,
+  resolveRelayApiBase,
   type RelaySessionState,
 } from "../storage/session";
 import {
@@ -1254,6 +1255,9 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       activeState.remoteStatus === "stale" ||
       activeState.remoteStatus === "unavailable");
   const insertButtonState = deriveInsertButtonState(activeState);
+  const effectiveApiBase = resolveRelayApiBase({
+    storedApiBase: session?.apiBase ?? null,
+  });
   const shouldRenderAssociationCard = shouldShowAssociationCard({
     onboardingStatus: activeState.onboarding.status,
     supported: activeState.page.supported,
@@ -1841,7 +1845,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
             <div className={styles.debugCard}>
               <p>{status}</p>
+              <p>API base: {effectiveApiBase}</p>
+              <p>Auth provider: {extensionAuthProvider}</p>
               <p>Remote: {activeState.remoteStatus}</p>
+              <p>Connected: {session?.connected ? "yes" : "no"}</p>
               <p>
                 Target: {session?.targetMode === "manual" ? "Manual" : "Auto"} ·{" "}
                 {resolvedTargetLabel}

@@ -1,5 +1,5 @@
 import { createFlowId } from "@relay/shared/utils/telemetry";
-import { slugify } from "@relay/shared/utils/text";
+import { normalizeText, slugify } from "@relay/shared/utils/text";
 import type {
   ProjectStateStatusDto,
   RelayOnboardingState,
@@ -32,6 +32,7 @@ import {
 import {
   clearRelaySession,
   getRelaySession,
+  resolveRelayApiBase,
   setRelaySession,
 } from "../storage/session";
 import { setRelayThemeMode, type RelayThemeMode } from "../storage/theme";
@@ -64,6 +65,7 @@ import {
   createEmptyTrustMetadata,
   deriveRelayActiveProjectState,
   looksLikeFreshChatRoute,
+  shouldScheduleAutoCapture,
   shouldScheduleAutoCaptureRouting,
 } from "./tab-state";
 import {
@@ -170,11 +172,21 @@ interface RelayTabState {
   associationSuppressed: boolean;
   insertState: RelayInsertState;
   insertStateTimer: ReturnType<typeof setTimeout> | null;
+  pendingInsertedBrief: PendingInsertedBriefState | null;
   lastObservedSignature: string | null;
   lastObservedTurns: number;
   lastCapturedSignature: string | null;
   lastCapturedTurns: number;
   lastRoutedSignature: string | null;
+}
+
+interface PendingInsertedBriefState {
+  projectId: string;
+  projectName: string;
+  chatKey: string | null;
+  insertedAtSignature: string | null;
+  matchSnippet: string;
+  expiresAt: number;
 }
 
 const tabStates = new Map<number, RelayTabState>();
@@ -298,10 +310,7 @@ async function resetStoredSession(reason: string) {
   sessionDataCache = null;
   await clearRelaySession();
   await setRelaySession({
-    apiBase:
-      session.apiBase ||
-      process.env.PLASMO_PUBLIC_RELAY_API_BASE ||
-      "http://localhost:3000",
+    apiBase: resolveRelayApiBase({ storedApiBase: session.apiBase }),
     connected: false,
     token: "",
     projectId: "",
@@ -690,6 +699,7 @@ function createTabState(tabId: number): RelayTabState {
     associationSuppressed: false,
     insertState: createEmptyInsertState(),
     insertStateTimer: null,
+    pendingInsertedBrief: null,
     lastObservedSignature: null,
     lastObservedTurns: 0,
     lastCapturedSignature: null,
@@ -776,6 +786,53 @@ function setInsertState(
     message: input.message ?? null,
     updatedAt: new Date().toISOString(),
   };
+}
+
+function clearPendingInsertedBrief(state: RelayTabState) {
+  state.pendingInsertedBrief = null;
+}
+
+function buildPendingInsertedBriefState(input: {
+  projectId: string;
+  projectName: string;
+  page: RelayPageState;
+  content: string;
+}) {
+  return {
+    projectId: input.projectId,
+    projectName: input.projectName,
+    chatKey: buildAssociationKey(input.page),
+    insertedAtSignature: input.page.captureSignature ?? null,
+    matchSnippet: normalizeText(input.content).toLowerCase().slice(0, 140),
+    expiresAt: Date.now() + 15 * 60 * 1000,
+  } satisfies PendingInsertedBriefState;
+}
+
+function matchesPendingInsertedBrief(
+  pending: PendingInsertedBriefState | null,
+  page: RelayPageState,
+) {
+  if (!pending || Date.now() > pending.expiresAt) {
+    return false;
+  }
+
+  if (!pending.matchSnippet) {
+    return false;
+  }
+
+  const haystack = normalizeText(
+    page.fullVisibleRoutingText ??
+      page.recentUserTurnText ??
+      page.recentRoutingText ??
+      "",
+  )
+    .toLowerCase();
+
+  if (!haystack) {
+    return false;
+  }
+
+  return haystack.includes(pending.matchSnippet);
 }
 
 function scheduleInsertStateReset(tabId: number, delayMs = 1200) {
@@ -940,13 +997,26 @@ function clearTabState(tabId: number) {
 
 async function readErrorResponse(response: Response, fallback: string) {
   try {
-    const payload = (await response.json()) as {
-      error?: string;
-      message?: string;
-    };
-    return payload.error ?? payload.message ?? fallback;
+    const text = await response.text();
+
+    if (!text.trim()) {
+      return `${fallback} (HTTP ${response.status})`;
+    }
+
+    try {
+      const payload = JSON.parse(text) as {
+        error?: string;
+        message?: string;
+      };
+      return payload.error ?? payload.message ?? `${fallback} (HTTP ${response.status})`;
+    } catch {
+      const snippet = text.replace(/\s+/g, " ").trim().slice(0, 180);
+      return snippet
+        ? `${fallback} (HTTP ${response.status}): ${snippet}`
+        : `${fallback} (HTTP ${response.status})`;
+    }
   } catch {
-    return fallback;
+    return `${fallback} (HTTP ${response.status})`;
   }
 }
 
@@ -1529,6 +1599,10 @@ function updateTabPageState(tabId: number, page: RelayPageState) {
   const signatureChanged =
     state.page.captureSignature !== page.captureSignature &&
     Boolean(state.pendingAssociation);
+  const pendingInsertedBrief = state.pendingInsertedBrief;
+  const insertSignatureChanged =
+    state.page.captureSignature !== page.captureSignature &&
+    Boolean(pendingInsertedBrief);
 
   state.page = page;
   state.lastObservedSignature = page.captureSignature ?? null;
@@ -1550,6 +1624,15 @@ function updateTabPageState(tabId: number, page: RelayPageState) {
     clearCaptureTimer(state);
     clearPendingAssociation(state);
     clearAssociationToast(state);
+    clearPendingInsertedBrief(state);
+  } else if (insertSignatureChanged) {
+    const insertStillMatches = matchesPendingInsertedBrief(
+      pendingInsertedBrief,
+      page,
+    );
+    if (!insertStillMatches) {
+      clearPendingInsertedBrief(state);
+    }
   }
 }
 
@@ -1873,8 +1956,6 @@ async function retargetAssociation(
     insertState: state.insertState,
   };
 
-  await setSessionProjectTarget(project.projectId, project.projectName);
-
   if (
     state.chatAssociation.status === "saved" &&
     state.chatAssociation.projectId &&
@@ -2164,6 +2245,7 @@ async function captureObservedChange(
             state,
             routingDecision.candidateProjectId,
             routingDecision.candidateProjectName,
+            { persist: false },
           );
           await showHeldAssociationToast(
             tabId,
@@ -2207,7 +2289,9 @@ async function captureObservedChange(
       });
 
       await clearIgnoredChatKey(chatKey);
-      await setEffectiveProjectTarget(state, projectId, projectName);
+      await setEffectiveProjectTarget(state, projectId, projectName, {
+        persist: false,
+      });
       await schedulePendingAutoSaveAssociation(tabId, projectId, projectName);
       return {
         ok: true,
@@ -2252,6 +2336,12 @@ async function captureObservedChange(
         capturedAt: new Date().toISOString(),
       };
       invalidateProjectCache(projectId);
+      if (
+        state.pendingInsertedBrief &&
+        state.pendingInsertedBrief.projectId === projectId
+      ) {
+        clearPendingInsertedBrief(state);
+      }
       await clearIgnoredChatKey(chatKey);
       await setRelaySession({
         assumedProjectId: projectId,
@@ -2314,6 +2404,50 @@ async function scheduleAutoCapture(
   const state = getOrCreateTabState(tabId);
   const session = await getRelaySession();
   hydrateTabStateFromSession(state, session);
+  const pendingInsertedBrief = state.pendingInsertedBrief;
+
+  if (pendingInsertedBrief && Date.now() > pendingInsertedBrief.expiresAt) {
+    clearPendingInsertedBrief(state);
+  }
+
+  const shouldSilentlySaveInsertedBrief =
+    Boolean(state.pendingInsertedBrief) &&
+    state.chatAssociation.status === "none" &&
+    !state.capturePending &&
+    shouldScheduleAutoCapture({
+      page: state.page,
+      capturePending: state.capturePending,
+      lastCapturedSignature: state.lastCapturedSignature,
+      lastCapturedTurns: state.lastCapturedTurns,
+    }) &&
+    matchesPendingInsertedBrief(state.pendingInsertedBrief, state.page);
+
+  if (shouldSilentlySaveInsertedBrief) {
+    if (state.captureTimer) {
+      return;
+    }
+
+    state.capturePending = true;
+    void broadcastActiveProjectState(tabId);
+    state.captureTimer = setTimeout(() => {
+      state.captureTimer = null;
+      const latestState = getOrCreateTabState(tabId);
+      const latestPendingInsertedBrief = latestState.pendingInsertedBrief;
+      if (
+        !latestPendingInsertedBrief ||
+        latestState.chatAssociation.status !== "none" ||
+        !matchesPendingInsertedBrief(latestPendingInsertedBrief, latestState.page)
+      ) {
+        return;
+      }
+
+      void captureObservedChange(tabId, latestPendingInsertedBrief.projectId, {
+        manualSelection: false,
+        skipAssociationToast: true,
+      });
+    }, options.immediate ? 0 : 120);
+    return;
+  }
 
   if (
     !shouldScheduleAutoCaptureRouting({
@@ -2469,6 +2603,12 @@ async function insertProjectBrief(
     return { ok: false, reason: inserted?.reason ?? "Insert failed." };
   }
 
+  state.pendingInsertedBrief = buildPendingInsertedBriefState({
+    projectId,
+    projectName: state.projectName ?? "",
+    page: pageState,
+    content: generated.packet.content,
+  });
   await rememberProjectSelection(
     projectId,
     tabId,
@@ -2629,10 +2769,9 @@ chrome.runtime.onMessage.addListener(
               });
             }
 
-            const apiBase =
-              session.apiBase ||
-              process.env.PLASMO_PUBLIC_RELAY_API_BASE ||
-              "http://localhost:3000";
+            const apiBase = resolveRelayApiBase({
+              storedApiBase: session.apiBase,
+            });
             const nextUrl = new URL(message.payload?.nextPath ?? "/dashboard", apiBase);
             nextUrl.searchParams.set("extensionId", chrome.runtime.id);
             const response = await fetch(`${apiBase}/api/extension/browser-handoff/start`, {
@@ -2696,10 +2835,9 @@ chrome.runtime.onMessage.addListener(
             });
 
             const session = await getRelaySession();
-            const apiBase =
-              session.apiBase ||
-              process.env.PLASMO_PUBLIC_RELAY_API_BASE ||
-              "http://localhost:3000";
+            const apiBase = resolveRelayApiBase({
+              storedApiBase: session.apiBase,
+            });
             const response = await fetch(
               `${apiBase}/api/extension/auth/google`,
               {
@@ -2839,10 +2977,9 @@ chrome.runtime.onMessage.addListener(
             });
 
             const session = await getRelaySession();
-            const apiBase =
-              session.apiBase ||
-              process.env.PLASMO_PUBLIC_RELAY_API_BASE ||
-              "http://localhost:3000";
+            const apiBase = resolveRelayApiBase({
+              storedApiBase: session.apiBase,
+            });
             const response = await fetch(
               `${apiBase}/api/extension/auth/local`,
               {
@@ -2868,7 +3005,13 @@ chrome.runtime.onMessage.addListener(
               message: `Extension local auth returned ${response.status}.`,
               context: {
                 status: response.status,
+                apiBase,
               },
+            });
+            console.warn("[Relay BG] local sign-in api response", {
+              status: response.status,
+              apiBase,
+              flowId,
             });
 
             if (!response.ok) {
@@ -2876,6 +3019,12 @@ chrome.runtime.onMessage.addListener(
                 response,
                 "Local sign-in failed.",
               );
+              console.warn("[Relay BG] local sign-in failed", {
+                status: response.status,
+                apiBase,
+                reason,
+                flowId,
+              });
               recordBackgroundTelemetry({
                 level: "error",
                 surface: "extension-background",
@@ -2883,6 +3032,10 @@ chrome.runtime.onMessage.addListener(
                 event: "local_sign_in.failed",
                 flowId,
                 message: reason,
+                context: {
+                  apiBase,
+                  status: response.status,
+                },
               });
               sendResponse({ ok: false, reason });
               return;
@@ -3123,6 +3276,11 @@ chrome.runtime.onMessage.addListener(
             state.projectName = nextProjectName ?? state.projectName;
             state.lastError = null;
             state.routingReview = null;
+            state.lastRoutedSignature = null;
+            state.associationSuppressed = false;
+            if (state.chatAssociation.status === "none") {
+              clearAssociationToast(state);
+            }
           }
           invalidateProjectCache(message.payload.projectId);
 

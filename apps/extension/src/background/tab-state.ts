@@ -153,6 +153,10 @@ export function createEmptyActiveProjectState(
 }
 
 export function looksLikeFreshChatRoute(page: RelayPageState) {
+  if (page.routeKind === "fresh" || page.routeKind === "project_root") {
+    return true
+  }
+
   const pathname = page.pathname ?? "/"
 
   if (page.platform === "claude") {
@@ -167,7 +171,9 @@ export function looksLikeFreshChatRoute(page: RelayPageState) {
 }
 
 export function inferInsertKind(page: RelayPageState): RelayInsertKind {
-  return page.isFreshChat ? "fresh_chat_bootstrap" : "quick_continuity"
+  return page.isFreshChat || page.routeKind === "project_root"
+    ? "fresh_chat_bootstrap"
+    : "quick_continuity"
 }
 
 function isActiveDigest(status: ProjectStateStatusDto | null) {

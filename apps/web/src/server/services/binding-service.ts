@@ -1,6 +1,8 @@
 import { createRepositoryBundle, getProjectSummaries } from "@relay/db"
 import { bindingInputSchema, bindingResolveSchema } from "@relay/shared"
 
+import { logServerEvent } from "@/server/logging/logger"
+
 export async function bindProject(userId: string, input: unknown) {
   const repositories = createRepositoryBundle(userId)
   const parsed = bindingInputSchema.parse(input)
@@ -20,7 +22,26 @@ export async function bindProject(userId: string, input: unknown) {
 export async function resolveBoundProject(userId: string, input: unknown) {
   const repositories = createRepositoryBundle(userId)
   const parsed = bindingResolveSchema.parse(input)
-  const binding = await repositories.bindings.resolve(userId, parsed)
+  let binding = null
+
+  try {
+    binding = await repositories.bindings.resolve(userId, parsed)
+  } catch (error) {
+    await logServerEvent({
+      level: "warn",
+      surface: "web-api",
+      area: "bindings",
+      event: "extension_binding.resolve_failed",
+      message: "Failed to resolve an extension project binding.",
+      context: {
+        domain: parsed.domain ?? null,
+        tabIdPresent: Boolean(parsed.tabId),
+        platform: parsed.platform ?? null,
+      },
+      error,
+    })
+    throw error
+  }
 
   if (!binding) {
     return null

@@ -1,12 +1,11 @@
-const { Pool } = require(
-  require("path").resolve(
-    __dirname,
-    "../node_modules/.pnpm/@neondatabase+serverless@1.0.2/node_modules/@neondatabase/serverless",
-  ),
-);
 const path = require("path");
 const fs = require("fs");
 const { randomUUID } = require("crypto");
+const { Pool } = require(
+  require.resolve("pg", {
+    paths: [path.resolve(__dirname, "../packages/db")],
+  }),
+);
 const dotenvPath = require("path").resolve(__dirname, "../.env.local");
 function loadEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -24,9 +23,23 @@ function loadEnvFile(filePath) {
 loadEnvFile(path.resolve(__dirname, "../.env"));
 loadEnvFile(dotenvPath);
 
+const connectionString = process.env.LOCAL_DATABASE_URL || process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error("LOCAL_DATABASE_URL or DATABASE_URL is required.");
+}
+
 const pool = new Pool({
-  connectionString: process.env.LOCAL_DATABASE_URL || process.env.DATABASE_URL,
+  connectionString,
 });
+const MIGRATIONS_TABLE = "relay_schema_migrations";
+const MIGRATION_ALREADY_EXISTS_ERROR_CODES = new Set([
+  "42710", // duplicate_object
+  "42P07", // duplicate_table / duplicate_relation
+  "42723", // duplicate_function
+  "42701", // duplicate_column
+  "42P06", // duplicate_schema
+]);
 
 function getArgValue(flag) {
   const index = process.argv.indexOf(flag);
@@ -74,14 +87,67 @@ async function runMigrations() {
     .readdirSync(migrationsDir)
     .filter((file) => file.endsWith(".sql"))
     .sort();
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      create table if not exists ${MIGRATIONS_TABLE} (
+        file_name text primary key,
+        applied_at timestamptz not null default now()
+      )
+    `);
 
-  for (const file of files) {
-    const sql = fs.readFileSync(path.join(migrationsDir, file), "utf8");
-    console.log(`Applying ${file}...`);
-    await pool.query(sql);
+    const appliedResult = await client.query(
+      `select file_name from ${MIGRATIONS_TABLE}`
+    );
+    const appliedFiles = new Set(appliedResult.rows.map((row) => row.file_name));
+
+    let appliedCount = 0;
+    let skippedCount = 0;
+
+    for (const file of files) {
+      if (appliedFiles.has(file)) {
+        console.log(`Skipping ${file} (already applied).`);
+        skippedCount += 1;
+        continue;
+      }
+      const sql = fs.readFileSync(path.join(migrationsDir, file), "utf8");
+      console.log(`Applying ${file}...`);
+      try {
+        await client.query("begin");
+        await client.query(sql);
+        await client.query(
+          `insert into ${MIGRATIONS_TABLE} (file_name) values ($1) on conflict (file_name) do nothing`,
+          [file]
+        );
+        await client.query("commit");
+        appliedFiles.add(file);
+        appliedCount += 1;
+      } catch (error) {
+        await client.query("rollback");
+
+        if (MIGRATION_ALREADY_EXISTS_ERROR_CODES.has(error.code)) {
+          console.warn(
+            `Skipping ${file} (${error.code}: ${error.message}) and marking it as applied.`
+          );
+          await client.query(
+            `insert into ${MIGRATIONS_TABLE} (file_name) values ($1) on conflict (file_name) do nothing`,
+            [file]
+          );
+          appliedFiles.add(file);
+          skippedCount += 1;
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    console.log(
+      `Migration run complete. Applied ${appliedCount} file(s), skipped ${skippedCount} file(s).`
+    );
+  } finally {
+    client.release();
   }
-
-  console.log(`Applied ${files.length} migration files.`);
 }
 
 async function seedLocalUser() {

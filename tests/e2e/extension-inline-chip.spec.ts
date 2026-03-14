@@ -241,8 +241,10 @@ test.describe("Relay inline chip", () => {
         </head>
         <body>
           <main>
-            <div data-message-author-role="user">Please design the browser extension association flow for a cross-model context orchestrator.</div>
-            <div data-message-author-role="assistant">I will map the toast, sidebar, and project association logic.</div>
+            <div data-message-author-role="user">Please design the browser extension association flow for Relay's cross-model context orchestrator.</div>
+            <div data-message-author-role="assistant">I will map the Relay toast, sidebar, and project association logic.</div>
+            <div data-message-author-role="user">Now generate a logo for it and make it abstract.</div>
+            <div data-message-author-role="assistant">Image created for Relay.</div>
             <form><textarea id="prompt-textarea"></textarea></form>
           </main>
         </body>
@@ -258,22 +260,35 @@ test.describe("Relay inline chip", () => {
       const serviceWorker = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"))
       const extensionId = serviceWorker.url().split("/")[2]
 
+      let selectedProjectId = "project-sunnad"
+
       await serviceWorker.evaluate(async () => {
         await chrome.storage.local.set({
           "relay.connected": true,
           "relay.apiBase": "http://localhost:3000",
           "relay.authToken": "test-token",
-          "relay.projectId": "project-1",
-          "relay.assumedProjectId": "project-1",
-          "relay.assumedProjectName": "Cross-model context orchestrator",
+          "relay.projectId": "project-sunnad",
+          "relay.assumedProjectId": "project-sunnad",
+          "relay.assumedProjectName": "Sunnad",
           "relay.projectOptions": [
-            { id: "project-1", name: "Cross-model context orchestrator" },
-            { id: "project-2", name: "Workout tracker" }
+            {
+              id: "project-sunnad",
+              name: "Sunnad",
+              description: "Group-first Islamic habit tracking stripped of all visual noise.",
+              routingContext: { hasMeaningfulContext: false, keywords: [] }
+            },
+            {
+              id: "project-relay",
+              name: "Relay",
+              description:
+                "Relay is a browser-first cross-AI memory sidecar extension that keeps project context synchronized between ChatGPT, Claude, Perplexity, and other AIs autonomously.",
+              routingContext: { hasMeaningfulContext: false, keywords: [] }
+            }
           ],
           "relay.autoCapture": true,
           "relay.onboarding": {
             status: "completed",
-            completedProjectId: "project-1",
+            completedProjectId: "project-sunnad",
             completedVia: "web",
             completedAt: "2026-03-15T00:00:00.000Z"
           }
@@ -288,12 +303,143 @@ test.describe("Relay inline chip", () => {
         })
       })
 
+      await context.route("http://localhost:3000/api/projects", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            projects: [
+              {
+                id: "project-sunnad",
+                name: "Sunnad",
+                description: "Group-first Islamic habit tracking stripped of all visual noise.",
+                memoryCount: 0,
+                sessionCount: 0,
+                routingContext: { hasMeaningfulContext: false, keywords: [] }
+              },
+              {
+                id: "project-relay",
+                name: "Relay",
+                description:
+                  "Relay is a browser-first cross-AI memory sidecar extension that keeps project context synchronized between ChatGPT, Claude, Perplexity, and other AIs autonomously.",
+                memoryCount: 0,
+                sessionCount: 0,
+                routingContext: { hasMeaningfulContext: false, keywords: [] }
+              }
+            ]
+          })
+        })
+      })
+
+      await context.route("http://localhost:3000/api/settings", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            settings: {
+              settings: {
+                autoCapture: true,
+                defaultTargetProfileKey: "chatgpt_planning",
+                showSidepanelOnSupportedSites: true
+              }
+            },
+            onboarding: {
+              status: "completed",
+              completedProjectId: "project-sunnad",
+              completedVia: "web",
+              completedAt: "2026-03-15T00:00:00.000Z"
+            },
+          })
+        })
+      })
+
+      await context.route(/http:\/\/localhost:3000\/api\/extension\/bindings(\?.*)?/, async (route) => {
+        if (route.request().method() === "POST") {
+          const payload = JSON.parse(route.request().postData() ?? "{}") as { projectId?: string }
+          if (payload.projectId) {
+            selectedProjectId = payload.projectId
+          }
+
+          await route.fulfill({
+            status: 201,
+            contentType: "application/json",
+            body: JSON.stringify({ binding: { ok: true } })
+          })
+          return
+        }
+
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            binding: {
+              binding: {
+                id: `binding-${selectedProjectId}`,
+                bindingKind: "domain",
+                domain: "chatgpt.com",
+                tabId: null,
+                platform: "chatgpt",
+                updatedAt: "2026-03-12T00:00:00.000Z"
+              },
+              project: {
+                id: selectedProjectId,
+                name: selectedProjectId === "project-relay" ? "Relay" : "Sunnad"
+              }
+            }
+          })
+        })
+      })
+
+      await context.route(/http:\/\/localhost:3000\/api\/projects\/project-(sunnad|relay)$/, async (route) => {
+        const projectId = route.request().url().endsWith("project-relay")
+          ? "project-relay"
+          : "project-sunnad"
+        const projectName = projectId === "project-relay" ? "Relay" : "Sunnad"
+        const description =
+          projectId === "project-relay"
+            ? "Relay is a browser-first cross-AI memory sidecar extension that keeps project context synchronized between ChatGPT, Claude, Perplexity, and other AIs autonomously."
+            : "Group-first Islamic habit tracking stripped of all visual noise."
+
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            dashboard: {
+              stateStatus: {
+                rawCapturePresent: false,
+                digestStatus: "idle",
+                projectStateReady: false,
+                digestErrorMessage: null,
+                lastCapturedAt: null,
+                lastDigestAt: null,
+                activeJobId: null,
+                activeJobStatus: "idle",
+                activeJobStage: null,
+                activeJobAttempts: 0,
+                fallbackPlanned: false,
+                fallbackUsed: false
+              },
+              projectState: null,
+              recentSessions: [],
+              sessionHistory: [],
+              memory: [],
+              packets: [],
+              project: {
+                id: projectId,
+                name: projectName,
+                description
+              }
+            }
+          })
+        })
+      })
+
       const page = await context.newPage()
       await page.goto("https://chatgpt.com/c/chat_123", { waitUntil: "domcontentloaded" })
 
       const toast = page.locator("#relay-association-toast")
       await expect(toast).toBeVisible({ timeout: 6000 })
-      await expect(toast).toContainText("Saving to Cross-model context orchestrator")
+      await expect(toast).toContainText("Saving to Relay")
 
       const popup = await context.newPage()
       await popup.goto(`chrome-extension://${extensionId}/popup.html`)
@@ -313,17 +459,27 @@ test.describe("Relay inline chip", () => {
       })
 
       expect(initialState.chatAssociation.status).toBe("pending")
-      expect(initialState.chatAssociation.projectName).toBe(
-        "Cross-model context orchestrator",
-      )
-
-      await toast.getByRole("button", { name: "Switch association project" }).click()
-      await toast.getByRole("button", { name: /Workout tracker/ }).click()
-      await expect(toast).toContainText("Saving to Workout tracker")
+      expect(initialState.chatAssociation.projectName).toBe("Relay")
+      expect(initialState.projectName).toBe("Relay")
 
       const switchedState = await popup.evaluate(async () => {
         const tabs = await chrome.tabs.query({})
         const chatTab = tabs.find((tab) => tab.url?.includes("chatgpt.com/c/chat_123"))
+
+        await new Promise<any>((resolve) => {
+          chrome.runtime.sendMessage(
+            {
+              type: "RELAY_SET_CHAT_ASSOCIATION_PROJECT",
+              payload: {
+                projectId: "project-sunnad",
+                tabId: chatTab?.id,
+                source: "sidebar",
+              },
+            },
+            resolve,
+          )
+        })
+
         return await new Promise<any>((resolve) => {
           chrome.runtime.sendMessage(
             {
@@ -335,7 +491,9 @@ test.describe("Relay inline chip", () => {
         })
       })
 
-      expect(switchedState.chatAssociation.projectName).toBe("Workout tracker")
+      expect(switchedState.chatAssociation.projectName).toBe("Sunnad")
+      expect(switchedState.projectName).toBe("Sunnad")
+      expect(switchedState.associationToast.projectName).toBe("Sunnad")
     } finally {
       await Promise.race([
         context.close(),

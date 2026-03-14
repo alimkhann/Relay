@@ -164,6 +164,65 @@
     return null;
   }
 
+  function buildRecentRoutingText(turns, title) {
+    const snippets = [];
+    const normalizedTitle = normalizeText(title);
+    if (normalizedTitle) {
+      snippets.push(normalizedTitle.slice(0, 160));
+    }
+
+    for (let index = turns.length - 1; index >= 0 && snippets.length < 5; index -= 1) {
+      const turn = turns[index];
+      const content = normalizeText(turn && turn.content);
+      if (!content || content.length < 8) {
+        continue;
+      }
+
+      const role = turn.role === "assistant" ? "assistant" : "user";
+      snippets.push(`${role}: ${content.slice(0, 180)}`);
+    }
+
+    if (snippets.length === 0) {
+      return null;
+    }
+
+    return snippets.join("\n").slice(0, 720);
+  }
+
+  function buildFullVisibleRoutingText(turns, title) {
+    const snippets = [];
+    const normalizedTitle = normalizeText(title);
+    let totalLength = 0;
+    if (normalizedTitle) {
+      const titleSnippet = normalizedTitle.slice(0, 200);
+      snippets.push(titleSnippet);
+      totalLength += titleSnippet.length;
+    }
+
+    for (let index = 0; index < turns.length && totalLength < 5976; index += 1) {
+      const turn = turns[index];
+      const content = normalizeText(turn && turn.content);
+      if (!content || content.length < 3) {
+        continue;
+      }
+
+      const role = turn.role === "assistant" ? "assistant" : "user";
+      const remaining = 6000 - totalLength - 1;
+      if (remaining <= 24) {
+        break;
+      }
+      const snippet = `${role}: ${content.slice(0, Math.min(220, remaining))}`;
+      snippets.push(snippet);
+      totalLength += snippet.length + 1;
+    }
+
+    if (snippets.length === 0) {
+      return null;
+    }
+
+    return snippets.join("\n").slice(0, 6000);
+  }
+
   function getPageMetadata() {
     const runtime = getAdapterRuntime();
     const metadata = runtime
@@ -181,6 +240,7 @@
       pathname: url.pathname,
       pageFingerprint: url.pathname.split("/").filter(Boolean).pop() || null,
       domain: url.hostname,
+      routeKind: url.pathname === "/" ? "fresh" : "chat",
     };
   }
 
@@ -214,14 +274,18 @@
     );
   }
 
-  function inferFreshRoute(config, metadata) {
+  function inferRouteKind(config, metadata) {
+    if (metadata.routeKind) {
+      return metadata.routeKind;
+    }
+
     const pathname = metadata.pathname || "/";
 
     if (config.platform === "claude") {
-      return pathname.includes("/new");
+      return pathname.includes("/new") ? "fresh" : "chat";
     }
 
-    return pathname === "/";
+    return pathname === "/" ? "fresh" : "chat";
   }
 
   function computePageState(config) {
@@ -232,9 +296,13 @@
     const turns = collectTurns(config);
     const metadata = getPageMetadata();
     const promptTarget = findPrompt(config);
-    const isFreshRoute = inferFreshRoute(config, metadata);
+    const routeKind = inferRouteKind(config, metadata);
+    const isFreshRoute = routeKind === "fresh";
     const promptReady = Boolean(promptTarget);
-    const candidateFresh = isFreshRoute && promptReady && turns.length === 0;
+    const isStarterSurface =
+      routeKind === "fresh" || routeKind === "project_root";
+    const candidateFresh =
+      isStarterSurface && promptReady && turns.length === 0;
 
     if (!candidateFresh) {
       relayChipState.freshCandidateSince = 0;
@@ -252,6 +320,7 @@
     return {
       supported: true,
       platform: config.platform,
+      routeKind,
       title: metadata.title,
       url: metadata.url,
       domain: metadata.domain,
@@ -260,6 +329,8 @@
       turns: turns.length,
       captureSignature: computeSignature(turns, metadata, config.platform),
       recentUserTurnText: getLatestMeaningfulUserTurnText(turns),
+      recentRoutingText: buildRecentRoutingText(turns, metadata.title),
+      fullVisibleRoutingText: buildFullVisibleRoutingText(turns, metadata.title),
       promptReady,
       isFreshRoute,
       isFreshChat,
@@ -271,36 +342,19 @@
   function buildPageStateKey(pageState) {
     return JSON.stringify({
       supported: pageState.supported,
+      routeKind: pageState.routeKind,
       url: pageState.url,
       turns: pageState.turns,
       captureSignature: pageState.captureSignature,
       recentUserTurnText: pageState.recentUserTurnText,
+      recentRoutingText: pageState.recentRoutingText,
+      fullVisibleRoutingText: pageState.fullVisibleRoutingText,
       promptReady: pageState.promptReady,
       isFreshRoute: pageState.isFreshRoute,
       isFreshChat: pageState.isFreshChat,
       isStable: pageState.isStable,
       isStreaming: pageState.isStreaming,
     });
-  }
-
-  function didMeaningfulPageStateChange(previousPageState, nextPageState) {
-    if (!previousPageState || !nextPageState) {
-      return false;
-    }
-
-    return (
-      previousPageState.title !== nextPageState.title ||
-      previousPageState.url !== nextPageState.url ||
-      previousPageState.pathname !== nextPageState.pathname ||
-      previousPageState.pageFingerprint !== nextPageState.pageFingerprint ||
-      previousPageState.turns !== nextPageState.turns ||
-      previousPageState.captureSignature !== nextPageState.captureSignature ||
-      previousPageState.recentUserTurnText !== nextPageState.recentUserTurnText ||
-      previousPageState.promptReady !== nextPageState.promptReady ||
-      previousPageState.isFreshRoute !== nextPageState.isFreshRoute ||
-      previousPageState.isFreshChat !== nextPageState.isFreshChat ||
-      previousPageState.isStreaming !== nextPageState.isStreaming
-    );
   }
 
   function buildFallbackState(pageState) {
@@ -1035,6 +1089,15 @@
         color: var(--relay-ink);
       }
 
+      .relay-association-toast__timer--static {
+        cursor: default;
+      }
+
+      .relay-association-toast__timer--static:hover {
+        background: transparent;
+        color: var(--relay-muted);
+      }
+
       .relay-association-toast__countdown {
         font-size: 11px;
         color: inherit;
@@ -1723,6 +1786,14 @@
   }
 
   function renderAssociationToastTimer(payload) {
+    if (payload.mode !== "auto_save") {
+      return `
+        <span class="relay-association-toast__timer relay-association-toast__timer--static" aria-live="polite">
+          <span class="relay-association-toast__countdown">${formatToastCountdown(payload.expiresAt)}</span>
+        </span>
+      `;
+    }
+
     if (relayChipState.associationToast.paused) {
       return `
         <div class="relay-association-toast__timer-row">
@@ -1738,11 +1809,7 @@
     }
 
     return `
-      <button class="relay-association-toast__timer" type="button" aria-label="${
-        payload.mode === "auto_save"
-          ? "Pause auto-save timer"
-          : "Pause association toast timer"
-      }">
+      <button class="relay-association-toast__timer" type="button" aria-label="Pause auto-save timer">
         <span class="relay-association-toast__countdown">${formatToastCountdown(payload.expiresAt)}</span>
       </button>
     `;
@@ -2008,18 +2075,17 @@
       root.classList.add("relay-association-toast--visible");
     });
 
-    const timerButton = root.querySelector(".relay-association-toast__timer");
+    const timerButton =
+      payload.mode === "auto_save"
+        ? root.querySelector(".relay-association-toast__timer")
+        : null;
     if (timerButton) {
-      timerButton.addEventListener("mouseenter", (event) => {
+      timerButton.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
         if (!relayChipState.associationToast.paused) {
           void setAssociationToastPaused(root, payload, true);
         }
-      });
-      timerButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
       });
     }
 
@@ -2037,9 +2103,6 @@
       relayChipState.associationToast.countdownTimer = window.setInterval(() => {
         updateAssociationToastCountdown(root, payload);
       }, 250);
-      relayChipState.associationToast.hideTimer = window.setTimeout(() => {
-        hideAssociationToast();
-      }, Math.max(0, payload.expiresAt - Date.now()));
     }
   }
 
@@ -2059,12 +2122,7 @@
       hideAssociationToast();
     }
 
-    const previousPageState = relayChipState.pageState;
-    let pageState = computePageState(getSiteConfig());
-    if (didMeaningfulPageStateChange(previousPageState, pageState)) {
-      relayChipState.lastMeaningfulMutationAt = Date.now();
-      pageState = computePageState(getSiteConfig());
-    }
+    const pageState = computePageState(getSiteConfig());
     relayChipState.pageState = pageState;
     const nextKey = buildPageStateKey(pageState);
 
@@ -2088,6 +2146,11 @@
     }, 120);
   }
 
+  function markMeaningfulMutation() {
+    relayChipState.lastMeaningfulMutationAt = Date.now();
+    queuePageObservation(false);
+  }
+
   function scheduleObservation() {
     if (relayChipState.mounted) return;
     relayChipState.mounted = true;
@@ -2107,7 +2170,7 @@
       });
 
       if (shouldReact) {
-        queuePageObservation(false);
+        markMeaningfulMutation();
       }
     });
 
