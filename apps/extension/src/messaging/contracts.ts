@@ -170,6 +170,15 @@ export type RelayMessage =
       };
     }
   | {
+      type: "RELAY_SET_ASSOCIATION_TOAST_PAUSED";
+      payload: {
+        paused: boolean;
+        mode: "auto_save" | "held_review";
+        projectId: string;
+        tabId?: number;
+      };
+    }
+  | {
       type: "RELAY_SET_CHAT_ASSOCIATION_PROJECT";
       payload: {
         projectId: string;

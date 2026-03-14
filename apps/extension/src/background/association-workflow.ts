@@ -12,6 +12,8 @@ export interface PendingAssociationState {
   projectName: string;
   captureSignature: string | null;
   expiresAt: number;
+  remainingMs: number | null;
+  paused: boolean;
 }
 
 export interface ResolveAssociationProjectNameInput {
@@ -71,6 +73,8 @@ export function buildPendingAutoSaveAssociation(input: {
     projectName: input.projectName,
     captureSignature: input.captureSignature,
     expiresAt,
+    remainingMs: null,
+    paused: false,
   };
 
   return { chatAssociation, toast, pending };
@@ -116,4 +120,59 @@ export function resolveAssociationToastAction(input: {
   }
 
   return input.action === "approve" ? "capture" : "dismiss";
+}
+
+export function getPendingAssociationRemainingMs(
+  pending: PendingAssociationState,
+  now = Date.now(),
+) {
+  if (pending.paused && pending.remainingMs !== null) {
+    return Math.max(0, pending.remainingMs);
+  }
+
+  return Math.max(0, pending.expiresAt - now);
+}
+
+export function pausePendingAutoSaveAssociation(
+  pending: PendingAssociationState,
+  now = Date.now(),
+): PendingAssociationState {
+  const remainingMs = getPendingAssociationRemainingMs(pending, now);
+
+  return {
+    ...pending,
+    paused: true,
+    remainingMs,
+    expiresAt: now + remainingMs,
+  };
+}
+
+export function resumePendingAutoSaveAssociation(
+  pending: PendingAssociationState,
+  now = Date.now(),
+): PendingAssociationState {
+  const remainingMs = getPendingAssociationRemainingMs(pending, now);
+
+  return {
+    ...pending,
+    paused: false,
+    remainingMs: null,
+    expiresAt: now + remainingMs,
+  };
+}
+
+export function buildSavedAssociationFromMemory(input: {
+  projectId: string;
+  projectName: string;
+  sessionId: string | null;
+  approvedAt: string | null;
+}): RelayChatAssociation {
+  return {
+    status: "saved",
+    projectId: input.projectId,
+    projectName: input.projectName,
+    sessionId: input.sessionId,
+    reason: "This chat is currently saved to the project.",
+    capturedAt: input.approvedAt,
+  };
 }

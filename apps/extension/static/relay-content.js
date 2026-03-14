@@ -47,6 +47,8 @@
       hideTimer: null,
       removeTimer: null,
       countdownTimer: null,
+      paused: false,
+      remainingMs: null,
     },
     themeMode: "system",
     resolvedTheme: window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -840,10 +842,64 @@
         color: var(--relay-ink-secondary);
       }
 
-      .relay-association-toast__countdown {
-        margin-left: auto;
-        font-size: 11px;
+      .relay-association-toast__timer,
+      .relay-association-toast__resume {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--relay-line);
+        border-radius: 999px;
+        background: transparent;
         color: var(--relay-muted);
+        cursor: pointer;
+        transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+      }
+
+      .relay-association-toast__timer {
+        margin-left: auto;
+        min-width: 52px;
+        padding: 4px 10px;
+      }
+
+      .relay-association-toast__timer:hover {
+        background: var(--relay-hover);
+        color: var(--relay-ink);
+      }
+
+      .relay-association-toast__countdown {
+        font-size: 11px;
+        color: inherit;
+      }
+
+      .relay-association-toast__timer-row {
+        margin-left: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .relay-association-toast__timer-state {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: var(--relay-ink-secondary);
+      }
+
+      .relay-association-toast__timer-state svg,
+      .relay-association-toast__resume svg {
+        width: 11px;
+        height: 11px;
+      }
+
+      .relay-association-toast__resume {
+        width: 28px;
+        height: 28px;
+      }
+
+      .relay-association-toast__resume:hover {
+        background: var(--relay-hover);
+        color: var(--relay-ink);
       }
     `;
 
@@ -1268,9 +1324,27 @@
     }
   }
 
+  function getAssociationToastKey(payload) {
+    return payload ? `${payload.mode}:${payload.projectId}` : "";
+  }
+
+  function getAssociationToastRemainingMs(payload) {
+    if (relayChipState.associationToast.remainingMs !== null) {
+      return Math.max(0, relayChipState.associationToast.remainingMs);
+    }
+
+    return Math.max(0, payload.expiresAt - Date.now());
+  }
+
+  function resetAssociationToastPauseState() {
+    relayChipState.associationToast.paused = false;
+    relayChipState.associationToast.remainingMs = null;
+  }
+
   function hideAssociationToast() {
     clearAssociationToastTimers();
     const root = document.getElementById("relay-association-toast");
+    resetAssociationToastPauseState();
     if (!root) return;
 
     root.classList.add("relay-association-toast--hiding");
@@ -1278,6 +1352,7 @@
       root.remove();
       relayChipState.associationToast.removeTimer = null;
       relayChipState.associationToast.payload = null;
+      resetAssociationToastPauseState();
     }, 180);
   }
 
@@ -1290,6 +1365,49 @@
     if (!countdown) return;
 
     countdown.textContent = formatToastCountdown(payload.expiresAt);
+  }
+
+  function pauseIconMarkup() {
+    return `
+      <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <rect x="4" y="3" width="2.5" height="10" rx="1.25" fill="currentColor"></rect>
+        <rect x="9.5" y="3" width="2.5" height="10" rx="1.25" fill="currentColor"></rect>
+      </svg>
+    `;
+  }
+
+  function playIconMarkup() {
+    return `
+      <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M5 3.5L12 8L5 12.5V3.5Z" fill="currentColor"></path>
+      </svg>
+    `;
+  }
+
+  function renderAssociationToastTimer(payload) {
+    if (relayChipState.associationToast.paused) {
+      return `
+        <div class="relay-association-toast__timer-row">
+          <span class="relay-association-toast__timer-state">
+            ${pauseIconMarkup()}
+            Paused
+          </span>
+          <button class="relay-association-toast__resume" type="button" aria-label="Resume association toast timer">
+            ${playIconMarkup()}
+          </button>
+        </div>
+      `;
+    }
+
+    return `
+      <button class="relay-association-toast__timer" type="button" aria-label="${
+        payload.mode === "auto_save"
+          ? "Pause auto-save timer"
+          : "Pause association toast timer"
+      }">
+        <span class="relay-association-toast__countdown">${formatToastCountdown(payload.expiresAt)}</span>
+      </button>
+    `;
   }
 
   function setAssociationToastPending(root, payload) {
@@ -1318,8 +1436,64 @@
     }
   }
 
+  async function setAssociationToastPaused(root, payload, paused) {
+    if (root.dataset.pendingAction) {
+      return;
+    }
+
+    const remainingMs = getAssociationToastRemainingMs(payload);
+    relayChipState.associationToast.remainingMs = remainingMs;
+    relayChipState.associationToast.paused = paused;
+    clearAssociationToastTimers();
+
+    if (payload.mode === "auto_save") {
+      const response = await sendRuntimeMessage({
+        type: "RELAY_SET_ASSOCIATION_TOAST_PAUSED",
+        payload: {
+          paused,
+          mode: payload.mode,
+          projectId: payload.projectId,
+        },
+      });
+
+      if (response?.ok === false) {
+        relayChipState.associationToast.remainingMs = null;
+        relayChipState.associationToast.paused = false;
+        renderAssociationToast(payload);
+        return;
+      }
+
+      if (typeof response?.expiresAt === "number") {
+        payload = {
+          ...payload,
+          expiresAt: response.expiresAt,
+        };
+      } else if (!paused) {
+        payload = {
+          ...payload,
+          expiresAt: Date.now() + remainingMs,
+        };
+      }
+    } else if (!paused) {
+      payload = {
+        ...payload,
+        expiresAt: Date.now() + remainingMs,
+      };
+    }
+
+    if (!paused) {
+      relayChipState.associationToast.remainingMs = null;
+    }
+
+    renderAssociationToast(payload);
+  }
+
   function renderAssociationToast(payload) {
     ensureInlineChipStyles();
+    const previousPayload = relayChipState.associationToast.payload;
+    if (getAssociationToastKey(previousPayload) !== getAssociationToastKey(payload)) {
+      resetAssociationToastPauseState();
+    }
     relayChipState.associationToast.payload = payload;
     clearAssociationToastTimers();
 
@@ -1339,7 +1513,7 @@
         : `Approve save to ${payload.projectName}`;
     const meta =
       payload.mode === "auto_save"
-        ? "Relay is confident about this chat. Cancel if this association is wrong."
+        ? "Relay is 100% sure about this chat. Cancel if this association is wrong."
         : "Relay is not fully sure. Approve now or review it later in the sidebar.";
     const projectOptions = (payload.projectOptions || [])
       .map(
@@ -1369,7 +1543,7 @@
             ? '<button class="relay-association-toast__button" type="button" data-action="cancel">Cancel save</button>'
             : '<button class="relay-association-toast__button relay-association-toast__button--primary" type="button" data-action="approve">Approve save</button><button class="relay-association-toast__button relay-association-toast__button--subtle" type="button" data-action="cancel">Not this chat</button>'
         }
-        <span class="relay-association-toast__countdown">${formatToastCountdown(payload.expiresAt)}</span>
+        ${renderAssociationToastTimer(payload)}
       </div>
     `;
 
@@ -1478,13 +1652,39 @@
       root.classList.add("relay-association-toast--visible");
     });
 
-    updateAssociationToastCountdown(root, payload);
-    relayChipState.associationToast.countdownTimer = window.setInterval(() => {
+    const timerButton = root.querySelector(".relay-association-toast__timer");
+    if (timerButton) {
+      timerButton.addEventListener("mouseenter", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!relayChipState.associationToast.paused) {
+          void setAssociationToastPaused(root, payload, true);
+        }
+      });
+      timerButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+    }
+
+    const resumeButton = root.querySelector(".relay-association-toast__resume");
+    if (resumeButton) {
+      resumeButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void setAssociationToastPaused(root, payload, false);
+      });
+    }
+
+    if (!relayChipState.associationToast.paused) {
       updateAssociationToastCountdown(root, payload);
-    }, 250);
-    relayChipState.associationToast.hideTimer = window.setTimeout(() => {
-      hideAssociationToast();
-    }, Math.max(0, payload.expiresAt - Date.now()));
+      relayChipState.associationToast.countdownTimer = window.setInterval(() => {
+        updateAssociationToastCountdown(root, payload);
+      }, 250);
+      relayChipState.associationToast.hideTimer = window.setTimeout(() => {
+        hideAssociationToast();
+      }, Math.max(0, payload.expiresAt - Date.now()));
+    }
   }
 
   async function pushObservedPageState(force) {

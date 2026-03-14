@@ -24,6 +24,8 @@ interface CandidateScore {
   reasons: string[]
   phase: "bootstrap" | "context-aware"
   highConfidenceEligible: boolean
+  explicitNameSignal: boolean
+  bootstrapDescriptionOverlap: number
 }
 
 interface EvaluateProjectRoutingInput {
@@ -225,7 +227,9 @@ function scoreProjectCandidate(
     score: 0,
     reasons: [],
     phase: hasMeaningfulProjectContext(project) ? "context-aware" : "bootstrap",
-    highConfidenceEligible: false
+    highConfidenceEligible: false,
+    explicitNameSignal: false,
+    bootstrapDescriptionOverlap: 0,
   }
   const projectTokens = collectProjectTokens(project)
   const descriptionTokens = collectProjectDescriptionTokens(project)
@@ -244,6 +248,7 @@ function scoreProjectCandidate(
   if (verbatimNameMention) {
     candidate.score += candidate.phase === "bootstrap" ? 42 : 34
     candidate.highConfidenceEligible = true
+    candidate.explicitNameSignal = true
     pushReason(candidate, "The project name appears verbatim in the current chat.")
   }
 
@@ -253,6 +258,7 @@ function scoreProjectCandidate(
     if (titleOverlap >= 2) {
       candidate.highConfidenceEligible = true
     }
+    candidate.explicitNameSignal = true
     pushReason(candidate, "Project name overlaps with the chat title.")
   }
 
@@ -262,6 +268,7 @@ function scoreProjectCandidate(
     if (userTurnOverlap >= 2) {
       candidate.highConfidenceEligible = true
     }
+    candidate.explicitNameSignal = true
     pushReason(candidate, "The latest user turn mentions the project.")
   }
 
@@ -284,6 +291,7 @@ function scoreProjectCandidate(
     ) {
       candidate.highConfidenceEligible = true
     }
+    candidate.bootstrapDescriptionOverlap += descriptionTitleOverlap
     pushReason(candidate, "The project description overlaps with the chat title.")
   }
 
@@ -300,6 +308,7 @@ function scoreProjectCandidate(
     ) {
       candidate.highConfidenceEligible = true
     }
+    candidate.bootstrapDescriptionOverlap += descriptionUserOverlap
     pushReason(candidate, "The latest user turn overlaps with the project description.")
   }
 
@@ -309,6 +318,7 @@ function scoreProjectCandidate(
       candidate.phase === "bootstrap" ? 10 : 6,
       descriptionPathOverlap * 3
     )
+    candidate.bootstrapDescriptionOverlap += descriptionPathOverlap
     pushReason(candidate, "The route overlaps with the project description.")
   }
 
@@ -367,13 +377,33 @@ function scoreProjectCandidate(
   return candidate
 }
 
-function resolveConfidence(top: CandidateScore, runnerUpScore: number) {
+function resolveConfidence(
+  top: CandidateScore,
+  runnerUpScore: number,
+  input: EvaluateProjectRoutingInput,
+) {
   const scoreGap = top.score - runnerUpScore
+  const workspaceIsEffectivelySingleProject = input.projects.length === 1
+  const preferredProjectMatches =
+    input.selectedProjectId === top.projectId ||
+    input.boundProject?.projectId === top.projectId
+  const strongBootstrapEvidence =
+    top.explicitNameSignal || top.bootstrapDescriptionOverlap >= 3
 
   if (
     top.highConfidenceEligible &&
     top.score >= (top.phase === "bootstrap" ? 70 : 68) &&
     scoreGap >= (top.phase === "bootstrap" ? 18 : 12)
+  ) {
+    return "high" as const
+  }
+
+  if (
+    top.phase === "bootstrap" &&
+    strongBootstrapEvidence &&
+    (workspaceIsEffectivelySingleProject || preferredProjectMatches) &&
+    top.score >= 24 &&
+    scoreGap >= 6
   ) {
     return "high" as const
   }
@@ -414,7 +444,7 @@ export function evaluateProjectRouting(input: EvaluateProjectRoutingInput): Rela
     }
   }
 
-  const confidence = resolveConfidence(top, runnerUp?.score ?? 0)
+  const confidence = resolveConfidence(top, runnerUp?.score ?? 0, input)
 
   return {
     mode: confidence === "high" ? "auto-save" : confidence === "medium" ? "hold" : "ignore",

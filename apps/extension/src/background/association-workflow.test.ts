@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   ASSOCIATION_TOAST_WINDOW_MS,
+  buildSavedAssociationFromMemory,
   buildHeldReviewAssociation,
   buildPendingAutoSaveAssociation,
+  getPendingAssociationRemainingMs,
+  pausePendingAutoSaveAssociation,
+  resumePendingAutoSaveAssociation,
   resolveAssociationProjectName,
   resolveAssociationToastAction,
 } from "./association-workflow";
@@ -72,5 +76,45 @@ describe("association workflow", () => {
         sessionAssumedProjectName: "Relay",
       }),
     ).toBe("Relay");
+  });
+
+  it("pauses and resumes a pending auto-save timer without losing remaining time", () => {
+    const { pending } = buildPendingAutoSaveAssociation({
+      projectId: "project_relay",
+      projectName: "Relay",
+      projectOptions: [{ id: "project_relay", name: "Relay" }],
+      captureSignature: "sig_123",
+      now: 1_000,
+    });
+
+    const paused = pausePendingAutoSaveAssociation(pending, 6_000);
+    expect(paused.paused).toBe(true);
+    expect(getPendingAssociationRemainingMs(paused, 12_000)).toBe(
+      ASSOCIATION_TOAST_WINDOW_MS - 5_000,
+    );
+
+    const resumed = resumePendingAutoSaveAssociation(paused, 12_000);
+    expect(resumed.paused).toBe(false);
+    expect(resumed.expiresAt).toBe(
+      12_000 + (ASSOCIATION_TOAST_WINDOW_MS - 5_000),
+    );
+  });
+
+  it("builds a saved association directly from remembered routing memory", () => {
+    expect(
+      buildSavedAssociationFromMemory({
+        projectId: "project_relay",
+        projectName: "Relay",
+        sessionId: "session_123",
+        approvedAt: "2026-03-14T00:00:00.000Z",
+      }),
+    ).toEqual({
+      status: "saved",
+      projectId: "project_relay",
+      projectName: "Relay",
+      sessionId: "session_123",
+      reason: "This chat is currently saved to the project.",
+      capturedAt: "2026-03-14T00:00:00.000Z",
+    });
   });
 });

@@ -35,8 +35,12 @@ import { setRelayThemeMode, type RelayThemeMode } from "../storage/theme";
 import { relayFetch } from "../utils/api";
 import { resolveTargetProfile } from "../utils/target-profile";
 import {
+  buildSavedAssociationFromMemory,
   buildHeldReviewAssociation,
   buildPendingAutoSaveAssociation,
+  getPendingAssociationRemainingMs,
+  pausePendingAutoSaveAssociation,
+  resumePendingAutoSaveAssociation,
   resolveAssociationProjectName,
   resolveAssociationToastAction,
   type PendingAssociationState,
@@ -663,6 +667,93 @@ function clearPendingAssociation(
   }
 }
 
+function describeApprovedAssociationReason(
+  page: RelayPageState,
+  association: Awaited<ReturnType<typeof readApprovedAssociations>>[number],
+) {
+  if (association.key && association.key === buildAssociationKey(page)) {
+    return "Matched a previously approved chat fingerprint.";
+  }
+
+  if (page.pageFingerprint && association.pageFingerprint === page.pageFingerprint) {
+    return "Matched a previously approved chat fingerprint.";
+  }
+
+  if (page.url && association.url === page.url) {
+    return "Matched a previously approved chat URL.";
+  }
+
+  if (
+    page.pathname &&
+    page.platform &&
+    association.pathname === page.pathname &&
+    association.platform === page.platform
+  ) {
+    return "Matched a previously approved chat path on this platform.";
+  }
+
+  return "Matched a previously approved chat.";
+}
+
+function restoreApprovedAssociationState(
+  state: RelayTabState,
+  association: Awaited<ReturnType<typeof readApprovedAssociations>>[number],
+) {
+  clearPendingAssociation(state);
+  state.lastCapturedSignature =
+    state.page.captureSignature ?? state.lastObservedSignature;
+  state.lastCapturedTurns = state.page.turns ?? state.lastObservedTurns;
+  state.lastRoutedSignature = state.page.captureSignature ?? buildAssociationKey(state.page);
+  state.projectId = association.projectId;
+  state.projectName = association.projectName;
+  state.chatAssociation = buildSavedAssociationFromMemory({
+    projectId: association.projectId,
+    projectName: association.projectName,
+    sessionId: association.sessionId,
+    approvedAt: association.approvedAt,
+  });
+  state.routingReview = {
+    confidence: "high",
+    score: 100,
+    reasons: [describeApprovedAssociationReason(state.page, association)],
+  };
+}
+
+function startPendingAssociationTimer(tabId: number, state: RelayTabState) {
+  const pendingAssociation = state.pendingAssociation;
+  if (!pendingAssociation || pendingAssociation.mode !== "auto_save" || pendingAssociation.paused) {
+    return;
+  }
+
+  clearPendingAssociationTimer(state);
+
+  const delay = getPendingAssociationRemainingMs(pendingAssociation);
+  pendingAssociation.expiresAt = Date.now() + delay;
+  pendingAssociation.remainingMs = null;
+  pendingAssociation.paused = false;
+
+  state.pendingAssociationTimer = setTimeout(() => {
+    state.pendingAssociationTimer = null;
+    const latestPendingAssociation = state.pendingAssociation;
+    const stillPending =
+      latestPendingAssociation &&
+      latestPendingAssociation.mode === "auto_save" &&
+      !latestPendingAssociation.paused &&
+      latestPendingAssociation.captureSignature === pendingAssociation.captureSignature;
+
+    if (!stillPending) {
+      return;
+    }
+
+    const nextProjectId = latestPendingAssociation.projectId;
+    clearPendingAssociation(state, { clearChatAssociation: true });
+    void captureObservedChange(tabId, nextProjectId, {
+      manualSelection: false,
+      skipAssociationToast: true,
+    });
+  }, delay);
+}
+
 function clearTabState(tabId: number) {
   const state = tabStates.get(tabId);
   if (!state) return;
@@ -1148,9 +1239,13 @@ async function syncTabRemoteState(
     const approvedAssociations = state.page.supported
       ? await readApprovedAssociations()
       : [];
+    const rememberedAssociation = findApprovedAssociationMatch(
+      state.page,
+      approvedAssociations,
+    );
     const preferredProjectId =
       getRetargetableAssociationProject(state)?.projectId ??
-      findApprovedAssociationMatch(state.page, approvedAssociations)?.projectId ??
+      rememberedAssociation?.projectId ??
       null;
     const { connected, projects, activeProject, settings, boundProject, onboarding } =
       await resolveActiveProject(tabId, state.page, preferredProjectId);
@@ -1164,11 +1259,22 @@ async function syncTabRemoteState(
       state.stateStatus ??
       session.stateStatus ??
       null;
-    const nextChatAssociation = buildSavedChatAssociation(
+    const dashboardChatAssociation = buildSavedChatAssociation(
       state.page,
       activeProject,
       dashboard,
     );
+    const nextChatAssociation =
+      dashboardChatAssociation.status !== "none"
+        ? dashboardChatAssociation
+        : rememberedAssociation?.projectId && rememberedAssociation.projectName
+          ? buildSavedAssociationFromMemory({
+              projectId: rememberedAssociation.projectId,
+              projectName: rememberedAssociation.projectName,
+              sessionId: rememberedAssociation.sessionId,
+              approvedAt: rememberedAssociation.approvedAt,
+            })
+          : createEmptyChatAssociation();
 
     state.projectOptions = projects;
     state.projectId = activeProject?.id ?? null;
@@ -1178,12 +1284,18 @@ async function syncTabRemoteState(
     state.trust = trust;
     state.stateStatus = nextStateStatus;
     state.contextPreview = contextPreview;
-    if (nextChatAssociation.status !== "none") {
+    const preserveLocalAssociation =
+      state.chatAssociation.status === "held" ||
+      state.chatAssociation.status === "ignored" ||
+      state.chatAssociation.status === "pending" ||
+      state.chatAssociation.status === "archived";
+    if (!preserveLocalAssociation && nextChatAssociation.status !== "none") {
       state.chatAssociation = nextChatAssociation;
     } else if (
       state.chatAssociation.status !== "held" &&
       state.chatAssociation.status !== "ignored" &&
-      state.chatAssociation.status !== "pending"
+      state.chatAssociation.status !== "pending" &&
+      state.chatAssociation.status !== "archived"
     ) {
       state.chatAssociation = createEmptyChatAssociation();
     }
@@ -1414,26 +1526,7 @@ async function schedulePendingAutoSaveAssociation(
   state.pendingAssociation = pending;
   await broadcastActiveProjectState(tabId);
   await showAssociationToast(tabId, toast);
-
-  state.pendingAssociationTimer = setTimeout(() => {
-    state.pendingAssociationTimer = null;
-    const pendingAssociation = state.pendingAssociation;
-    const stillPending =
-      pendingAssociation &&
-      pendingAssociation.mode === "auto_save" &&
-      pendingAssociation.captureSignature === captureSignature;
-
-    if (!stillPending) {
-      return;
-    }
-
-    const nextProjectId = pendingAssociation.projectId;
-    clearPendingAssociation(state, { clearChatAssociation: true });
-    void captureObservedChange(tabId, nextProjectId, {
-      manualSelection: false,
-      skipAssociationToast: true,
-    });
-  }, Math.max(0, toast.expiresAt - Date.now()));
+  startPendingAssociationTimer(tabId, state);
 }
 
 async function showHeldAssociationToast(
@@ -1459,6 +1552,44 @@ async function showHeldAssociationToast(
   state.chatAssociation = chatAssociation;
   await broadcastActiveProjectState(tabId);
   await showAssociationToast(tabId, toast);
+}
+
+async function setAssociationToastPaused(
+  tabId: number,
+  payload: {
+    paused: boolean;
+    mode: "auto_save" | "held_review";
+    projectId: string;
+  },
+) {
+  const state = getOrCreateTabState(tabId);
+
+  if (payload.mode !== "auto_save") {
+    return { ok: true, paused: payload.paused };
+  }
+
+  const pendingAssociation = state.pendingAssociation;
+  if (
+    !pendingAssociation ||
+    pendingAssociation.mode !== "auto_save" ||
+    pendingAssociation.projectId !== payload.projectId
+  ) {
+    return { ok: false, reason: "No pending auto-save toast is active for this chat." };
+  }
+
+  if (payload.paused) {
+    state.pendingAssociation = pausePendingAutoSaveAssociation(pendingAssociation);
+    clearPendingAssociationTimer(state);
+  } else {
+    state.pendingAssociation = resumePendingAutoSaveAssociation(pendingAssociation);
+    startPendingAssociationTimer(tabId, state);
+  }
+
+  return {
+    ok: true,
+    paused: state.pendingAssociation.paused,
+    expiresAt: state.pendingAssociation.expiresAt,
+  };
 }
 
 async function resolveAssociationToast(
@@ -1668,6 +1799,19 @@ async function captureObservedChange(
           score: 100,
           reasons: ["This chat is already associated with the project."],
         };
+        clearPendingAssociation(state);
+        state.lastCapturedSignature =
+          state.page.captureSignature ?? state.lastObservedSignature;
+        state.lastCapturedTurns = state.page.turns ?? state.lastObservedTurns;
+        state.lastRoutedSignature = state.page.captureSignature ?? chatKey;
+        return {
+          ok: true,
+          restored: true,
+          captured: false,
+          projectId,
+          sessionId: state.chatAssociation.sessionId ?? null,
+          reason: "This chat is already associated with the project.",
+        };
       } else if (state.chatAssociation.status === "archived") {
         clearPendingAssociation(state, { clearChatAssociation: false });
         state.lastRoutedSignature = state.page.captureSignature ?? chatKey;
@@ -1719,11 +1863,20 @@ async function captureObservedChange(
           reason: "This chat was already dismissed from automatic capture.",
         };
       } else if (exactApprovedAssociation?.projectId) {
+        restoreApprovedAssociationState(state, exactApprovedAssociation);
         projectId = exactApprovedAssociation.projectId;
-        state.routingReview = {
-          confidence: "high",
-          score: 100,
-          reasons: ["Matched a previously approved chat fingerprint."],
+        await clearIgnoredChatKey(chatKey);
+        await setSessionProjectTarget(
+          exactApprovedAssociation.projectId,
+          exactApprovedAssociation.projectName,
+        );
+        return {
+          ok: true,
+          restored: true,
+          captured: false,
+          projectId,
+          sessionId: exactApprovedAssociation.sessionId ?? null,
+          reason: state.routingReview?.reasons[0] ?? "Matched a previously approved chat.",
         };
       } else {
         routingDecision = await resolveAutoCaptureRouting(
@@ -2667,6 +2820,26 @@ chrome.runtime.onMessage.addListener(
           sendResponse(
             await resolveAssociationToast(tabId, {
               action: message.payload.action,
+              mode: message.payload.mode,
+              projectId: message.payload.projectId,
+            }),
+          );
+          return;
+        }
+
+        if (message.type === "RELAY_SET_ASSOCIATION_TOAST_PAUSED") {
+          const tabId = message.payload.tabId ?? sender.tab?.id;
+          if (!tabId) {
+            sendResponse({
+              ok: false,
+              reason: "No supported tab was provided for toast timer control.",
+            });
+            return;
+          }
+
+          sendResponse(
+            await setAssociationToastPaused(tabId, {
+              paused: message.payload.paused,
               mode: message.payload.mode,
               projectId: message.payload.projectId,
             }),

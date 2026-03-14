@@ -190,8 +190,8 @@ describe("evaluateProjectRouting", () => {
       approvedAssociations: []
     })
 
-    expect(["hold", "auto-save"]).toContain(result.mode)
-    expect(["medium", "high"]).toContain(result.confidence)
+    expect(result.mode).toBe("auto-save")
+    expect(result.confidence).toBe("high")
     expect(result.candidateProjectId).toBe("project_relay_brand")
     expect(
       result.reasons.some((reason) =>

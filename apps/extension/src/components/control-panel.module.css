@@ -108,26 +108,59 @@
 }
 
 .logoMark {
-  width: 16px;
-  height: 16px;
-  object-fit: contain;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
+  display: block;
 }
 
 .logoLink {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border: none;
+  border-radius: 8px;
+  padding: 0;
+  background: transparent;
   text-decoration: none;
+  cursor: pointer;
   transition:
     opacity 120ms,
     background 120ms;
 }
 
 .logoLink:hover {
-  opacity: 0.88;
-  background: var(--hover);
+  opacity: 1;
+  background: transparent;
+}
+
+.logoLink:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--line);
+}
+
+.logoMarkFrame {
+  fill: #11130f;
+}
+
+.logoMarkRibbon {
+  fill: #ece8de;
+}
+
+.logoMarkCutout {
+  fill: #11130f;
+}
+
+.shell[data-theme="light"] .logoMarkFrame {
+  fill: #191814;
+}
+
+.shell[data-theme="light"] .logoMarkRibbon {
+  fill: #f4f1e8;
+}
+
+.shell[data-theme="light"] .logoMarkCutout {
+  fill: #191814;
 }
 
 .wordmark {

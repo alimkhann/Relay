@@ -25,7 +25,6 @@ import {
   inferTargetProfile,
   resolveTargetProfile,
 } from "../utils/target-profile";
-import relayIconUrl from "../../assets/icon.png";
 import styles from "./control-panel.module.css";
 
 interface ControlPanelProps {
@@ -1173,11 +1172,27 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             title="Open dashboard"
             onClick={() => void openDashboard(dashboardPath)}
           >
-            <img
+            <svg
               className={styles.logoMark}
-              src={relayIconUrl}
-              alt="Relay"
-            />
+              viewBox="0 0 64 64"
+              fill="none"
+              aria-hidden="true"
+            >
+              <rect
+                className={styles.logoMarkFrame}
+                width="64"
+                height="64"
+                rx="16"
+              />
+              <path
+                className={styles.logoMarkRibbon}
+                d="M18 18H34.5C43.0604 18 50 24.9396 50 33.5C50 42.0604 43.0604 49 34.5 49H18V18Z"
+              />
+              <path
+                className={styles.logoMarkCutout}
+                d="M26 26H34.5C38.6421 26 42 29.3579 42 33.5C42 37.6421 38.6421 41 34.5 41H26V26Z"
+              />
+            </svg>
           </button>
         </div>
         {activeState.page.supported ? (
