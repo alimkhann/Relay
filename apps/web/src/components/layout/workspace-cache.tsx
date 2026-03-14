@@ -1,21 +1,40 @@
 "use client"
 
+import dynamic from "next/dynamic"
 import { useEffect, useSyncExternalStore } from "react"
 import type { ReactNode } from "react"
 import type { ProjectDashboardDto, UserSettingsRow } from "@relay/shared"
 
-import { CreateProjectForm } from "@/components/projects/create-project-form"
-import { SettingsPreferences } from "@/components/settings/settings-preferences"
-import { ActivityFeed } from "@/features/activity/activity-feed"
-import { DashboardContent } from "@/features/projects/dashboard-content"
 import type { ActivityEntry } from "@/server/services/activity-service"
+
+const WorkspaceDashboardView = dynamic(
+  () =>
+    import("@/components/layout/workspace-dashboard-view").then((module) => ({
+      default: module.WorkspaceDashboardView
+    })),
+  { ssr: false }
+)
+const WorkspaceActivityView = dynamic(
+  () =>
+    import("@/components/layout/workspace-activity-view").then((module) => ({
+      default: module.WorkspaceActivityView
+    })),
+  { ssr: false }
+)
+const WorkspaceSettingsView = dynamic(
+  () =>
+    import("@/components/layout/workspace-settings-view").then((module) => ({
+      default: module.WorkspaceSettingsView
+    })),
+  { ssr: false }
+)
 
 type DashboardSnapshot = {
   kind: "dashboard"
   cacheKey: string
   href: string
-  project: { id: string; name: string; description?: string | null } | null
-  dashboard: ProjectDashboardDto | null
+  project: { id: string; name: string; description?: string | null }
+  dashboard: ProjectDashboardDto
 }
 
 type ActivitySnapshot = {
@@ -84,6 +103,10 @@ export function cacheWorkspaceSnapshot(snapshot: WorkspaceSnapshot) {
 }
 
 export function startWorkspaceNavigation(route: PendingWorkspaceRoute) {
+  if (route.kind === "dashboard" && !route.projectId) {
+    return
+  }
+
   workspaceStore.pending = route
   emitChange()
 }
@@ -154,58 +177,18 @@ async function revalidateRoute(route: PendingWorkspaceRoute) {
 
 function renderWorkspaceSnapshot(snapshot: WorkspaceSnapshot) {
   if (snapshot.kind === "dashboard") {
-    if (!snapshot.project || !snapshot.dashboard) {
-      return (
-        <section className="max-w-2xl py-10">
-          <header className="mb-10 space-y-2">
-            <h1 className="text-[28px] font-medium tracking-tight text-[var(--relay-ink)]">
-              Welcome to Relay
-            </h1>
-            <p className="text-[15px] leading-relaxed text-[var(--relay-muted)]">
-              Relay provides reliable, context-aware memory for your AI tools. Start by defining a project boundary.
-            </p>
-          </header>
-          <CreateProjectForm />
-        </section>
-      )
-    }
-
-    return (
-      <div className="pt-6">
-        <DashboardContent project={snapshot.project} dashboard={snapshot.dashboard} />
-      </div>
-    )
+    return <WorkspaceDashboardView project={snapshot.project} dashboard={snapshot.dashboard} />
   }
 
   if (snapshot.kind === "activity") {
-    return (
-      <div className="space-y-5">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight text-[var(--relay-ink)]">
-            Activity
-          </h1>
-          <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
-            Recent captures and digest runs across all projects.
-          </p>
-        </div>
-        <ActivityFeed feed={snapshot.feed} />
-      </div>
-    )
+    return <WorkspaceActivityView feed={snapshot.feed} />
   }
 
   return (
-    <div className="max-w-2xl">
-      <h1 className="text-lg font-semibold tracking-tight text-[var(--relay-ink)]">
-        Settings
-      </h1>
-      <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
-        Configure how Relay works across your chats.
-      </p>
-      <SettingsPreferences
-        initialSettings={snapshot.settings}
-        hasConnectedExtension={snapshot.hasConnectedExtension}
-      />
-    </div>
+    <WorkspaceSettingsView
+      settings={snapshot.settings}
+      hasConnectedExtension={snapshot.hasConnectedExtension}
+    />
   )
 }
 

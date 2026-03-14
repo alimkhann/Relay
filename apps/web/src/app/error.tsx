@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 
 import { logClientEvent } from "@/lib/telemetry/client";
+import { reportClientError } from "@/lib/telemetry/client-error-reporting";
 
 export default function GlobalError({
   error,
@@ -12,7 +13,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    logClientEvent({
+    const payload = {
       level: "error",
       surface: "web-dashboard",
       area: "page",
@@ -22,7 +23,10 @@ export default function GlobalError({
       context: {
         digest: error.digest ?? null,
       },
-    });
+    } as const;
+
+    logClientEvent(payload);
+    reportClientError(payload);
   }, [error]);
 
   return (

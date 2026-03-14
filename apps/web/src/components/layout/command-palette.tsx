@@ -41,12 +41,14 @@ export function CommandPalette({ projects = [], currentProjectId }: CommandPalet
       shortcut: "G O",
       action: () => {
         const href = currentProjectId ? `/dashboard?project=${currentProjectId}` : "/dashboard";
-        startWorkspaceNavigation({
-          href,
-          cacheKey: currentProjectId ? `dashboard:${currentProjectId}` : "dashboard:none",
-          kind: "dashboard",
-          projectId: currentProjectId ?? null,
-        });
+        if (currentProjectId) {
+          startWorkspaceNavigation({
+            href,
+            cacheKey: `dashboard:${currentProjectId}`,
+            kind: "dashboard",
+            projectId: currentProjectId,
+          });
+        }
         router.push(href);
       },
       section: "Navigation",

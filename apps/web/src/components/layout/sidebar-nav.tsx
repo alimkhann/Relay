@@ -51,14 +51,18 @@ export function SidebarNav({ currentProjectId }: { currentProjectId?: string }) 
             key={item.href}
             href={item.href}
             onMouseEnter={() => router.prefetch(item.href)}
-            onClick={() =>
+            onClick={() => {
+              if (item.kind === "dashboard" && !currentProjectId) {
+                return;
+              }
+
               startWorkspaceNavigation({
                 href: item.href,
                 cacheKey: item.cacheKey,
                 kind: item.kind,
-                projectId: item.kind === "dashboard" ? (currentProjectId ?? null) : undefined,
-              })
-            }
+                projectId: item.kind === "dashboard" ? currentProjectId : undefined,
+              });
+            }}
             className={cn(
               "flex items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-2.5 py-1.5 text-[13px] font-medium transition-colors",
               isActive

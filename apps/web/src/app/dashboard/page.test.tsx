@@ -5,6 +5,7 @@ const {
   getResolvedOnboardingStateForUserMock,
   requirePageViewerMock,
   syncViewerProfileMock,
+  appShellMock,
 } =
   vi.hoisted(() => ({
     getResolvedOnboardingStateForUserMock: vi.fn(async () => ({
@@ -21,6 +22,15 @@ const {
       image: null,
     })),
     syncViewerProfileMock: vi.fn(async () => undefined),
+    appShellMock: vi.fn(
+      ({
+        children,
+        workspaceSnapshot,
+      }: {
+        children: any;
+        workspaceSnapshot?: unknown;
+      }) => <div data-workspace-snapshot={workspaceSnapshot ? "true" : "false"}>{children}</div>,
+    ),
   }));
 
 vi.mock("motion/react", () => ({
@@ -47,7 +57,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/components/layout/app-shell", () => ({
-  AppShell: ({ children }: { children: any }) => <div>{children}</div>,
+  AppShell: appShellMock,
 }));
 
 vi.mock("@/server/policies/viewer", () => {
@@ -177,6 +187,7 @@ describe("DashboardPage", () => {
     syncViewerProfileMock.mockReset();
     syncViewerProfileMock.mockResolvedValue(undefined);
     getResolvedOnboardingStateForUserMock.mockReset();
+    appShellMock.mockClear();
     getResolvedOnboardingStateForUserMock.mockResolvedValue({
       status: "completed",
       completedProjectId: "project-1",
@@ -188,6 +199,7 @@ describe("DashboardPage", () => {
   it("renders the project index heading", async () => {
     render(await DashboardPage({ searchParams: Promise.resolve({}) }));
 
+    expect(screen.getByText("Relay MVP").closest("[data-workspace-snapshot]")?.getAttribute("data-workspace-snapshot")).toBe("true");
     expect(screen.getByText("Relay MVP")).toBeTruthy();
     expect(screen.getByText("Ready")).toBeTruthy();
     expect(
@@ -224,5 +236,6 @@ describe("DashboardPage", () => {
 
     expect(screen.getByText("Welcome to Relay")).toBeTruthy();
     expect(screen.getByText("Create")).toBeTruthy();
+    expect(screen.getByText("Welcome to Relay").closest("[data-workspace-snapshot]")?.getAttribute("data-workspace-snapshot")).toBe("false");
   });
 });
