@@ -15,6 +15,7 @@ vi.mock("motion/react", () => ({
           const {
             initial,
             animate,
+            exit,
             transition,
             whileHover,
             whileTap,
@@ -25,6 +26,7 @@ vi.mock("motion/react", () => ({
       },
     },
   ),
+  AnimatePresence: ({ children }: any) => children,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -157,6 +159,9 @@ describe("DashboardContent", () => {
       />,
     );
 
+    // Hover over the project name to reveal the edit button
+    const heading = screen.getByRole("heading", { name: "Relay MVP" });
+    fireEvent.mouseEnter(heading.parentElement!);
     const editButton = screen.getAllByRole("button", { name: /edit/i })[0]!;
     fireEvent.click(editButton);
     fireEvent.change(screen.getByDisplayValue("Relay MVP"), {

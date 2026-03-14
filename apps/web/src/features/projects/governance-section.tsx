@@ -288,7 +288,7 @@ export function GovernanceSection({
           return (
             <div
               key={section}
-              className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden"
+              className="flex flex-col rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden"
               style={{ borderLeftWidth: 2, borderLeftColor: colorBySection[section] }}
             >
               {/* Column header */}
@@ -335,7 +335,7 @@ export function GovernanceSection({
               </div>
 
               {/* Items */}
-              <div className="divide-y divide-[var(--relay-line)]">
+              <div className="flex-1 divide-y divide-[var(--relay-line)]">
                 {pageItems.length === 0 ? (
                   <div className="px-3.5 py-4">
                     <p className="text-[12px] text-[var(--relay-muted)]">
@@ -408,7 +408,7 @@ export function GovernanceSection({
               </div>
 
               {/* Add new */}
-              <div className="border-t border-[var(--relay-line)] px-3.5 py-2.5">
+              <div className="mt-auto border-t border-[var(--relay-line)] bg-[var(--relay-soft)]/40 px-3.5 py-2">
                 <div className="flex gap-1.5">
                   <input
                     className="flex-1 min-w-0 rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] px-2.5 py-1 text-[12px] outline-none focus:border-[var(--relay-accent)] placeholder:text-[var(--relay-faint)]"

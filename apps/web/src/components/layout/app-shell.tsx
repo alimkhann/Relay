@@ -2,10 +2,10 @@ import Link from "next/link";
 import type { PropsWithChildren } from "react";
 
 import { getAuthServer } from "@/lib/auth/server";
-import { SignOutButton } from "@/components/auth/sign-out-button";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { SidebarProjectSwitcher } from "@/components/layout/sidebar-project-switcher";
+import { AccountMenu } from "@/components/layout/account-menu";
 
 interface AppShellProps extends PropsWithChildren {
   projects?: { id: string; name: string }[];
@@ -40,19 +40,15 @@ export async function AppShell({ children, projects, currentProjectId }: AppShel
 
         <SidebarNav />
 
-        <div className="mt-auto border-t border-[var(--relay-line)] pt-4 px-2">
+        <div className="mt-auto border-t border-[var(--relay-line)] pt-4">
           {user ? (
-            <div className="flex flex-col gap-3">
-              <span className="text-xs text-[var(--relay-ink-secondary)] truncate">
-                {user.name || user.email || "Signed in"}
-              </span>
-              <div className="flex items-center justify-between">
-                <SignOutButton />
-              </div>
-            </div>
+            <AccountMenu
+              name={user.name || user.email || "Signed in"}
+              email={user.email ?? undefined}
+            />
           ) : (
             <Link
-              className="text-[13px] font-medium text-[var(--relay-ink-secondary)] transition hover:text-[var(--relay-ink)]"
+              className="px-2 text-[13px] font-medium text-[var(--relay-ink-secondary)] transition hover:text-[var(--relay-ink)]"
               href="/sign-in"
             >
               Sign in

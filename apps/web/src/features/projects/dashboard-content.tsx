@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ProjectDashboardDto, ProjectStateStatusDto } from "@relay/shared";
 import {
@@ -12,6 +12,8 @@ import {
   Trash2,
   Pencil,
 } from "lucide-react";
+
+import { motion, AnimatePresence } from "motion/react";
 
 import { Button } from "@/components/ui/button";
 import { FadeIn } from "@/components/ui/fade-in";
@@ -72,6 +74,8 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
   const [status, setStatus] = useState("");
   const [editingMemory, setEditingMemory] = useState(false);
   const [editingProject, setEditingProject] = useState(false);
+  const [headerHovered, setHeaderHovered] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const [projectNameDraft, setProjectNameDraft] = useState(project.name);
   const [projectDescriptionDraft, setProjectDescriptionDraft] = useState(
     project.description ?? "",
@@ -321,108 +325,144 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
       {/* ─── Header strip ─── */}
       <FadeIn>
         <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="group/header flex items-center gap-2 rounded-[var(--relay-radius-sm)] pr-1">
-                <h1 className="text-xl font-semibold tracking-tight text-[var(--relay-ink)]">
-                  {projectMeta.name}
-                </h1>
-                <button
-                  type="button"
-                  onClick={() => setEditingProject((current) => !current)}
-                  className="inline-flex h-7 items-center gap-1 rounded-[var(--relay-radius-sm)] px-2 text-[11px] font-medium text-[var(--relay-muted)] opacity-0 transition hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--relay-accent)] group-hover/header:opacity-100"
-                >
-                  <Pencil className="h-3 w-3" />
-                  Edit
-                </button>
-              </div>
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium",
-                  statusReady
-                    ? "bg-[var(--relay-success)]/10 text-[var(--relay-success)]"
-                    : "bg-[var(--relay-warning)]/10 text-[var(--relay-warning)]",
-                )}
-              >
-                <span
-                  className={cn(
-                    "h-1.5 w-1.5 rounded-full",
-                    statusReady
-                      ? "bg-[var(--relay-success)]"
-                      : "bg-[var(--relay-warning)]",
-                  )}
-                />
-                {statusText}
-              </span>
-            </div>
-            {projectMeta.description ? (
-              <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--relay-muted)] line-clamp-1 max-w-2xl">
-                {projectMeta.description}
-              </p>
-            ) : null}
+          <div className="min-w-0 flex-1">
             {editingProject ? (
-              <div className="mt-3 w-full max-w-2xl rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-3 shadow-[var(--relay-shadow-sm)]">
-                <div className="space-y-3">
-                  <label className="block space-y-1.5">
-                    <span className="text-[11px] font-medium text-[var(--relay-muted)]">
-                      Project name
-                    </span>
-                    <input
-                      className="w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] px-2.5 py-2 text-[13px] text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)]"
-                      value={projectNameDraft}
-                      onChange={(event) =>
-                        setProjectNameDraft(event.target.value)
-                      }
-                      maxLength={80}
-                      disabled={pending}
-                    />
-                  </label>
-                  <label className="block space-y-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-medium text-[var(--relay-muted)]">
-                        Description
-                      </span>
-                      <span className="text-[10px] text-[var(--relay-faint)]">
-                        {projectDescriptionDraft.length}/200
-                      </span>
-                    </div>
-                    <textarea
-                      className="min-h-[84px] w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] px-2.5 py-2 text-[13px] leading-relaxed text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)] resize-none"
-                      value={projectDescriptionDraft}
-                      onChange={(event) =>
-                        setProjectDescriptionDraft(event.target.value)
-                      }
-                      placeholder="Describe the project so Relay can associate the right chats."
-                      maxLength={200}
-                      disabled={pending}
-                    />
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      disabled={pending}
-                      onClick={saveProjectMetadata}
-                      className="h-7 text-[11px]"
-                    >
-                      Save
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={pending}
-                      onClick={() => {
+              <div className="space-y-3 max-w-2xl">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    ref={nameInputRef}
+                    className="text-xl font-semibold tracking-tight text-[var(--relay-ink)] bg-transparent border-b-2 border-[var(--relay-accent)] outline-none w-full max-w-md py-0.5"
+                    value={projectNameDraft}
+                    onChange={(event) =>
+                      setProjectNameDraft(event.target.value)
+                    }
+                    maxLength={80}
+                    disabled={pending}
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveProjectMetadata();
+                      if (e.key === "Escape") {
                         setProjectNameDraft(projectMeta.name);
                         setProjectDescriptionDraft(projectMeta.description);
                         setEditingProject(false);
-                      }}
-                      className="h-7 text-[11px]"
-                    >
-                      Cancel
-                    </Button>
-                  </div>
+                      }
+                    }}
+                  />
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium",
+                      statusReady
+                        ? "bg-[var(--relay-success)]/10 text-[var(--relay-success)]"
+                        : "bg-[var(--relay-warning)]/10 text-[var(--relay-warning)]",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "h-1.5 w-1.5 rounded-full",
+                        statusReady
+                          ? "bg-[var(--relay-success)]"
+                          : "bg-[var(--relay-warning)]",
+                      )}
+                    />
+                    {statusText}
+                  </span>
                 </div>
+                <textarea
+                  className="w-full min-h-[60px] rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] px-2.5 py-1.5 text-[13px] leading-relaxed text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)] resize-none"
+                  value={projectDescriptionDraft}
+                  onChange={(event) =>
+                    setProjectDescriptionDraft(event.target.value)
+                  }
+                  placeholder="Describe the project so Relay can associate the right chats."
+                  maxLength={200}
+                  disabled={pending}
+                />
+                <motion.div
+                  className="flex items-center gap-2"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  <Button
+                    size="sm"
+                    disabled={pending}
+                    onClick={saveProjectMetadata}
+                    className="h-7 text-[11px]"
+                  >
+                    Save
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={pending}
+                    onClick={() => {
+                      setProjectNameDraft(projectMeta.name);
+                      setProjectDescriptionDraft(projectMeta.description);
+                      setEditingProject(false);
+                    }}
+                    className="h-7 text-[11px]"
+                  >
+                    Cancel
+                  </Button>
+                  <span className="text-[10px] text-[var(--relay-faint)] ml-auto">
+                    {projectDescriptionDraft.length}/200
+                  </span>
+                </motion.div>
               </div>
-            ) : null}
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div
+                    className="flex items-center gap-2 rounded-[var(--relay-radius-sm)] pr-1"
+                    onMouseEnter={() => setHeaderHovered(true)}
+                    onMouseLeave={() => setHeaderHovered(false)}
+                  >
+                    <h1 className="text-xl font-semibold tracking-tight text-[var(--relay-ink)]">
+                      {projectMeta.name}
+                    </h1>
+                    <AnimatePresence>
+                      {headerHovered && (
+                        <motion.button
+                          type="button"
+                          onClick={() => setEditingProject(true)}
+                          className="inline-flex h-7 items-center gap-1 rounded-[var(--relay-radius-sm)] px-2 text-[11px] font-medium text-[var(--relay-muted)] overflow-hidden whitespace-nowrap hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--relay-accent)]"
+                          initial={{ width: 0, opacity: 0 }}
+                          animate={{ width: "auto", opacity: 1 }}
+                          exit={{ width: 0, opacity: 0 }}
+                          transition={{ duration: 0.15 }}
+                        >
+                          <Pencil className="h-3 w-3 shrink-0" />
+                          <span>Edit</span>
+                        </motion.button>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium",
+                      statusReady
+                        ? "bg-[var(--relay-success)]/10 text-[var(--relay-success)]"
+                        : "bg-[var(--relay-warning)]/10 text-[var(--relay-warning)]",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "h-1.5 w-1.5 rounded-full",
+                        statusReady
+                          ? "bg-[var(--relay-success)]"
+                          : "bg-[var(--relay-warning)]",
+                      )}
+                    />
+                    {statusText}
+                  </span>
+                </div>
+                {projectMeta.description ? (
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--relay-muted)] line-clamp-1 max-w-2xl">
+                    {projectMeta.description}
+                  </p>
+                ) : null}
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Button
