@@ -2,6 +2,7 @@ import { createRepositoryBundle } from "@relay/db"
 import { hashContent } from "@relay/shared"
 import { redirect } from "next/navigation"
 
+import { readSessionUserFromCookie } from "@/lib/auth/session-cookie"
 import { requireAuthServer } from "@/lib/auth/server"
 import { logServerEvent } from "@/server/logging/logger"
 import { reconcileProfileForAuthUser } from "@/server/services/auth-sync-service"
@@ -66,6 +67,22 @@ export async function requireSessionViewer(): Promise<Viewer> {
   }
 }
 
+async function requirePageSessionViewer(): Promise<Viewer> {
+  const user = await readSessionUserFromCookie()
+
+  if (!user?.id) {
+    throw new AuthRequiredError()
+  }
+
+  return {
+    userId: user.id,
+    mode: "session",
+    email: user.email ?? null,
+    name: user.name ?? null,
+    image: user.image ?? null
+  }
+}
+
 export async function resolveViewer(authorizationHeader?: string | null): Promise<Viewer> {
   const token = authorizationHeader?.replace(/^Bearer\s+/i, "").trim()
 
@@ -90,7 +107,11 @@ export async function resolveViewer(authorizationHeader?: string | null): Promis
 
 export async function resolveOptionalViewer(authorizationHeader?: string | null): Promise<Viewer | null> {
   try {
-    return await resolveViewer(authorizationHeader)
+    if (authorizationHeader?.trim()) {
+      return await resolveViewer(authorizationHeader)
+    }
+
+    return await requirePageSessionViewer()
   } catch (error) {
     if (isAuthRequiredError(error)) {
       return null
@@ -138,7 +159,7 @@ export function resolveAuthenticatedAppPath(value: string | null | undefined = "
 
 export async function requirePageViewer(nextPath = "/dashboard"): Promise<Viewer> {
   try {
-    return await requireSessionViewer()
+    return await requirePageSessionViewer()
   } catch (error) {
     if (isAuthRequiredError(error)) {
       redirect(buildSignInHref(nextPath))
