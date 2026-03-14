@@ -25,6 +25,12 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+:global(html[data-relay-theme="light"]),
+:global(body[data-relay-theme="light"]),
+:global(#__plasmo[data-relay-theme="light"]) {
+  background: #f4f1e8;
+}
+
 /* ── Shell ── */
 
 .shell {
@@ -39,6 +45,9 @@
   --accent-text: #09090b;
   --radius: 8px;
   --radius-sm: 4px;
+  --surface-soft: rgba(255, 255, 255, 0.02);
+  --hover: rgba(255, 255, 255, 0.04);
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
 
   width: 100%;
   min-width: 0;
@@ -56,6 +65,21 @@
   font-size: 13px;
   line-height: 1.5;
   background: var(--bg);
+}
+
+.shell[data-theme="light"] {
+  --bg: #f4f1e8;
+  --surface: #fffdf7;
+  --ink: #191814;
+  --ink-secondary: #464136;
+  --muted: #7f7768;
+  --faint: #a19887;
+  --line: rgba(25, 24, 20, 0.1);
+  --accent: #191814;
+  --accent-text: #f7f4eb;
+  --surface-soft: rgba(25, 24, 20, 0.04);
+  --hover: rgba(25, 24, 20, 0.05);
+  --shadow: 0 10px 26px rgba(25, 24, 20, 0.12);
 }
 
 .compact {
@@ -88,6 +112,22 @@
   height: 16px;
   object-fit: contain;
   flex-shrink: 0;
+}
+
+.logoLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  text-decoration: none;
+  transition:
+    opacity 120ms,
+    background 120ms;
+}
+
+.logoLink:hover {
+  opacity: 0.88;
+  background: var(--hover);
 }
 
 .wordmark {
@@ -258,7 +298,7 @@
   line-height: 1.45;
   white-space: normal;
   overflow-wrap: anywhere;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  box-shadow: var(--shadow);
   opacity: 0;
   pointer-events: none;
   transform: translateY(3px);
@@ -455,7 +495,7 @@
   resize: vertical;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--surface-soft);
   color: var(--ink);
   padding: 10px 12px;
   font: inherit;
@@ -582,7 +622,7 @@
 }
 
 .projectRow:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--hover);
 }
 
 .projectChevron {

@@ -40,7 +40,8 @@
     "externally_connectable": {
       "matches": [
         "$PLASMO_PUBLIC_RELAY_API_BASE/*",
-        "http://localhost:3000/*"
+        "http://localhost:3000/*",
+        "http://localhost:3001/*"
       ]
     },
     "content_scripts": [

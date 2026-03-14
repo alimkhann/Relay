@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest"
 
 import type { ProjectStateStatusDto } from "@relay/shared"
 
-import { deriveControlPanelState } from "./control-panel-state"
+import {
+  deriveAssociationCardPresentation,
+  deriveControlPanelState,
+} from "./control-panel-state"
 
 function makeStateStatus(input: Partial<ProjectStateStatusDto> = {}): ProjectStateStatusDto {
   return {
@@ -70,5 +73,37 @@ describe("deriveControlPanelState", () => {
 
     expect(state.heroBadge).toBe("Project brief unavailable")
     expect(state.insertDisabled).toBe(true)
+  })
+})
+
+describe("deriveAssociationCardPresentation", () => {
+  it("keeps ignored chats on a single manual association message", () => {
+    const presentation = deriveAssociationCardPresentation({
+      status: "ignored",
+      projectId: null,
+      projectName: null,
+      sessionId: null,
+      reason: "Relay will ignore this chat until you manually associate it.",
+      capturedAt: null,
+    })
+
+    expect(presentation.summary).toBe(
+      "Relay will ignore this chat until you manually associate it.",
+    )
+    expect(presentation.showMeta).toBe(false)
+  })
+
+  it("keeps held chats on the approval copy path", () => {
+    const presentation = deriveAssociationCardPresentation({
+      status: "held",
+      projectId: "project_123",
+      projectName: "Relay",
+      sessionId: null,
+      reason: "Relay wants confirmation before saving this chat to a project.",
+      capturedAt: null,
+    })
+
+    expect(presentation.summary).toContain("waiting for your approval")
+    expect(presentation.showMeta).toBe(true)
   })
 })
