@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { logServerEvent } from "@/server/logging/logger"
 import { getRequestContext, withRequestContext } from "@/server/logging/request-context"
 import { BadRequestError } from "@/server/http/errors"
+import { applyExtensionCorsHeaders } from "@/server/http/extension-cors"
 import { isAuthRequiredError } from "@/server/policies/viewer"
 
 interface ApiRouteOptions {
@@ -23,14 +24,14 @@ function isValidationError(error: unknown): error is { issues: ValidationIssue[]
   )
 }
 
-function finalizeResponse(response: Response) {
+function finalizeResponse(request: Request, response: Response) {
   const requestContext = getRequestContext()
 
   if (requestContext) {
     response.headers.set("x-relay-request-id", requestContext.requestId)
   }
 
-  return response
+  return applyExtensionCorsHeaders(response, request.headers.get("origin"))
 }
 
 export function withApiRoute<TArgs extends [Request, ...unknown[]]>(
@@ -44,7 +45,7 @@ export function withApiRoute<TArgs extends [Request, ...unknown[]]>(
       const startedAt = Date.now()
 
       try {
-        const response = finalizeResponse(await handler(...args))
+        const response = finalizeResponse(request, await handler(...args))
 
         if (options.logSuccess !== false) {
           await logServerEvent({
@@ -66,6 +67,7 @@ export function withApiRoute<TArgs extends [Request, ...unknown[]]>(
       } catch (error) {
         if (isAuthRequiredError(error)) {
           const response = finalizeResponse(
+            request,
             NextResponse.json({ error: "Authentication is required." }, { status: 401 })
           )
 
@@ -104,6 +106,7 @@ export function withApiRoute<TArgs extends [Request, ...unknown[]]>(
           })
 
           return finalizeResponse(
+            request,
             NextResponse.json(
               { error: error.issues[0]?.message ?? "Request validation failed." },
               { status: 400 }
@@ -126,6 +129,7 @@ export function withApiRoute<TArgs extends [Request, ...unknown[]]>(
           })
 
           return finalizeResponse(
+            request,
             NextResponse.json(
               { error: error.message },
               { status: 400 }
@@ -148,6 +152,7 @@ export function withApiRoute<TArgs extends [Request, ...unknown[]]>(
         })
 
         return finalizeResponse(
+          request,
           NextResponse.json({ error: "Internal server error." }, { status: 500 })
         )
       }

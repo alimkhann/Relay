@@ -3,12 +3,16 @@ import { describe, expect, it } from "vitest"
 import type { ProjectStateStatusDto } from "@relay/shared"
 
 import {
+  createEmptyAssociationToast,
   createEmptyChatAssociation,
   createEmptyContextPreview,
+  createEmptyInsertState,
   createEmptyTrustMetadata,
   decideShortcutAction,
   deriveRelayActiveProjectState,
-  shouldScheduleAutoCapture
+  looksLikeFreshChatRoute,
+  shouldScheduleAutoCapture,
+  shouldScheduleAutoCaptureRouting,
 } from "./tab-state"
 
 function makeCompletedOnboarding() {
@@ -61,6 +65,10 @@ describe("deriveRelayActiveProjectState", () => {
       contextPreview: createEmptyContextPreview(),
       chatAssociation: createEmptyChatAssociation(),
       routingReview: null,
+      associationTier: "none",
+      associationToast: createEmptyAssociationToast(),
+      associationSuppressed: false,
+      insertState: createEmptyInsertState(),
       lastError: "Failed to fetch"
     })
 
@@ -95,7 +103,11 @@ describe("deriveRelayActiveProjectState", () => {
       capturePending: false,
       contextPreview: createEmptyContextPreview(),
       chatAssociation: createEmptyChatAssociation(),
-      routingReview: null
+      routingReview: null,
+      associationTier: "none",
+      associationToast: createEmptyAssociationToast(),
+      associationSuppressed: false,
+      insertState: createEmptyInsertState(),
     })
 
     expect(state.status).toBe("unavailable")
@@ -130,7 +142,11 @@ describe("view states", () => {
       capturePending: false,
       contextPreview: createEmptyContextPreview(),
       chatAssociation: createEmptyChatAssociation(),
-      routingReview: null
+      routingReview: null,
+      associationTier: "none",
+      associationToast: createEmptyAssociationToast(),
+      associationSuppressed: false,
+      insertState: createEmptyInsertState(),
     })
 
     expect(state.viewState).toBe("connected-loading")
@@ -160,7 +176,11 @@ describe("view states", () => {
       capturePending: false,
       contextPreview: createEmptyContextPreview(),
       chatAssociation: createEmptyChatAssociation(),
-      routingReview: null
+      routingReview: null,
+      associationTier: "none",
+      associationToast: createEmptyAssociationToast(),
+      associationSuppressed: false,
+      insertState: createEmptyInsertState(),
     })
 
     expect(state.viewState).toBe("connected-empty")
@@ -202,6 +222,61 @@ describe("shouldScheduleAutoCapture", () => {
         lastCapturedTurns: 4
       })
     ).toBe(false)
+  })
+})
+
+describe("shouldScheduleAutoCaptureRouting", () => {
+  it("waits for routing inputs before classifying an existing chat, then reruns once projects are available", () => {
+    const page = {
+      supported: true,
+      platform: "chatgpt" as const,
+      isFreshChat: false,
+      isStable: true,
+      isStreaming: false,
+      turns: 6,
+      captureSignature: "sig_2"
+    }
+
+    expect(
+      shouldScheduleAutoCaptureRouting({
+        page,
+        capturePending: false,
+        lastCapturedSignature: "sig_1",
+        lastCapturedTurns: 4,
+        lastRoutedSignature: null,
+        associationStatus: "none",
+        associationSuppressed: false,
+        projectOptionsCount: 0,
+        sessionProjectOptionsCount: 0
+      })
+    ).toBe(false)
+
+    expect(
+      shouldScheduleAutoCaptureRouting({
+        page,
+        capturePending: false,
+        lastCapturedSignature: "sig_1",
+        lastCapturedTurns: 4,
+        lastRoutedSignature: null,
+        associationStatus: "none",
+        associationSuppressed: false,
+        projectOptionsCount: 1,
+        sessionProjectOptionsCount: 0
+      })
+    ).toBe(true)
+  })
+})
+
+describe("looksLikeFreshChatRoute", () => {
+  it("treats project-root starter pages as fresh insertion surfaces", () => {
+    expect(
+      looksLikeFreshChatRoute({
+        supported: true,
+        platform: "chatgpt",
+        routeKind: "project_root",
+        pathname: "/g/g-123/project",
+      }),
+    ).toBe(true)
   })
 })
 

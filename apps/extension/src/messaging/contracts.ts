@@ -81,6 +81,26 @@ export interface RelayRoutingReview {
   reasons: string[];
 }
 
+export type RelayAssociationTier = "none" | "high" | "medium" | "low";
+
+export interface RelayAssociationToastState {
+  visible: boolean;
+  mode: "auto_save" | "held_review" | null;
+  projectId: string | null;
+  projectName: string | null;
+  projectOptions: RelayProjectOption[];
+  sessionId: string | null;
+  expiresAt: number | null;
+  paused: boolean;
+}
+
+export interface RelayInsertState {
+  status: "idle" | "inserting" | "inserted" | "error";
+  source: "sidebar" | "inline_chip" | "shortcut" | null;
+  message: string | null;
+  updatedAt: string | null;
+}
+
 export interface RelayActiveProjectState {
   projectId: string | null;
   projectName: string | null;
@@ -103,6 +123,10 @@ export interface RelayActiveProjectState {
   contextPreview: RelayContextPreview;
   chatAssociation: RelayChatAssociation;
   routingReview: RelayRoutingReview | null;
+  associationTier: RelayAssociationTier;
+  associationToast: RelayAssociationToastState;
+  associationSuppressed: boolean;
+  insertState: RelayInsertState;
   onboarding: RelayOnboardingState;
 }
 
@@ -145,7 +169,11 @@ export type RelayMessage =
   | { type: "RELAY_GET_ACTIVE_PROJECT_STATE"; payload?: { tabId?: number } }
   | {
       type: "RELAY_INSERT_PROJECT_BRIEF";
-      payload?: { projectId?: string; tabId?: number };
+      payload?: {
+        projectId?: string;
+        tabId?: number;
+        source?: "sidebar" | "inline_chip" | "shortcut";
+      };
     }
   | {
       type: "RELAY_SET_ACTIVE_PROJECT";
@@ -191,6 +219,10 @@ export type RelayMessage =
   | { type: "RELAY_OPEN_DASHBOARD"; payload?: { nextPath?: string; flowId?: string } }
   | { type: "RELAY_GOOGLE_SIGN_IN"; payload: { deviceName: string; flowId?: string } }
   | {
+      type: "RELAY_LOCAL_SIGN_IN";
+      payload: { email: string; name?: string | null; deviceName: string; flowId?: string };
+    }
+  | {
       type: "RELAY_CREATE_PROJECT";
       payload: { name: string; slug?: string; description?: string | null; flowId?: string };
     }
@@ -206,6 +238,7 @@ export type RelayMessage =
 export interface RelayPageState {
   supported: boolean;
   platform?: string;
+  routeKind?: "fresh" | "chat" | "project_root" | "unknown";
   title?: string | null;
   url?: string;
   domain?: string;
@@ -214,6 +247,8 @@ export interface RelayPageState {
   turns?: number;
   captureSignature?: string;
   recentUserTurnText?: string | null;
+  recentRoutingText?: string | null;
+  fullVisibleRoutingText?: string | null;
   promptReady?: boolean;
   isFreshRoute?: boolean;
   isFreshChat?: boolean;

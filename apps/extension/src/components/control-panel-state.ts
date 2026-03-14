@@ -35,6 +35,11 @@ export interface AssociationCardPresentation {
   showMeta: boolean
 }
 
+export interface UnresolvedAssociationCardPresentation {
+  summary: string
+  detail: string
+}
+
 export function deriveAssociationCardPresentation(association: RelayChatAssociation): AssociationCardPresentation {
   if (association.status === "pending") {
     return {
@@ -80,6 +85,38 @@ export function deriveAssociationCardPresentation(association: RelayChatAssociat
     summary:
       association.reason ?? "Relay is leaving this chat out of automatic capture.",
     showMeta: Boolean(association.reason),
+  }
+}
+
+export function shouldShowAssociationCard(input: {
+  onboardingStatus: "pending" | "completed"
+  supported: boolean
+  freshChat: boolean
+  turns: number
+}) {
+  return (
+    input.onboardingStatus === "completed" &&
+    input.supported &&
+    !input.freshChat &&
+    input.turns > 0
+  )
+}
+
+export function deriveUnresolvedAssociationCardPresentation(input: {
+  projectName: string | null
+  checking: boolean
+}): UnresolvedAssociationCardPresentation {
+  if (input.checking) {
+    return {
+      summary: "Checking association…",
+      detail: "Relay is loading the project signals it needs before deciding whether this chat belongs to a project.",
+    }
+  }
+
+  return {
+    summary: `This chat is not associated yet with ${input.projectName ?? "the selected project"}.`,
+    detail:
+      "Associate it manually if Relay should keep using this chat for carry-forward context and future briefs.",
   }
 }
 

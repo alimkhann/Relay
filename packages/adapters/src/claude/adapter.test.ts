@@ -20,4 +20,30 @@ describe("ClaudeAdapter", () => {
     expect(turns[1]?.role).toBe("assistant")
     expect(adapter.findPromptInput(document)?.isContentEditable).toBe(true)
   })
+
+  it("waits for delayed contenteditable updates before reporting failure", async () => {
+    document.body.innerHTML = `
+      <main></main>
+      <div contenteditable="true" style="width: 320px; height: 48px;"></div>
+    `
+
+    const editor = document.querySelector("div[contenteditable='true']")
+    if (!(editor instanceof HTMLDivElement)) {
+      throw new Error("Expected a contenteditable prompt for the test.")
+    }
+
+    editor.addEventListener("input", () => {
+      const inserted = editor.textContent ?? ""
+      editor.textContent = ""
+      window.setTimeout(() => {
+        editor.textContent = inserted
+      }, 40)
+    })
+
+    const adapter = new ClaudeAdapter()
+
+    await expect(adapter.insertTextIntoPrompt("Keep the architectural notes", document)).resolves.toEqual({
+      ok: true,
+    })
+  })
 })

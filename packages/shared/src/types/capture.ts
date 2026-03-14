@@ -7,12 +7,15 @@ export interface ParsedTurn {
   rawHtml?: string | null
 }
 
+export type PageRouteKind = "fresh" | "chat" | "project_root" | "unknown"
+
 export interface PageMetadata {
   title: string | null
   url: string
   pathname: string
   pageFingerprint: string | null
   domain: string
+  routeKind?: PageRouteKind
 }
 
 export interface CapturePayload {

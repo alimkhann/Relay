@@ -2,6 +2,7 @@ import { createRepositoryBundle } from "@relay/db"
 import { hashContent } from "@relay/shared"
 import { redirect } from "next/navigation"
 
+import { getAuthProvider } from "@/lib/auth/provider"
 import { readSessionUserFromCookie } from "@/lib/auth/session-cookie"
 import { requireAuthServer } from "@/lib/auth/server"
 import { logServerEvent } from "@/server/logging/logger"
@@ -51,6 +52,10 @@ async function upsertProfile(user: SessionUser) {
 }
 
 export async function requireSessionViewer(): Promise<Viewer> {
+  if (getAuthProvider() === "local") {
+    return requirePageSessionViewer()
+  }
+
   const { data } = await requireAuthServer().getSession()
   const user = data?.user as SessionUser | undefined
 

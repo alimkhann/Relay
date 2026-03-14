@@ -6,7 +6,7 @@ import { getAuthProvider } from "@/lib/auth/provider"
 import { applyExtensionCorsHeaders, buildExtensionPreflightResponse } from "@/server/http/extension-cors"
 import { logServerEvent } from "@/server/logging/logger"
 import { getRequestContext, withRequestContext } from "@/server/logging/request-context"
-import { resolveGoogleAuthUser } from "@/server/services/google-auth-service"
+import { resolveOrCreateLocalAuthUser } from "@/server/services/local-auth-service"
 import { getResolvedOnboardingStateForUser } from "@/server/services/onboarding-service"
 import { listProjectsForUser } from "@/server/services/project-service"
 import { getUserSettings } from "@/server/services/settings-service"
@@ -24,10 +24,10 @@ export function OPTIONS(request: Request) {
 
 export async function POST(request: Request) {
   return withRequestContext(request, async () => {
-    if (getAuthProvider() !== "neon") {
+    if (getAuthProvider() !== "local") {
       return applyExtensionCorsHeaders(
         withRequestId(
-        NextResponse.json({ error: "Google auth is not enabled." }, { status: 404 })
+        NextResponse.json({ error: "Local auth is not enabled." }, { status: 404 })
         ),
         request.headers.get("origin")
       )
@@ -36,60 +36,26 @@ export async function POST(request: Request) {
     const flowId =
       request.headers.get("x-relay-flow-id") ??
       getRequestContext()?.flowId ??
-      createFlowId("ext-auth")
+      createFlowId("ext-local-auth")
 
     try {
       const body = (await request.json()) as {
-        googleAccessToken?: string
-        googleIdToken?: string
+        email?: string
+        name?: string | null
         deviceName?: string
       }
-
-      if (!body.googleAccessToken || !body.googleIdToken) {
-        await logServerEvent({
-          level: "warn",
-          surface: "web-api",
-          area: "auth",
-          event: "extension_google_auth.tokens_missing",
-          flowId,
-          message: "Extension Google auth request was missing Google OAuth tokens."
-        })
-        return applyExtensionCorsHeaders(
-          withRequestId(
-            NextResponse.json({ error: "googleAccessToken and googleIdToken are required." }, { status: 400 })
-          ),
-          request.headers.get("origin")
-        )
-      }
-
-      const { authUser, googleUser } = await resolveGoogleAuthUser({
-        googleAccessToken: body.googleAccessToken,
-        googleIdToken: body.googleIdToken,
-        flowId,
-        allowProvisionFallback: true
+      const user = await resolveOrCreateLocalAuthUser({
+        email: body.email,
+        name: body.name ?? null,
       })
-
-      await logServerEvent({
-        level: "info",
-        surface: "web-api",
-        area: "auth",
-        event: "extension_google_auth.identity_verified",
-        flowId,
-        message: `Verified Google identity for ${googleUser.email}.`,
-        userId: authUser.id,
-        context: {
-          deviceName: body.deviceName ?? "Chrome Extension"
-        }
-      })
-
-      const tokenResult = await createExtensionTokenForUser(authUser.id, {
-        deviceName: body.deviceName || "Chrome Extension"
+      const tokenResult = await createExtensionTokenForUser(user.id, {
+        deviceName: body.deviceName || "Chrome Extension",
       })
 
       const [projects, settings, onboarding] = await Promise.all([
-        listProjectsForUser(authUser.id),
-        getUserSettings(authUser.id),
-        getResolvedOnboardingStateForUser(authUser.id)
+        listProjectsForUser(user.id),
+        getUserSettings(user.id),
+        getResolvedOnboardingStateForUser(user.id),
       ])
 
       const appUrl = process.env.NEXT_PUBLIC_RELAY_APP_URL ?? "http://localhost:3000"
@@ -102,15 +68,15 @@ export async function POST(request: Request) {
         level: "info",
         surface: "web-api",
         area: "auth",
-        event: "extension_google_auth.succeeded",
+        event: "extension_local_auth.succeeded",
         flowId,
-        message: "Issued an extension session after Google auth.",
-        userId: authUser.id,
+        message: `Issued a local extension session for ${user.email}.`,
+        userId: user.id,
         projectId: selectedProjectId || null,
         context: {
           projectCount: projects.length,
-          onboardingStatus: onboarding.status
-        }
+          onboardingStatus: onboarding.status,
+        },
       })
 
       return applyExtensionCorsHeaders(
@@ -123,7 +89,7 @@ export async function POST(request: Request) {
               settings,
               onboarding,
               projectId: selectedProjectId,
-              targetProfileKey: settings.settings.defaultTargetProfileKey
+              targetProfileKey: settings.settings.defaultTargetProfileKey,
             },
             { status: 201 }
           )
@@ -135,18 +101,19 @@ export async function POST(request: Request) {
         level: "error",
         surface: "web-api",
         area: "auth",
-        event: "extension_google_auth.failed",
+        event: "extension_local_auth.failed",
         flowId,
-        message: "Google sign-in for extension failed on the server.",
-        error
+        message: "Local sign-in for extension failed.",
+        error,
       })
+
       return applyExtensionCorsHeaders(
         withRequestId(
           NextResponse.json(
             {
-              error: error instanceof Error ? error.message : "Google sign-in for extension failed."
+              error: error instanceof Error ? error.message : "Local sign-in for extension failed.",
             },
-            { status: 500 }
+            { status: 400 }
           )
         ),
         request.headers.get("origin")

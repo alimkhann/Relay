@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { deterministicBootstrap, renderBootstrapMarkdown, shouldDeferBootstrapGeneration, shouldReuseLatestBootstrapPacket } from "./bootstrap-service"
+import { computeBootstrapInputHash, deterministicBootstrap, renderBootstrapMarkdown, shouldDeferBootstrapGeneration, shouldReuseLatestBootstrapPacket } from "./bootstrap-service"
 
 describe("shouldDeferBootstrapGeneration", () => {
   it("blocks bootstraps when neither digests nor project state exist", () => {
@@ -123,5 +123,96 @@ describe("shouldReuseLatestBootstrapPacket", () => {
         deep: false
       })
     ).toBe(false)
+  })
+
+  it("reuses a cached brief when the computed input hash is unchanged", () => {
+    expect(
+      shouldReuseLatestBootstrapPacket({
+        latestCreatedAt: "2026-03-11T00:00:00.000Z",
+        latestDigestCreatedAt: "2026-03-12T00:00:00.000Z",
+        stateDirty: true,
+        deep: true,
+        latestInputHash: "hash-1",
+        currentInputHash: "hash-1",
+      })
+    ).toBe(true)
+  })
+})
+
+describe("computeBootstrapInputHash", () => {
+  it("changes when relevant project context changes", () => {
+    const profile = {
+      id: "profile-1",
+      key: "claude_code_build",
+      name: "Claude Build",
+      platform: "claude_code",
+      description: null,
+      config: {},
+      createdAt: "2026-03-11T00:00:00.000Z",
+    } as const
+
+    const baseHash = computeBootstrapInputHash({
+      project: {
+        id: "project-1",
+        ownerId: "user-1",
+        name: "Relay",
+        slug: "relay",
+        description: "Carry-forward AI project context.",
+        isArchived: false,
+        createdAt: "2026-03-11T00:00:00.000Z",
+        updatedAt: "2026-03-11T00:00:00.000Z",
+      },
+      state: {
+        projectId: "project-1",
+        projectOverview: "Carry-forward AI project context.",
+        currentObjective: "Ship the toast fix.",
+        stackDomain: null,
+        recentProgress: "The background state is now shared.",
+        decisions: ["Use deterministic routing first."],
+        constraints: ["Do not block chat load on long hydration."],
+        openTasks: ["Fix the initial toast."],
+        relevantTools: ["Claude Build"],
+        lastBootstrapAt: null,
+        dirty: false,
+        createdAt: "2026-03-11T00:00:00.000Z",
+        updatedAt: "2026-03-11T00:00:00.000Z",
+      },
+      digests: [],
+      profile,
+      kind: "fresh_chat_bootstrap",
+    })
+
+    const nextHash = computeBootstrapInputHash({
+      project: {
+        id: "project-1",
+        ownerId: "user-1",
+        name: "Relay",
+        slug: "relay",
+        description: "Carry-forward AI project context.",
+        isArchived: false,
+        createdAt: "2026-03-11T00:00:00.000Z",
+        updatedAt: "2026-03-11T00:00:00.000Z",
+      },
+      state: {
+        projectId: "project-1",
+        projectOverview: "Carry-forward AI project context.",
+        currentObjective: "Ship the autonomous toast fix.",
+        stackDomain: null,
+        recentProgress: "The background state is now shared.",
+        decisions: ["Use deterministic routing first."],
+        constraints: ["Do not block chat load on long hydration."],
+        openTasks: ["Fix the initial toast."],
+        relevantTools: ["Claude Build"],
+        lastBootstrapAt: null,
+        dirty: false,
+        createdAt: "2026-03-11T00:00:00.000Z",
+        updatedAt: "2026-03-11T00:00:00.000Z",
+      },
+      digests: [],
+      profile,
+      kind: "fresh_chat_bootstrap",
+    })
+
+    expect(nextHash).not.toBe(baseHash)
   })
 })

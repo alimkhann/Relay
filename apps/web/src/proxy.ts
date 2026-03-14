@@ -1,8 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server"
 
 import { getAuthServer } from "@/lib/auth/server"
+import { buildExtensionPreflightResponse, isExtensionOrigin } from "@/server/http/extension-cors"
 
 export default function proxy(request: NextRequest) {
+  if (
+    request.nextUrl.pathname.startsWith("/api/") &&
+    request.method === "OPTIONS" &&
+    isExtensionOrigin(request.headers.get("origin"))
+  ) {
+    return buildExtensionPreflightResponse(request.headers.get("origin"))
+  }
+
   const auth = getAuthServer()
 
   if (!auth) {
@@ -15,5 +24,5 @@ export default function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/projects/:path*", "/settings/:path*"]
+  matcher: ["/api/:path*", "/dashboard/:path*", "/projects/:path*", "/settings/:path*"]
 }

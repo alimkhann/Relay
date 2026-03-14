@@ -27,4 +27,41 @@ describe("ChatgptAdapter", () => {
 
     expect(adapter.canHandle("https://chatgpt.com/codex")).toBe(false)
   })
+
+  it("classifies ChatGPT project roots as starter surfaces", () => {
+    const adapter = new ChatgptAdapter()
+    const fakeDocument = {
+      location: {
+        href: "https://chatgpt.com/g/g-1234567890-alim/project",
+      },
+      title: "Alim",
+    } as unknown as Document
+
+    expect(adapter.getPageMetadata(fakeDocument).routeKind).toBe("project_root")
+  })
+
+  it("treats delayed textarea acceptance as a successful insert", async () => {
+    document.body.innerHTML = `
+      <main>
+        <form><textarea></textarea></form>
+      </main>
+    `
+
+    const textarea = document.querySelector("textarea")
+    if (!textarea) {
+      throw new Error("Expected a textarea prompt for the test.")
+    }
+
+    textarea.addEventListener("input", () => {
+      const inserted = textarea.value
+      textarea.value = ""
+      window.setTimeout(() => {
+        textarea.value = inserted
+      }, 40)
+    })
+
+    const adapter = new ChatgptAdapter()
+
+    await expect(adapter.insertTextIntoPrompt("Insert this brief", document)).resolves.toEqual({ ok: true })
+  })
 })

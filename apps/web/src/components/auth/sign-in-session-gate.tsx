@@ -7,7 +7,28 @@ import { authClient } from "@/lib/auth/client"
 
 export function SignInSessionGate({
   nextPath,
-  allowExistingSession = true
+  allowExistingSession = true,
+  provider = "neon",
+}: {
+  nextPath: string
+  allowExistingSession?: boolean
+  provider?: "neon" | "local"
+}) {
+  if (provider === "local") {
+    return null
+  }
+
+  return (
+    <NeonSignInSessionGate
+      nextPath={nextPath}
+      allowExistingSession={allowExistingSession}
+    />
+  )
+}
+
+function NeonSignInSessionGate({
+  nextPath,
+  allowExistingSession = true,
 }: {
   nextPath: string
   allowExistingSession?: boolean

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node ../../scripts/ensure-web-dev-singleton.mjs",
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",

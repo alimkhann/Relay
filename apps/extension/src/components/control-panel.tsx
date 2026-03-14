@@ -8,6 +8,7 @@ import { relayFetch } from "../utils/api";
 import {
   getRelaySession,
   setRelaySession,
+  resolveRelayApiBase,
   type RelaySessionState,
 } from "../storage/session";
 import {
@@ -16,7 +17,11 @@ import {
   type RelayResolvedTheme,
   type RelayThemeMode,
 } from "../storage/theme";
-import { deriveAssociationCardPresentation } from "./control-panel-state";
+import {
+  deriveAssociationCardPresentation,
+  deriveUnresolvedAssociationCardPresentation,
+  shouldShowAssociationCard,
+} from "./control-panel-state";
 import {
   createExtensionFlowId,
   logExtensionEvent,
@@ -25,6 +30,7 @@ import {
   inferTargetProfile,
   resolveTargetProfile,
 } from "../utils/target-profile";
+import relayIconUrl from "../../assets/icon.png";
 import styles from "./control-panel.module.css";
 
 interface ControlPanelProps {
@@ -74,6 +80,11 @@ function defaultDeviceName() {
   return `Relay on ${platform}`;
 }
 
+const extensionAuthProvider =
+  process.env.PLASMO_PUBLIC_RELAY_AUTH_PROVIDER === "local"
+    ? "local"
+    : "neon";
+
 const emptyActiveState: RelayActiveProjectState = {
   projectId: null,
   projectName: null,
@@ -112,6 +123,24 @@ const emptyActiveState: RelayActiveProjectState = {
     capturedAt: null,
   },
   routingReview: null,
+  associationTier: "none",
+  associationToast: {
+    visible: false,
+    mode: null,
+    projectId: null,
+    projectName: null,
+    projectOptions: [],
+    sessionId: null,
+    expiresAt: null,
+    paused: false,
+  },
+  associationSuppressed: false,
+  insertState: {
+    status: "idle",
+    source: null,
+    message: null,
+    updatedAt: null,
+  },
   onboarding: {
     status: "pending",
     completedProjectId: null,
@@ -132,6 +161,40 @@ function isRelayActiveProjectState(
   );
 }
 
+function deriveInsertButtonState(activeState: RelayActiveProjectState) {
+  const insertState = activeState.insertState;
+
+  if (insertState.status === "inserting") {
+    return {
+      label: "Inserting…",
+      shimmering: true,
+      disabled: true,
+    };
+  }
+
+  if (insertState.status === "inserted") {
+    return {
+      label: "Inserted",
+      shimmering: false,
+      disabled: false,
+    };
+  }
+
+  if (insertState.status === "error") {
+    return {
+      label: insertState.message ?? "Insert project brief",
+      shimmering: false,
+      disabled: !activeState.canInsert,
+    };
+  }
+
+  return {
+    label: "Insert project brief",
+    shimmering: false,
+    disabled: !activeState.canInsert,
+  };
+}
+
 export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [session, setSession] = useState<RelaySessionState | null>(null);
   const [activeState, setActiveState] =
@@ -146,6 +209,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   >(null);
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDescription, setNewProjectDescription] = useState("");
+  const [localAuthEmail, setLocalAuthEmail] = useState("");
+  const [localAuthName, setLocalAuthName] = useState("");
   const [showDashboardPrompt, setShowDashboardPrompt] = useState(false);
   const [expandedSections, setExpandedSections] = useState<
     Record<ContextSection, boolean>
@@ -508,6 +573,40 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
   }
 
+  async function signInLocally() {
+    setBusy(true);
+    setStatus("Signing in locally…");
+    const flowId = createExtensionFlowId("ext-local-auth");
+
+    try {
+      const result = (await chrome.runtime.sendMessage({
+        type: "RELAY_LOCAL_SIGN_IN",
+        payload: {
+          email: localAuthEmail.trim(),
+          name: localAuthName.trim() || null,
+          deviceName: deviceName || defaultDeviceName(),
+          flowId,
+        },
+      })) as { ok?: boolean; reason?: string };
+
+      if (!result?.ok) {
+        setStatus(result?.reason ?? "Local sign-in failed.");
+        return;
+      }
+
+      setStatus("Signed in locally.");
+      setShowDashboardPrompt(false);
+      await refreshLocalSession();
+      await refreshActiveProjectState();
+    } catch (cause) {
+      setStatus(
+        cause instanceof Error ? cause.message : "Local sign-in failed.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function createProject() {
     const name = newProjectName.trim();
     if (!name) return;
@@ -606,7 +705,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     try {
       const result = (await chrome.runtime.sendMessage({
         type: "RELAY_INSERT_PROJECT_BRIEF",
-        payload: { tabId: tab.id },
+        payload: {
+          tabId: tab.id,
+          source: "sidebar",
+        },
       })) as { ok?: boolean; reason?: string; error?: string };
 
       if (!result?.ok) {
@@ -715,7 +817,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
   }
 
-  async function associateIgnoredChat() {
+  async function associateCurrentChat() {
     const tab = await getActiveTab();
     if (!tab?.id || !activeState.page.supported) {
       setStatus("Associate chat works only on a supported AI tab.");
@@ -795,7 +897,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               current.chatAssociation.status === "saved"
                 ? `Moving this chat to ${nextProject.name}…`
                 : current.chatAssociation.status === "pending"
-                  ? `Relay will save this chat to ${nextProject.name} in 20 seconds unless you cancel.`
+                  ? `Relay will save this chat to ${nextProject.name} in 10 seconds unless you cancel.`
                   : `Relay wants confirmation before saving this chat to ${nextProject.name}.`,
           },
         }));
@@ -1152,9 +1254,30 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     (!activeState.canInsert ||
       activeState.remoteStatus === "stale" ||
       activeState.remoteStatus === "unavailable");
+  const insertButtonState = deriveInsertButtonState(activeState);
+  const effectiveApiBase = resolveRelayApiBase({
+    storedApiBase: session?.apiBase ?? null,
+  });
+  const shouldRenderAssociationCard = shouldShowAssociationCard({
+    onboardingStatus: activeState.onboarding.status,
+    supported: activeState.page.supported,
+    freshChat: Boolean(activeState.page.isFreshChat),
+    turns: activeState.page.turns ?? 0,
+  });
   const associationPresentation =
     activeState.chatAssociation.status !== "none"
       ? deriveAssociationCardPresentation(activeState.chatAssociation)
+      : null;
+  const unresolvedAssociationPresentation =
+    activeState.chatAssociation.status === "none"
+      ? deriveUnresolvedAssociationCardPresentation({
+          projectName: activeState.projectName,
+          checking:
+            activeState.capturePending ||
+            activeState.remoteStatus === "loading" ||
+            (activeState.remoteStatus === "stale" &&
+              !activeState.lastSuccessfulSyncAt),
+        })
       : null;
 
   return (
@@ -1172,27 +1295,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             title="Open dashboard"
             onClick={() => void openDashboard(dashboardPath)}
           >
-            <svg
+            <img
               className={styles.logoMark}
-              viewBox="0 0 64 64"
-              fill="none"
-              aria-hidden="true"
-            >
-              <rect
-                className={styles.logoMarkFrame}
-                width="64"
-                height="64"
-                rx="16"
-              />
-              <path
-                className={styles.logoMarkRibbon}
-                d="M18 18H34.5C43.0604 18 50 24.9396 50 33.5C50 42.0604 43.0604 49 34.5 49H18V18Z"
-              />
-              <path
-                className={styles.logoMarkCutout}
-                d="M26 26H34.5C38.6421 26 42 29.3579 42 33.5C42 37.6421 38.6421 41 34.5 41H26V26Z"
-              />
-            </svg>
+              src={relayIconUrl}
+              alt="Relay"
+            />
           </button>
         </div>
         {activeState.page.supported ? (
@@ -1212,13 +1319,44 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             chat ready.
           </p>
 
-          <button
-            className={styles.primaryButton}
-            disabled={busy}
-            onClick={() => void signInWithGoogle()}
-          >
-            {busy ? "Signing in…" : "Sign in with Google"}
-          </button>
+          {extensionAuthProvider === "local" ? (
+            <>
+              <label className={styles.field}>
+                <span>Email</span>
+                <input
+                  value={localAuthEmail}
+                  onChange={(event) => setLocalAuthEmail(event.target.value)}
+                  placeholder="you@example.com"
+                  type="email"
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span>Name</span>
+                <input
+                  value={localAuthName}
+                  onChange={(event) => setLocalAuthName(event.target.value)}
+                  placeholder="Display name (optional)"
+                />
+              </label>
+
+              <button
+                className={styles.primaryButton}
+                disabled={busy || !localAuthEmail.trim()}
+                onClick={() => void signInLocally()}
+              >
+                {busy ? "Signing in…" : "Sign in locally"}
+              </button>
+            </>
+          ) : (
+            <button
+              className={styles.primaryButton}
+              disabled={busy}
+              onClick={() => void signInWithGoogle()}
+            >
+              {busy ? "Signing in…" : "Sign in with Google"}
+            </button>
+          )}
         </section>
       ) : activeState.viewState === "connected-empty" ? (
         /* ─── No projects yet ─── */
@@ -1400,13 +1538,13 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             {/* Primary CTA */}
             <button
               className={styles.primaryButton}
-              disabled={busy || !activeState.canInsert}
+              disabled={busy || insertButtonState.disabled}
               onClick={() => void insertProjectBrief()}
             >
-              {busy ? (
+              {busy || insertButtonState.shimmering ? (
                 <span className={styles.shimmerText}>Inserting…</span>
               ) : (
-                "Insert project brief"
+                insertButtonState.label
               )}
             </button>
 
@@ -1440,19 +1578,29 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             </div>
           </section>
 
-          {activeState.chatAssociation.status !== "none" ? (
+          {shouldRenderAssociationCard ? (
             <section className={styles.panel}>
               <div className={styles.associationHeader}>
                 <div>
                   <h2 className={styles.sectionTitle}>Chat association</h2>
-                  <p className={styles.copy}>{associationPresentation?.summary}</p>
+                  <p className={styles.copy}>
+                    {associationPresentation?.summary ??
+                      unresolvedAssociationPresentation?.summary}
+                  </p>
                 </div>
               </div>
 
-              {associationPresentation?.showMeta &&
+              {activeState.chatAssociation.status !== "none" &&
+              associationPresentation?.showMeta &&
               activeState.chatAssociation.reason ? (
                 <p className={styles.metaText}>
                   {activeState.chatAssociation.reason}
+                </p>
+              ) : null}
+              {activeState.chatAssociation.status === "none" &&
+              unresolvedAssociationPresentation?.detail ? (
+                <p className={styles.metaText}>
+                  {unresolvedAssociationPresentation.detail}
                 </p>
               ) : null}
 
@@ -1501,7 +1649,18 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                     disabled={
                       busy || !activeState.projectId || !activeState.page.supported
                     }
-                    onClick={() => void associateIgnoredChat()}
+                    onClick={() => void associateCurrentChat()}
+                  >
+                    Associate chat
+                  </button>
+                ) : null}
+                {activeState.chatAssociation.status === "none" ? (
+                  <button
+                    className={styles.primaryButton}
+                    disabled={
+                      busy || !activeState.projectId || !activeState.page.supported
+                    }
+                    onClick={() => void associateCurrentChat()}
                   >
                     Associate chat
                   </button>
@@ -1686,7 +1845,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
             <div className={styles.debugCard}>
               <p>{status}</p>
+              <p>API base: {effectiveApiBase}</p>
+              <p>Auth provider: {extensionAuthProvider}</p>
               <p>Remote: {activeState.remoteStatus}</p>
+              <p>Connected: {session?.connected ? "yes" : "no"}</p>
               <p>
                 Target: {session?.targetMode === "manual" ? "Manual" : "Auto"} ·{" "}
                 {resolvedTargetLabel}

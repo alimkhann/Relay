@@ -5,6 +5,8 @@ import type { ProjectStateStatusDto } from "@relay/shared"
 import {
   deriveAssociationCardPresentation,
   deriveControlPanelState,
+  deriveUnresolvedAssociationCardPresentation,
+  shouldShowAssociationCard,
 } from "./control-panel-state"
 
 function makeStateStatus(input: Partial<ProjectStateStatusDto> = {}): ProjectStateStatusDto {
@@ -105,5 +107,43 @@ describe("deriveAssociationCardPresentation", () => {
 
     expect(presentation.summary).toContain("waiting for your approval")
     expect(presentation.showMeta).toBe(true)
+  })
+})
+
+describe("association card helpers", () => {
+  it("shows the association card for supported existing chats even before a chat is associated", () => {
+    expect(
+      shouldShowAssociationCard({
+        onboardingStatus: "completed",
+        supported: true,
+        freshChat: false,
+        turns: 4,
+      })
+    ).toBe(true)
+
+    expect(
+      shouldShowAssociationCard({
+        onboardingStatus: "completed",
+        supported: true,
+        freshChat: true,
+        turns: 0,
+      })
+    ).toBe(false)
+  })
+
+  it("describes unresolved existing chats differently while routing is still in flight", () => {
+    expect(
+      deriveUnresolvedAssociationCardPresentation({
+        projectName: "Relay",
+        checking: true,
+      }).summary
+    ).toBe("Checking association…")
+
+    expect(
+      deriveUnresolvedAssociationCardPresentation({
+        projectName: "Relay",
+        checking: false,
+      }).summary
+    ).toContain("not associated yet")
   })
 })

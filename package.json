@@ -6,6 +6,12 @@
   "scripts": {
     "build": "pnpm --filter @relay/shared build && pnpm --filter @relay/formatters build && pnpm --filter @relay/adapters build && pnpm --filter @relay/db build && pnpm --filter @relay/web build && pnpm --filter @relay/extension build",
     "build:extension:prod": "pnpm --filter @relay/extension build:prod",
+    "db:local:start": "docker compose -f docker-compose.local.yml up -d",
+    "db:local:stop": "docker compose -f docker-compose.local.yml down",
+    "db:local:migrate": "node scripts/db-admin.js migrate",
+    "db:local:seed:user": "node scripts/db-admin.js seed-local-user",
+    "db:local:reset": "RELAY_CONFIRM_PURGE=YES node scripts/db-admin.js purge-users",
+    "db:local:count": "node scripts/db-admin.js count",
     "dev:web": "pnpm --filter @relay/web dev",
     "dev:extension": "pnpm --filter @relay/extension dev",
     "lint": "pnpm -r lint",

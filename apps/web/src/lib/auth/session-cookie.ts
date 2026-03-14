@@ -1,5 +1,8 @@
 import { cookies, headers } from "next/headers"
 
+import { readLocalSessionUserFromCookie } from "./local-session"
+import { getAuthProvider } from "./provider"
+
 const NEON_AUTH_COOKIE_PREFIX = "__Secure-neon-auth"
 const SESSION_DATA_COOKIE_NAME = `${NEON_AUTH_COOKIE_PREFIX}.local.session_data`
 const SESSION_TOKEN_COOKIE_NAME = `${NEON_AUTH_COOKIE_PREFIX}.session_token`
@@ -131,6 +134,10 @@ async function fetchSessionUserFromAuthServer(
 }
 
 export async function readSessionUserFromCookie(): Promise<SessionCookieUser | null> {
+  if (getAuthProvider() === "local") {
+    return readLocalSessionUserFromCookie()
+  }
+
   const cookieStore = await cookies()
   const sessionToken = cookieStore.get(SESSION_TOKEN_COOKIE_NAME)?.value
 

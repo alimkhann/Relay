@@ -20,4 +20,31 @@ describe("CodexAdapter", () => {
     expect(turns[1]?.role).toBe("assistant")
     expect(adapter.findPromptInput(document)?.element.id).toBe("prompt-textarea")
   })
+
+  it("waits for delayed textarea updates before reporting failure", async () => {
+    document.body.innerHTML = `
+      <main>
+        <form><textarea id="prompt-textarea"></textarea></form>
+      </main>
+    `
+
+    const textarea = document.getElementById("prompt-textarea")
+    if (!(textarea instanceof HTMLTextAreaElement)) {
+      throw new Error("Expected a textarea prompt for the test.")
+    }
+
+    textarea.addEventListener("input", () => {
+      const inserted = textarea.value
+      textarea.value = ""
+      window.setTimeout(() => {
+        textarea.value = inserted
+      }, 40)
+    })
+
+    const adapter = new CodexAdapter()
+
+    await expect(adapter.insertTextIntoPrompt("Continue with this project", document)).resolves.toEqual({
+      ok: true,
+    })
+  })
 })

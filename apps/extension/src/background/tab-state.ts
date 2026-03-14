@@ -2,8 +2,11 @@ import type { ProjectStateStatusDto, RelayOnboardingState } from "@relay/shared"
 
 import type {
   RelayActiveProjectState,
+  RelayAssociationTier,
+  RelayAssociationToastState,
   RelayChatAssociation,
   RelayContextPreview,
+  RelayInsertState,
   RelayInsertKind,
   RelayIssue,
   RelayPageState,
@@ -32,6 +35,10 @@ export interface BuildRelayActiveProjectStateInput {
   contextPreview: RelayContextPreview
   chatAssociation: RelayChatAssociation
   routingReview: RelayRoutingReview | null
+  associationTier: RelayAssociationTier
+  associationToast: RelayAssociationToastState
+  associationSuppressed: boolean
+  insertState: RelayInsertState
   lastError?: string | null
 }
 
@@ -40,6 +47,14 @@ export interface AutoCaptureDecisionInput {
   capturePending: boolean
   lastCapturedSignature: string | null
   lastCapturedTurns: number
+}
+
+export interface AutoCaptureRoutingDecisionInput extends AutoCaptureDecisionInput {
+  lastRoutedSignature: string | null
+  associationStatus: RelayChatAssociation["status"]
+  associationSuppressed: boolean
+  projectOptionsCount: number
+  sessionProjectOptionsCount: number
 }
 
 export interface ShortcutDecisionInput {
@@ -76,6 +91,28 @@ export function createEmptyChatAssociation(): RelayChatAssociation {
   }
 }
 
+export function createEmptyAssociationToast(): RelayAssociationToastState {
+  return {
+    visible: false,
+    mode: null,
+    projectId: null,
+    projectName: null,
+    projectOptions: [],
+    sessionId: null,
+    expiresAt: null,
+    paused: false
+  }
+}
+
+export function createEmptyInsertState(): RelayInsertState {
+  return {
+    status: "idle",
+    source: null,
+    message: null,
+    updatedAt: null
+  }
+}
+
 export function createEmptyActiveProjectState(
   overrides: Partial<RelayActiveProjectState> = {}
 ): RelayActiveProjectState {
@@ -101,6 +138,10 @@ export function createEmptyActiveProjectState(
     contextPreview: createEmptyContextPreview(),
     chatAssociation: createEmptyChatAssociation(),
     routingReview: null,
+    associationTier: "none",
+    associationToast: createEmptyAssociationToast(),
+    associationSuppressed: false,
+    insertState: createEmptyInsertState(),
     onboarding: {
       status: "pending",
       completedProjectId: null,
@@ -112,6 +153,10 @@ export function createEmptyActiveProjectState(
 }
 
 export function looksLikeFreshChatRoute(page: RelayPageState) {
+  if (page.routeKind === "fresh" || page.routeKind === "project_root") {
+    return true
+  }
+
   const pathname = page.pathname ?? "/"
 
   if (page.platform === "claude") {
@@ -126,7 +171,9 @@ export function looksLikeFreshChatRoute(page: RelayPageState) {
 }
 
 export function inferInsertKind(page: RelayPageState): RelayInsertKind {
-  return page.isFreshChat ? "fresh_chat_bootstrap" : "quick_continuity"
+  return page.isFreshChat || page.routeKind === "project_root"
+    ? "fresh_chat_bootstrap"
+    : "quick_continuity"
 }
 
 function isActiveDigest(status: ProjectStateStatusDto | null) {
@@ -301,6 +348,10 @@ export function deriveRelayActiveProjectState(input: BuildRelayActiveProjectStat
     contextPreview: input.contextPreview,
     chatAssociation: input.chatAssociation,
     routingReview: input.routingReview,
+    associationTier: input.associationTier,
+    associationToast: input.associationToast,
+    associationSuppressed: input.associationSuppressed,
+    insertState: input.insertState,
     onboarding: input.onboarding
   }
 }
@@ -315,6 +366,19 @@ export function shouldScheduleAutoCapture(input: AutoCaptureDecisionInput) {
   if (input.capturePending) return false
 
   return input.page.captureSignature !== input.lastCapturedSignature
+}
+
+export function shouldScheduleAutoCaptureRouting(
+  input: AutoCaptureRoutingDecisionInput
+) {
+  const currentSignature = input.page.captureSignature ?? null
+
+  if (input.associationSuppressed) return false
+  if (input.associationStatus !== "none") return false
+  if (currentSignature && currentSignature === input.lastRoutedSignature) return false
+  if (!shouldScheduleAutoCapture(input)) return false
+
+  return input.projectOptionsCount > 0 || input.sessionProjectOptionsCount > 0
 }
 
 export function decideShortcutAction(input: ShortcutDecisionInput) {

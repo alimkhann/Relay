@@ -1,4 +1,8 @@
-import type { PageMetadata, ParsedTurn } from "@relay/shared/types/capture"
+import type {
+  PageMetadata,
+  PageRouteKind,
+  ParsedTurn,
+} from "@relay/shared/types/capture"
 
 import { BaseSiteAdapter } from "../base/site-adapter"
 import { collectTurns, findPrompt, injectText } from "../base/dom-utils"
@@ -10,6 +14,14 @@ function isCodexRoute(url: URL) {
     url.pathname === "/codex" ||
     url.pathname.startsWith("/codex/")
   )
+}
+
+function resolveRouteKind(pathname: string): PageRouteKind {
+  if (pathname === "/" || pathname === "/codex" || pathname === "/codex/") {
+    return "fresh"
+  }
+
+  return "chat"
 }
 
 export class CodexAdapter extends BaseSiteAdapter {
@@ -41,7 +53,8 @@ export class CodexAdapter extends BaseSiteAdapter {
       url: url.toString(),
       pathname: url.pathname,
       pageFingerprint: url.pathname.split("/").filter(Boolean).pop() ?? null,
-      domain: url.hostname
+      domain: url.hostname,
+      routeKind: resolveRouteKind(url.pathname),
     }
   }
 }

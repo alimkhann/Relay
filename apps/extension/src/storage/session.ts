@@ -24,6 +24,28 @@ const keys = {
   onboarding: "relay.onboarding"
 } as const
 
+export function resolveRelayApiBase(options?: {
+  storedApiBase?: string | null
+  authProvider?: string | null
+  configuredApiBase?: string | null
+}) {
+  const configuredApiBase =
+    options?.configuredApiBase?.trim() ||
+    process.env.PLASMO_PUBLIC_RELAY_API_BASE ||
+    "http://localhost:3000"
+  const storedApiBase = options?.storedApiBase?.trim() || ""
+  const authProvider =
+    options?.authProvider ??
+    process.env.PLASMO_PUBLIC_RELAY_AUTH_PROVIDER ??
+    "neon"
+
+  if (authProvider === "local") {
+    return configuredApiBase
+  }
+
+  return storedApiBase || configuredApiBase
+}
+
 function createPendingOnboardingState(): RelayOnboardingState {
   return {
     status: "pending",
@@ -58,7 +80,9 @@ export function normalizeRelaySession(values: Record<string, unknown>): RelaySes
   const manualTargetProfileKey = hasExplicitTargetMode ? (values[keys.targetProfileKey] as string | undefined) ?? "" : ""
 
   return {
-    apiBase: (values[keys.apiBase] as string | undefined) ?? process.env.PLASMO_PUBLIC_RELAY_API_BASE ?? "http://localhost:3000",
+    apiBase: resolveRelayApiBase({
+      storedApiBase: values[keys.apiBase] as string | undefined
+    }),
     token: (values[keys.token] as string | undefined) ?? "",
     projectId: (values[keys.projectId] as string | undefined) ?? "",
     targetMode,
@@ -89,7 +113,7 @@ export function normalizeRelaySession(values: Record<string, unknown>): RelaySes
 export async function getRelaySession() {
   if (!storage) {
     return {
-      apiBase: process.env.PLASMO_PUBLIC_RELAY_API_BASE ?? "http://localhost:3000",
+      apiBase: resolveRelayApiBase(),
       token: "",
       projectId: "",
       targetMode: "auto" as const,
