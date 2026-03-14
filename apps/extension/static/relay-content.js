@@ -283,6 +283,26 @@
     });
   }
 
+  function didMeaningfulPageStateChange(previousPageState, nextPageState) {
+    if (!previousPageState || !nextPageState) {
+      return false;
+    }
+
+    return (
+      previousPageState.title !== nextPageState.title ||
+      previousPageState.url !== nextPageState.url ||
+      previousPageState.pathname !== nextPageState.pathname ||
+      previousPageState.pageFingerprint !== nextPageState.pageFingerprint ||
+      previousPageState.turns !== nextPageState.turns ||
+      previousPageState.captureSignature !== nextPageState.captureSignature ||
+      previousPageState.recentUserTurnText !== nextPageState.recentUserTurnText ||
+      previousPageState.promptReady !== nextPageState.promptReady ||
+      previousPageState.isFreshRoute !== nextPageState.isFreshRoute ||
+      previousPageState.isFreshChat !== nextPageState.isFreshChat ||
+      previousPageState.isStreaming !== nextPageState.isStreaming
+    );
+  }
+
   function buildFallbackState(pageState) {
     return {
       projectId: null,
@@ -2039,7 +2059,12 @@
       hideAssociationToast();
     }
 
-    const pageState = computePageState(getSiteConfig());
+    const previousPageState = relayChipState.pageState;
+    let pageState = computePageState(getSiteConfig());
+    if (didMeaningfulPageStateChange(previousPageState, pageState)) {
+      relayChipState.lastMeaningfulMutationAt = Date.now();
+      pageState = computePageState(getSiteConfig());
+    }
     relayChipState.pageState = pageState;
     const nextKey = buildPageStateKey(pageState);
 
@@ -2063,11 +2088,6 @@
     }, 120);
   }
 
-  function markMeaningfulMutation() {
-    relayChipState.lastMeaningfulMutationAt = Date.now();
-    queuePageObservation(false);
-  }
-
   function scheduleObservation() {
     if (relayChipState.mounted) return;
     relayChipState.mounted = true;
@@ -2087,7 +2107,7 @@
       });
 
       if (shouldReact) {
-        markMeaningfulMutation();
+        queuePageObservation(false);
       }
     });
 

@@ -10,7 +10,8 @@ import {
   createEmptyTrustMetadata,
   decideShortcutAction,
   deriveRelayActiveProjectState,
-  shouldScheduleAutoCapture
+  shouldScheduleAutoCapture,
+  shouldScheduleAutoCaptureRouting,
 } from "./tab-state"
 
 function makeCompletedOnboarding() {
@@ -220,6 +221,48 @@ describe("shouldScheduleAutoCapture", () => {
         lastCapturedTurns: 4
       })
     ).toBe(false)
+  })
+})
+
+describe("shouldScheduleAutoCaptureRouting", () => {
+  it("waits for routing inputs before classifying an existing chat, then reruns once projects are available", () => {
+    const page = {
+      supported: true,
+      platform: "chatgpt" as const,
+      isFreshChat: false,
+      isStable: true,
+      isStreaming: false,
+      turns: 6,
+      captureSignature: "sig_2"
+    }
+
+    expect(
+      shouldScheduleAutoCaptureRouting({
+        page,
+        capturePending: false,
+        lastCapturedSignature: "sig_1",
+        lastCapturedTurns: 4,
+        lastRoutedSignature: null,
+        associationStatus: "none",
+        associationSuppressed: false,
+        projectOptionsCount: 0,
+        sessionProjectOptionsCount: 0
+      })
+    ).toBe(false)
+
+    expect(
+      shouldScheduleAutoCaptureRouting({
+        page,
+        capturePending: false,
+        lastCapturedSignature: "sig_1",
+        lastCapturedTurns: 4,
+        lastRoutedSignature: null,
+        associationStatus: "none",
+        associationSuppressed: false,
+        projectOptionsCount: 1,
+        sessionProjectOptionsCount: 0
+      })
+    ).toBe(true)
   })
 })
 

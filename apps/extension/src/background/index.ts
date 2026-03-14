@@ -64,7 +64,7 @@ import {
   createEmptyTrustMetadata,
   deriveRelayActiveProjectState,
   looksLikeFreshChatRoute,
-  shouldScheduleAutoCapture,
+  shouldScheduleAutoCaptureRouting,
 } from "./tab-state";
 import {
   flushBackgroundTelemetry,
@@ -1477,14 +1477,16 @@ async function syncTabRemoteState(
       state.chatAssociation.status === "held" ||
       state.chatAssociation.status === "ignored" ||
       state.chatAssociation.status === "pending" ||
-      state.chatAssociation.status === "archived";
-    if (!preserveLocalAssociation && nextChatAssociation.status !== "none") {
+      state.chatAssociation.status === "archived" ||
+      state.chatAssociation.status === "saved";
+    if (nextChatAssociation.status !== "none") {
       state.chatAssociation = nextChatAssociation;
     } else if (
       state.chatAssociation.status !== "held" &&
       state.chatAssociation.status !== "ignored" &&
       state.chatAssociation.status !== "pending" &&
-      state.chatAssociation.status !== "archived"
+      state.chatAssociation.status !== "archived" &&
+      state.chatAssociation.status !== "saved"
     ) {
       state.chatAssociation = createEmptyChatAssociation();
     }
@@ -1504,6 +1506,8 @@ async function syncTabRemoteState(
       projectOptions: projects,
       onboarding,
     });
+
+    await scheduleAutoCapture(tabId, { immediate: true });
   } catch (cause) {
     state.lastError =
       cause instanceof Error ? cause.message : "Failed to fetch";
@@ -1971,7 +1975,8 @@ async function captureObservedChange(
   } = {},
 ) {
   const state = getOrCreateTabState(tabId);
-  const session = await getRelaySession();
+  let session = await getRelaySession();
+  hydrateTabStateFromSession(state, session);
   const chatKey = buildAssociationKey(state.page);
   const manualSelection = Boolean(options.manualSelection);
   const skipAssociationToast = Boolean(options.skipAssociationToast);
@@ -2105,6 +2110,25 @@ async function captureObservedChange(
           reason: state.routingReview?.reasons[0] ?? "Matched a previously approved chat.",
         };
       } else {
+        if (!state.projectOptions.length && !session.projectOptions.length) {
+          await syncTabRemoteState(tabId, {
+            force: true,
+            reason: "association_needs_projects",
+          });
+          session = await getRelaySession();
+          hydrateTabStateFromSession(state, session);
+        }
+
+        if (!state.projectOptions.length && !session.projectOptions.length) {
+          state.routingReview = null;
+          return {
+            ok: true,
+            deferred: true,
+            captured: false,
+            reason: "Waiting for project routing context.",
+          };
+        }
+
         routingDecision = await resolveAutoCaptureRouting(
           tabId,
           state,
@@ -2283,20 +2307,25 @@ async function captureObservedChange(
   }
 }
 
-function scheduleAutoCapture(
+async function scheduleAutoCapture(
   tabId: number,
   options: { immediate?: boolean } = {},
 ) {
   const state = getOrCreateTabState(tabId);
-  const currentSignature = state.page.captureSignature ?? null;
+  const session = await getRelaySession();
+  hydrateTabStateFromSession(state, session);
 
   if (
-    (currentSignature && currentSignature === state.lastRoutedSignature) ||
-    !shouldScheduleAutoCapture({
+    !shouldScheduleAutoCaptureRouting({
       page: state.page,
       capturePending: state.capturePending,
       lastCapturedSignature: state.lastCapturedSignature,
       lastCapturedTurns: state.lastCapturedTurns,
+      lastRoutedSignature: state.lastRoutedSignature,
+      associationStatus: state.chatAssociation.status,
+      associationSuppressed: state.associationSuppressed,
+      projectOptionsCount: state.projectOptions.length,
+      sessionProjectOptionsCount: session.projectOptions.length,
     })
   ) {
     return;
@@ -2512,7 +2541,7 @@ chrome.tabs.onActivated.addListener((activeInfo: { tabId: number }) => {
     state.lastObservedSignature &&
     state.lastObservedSignature !== state.lastCapturedSignature
   ) {
-    scheduleAutoCapture(activeInfo.tabId, { immediate: true });
+    void scheduleAutoCapture(activeInfo.tabId, { immediate: true });
   }
 });
 
@@ -3025,7 +3054,7 @@ chrome.runtime.onMessage.addListener(
           void syncTabRemoteState(sender.tab.id, {
             reason: "page_state_update",
           });
-          scheduleAutoCapture(sender.tab.id);
+          void scheduleAutoCapture(sender.tab.id);
           sendResponse({ ok: true });
           return;
         }

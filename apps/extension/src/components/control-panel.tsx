@@ -16,7 +16,11 @@ import {
   type RelayResolvedTheme,
   type RelayThemeMode,
 } from "../storage/theme";
-import { deriveAssociationCardPresentation } from "./control-panel-state";
+import {
+  deriveAssociationCardPresentation,
+  deriveUnresolvedAssociationCardPresentation,
+  shouldShowAssociationCard,
+} from "./control-panel-state";
 import {
   createExtensionFlowId,
   logExtensionEvent,
@@ -812,7 +816,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
   }
 
-  async function associateIgnoredChat() {
+  async function associateCurrentChat() {
     const tab = await getActiveTab();
     if (!tab?.id || !activeState.page.supported) {
       setStatus("Associate chat works only on a supported AI tab.");
@@ -1250,9 +1254,26 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       activeState.remoteStatus === "stale" ||
       activeState.remoteStatus === "unavailable");
   const insertButtonState = deriveInsertButtonState(activeState);
+  const shouldRenderAssociationCard = shouldShowAssociationCard({
+    onboardingStatus: activeState.onboarding.status,
+    supported: activeState.page.supported,
+    freshChat: Boolean(activeState.page.isFreshChat),
+    turns: activeState.page.turns ?? 0,
+  });
   const associationPresentation =
     activeState.chatAssociation.status !== "none"
       ? deriveAssociationCardPresentation(activeState.chatAssociation)
+      : null;
+  const unresolvedAssociationPresentation =
+    activeState.chatAssociation.status === "none"
+      ? deriveUnresolvedAssociationCardPresentation({
+          projectName: activeState.projectName,
+          checking:
+            activeState.capturePending ||
+            activeState.remoteStatus === "loading" ||
+            (activeState.remoteStatus === "stale" &&
+              !activeState.lastSuccessfulSyncAt),
+        })
       : null;
 
   return (
@@ -1553,19 +1574,29 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             </div>
           </section>
 
-          {activeState.chatAssociation.status !== "none" ? (
+          {shouldRenderAssociationCard ? (
             <section className={styles.panel}>
               <div className={styles.associationHeader}>
                 <div>
                   <h2 className={styles.sectionTitle}>Chat association</h2>
-                  <p className={styles.copy}>{associationPresentation?.summary}</p>
+                  <p className={styles.copy}>
+                    {associationPresentation?.summary ??
+                      unresolvedAssociationPresentation?.summary}
+                  </p>
                 </div>
               </div>
 
-              {associationPresentation?.showMeta &&
+              {activeState.chatAssociation.status !== "none" &&
+              associationPresentation?.showMeta &&
               activeState.chatAssociation.reason ? (
                 <p className={styles.metaText}>
                   {activeState.chatAssociation.reason}
+                </p>
+              ) : null}
+              {activeState.chatAssociation.status === "none" &&
+              unresolvedAssociationPresentation?.detail ? (
+                <p className={styles.metaText}>
+                  {unresolvedAssociationPresentation.detail}
                 </p>
               ) : null}
 
@@ -1614,7 +1645,18 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                     disabled={
                       busy || !activeState.projectId || !activeState.page.supported
                     }
-                    onClick={() => void associateIgnoredChat()}
+                    onClick={() => void associateCurrentChat()}
+                  >
+                    Associate chat
+                  </button>
+                ) : null}
+                {activeState.chatAssociation.status === "none" ? (
+                  <button
+                    className={styles.primaryButton}
+                    disabled={
+                      busy || !activeState.projectId || !activeState.page.supported
+                    }
+                    onClick={() => void associateCurrentChat()}
                   >
                     Associate chat
                   </button>

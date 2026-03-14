@@ -49,6 +49,14 @@ export interface AutoCaptureDecisionInput {
   lastCapturedTurns: number
 }
 
+export interface AutoCaptureRoutingDecisionInput extends AutoCaptureDecisionInput {
+  lastRoutedSignature: string | null
+  associationStatus: RelayChatAssociation["status"]
+  associationSuppressed: boolean
+  projectOptionsCount: number
+  sessionProjectOptionsCount: number
+}
+
 export interface ShortcutDecisionInput {
   chipVisible: boolean
   dismissed: boolean
@@ -352,6 +360,19 @@ export function shouldScheduleAutoCapture(input: AutoCaptureDecisionInput) {
   if (input.capturePending) return false
 
   return input.page.captureSignature !== input.lastCapturedSignature
+}
+
+export function shouldScheduleAutoCaptureRouting(
+  input: AutoCaptureRoutingDecisionInput
+) {
+  const currentSignature = input.page.captureSignature ?? null
+
+  if (input.associationSuppressed) return false
+  if (input.associationStatus !== "none") return false
+  if (currentSignature && currentSignature === input.lastRoutedSignature) return false
+  if (!shouldScheduleAutoCapture(input)) return false
+
+  return input.projectOptionsCount > 0 || input.sessionProjectOptionsCount > 0
 }
 
 export function decideShortcutAction(input: ShortcutDecisionInput) {
