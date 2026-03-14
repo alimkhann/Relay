@@ -4,12 +4,14 @@ import { useState, useTransition } from "react";
 
 import type { UserSettingsRow } from "@relay/shared";
 
+import { deleteAccountAction } from "@/components/auth/delete-account-action";
 import { signOutAction } from "@/components/auth/sign-out-action";
 import { createClientFlowId } from "@/lib/telemetry/client";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
 
 interface SettingsPreferencesProps {
   initialSettings: UserSettingsRow["settings"];
+  hasConnectedExtension: boolean;
 }
 
 const platformOptions = [
@@ -49,10 +51,12 @@ function Toggle({
 
 export function SettingsPreferences({
   initialSettings,
+  hasConnectedExtension,
 }: SettingsPreferencesProps) {
   const [settings, setSettings] = useState(initialSettings);
   const [toast, setToast] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   async function save(nextSettings: typeof settings) {
     const flowId = createClientFlowId("settings");
@@ -93,11 +97,25 @@ export function SettingsPreferences({
           <h2 className="text-sm font-semibold text-[var(--relay-ink)]">Chrome extension</h2>
         </div>
         <div className="border-t border-[var(--relay-line)] px-5 py-4">
-          <p className="text-[15px] leading-relaxed text-[var(--relay-muted)]">
-            Open the Relay sidepanel in Chrome and tap{" "}
-            <strong className="text-[var(--relay-ink)] font-semibold">Connect</strong> to pair
-            your browser.
-          </p>
+          {hasConnectedExtension ? (
+            <div className="flex items-start gap-3">
+              <span className="mt-1 inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" />
+              <div className="space-y-1">
+                <p className="text-[15px] font-medium text-[var(--relay-ink)]">
+                  Chrome extension connected
+                </p>
+                <p className="text-[13px] leading-relaxed text-[var(--relay-muted)]">
+                  Relay already has an active browser connection for this account.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[15px] leading-relaxed text-[var(--relay-muted)]">
+              Open the Relay sidepanel in Chrome and tap{" "}
+              <strong className="text-[var(--relay-ink)] font-semibold">Connect</strong> to pair
+              your browser.
+            </p>
+          )}
         </div>
       </section>
 
@@ -202,23 +220,62 @@ export function SettingsPreferences({
 
       {/* ─── Sign out ─── */}
       <section className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">
-        <div className="px-5 py-4 flex items-center justify-between">
+        <div className="px-5 py-4 flex items-start justify-between gap-6">
           <div>
             <h2 className="text-sm font-semibold text-[var(--relay-ink)]">Account</h2>
             <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
-              Sign out of your Relay account.
+              Sign out of Relay or permanently delete this account and all of its data.
             </p>
           </div>
-          <form action={signOutAction}>
+          <div className="flex shrink-0 flex-col items-end gap-3">
+            <form action={signOutAction}>
+              <button
+                type="submit"
+                className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-danger)]/30 bg-[var(--relay-danger)]/10 px-4 py-2 text-[13px] font-medium text-[var(--relay-danger)] transition hover:bg-[var(--relay-danger)]/20"
+              >
+                Sign out
+              </button>
+            </form>
             <button
-              type="submit"
-              className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-danger)]/30 bg-[var(--relay-danger)]/10 px-4 py-2 text-[13px] font-medium text-[var(--relay-danger)] transition hover:bg-[var(--relay-danger)]/20"
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-danger)]/40 px-4 py-2 text-[13px] font-medium text-[var(--relay-danger)] transition hover:bg-[var(--relay-danger)]/10"
             >
-              Sign out
+              Delete account
             </button>
-          </form>
+          </div>
         </div>
       </section>
+
+      {confirmDelete ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
+          <div className="w-full max-w-md rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-5 shadow-[var(--relay-shadow-lg)]">
+            <h3 className="text-base font-semibold text-[var(--relay-ink)]">
+              Delete account?
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-[var(--relay-muted)]">
+              This permanently deletes your Relay account, projects, captures, memory, settings, and extension connections. This cannot be undone.
+            </p>
+            <div className="mt-5 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(false)}
+                className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-4 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition hover:bg-[var(--relay-soft)]"
+              >
+                Cancel
+              </button>
+              <form action={deleteAccountAction}>
+                <button
+                  type="submit"
+                  className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-danger)]/30 bg-[var(--relay-danger)] px-4 py-2 text-[13px] font-medium text-white transition hover:opacity-90"
+                >
+                  Delete account
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* ─── Toast ─── */}
       {(toast || pending) && (

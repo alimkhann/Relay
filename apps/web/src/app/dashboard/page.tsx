@@ -44,6 +44,19 @@ export default async function DashboardPage({
     <AppShell
       projects={projects.map((p) => ({ id: p.id, name: p.name }))}
       currentProjectId={currentProject?.id}
+      workspaceSnapshot={{
+        kind: "dashboard",
+        cacheKey: currentProject ? `dashboard:${currentProject.id}` : "dashboard:none",
+        href: currentProject ? `/dashboard?project=${currentProject.id}` : "/dashboard",
+        project: currentProject
+          ? {
+              id: currentProject.id,
+              name: currentProject.name,
+              description: currentProject.description,
+            }
+          : null,
+        dashboard: dashboard ?? null,
+      }}
     >
       <PageTelemetry
         surface="web-dashboard"

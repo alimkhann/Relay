@@ -6,13 +6,20 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { SidebarProjectSwitcher } from "@/components/layout/sidebar-project-switcher";
 import { AccountMenu } from "@/components/layout/account-menu";
+import { WorkspaceViewport, type WorkspaceSnapshot } from "@/components/layout/workspace-cache";
 
 interface AppShellProps extends PropsWithChildren {
   projects?: { id: string; name: string }[];
   currentProjectId?: string;
+  workspaceSnapshot?: WorkspaceSnapshot;
 }
 
-export async function AppShell({ children, projects, currentProjectId }: AppShellProps) {
+export async function AppShell({
+  children,
+  projects,
+  currentProjectId,
+  workspaceSnapshot,
+}: AppShellProps) {
   const auth = getAuthServer();
   const { data } = auth ? await auth.getSession() : { data: null };
   const user = data?.user;
@@ -30,7 +37,6 @@ export async function AppShell({ children, projects, currentProjectId }: AppShel
           </Link>
           <ThemeToggle />
         </div>
-
         {projects && projects.length > 0 && currentProjectId && (
           <SidebarProjectSwitcher
             projects={projects}
@@ -38,7 +44,7 @@ export async function AppShell({ children, projects, currentProjectId }: AppShel
           />
         )}
 
-        <SidebarNav />
+        <SidebarNav currentProjectId={currentProjectId} />
 
         <div className="mt-auto border-t border-[var(--relay-line)] pt-4">
           {user ? (
@@ -60,7 +66,13 @@ export async function AppShell({ children, projects, currentProjectId }: AppShel
       {/* Main Content Area */}
       <main className="ml-[var(--relay-sidebar-width)] flex-1 min-h-screen">
         <div className="mx-auto max-w-4xl p-8 lg:p-12">
-          {children}
+          {workspaceSnapshot ? (
+            <WorkspaceViewport currentSnapshot={workspaceSnapshot}>
+              {children}
+            </WorkspaceViewport>
+          ) : (
+            children
+          )}
         </div>
       </main>
     </div>

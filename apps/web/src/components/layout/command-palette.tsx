@@ -6,11 +6,11 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   Search,
   LayoutDashboard,
-  Settings,
   Activity,
   ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { startWorkspaceNavigation } from "@/components/layout/workspace-cache";
 
 interface CommandAction {
   id: string;
@@ -39,7 +39,16 @@ export function CommandPalette({ projects = [], currentProjectId }: CommandPalet
       label: "Go to Overview",
       icon: <LayoutDashboard className="h-4 w-4" />,
       shortcut: "G O",
-      action: () => router.push("/dashboard"),
+      action: () => {
+        const href = currentProjectId ? `/dashboard?project=${currentProjectId}` : "/dashboard";
+        startWorkspaceNavigation({
+          href,
+          cacheKey: currentProjectId ? `dashboard:${currentProjectId}` : "dashboard:none",
+          kind: "dashboard",
+          projectId: currentProjectId ?? null,
+        });
+        router.push(href);
+      },
       section: "Navigation",
     },
     {
@@ -47,15 +56,14 @@ export function CommandPalette({ projects = [], currentProjectId }: CommandPalet
       label: "Go to Activity",
       icon: <Activity className="h-4 w-4" />,
       shortcut: "G A",
-      action: () => router.push("/activity"),
-      section: "Navigation",
-    },
-    {
-      id: "nav-settings",
-      label: "Go to Settings",
-      icon: <Settings className="h-4 w-4" />,
-      shortcut: "G S",
-      action: () => router.push("/settings"),
+      action: () => {
+        startWorkspaceNavigation({
+          href: "/activity",
+          cacheKey: "activity",
+          kind: "activity",
+        });
+        router.push("/activity");
+      },
       section: "Navigation",
     },
     ...projects

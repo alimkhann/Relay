@@ -1,0 +1,98 @@
+[ 4230016ms] [WARNING] [Fast Refresh] performing full reload
+
+Fast Refresh will perform a full reload when you edit a file that's imported by modules outside of the React rendering tree.
+You might have a file which exports a React component but also exports a value that is imported by a non-React component file.
+Consider migrating the non-React component export to a separate file and importing it into both files.
+
+It is also possible the parent component of the component you edited is a class component, which disables Fast Refresh.
+Fast Refresh requires at least one parent function component in your React tree. @ http://localhost:3000/_next/static/chunks/f2d63_next_dist_68641d91._.js:2297
+[ 5075597ms] [ERROR] ./apps/web/src/app/dashboard/page.tsx:44:1
+Parsing ecmascript source code failed
+  42 |
+  43 |   return (
+> 44 | <<<<<<< HEAD
+     | ^^^^^^^
+  45 |     <AppShell
+  46 |       projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+  47 |       currentProjectId={currentProject?.id}
+
+Merge conflict marker encountered. @ http://localhost:3000/_next/static/chunks/f2d63_next_dist_68641d91._.js:3127
+[ 5075597ms] [ERROR] ./apps/web/src/app/dashboard/page.tsx:69:7
+Parsing ecmascript source code failed
+  67 |       currentProjectId={currentProject?.id}
+  68 |     >
+> 69 | >>>>>>> origin/main
+     |       ^
+  70 |       <PageTelemetry
+  71 |         surface="web-dashboard"
+  72 |         area="page"
+
+Unexpected token. Did you mean `{'>'}` or `&gt;`? @ http://localhost:3000/_next/static/chunks/f2d63_next_dist_68641d91._.js:3127
+[ 5075597ms] [ERROR] ./apps/web/src/app/dashboard/page.tsx:108:1
+Parsing ecmascript source code failed
+  106 |     </AppShell>
+  107 |   );
+> 108 | }
+      | ^
+  109 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`? @ http://localhost:3000/_next/static/chunks/f2d63_next_dist_68641d91._.js:3127
+[ 5075597ms] [ERROR] ./apps/web/src/components/layout/account-menu.tsx:103:1
+Parsing ecmascript source code failed
+  101 |   );
+  102 | }
+> 103 | ||||||| da2fd4e
+      | ^^^^^^^
+  104 | =======
+  105 | "use client";
+  106 |
+
+Merge conflict marker encountered.
+
+Import trace:
+  Server Component:
+    ./apps/web/src/components/layout/account-menu.tsx
+    ./apps/web/src/components/layout/app-shell.tsx
+    ./apps/web/src/app/dashboard/page.tsx @ http://localhost:3000/_next/static/chunks/f2d63_next_dist_68641d91._.js:3127
+[ 5075597ms] [ERROR] ./apps/web/src/components/layout/app-shell.tsx:11:1
+Parsing ecmascript source code failed
+   9 | import { AccountMenu } from "@/components/layout/account-menu";
+  10 | import { WorkspaceViewport, type WorkspaceSnapshot } from "@/components/layout/workspace-cache";
+> 11 | ||||||| da2fd4e
+     | ^^^^^^^
+  12 | =======
+  13 | import { SidebarNav } from "@/components/layout/sidebar-nav";
+  14 | import { SidebarProjectSwitcher } from "@/components/layout/sidebar-project-switcher";
+
+Merge conflict marker encountered.
+
+Import trace:
+  Server Component:
+    ./apps/web/src/components/layout/app-shell.tsx
+    ./apps/web/src/app/dashboard/page.tsx @ http://localhost:3000/_next/static/chunks/f2d63_next_dist_68641d91._.js:3127
+[ 5075598ms] [ERROR] ./apps/web/src/components/settings/settings-preferences.tsx:10:1
+Parsing ecmascript source code failed
+   8 | import { deleteAccountAction } from "@/components/auth/delete-account-action";
+   9 | import { signOutAction } from "@/components/auth/sign-out-action";
+> 10 | ||||||| da2fd4e
+     | ^^^^^^^
+  11 | =======
+  12 | import { signOutAction } from "@/components/auth/sign-out-action";
+  13 | >>>>>>> origin/main
+
+Merge conflict marker encountered.
+
+Import traces:
+  Client Component Browser:
+    ./apps/web/src/components/settings/settings-preferences.tsx [Client Component Browser]
+    ./apps/web/src/components/layout/workspace-cache.tsx [Client Component Browser]
+    ./apps/web/src/components/layout/workspace-cache.tsx [Server Component]
+    ./apps/web/src/components/layout/app-shell.tsx [Server Component]
+    ./apps/web/src/app/dashboard/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./apps/web/src/components/settings/settings-preferences.tsx [Client Component SSR]
+    ./apps/web/src/components/layout/workspace-cache.tsx [Client Component SSR]
+    ./apps/web/src/components/layout/workspace-cache.tsx [Server Component]
+    ./apps/web/src/components/layout/app-shell.tsx [Server Component]
+    ./apps/web/src/app/dashboard/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/f2d63_next_dist_68641d91._.js:3127

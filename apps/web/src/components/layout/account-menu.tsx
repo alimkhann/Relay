@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import * as Popover from "@radix-ui/react-popover";
 import { Settings, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 import { signOutAction } from "@/components/auth/sign-out-action";
+import { startWorkspaceNavigation } from "@/components/layout/workspace-cache";
 import { cn } from "@/lib/cn";
 
 interface AccountMenuProps {
@@ -16,6 +18,7 @@ interface AccountMenuProps {
 
 export function AccountMenu({ name, email }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
+  const router = useRouter();
   const initial = (name || email || "U").charAt(0).toUpperCase();
 
   return (
@@ -64,7 +67,15 @@ export function AccountMenu({ name, email }: AccountMenuProps) {
               >
                 <Link
                   href="/settings"
-                  onClick={() => setOpen(false)}
+                  onMouseEnter={() => router.prefetch("/settings")}
+                  onClick={() => {
+                    setOpen(false);
+                    startWorkspaceNavigation({
+                      href: "/settings",
+                      cacheKey: "settings",
+                      kind: "settings",
+                    });
+                  }}
                   className="flex items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-2.5 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition-colors hover:bg-[var(--relay-soft)]"
                 >
                   <Settings className="h-3.5 w-3.5 text-[var(--relay-faint)]" />
