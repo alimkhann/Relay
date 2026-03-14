@@ -78,6 +78,11 @@ const workspaceStore: WorkspaceStoreState = {
 
 const listeners = new Set<() => void>()
 const refreshingKeys = new Set<string>()
+let cachedSnapshot = {
+  version: workspaceStore.version,
+  cache: workspaceStore.cache,
+  pending: workspaceStore.pending,
+}
 
 function emitChange() {
   workspaceStore.version += 1
@@ -90,14 +95,32 @@ function subscribe(listener: () => void) {
 }
 
 function getSnapshot() {
-  return {
-    version: workspaceStore.version,
-    cache: workspaceStore.cache,
-    pending: workspaceStore.pending,
+  if (cachedSnapshot.version !== workspaceStore.version) {
+    cachedSnapshot = {
+      version: workspaceStore.version,
+      cache: workspaceStore.cache,
+      pending: workspaceStore.pending,
+    }
   }
+
+  return cachedSnapshot
+}
+
+function fingerprintWorkspaceSnapshot(snapshot: WorkspaceSnapshot) {
+  return JSON.stringify(snapshot)
 }
 
 export function cacheWorkspaceSnapshot(snapshot: WorkspaceSnapshot) {
+  const cached = workspaceStore.cache.get(snapshot.cacheKey)
+  if (
+    cached &&
+    cached.kind === snapshot.kind &&
+    cached.href === snapshot.href &&
+    fingerprintWorkspaceSnapshot(cached) === fingerprintWorkspaceSnapshot(snapshot)
+  ) {
+    return
+  }
+
   workspaceStore.cache.set(snapshot.cacheKey, snapshot)
   emitChange()
 }
@@ -116,6 +139,23 @@ export function clearWorkspaceNavigation(cacheKey?: string) {
   if (!cacheKey || workspaceStore.pending.cacheKey === cacheKey) {
     workspaceStore.pending = null
     emitChange()
+  }
+}
+
+export function getWorkspaceStoreVersionForTests() {
+  return workspaceStore.version
+}
+
+export function resetWorkspaceStoreForTests() {
+  workspaceStore.cache.clear()
+  workspaceStore.pending = null
+  workspaceStore.version = 0
+  refreshingKeys.clear()
+  listeners.clear()
+  cachedSnapshot = {
+    version: workspaceStore.version,
+    cache: workspaceStore.cache,
+    pending: workspaceStore.pending,
   }
 }
 
@@ -222,6 +262,7 @@ export function WorkspaceViewport({
 }) {
   const store = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
   const pending = store.pending
+  const currentSnapshotFingerprint = fingerprintWorkspaceSnapshot(currentSnapshot)
   const pendingSnapshot =
     pending && pending.cacheKey !== currentSnapshot.cacheKey
       ? store.cache.get(pending.cacheKey)
@@ -230,7 +271,7 @@ export function WorkspaceViewport({
   useEffect(() => {
     cacheWorkspaceSnapshot(currentSnapshot)
     clearWorkspaceNavigation(currentSnapshot.cacheKey)
-  }, [currentSnapshot])
+  }, [currentSnapshot.cacheKey, currentSnapshotFingerprint])
 
   useEffect(() => {
     if (!pending || pending.cacheKey === currentSnapshot.cacheKey) {

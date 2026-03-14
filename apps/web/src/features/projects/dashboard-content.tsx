@@ -88,6 +88,7 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
     dashboard,
     fallbackOverview: project.description,
   });
+  const memoryDraftResetKey = JSON.stringify(initialDrafts);
   const [overview, setOverview] = useState(initialDrafts.overview);
   const [objective, setObjective] = useState(initialDrafts.objective);
   const [progress, setProgress] = useState(initialDrafts.progress);
@@ -108,7 +109,12 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
     setObjective(nextDrafts.objective);
     setProgress(nextDrafts.progress);
     setEditingMemory(false);
-  }, [project.id, project.description, dashboard]);
+  }, [
+    project.id,
+    project.name,
+    project.description,
+    memoryDraftResetKey,
+  ]);
 
   const statusReady = dashboard.stateStatus?.projectStateReady;
   const statusText = describeStatus(dashboard.stateStatus);

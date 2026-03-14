@@ -86,7 +86,6 @@ export function CreateProjectForm() {
         }
       })
       router.push(`/dashboard?project=${result.project.id}`)
-      router.refresh()
     } catch (cause) {
       logClientEvent({
         level: "error",
@@ -130,9 +129,10 @@ export function CreateProjectForm() {
             disabled={pending}
             maxLength={200}
           />
-          <p className="text-xs leading-relaxed text-[var(--relay-muted)]">
-            Recommended for project association and other features. 200 characters max. You can change or add it later.
-          </p>
+          <div className="flex items-start justify-between gap-3 text-xs leading-relaxed text-[var(--relay-muted)]">
+            <p>Recommended for project association and other features. You can change or add it later.</p>
+            <span className="shrink-0 tabular-nums">{description.length}/200</span>
+          </div>
         </label>
       </div>
 
