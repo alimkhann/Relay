@@ -1,4 +1,5 @@
 import type { ProjectStateStatusDto } from "@relay/shared"
+import type { RelayChatAssociation } from "../messaging/contracts"
 
 interface ControlPanelStateInput {
   connected: boolean
@@ -27,6 +28,59 @@ function humanizeStage(stage: string | null | undefined) {
   }
 
   return labels[stage] ?? stage.replaceAll("_", " ")
+}
+
+export interface AssociationCardPresentation {
+  summary: string
+  showMeta: boolean
+}
+
+export function deriveAssociationCardPresentation(association: RelayChatAssociation): AssociationCardPresentation {
+  if (association.status === "pending") {
+    return {
+      summary: `Relay is ready to save this chat to ${association.projectName ?? "the selected project"} unless you cancel the toast.`,
+      showMeta: true,
+    }
+  }
+
+  if (association.status === "held") {
+    return {
+      summary: association.reason?.includes("seeding its first chat context")
+        ? `Relay is treating this as the first chat for ${association.projectName ?? "this project"} and is waiting for your approval.`
+        : `Relay thinks this chat belongs to ${association.projectName ?? "this project"}, but it is waiting for your approval.`,
+      showMeta: true,
+    }
+  }
+
+  if (association.status === "saved") {
+    return {
+      summary: `This chat is currently associated with ${association.projectName ?? "the selected project"}.`,
+      showMeta: true,
+    }
+  }
+
+  if (association.status === "archived") {
+    return {
+      summary:
+        "This chat was detached from the project. You can restore it if Relay should use it again.",
+      showMeta: true,
+    }
+  }
+
+  if (association.status === "ignored") {
+    return {
+      summary:
+        association.reason ??
+        "Relay will ignore this chat until you manually associate it.",
+      showMeta: false,
+    }
+  }
+
+  return {
+    summary:
+      association.reason ?? "Relay is leaving this chat out of automatic capture.",
+    showMeta: Boolean(association.reason),
+  }
 }
 
 export function deriveControlPanelState(input: ControlPanelStateInput) {

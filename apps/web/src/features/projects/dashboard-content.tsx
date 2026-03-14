@@ -1,0 +1,573 @@
+"use client";
+
+import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import type { ProjectDashboardDto, ProjectStateStatusDto } from "@relay/shared";
+import {
+  RefreshCw,
+  FileDown,
+  MessageSquare,
+  Database,
+  RotateCcw,
+  Trash2,
+  Pencil,
+} from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { FadeIn } from "@/components/ui/fade-in";
+import { EmptyState } from "@/components/ui/empty-state";
+import { GovernanceSection } from "@/features/projects/governance-section";
+import { cn } from "@/lib/cn";
+import { createClientFlowId } from "@/lib/telemetry/client";
+import { relayClientFetch } from "@/lib/telemetry/fetch";
+import {
+  buildProjectMemoryOverridePatch,
+  deriveProjectMemoryDrafts,
+} from "@/features/projects/project-memory-state";
+
+/* ─── Helpers ─── */
+
+function describeStatus(status: ProjectStateStatusDto | undefined) {
+  if (!status) return "Waiting for the first chat.";
+  if (status.projectStateReady) return "Ready";
+  if (status.digestStatus === "running" || status.digestStatus === "pending")
+    return "Updating…";
+  if (status.digestStatus === "timed_out") return "Retrying…";
+  if (status.digestStatus === "failed")
+    return status.digestErrorMessage ?? "Needs another chat";
+  return status.rawCapturePresent ? "Preparing…" : "Waiting for first chat";
+}
+
+function relativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+function targetLabel(key: string): string {
+  const map: Record<string, string> = {
+    chatgpt_planning: "ChatGPT",
+    claude_code_build: "Claude",
+    codex_implementation: "Codex",
+    perplexity_research: "Perplexity",
+  };
+  return map[key] ?? key;
+}
+
+/* ─── Component ─── */
+
+interface DashboardContentProps {
+  project: { id: string; name: string; description?: string | null };
+  dashboard: ProjectDashboardDto;
+}
+
+export function DashboardContent({ project, dashboard }: DashboardContentProps) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [status, setStatus] = useState("");
+  const [editingMemory, setEditingMemory] = useState(false);
+  const initialDrafts = deriveProjectMemoryDrafts({
+    dashboard,
+    fallbackOverview: project.description,
+  });
+  const [overview, setOverview] = useState(initialDrafts.overview);
+  const [objective, setObjective] = useState(initialDrafts.objective);
+  const [progress, setProgress] = useState(initialDrafts.progress);
+
+  useEffect(() => {
+    const nextDrafts = deriveProjectMemoryDrafts({
+      dashboard,
+      fallbackOverview: project.description,
+    });
+    setOverview(nextDrafts.overview);
+    setObjective(nextDrafts.objective);
+    setProgress(nextDrafts.progress);
+    setEditingMemory(false);
+  }, [project.id, project.description, dashboard]);
+
+  const statusReady = dashboard.stateStatus?.projectStateReady;
+  const statusText = describeStatus(dashboard.stateStatus);
+
+  const sections = ["decision", "task", "constraint"] as const;
+  const totalContextItems = sections.reduce((acc, s) => {
+    const hidden =
+      dashboard.stateOverrides?.[
+        s === "decision"
+          ? "hiddenDecisions"
+          : s === "constraint"
+            ? "hiddenConstraints"
+            : "hiddenOpenTasks"
+      ] ?? [];
+    const hiddenKeys = new Set(hidden.map((i) => i.toLowerCase()));
+    const derived = (
+      s === "decision"
+        ? (dashboard.derivedProjectState?.decisions ?? [])
+        : s === "constraint"
+          ? (dashboard.derivedProjectState?.constraints ?? [])
+          : (dashboard.derivedProjectState?.openTasks ?? [])
+    ).filter((i) => !hiddenKeys.has(i.toLowerCase()));
+    const manual = dashboard.memory.filter(
+      (i) => i.type === s,
+    );
+    return acc + derived.length + manual.length;
+  }, 0);
+
+  const totalChats = dashboard.sessionHistory.length;
+  const latestPacket = dashboard.packets[0];
+
+  /* ─── Mutations ─── */
+
+  function runMutation(
+    action: () => Promise<void>,
+    pendingMsg: string,
+    doneMsg: string,
+  ) {
+    startTransition(() => {
+      void (async () => {
+        setStatus(pendingMsg);
+        try {
+          await action();
+          setStatus(doneMsg);
+          router.refresh();
+        } catch (cause) {
+          setStatus(
+            cause instanceof Error ? cause.message : "Request failed.",
+          );
+        }
+      })();
+    });
+  }
+
+  function rebuildState() {
+    runMutation(
+      async () => {
+        const res = await relayClientFetch(
+          `/api/projects/${project.id}/state`,
+          { method: "POST" },
+        );
+        if (!res.ok) throw new Error("Rebuild failed.");
+      },
+      "Rebuilding…",
+      "State rebuilt.",
+    );
+  }
+
+  function regenerateBriefs() {
+    const targetProfileKey =
+      latestPacket?.targetProfileKey ?? "chatgpt_planning";
+    const kind = latestPacket?.kind ?? "fresh_chat_bootstrap";
+    const flowId = createClientFlowId("brief");
+    runMutation(
+      async () => {
+        const res = await relayClientFetch(
+          `/api/projects/${project.id}/bootstrap`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            telemetry: {
+              surface: "web-dashboard",
+              area: "briefs",
+              event: "brief_regenerate.submit",
+              flowId,
+              logSuccess: true,
+            },
+            body: JSON.stringify({
+              targetProfileKey,
+              kind,
+              deep: kind === "fresh_chat_bootstrap",
+            }),
+          },
+        );
+        if (!res.ok) throw new Error("Regeneration failed.");
+      },
+      "Regenerating brief…",
+      "Brief regenerated.",
+    );
+  }
+
+  function saveStateOverrides() {
+    const payload = buildProjectMemoryOverridePatch(
+      {
+        overview,
+        objective,
+        progress,
+      },
+      initialDrafts,
+    );
+
+    if (!payload) {
+      setEditingMemory(false);
+      setStatus("No memory changes to save.");
+      return;
+    }
+
+    runMutation(
+      async () => {
+        const res = await relayClientFetch(
+          `/api/projects/${project.id}/state`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payload),
+          },
+        );
+        if (!res.ok) throw new Error("Save failed.");
+        setEditingMemory(false);
+      },
+      "Saving…",
+      "Saved.",
+    );
+  }
+
+  function toggleSessionArchive(sessionId: string, archived: boolean) {
+    runMutation(
+      async () => {
+        const res = await relayClientFetch(
+          `/api/projects/${project.id}/sessions/${sessionId}`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ archived }),
+          },
+        );
+        if (!res.ok) throw new Error("Session update failed.");
+      },
+      archived ? "Detaching…" : "Restoring…",
+      archived ? "Detached." : "Restored.",
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* ─── Header strip ─── */}
+      <FadeIn>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl font-semibold tracking-tight text-[var(--relay-ink)]">
+                {project.name}
+              </h1>
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium",
+                  statusReady
+                    ? "bg-[var(--relay-success)]/10 text-[var(--relay-success)]"
+                    : "bg-[var(--relay-warning)]/10 text-[var(--relay-warning)]",
+                )}
+              >
+                <span
+                  className={cn(
+                    "h-1.5 w-1.5 rounded-full",
+                    statusReady
+                      ? "bg-[var(--relay-success)]"
+                      : "bg-[var(--relay-warning)]",
+                  )}
+                />
+                {statusText}
+              </span>
+            </div>
+            {dashboard.projectState?.currentObjective && (
+              <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--relay-muted)] line-clamp-1 max-w-2xl">
+                {dashboard.projectState.currentObjective}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={pending}
+              onClick={rebuildState}
+              className="h-7 text-xs gap-1.5"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Rebuild
+            </Button>
+            <Button
+              asChild
+              variant="secondary"
+              size="sm"
+              className="h-7 text-xs"
+            >
+              <Link href={`/projects/${project.id}`}>Edit</Link>
+            </Button>
+          </div>
+        </div>
+      </FadeIn>
+
+      {/* ─── Stats row ─── */}
+      <FadeIn delay={0.05}>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            {
+              label: "Chats",
+              value: totalChats,
+              icon: <MessageSquare className="h-3.5 w-3.5" />,
+            },
+            {
+              label: "Context",
+              value: totalContextItems,
+              icon: <Database className="h-3.5 w-3.5" />,
+            },
+            {
+              label: "Brief",
+              value: latestPacket ? "Ready" : "None",
+              icon: <FileDown className="h-3.5 w-3.5" />,
+            },
+          ].map((stat) => (
+            <div
+              key={stat.label}
+              className="flex items-center gap-2.5 rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] px-3 py-2.5"
+            >
+              <span className="text-[var(--relay-faint)]">{stat.icon}</span>
+              <div>
+                <p className="text-sm font-medium text-[var(--relay-ink)] tabular-nums">
+                  {stat.value}
+                </p>
+                <p className="text-[11px] text-[var(--relay-muted)]">
+                  {stat.label}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </FadeIn>
+
+      {/* ─── 2-column: Memory + Brief ─── */}
+      <FadeIn delay={0.1}>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {/* Memory card */}
+          <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">
+            <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-[var(--relay-line)]">
+              <span className="text-xs font-medium text-[var(--relay-ink)]">
+                Memory
+              </span>
+              <button
+                onClick={() => setEditingMemory(!editingMemory)}
+                className="flex items-center gap-1 text-[11px] text-[var(--relay-muted)] hover:text-[var(--relay-ink)] transition-colors"
+              >
+                <Pencil className="h-3 w-3" />
+                {editingMemory ? "Cancel" : "Edit"}
+              </button>
+            </div>
+            <div className="px-3.5 py-3 space-y-3">
+              {editingMemory ? (
+                <>
+                  <label className="block space-y-1">
+                    <span className="text-[11px] font-medium text-[var(--relay-muted)]">
+                      Overview
+                    </span>
+                    <textarea
+                      className="w-full min-h-[72px] rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] px-2.5 py-1.5 text-[12px] leading-relaxed outline-none focus:border-[var(--relay-accent)] resize-none"
+                      value={overview}
+                      onChange={(e) => setOverview(e.target.value)}
+                    />
+                  </label>
+                  <label className="block space-y-1">
+                    <span className="text-[11px] font-medium text-[var(--relay-muted)]">
+                      Current objective
+                    </span>
+                    <textarea
+                      className="w-full min-h-[72px] rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] px-2.5 py-1.5 text-[12px] leading-relaxed outline-none focus:border-[var(--relay-accent)] resize-none"
+                      value={objective}
+                      onChange={(e) => setObjective(e.target.value)}
+                    />
+                  </label>
+                  <label className="block space-y-1">
+                    <span className="text-[11px] font-medium text-[var(--relay-muted)]">
+                      Recent progress
+                    </span>
+                    <textarea
+                      className="w-full min-h-[72px] rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] px-2.5 py-1.5 text-[12px] leading-relaxed outline-none focus:border-[var(--relay-accent)] resize-none"
+                      value={progress}
+                      onChange={(e) => setProgress(e.target.value)}
+                    />
+                  </label>
+                  <Button
+                    size="sm"
+                    disabled={pending}
+                    onClick={saveStateOverrides}
+                    className="h-7 text-[11px]"
+                  >
+                    Save
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {overview ? (
+                    <div>
+                      <p className="text-[11px] font-medium text-[var(--relay-muted)] mb-0.5">
+                        Overview
+                      </p>
+                      <p className="text-[12px] leading-relaxed text-[var(--relay-ink-secondary)] line-clamp-3">
+                        {overview}
+                      </p>
+                    </div>
+                  ) : null}
+                  {objective ? (
+                    <div>
+                      <p className="text-[11px] font-medium text-[var(--relay-muted)] mb-0.5">
+                        Objective
+                      </p>
+                      <p className="text-[12px] leading-relaxed text-[var(--relay-ink-secondary)] line-clamp-3">
+                        {objective}
+                      </p>
+                    </div>
+                  ) : null}
+                  {progress ? (
+                    <div>
+                      <p className="text-[11px] font-medium text-[var(--relay-muted)] mb-0.5">
+                        Progress
+                      </p>
+                      <p className="text-[12px] leading-relaxed text-[var(--relay-ink-secondary)] line-clamp-3">
+                        {progress}
+                      </p>
+                    </div>
+                  ) : null}
+                  {!overview && !objective && !progress && (
+                    <p className="text-[12px] text-[var(--relay-muted)] py-2">
+                      No memory yet. Relay will populate this after your first
+                      chat.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Project Brief card */}
+          <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">
+            <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-[var(--relay-line)]">
+              <div className="flex items-center gap-2">
+                <FileDown className="h-3.5 w-3.5 text-[var(--relay-faint)]" />
+                <span className="text-xs font-medium text-[var(--relay-ink)]">
+                  Project Brief
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={pending}
+                onClick={regenerateBriefs}
+                className="h-6 text-[11px] px-2"
+              >
+                Regenerate
+              </Button>
+            </div>
+            <div className="px-3.5 py-3">
+              {latestPacket ? (
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="text-[11px] font-medium text-[var(--relay-ink)]">
+                      {targetLabel(latestPacket.targetProfileKey)}
+                    </span>
+                    <span className="text-[10px] text-[var(--relay-faint)] rounded-full bg-[var(--relay-soft)] px-1.5 py-0.5">
+                      {latestPacket.kind === "fresh_chat_bootstrap"
+                        ? "Full brief"
+                        : "Continuity"}
+                    </span>
+                  </div>
+                  <p className="text-[12px] leading-relaxed text-[var(--relay-ink-secondary)] line-clamp-4">
+                    {latestPacket.content}
+                  </p>
+                  {dashboard.packets.length > 1 && (
+                    <p className="mt-2 text-[11px] text-[var(--relay-muted)]">
+                      +{dashboard.packets.length - 1} more brief
+                      {dashboard.packets.length > 2 ? "s" : ""}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <EmptyState
+                  title="No briefs yet"
+                  description="Briefs are generated after your first chat capture."
+                  className="py-4"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      </FadeIn>
+
+      {/* ─── Recent Activity ─── */}
+      <FadeIn delay={0.15}>
+        <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">
+          <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-[var(--relay-line)]">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-3.5 w-3.5 text-[var(--relay-faint)]" />
+              <span className="text-xs font-medium text-[var(--relay-ink)]">
+                Recent Activity
+              </span>
+              <span className="text-[11px] text-[var(--relay-faint)] tabular-nums">
+                {totalChats}
+              </span>
+            </div>
+          </div>
+          <div className="divide-y divide-[var(--relay-line)]">
+            {dashboard.sessionHistory.length === 0 ? (
+              <div className="px-3.5 py-6">
+                <EmptyState
+                  title="No chats yet"
+                  description="Chats appear here after Relay captures them."
+                  className="py-2"
+                />
+              </div>
+            ) : (
+              dashboard.sessionHistory.slice(0, 5).map((session) => (
+                <div
+                  key={session.id}
+                  className={cn(
+                    "group flex items-center justify-between gap-3 px-3.5 py-2.5 hover:bg-[var(--relay-soft)]/50 transition-colors",
+                    session.isArchived && "opacity-50",
+                  )}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12px] font-medium text-[var(--relay-ink)]">
+                      {session.title ?? session.url}
+                    </p>
+                    <p className="text-[11px] text-[var(--relay-muted)]">
+                      {session.platform} · {session.turnCount} turns ·{" "}
+                      {relativeTime(session.capturedAt)}
+                      {session.isArchived ? " · detached" : ""}
+                    </p>
+                  </div>
+                  <button
+                    className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                    disabled={pending}
+                    onClick={() =>
+                      toggleSessionArchive(session.id, !session.isArchived)
+                    }
+                  >
+                    {session.isArchived ? (
+                      <RotateCcw className="h-3.5 w-3.5 text-[var(--relay-faint)] hover:text-[var(--relay-ink)]" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5 text-[var(--relay-faint)] hover:text-[var(--relay-danger)]" />
+                    )}
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </FadeIn>
+
+      {/* ─── Governance section ─── */}
+      <FadeIn delay={0.2}>
+        <GovernanceSection projectId={project.id} dashboard={dashboard} />
+      </FadeIn>
+
+      {/* Status toast */}
+      {status && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[12px] font-medium text-[var(--relay-bg)] shadow-[var(--relay-shadow-lg)]">
+          {status}
+        </div>
+      )}
+    </div>
+  );
+}
