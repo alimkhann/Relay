@@ -35,9 +35,6 @@ interface EvaluateProjectRoutingInput {
   approvedAssociations: RelayApprovedAssociation[]
 }
 
-export const FRESH_PROJECT_BOOTSTRAP_REASON =
-  "This is the selected project for this tab, so Relay is seeding its first chat context."
-
 const STOP_WORDS = new Set([
   "about",
   "after",
@@ -111,25 +108,16 @@ function collectProjectContextTokens(project: RelayProjectOption) {
   ])
 }
 
+function collectProjectDescriptionTokens(project: RelayProjectOption) {
+  return uniqueTokens([project.description ?? null])
+}
+
 function hasMeaningfulProjectContext(project: RelayProjectOption) {
   if (project.routingContext) {
     return project.routingContext.hasMeaningfulContext
   }
 
   return (project.sessionCount ?? 0) > 0 || (project.memoryCount ?? 0) > 0
-}
-
-function findSelectedFreshProject(projects: RelayProjectOption[], selectedProjectId?: string | null) {
-  if (!selectedProjectId) {
-    return null
-  }
-
-  const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null
-  if (!selectedProject || hasMeaningfulProjectContext(selectedProject)) {
-    return null
-  }
-
-  return selectedProject
 }
 
 function pushReason(candidate: CandidateScore, reason: string) {
@@ -240,6 +228,7 @@ function scoreProjectCandidate(
     highConfidenceEligible: false
   }
   const projectTokens = collectProjectTokens(project)
+  const descriptionTokens = collectProjectDescriptionTokens(project)
   const contextTokens = collectProjectContextTokens(project)
   const titleTokens = uniqueTokens([input.page.title])
   const pathTokens = uniqueTokens([input.page.pathname, input.page.url])
@@ -280,6 +269,47 @@ function scoreProjectCandidate(
   if (pathOverlap > 0) {
     candidate.score += Math.min(candidate.phase === "bootstrap" ? 18 : 12, pathOverlap * 6)
     pushReason(candidate, "Project name overlaps with the route or URL.")
+  }
+
+  const descriptionTitleOverlap = overlapCount(descriptionTokens, titleTokens)
+  if (descriptionTitleOverlap > 0) {
+    candidate.score += Math.min(
+      candidate.phase === "bootstrap" ? 26 : 12,
+      descriptionTitleOverlap * (candidate.phase === "bootstrap" ? 9 : 4)
+    )
+    if (
+      candidate.phase === "bootstrap"
+        ? descriptionTitleOverlap >= 3
+        : descriptionTitleOverlap >= 2
+    ) {
+      candidate.highConfidenceEligible = true
+    }
+    pushReason(candidate, "The project description overlaps with the chat title.")
+  }
+
+  const descriptionUserOverlap = overlapCount(descriptionTokens, userTurnTokens)
+  if (descriptionUserOverlap > 0) {
+    candidate.score += Math.min(
+      candidate.phase === "bootstrap" ? 34 : 16,
+      descriptionUserOverlap * (candidate.phase === "bootstrap" ? 10 : 5)
+    )
+    if (
+      candidate.phase === "bootstrap"
+        ? descriptionUserOverlap >= 3
+        : descriptionUserOverlap >= 2
+    ) {
+      candidate.highConfidenceEligible = true
+    }
+    pushReason(candidate, "The latest user turn overlaps with the project description.")
+  }
+
+  const descriptionPathOverlap = overlapCount(descriptionTokens, pathTokens)
+  if (descriptionPathOverlap > 0) {
+    candidate.score += Math.min(
+      candidate.phase === "bootstrap" ? 10 : 6,
+      descriptionPathOverlap * 3
+    )
+    pushReason(candidate, "The route overlaps with the project description.")
   }
 
   const contextTitleOverlap = overlapCount(contextTokens, titleTokens)
@@ -373,7 +403,6 @@ export function evaluateProjectRouting(input: EvaluateProjectRoutingInput): Rela
 
   const top = candidates[0]
   const runnerUp = candidates[1]
-  const selectedFreshProject = findSelectedFreshProject(input.projects, input.selectedProjectId)
   if (!top) {
     return {
       mode: "ignore",
@@ -386,20 +415,6 @@ export function evaluateProjectRouting(input: EvaluateProjectRoutingInput): Rela
   }
 
   const confidence = resolveConfidence(top, runnerUp?.score ?? 0)
-
-  if (selectedFreshProject) {
-    const selectedProjectIsTopCandidate = top.projectId === selectedFreshProject.id
-    if (confidence === "low" || (confidence === "medium" && selectedProjectIsTopCandidate)) {
-      return {
-        mode: "hold",
-        confidence: "medium",
-        candidateProjectId: selectedFreshProject.id,
-        candidateProjectName: selectedFreshProject.name,
-        score: Math.max(top.score, 32),
-        reasons: [FRESH_PROJECT_BOOTSTRAP_REASON, ...(selectedProjectIsTopCandidate ? top.reasons : [])].slice(0, 4)
-      }
-    }
-  }
 
   return {
     mode: confidence === "high" ? "auto-save" : confidence === "medium" ? "hold" : "ignore",

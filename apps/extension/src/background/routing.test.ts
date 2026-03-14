@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest"
 
 import {
-  FRESH_PROJECT_BOOTSTRAP_REASON,
   evaluateProjectRouting,
   findApprovedAssociationMatch,
 } from "./routing"
@@ -161,22 +160,24 @@ describe("evaluateProjectRouting", () => {
     expect(["medium", "high"]).toContain(result.confidence)
   })
 
-  it("holds the selected fresh project instead of ignoring the first ungrounded chat", () => {
+  it("uses project description overlap to route a fresh project without prior context", () => {
     const result = evaluateProjectRouting({
       page: {
         supported: true,
         platform: "chatgpt",
         pathname: "/c/new-topic",
-        title: "Abstract logo exploration",
-        recentUserTurnText: "nice, make it flat and transparent"
+        title: "AI continuity assistant launch",
+        recentUserTurnText: "Map the browser extension and project association flow for a quiet AI continuity assistant."
       },
       projects: [
         {
           id: "project_relay_brand",
-          name: "Relay Brand Refresh",
+          name: "Relay",
           slug: "relay-brand-refresh",
           memoryCount: 0,
           sessionCount: 0,
+          description:
+            "Browser extension that keeps project continuity alive across fresh AI chats.",
           routingContext: {
             hasMeaningfulContext: false,
             keywords: []
@@ -189,13 +190,17 @@ describe("evaluateProjectRouting", () => {
       approvedAssociations: []
     })
 
-    expect(result.mode).toBe("hold")
-    expect(result.confidence).toBe("medium")
+    expect(["hold", "auto-save"]).toContain(result.mode)
+    expect(["medium", "high"]).toContain(result.confidence)
     expect(result.candidateProjectId).toBe("project_relay_brand")
-    expect(result.reasons[0]).toBe(FRESH_PROJECT_BOOTSTRAP_REASON)
+    expect(
+      result.reasons.some((reason) =>
+        reason.includes("project description"),
+      ),
+    ).toBe(true)
   })
 
-  it("does not override stronger explicit routing evidence with the fresh-project bootstrap fallback", () => {
+  it("does not override stronger explicit routing evidence with selected-project affinity", () => {
     const result = evaluateProjectRouting({
       page: {
         supported: true,
@@ -237,6 +242,40 @@ describe("evaluateProjectRouting", () => {
     expect(result.mode).toBe("auto-save")
     expect(result.candidateProjectId).toBe("project_relay")
     expect(result.confidence).toBe("high")
+  })
+
+  it("ignores unrelated fresh-project chats when the selected project only matches by selection", () => {
+    const result = evaluateProjectRouting({
+      page: {
+        supported: true,
+        platform: "chatgpt",
+        pathname: "/c/random",
+        title: "Abstract logo exploration",
+        recentUserTurnText: "make it flatter and transparent"
+      },
+      projects: [
+        {
+          id: "project_relay_brand",
+          name: "Relay",
+          slug: "relay-brand-refresh",
+          memoryCount: 0,
+          sessionCount: 0,
+          description:
+            "Browser extension that keeps project continuity alive across fresh AI chats.",
+          routingContext: {
+            hasMeaningfulContext: false,
+            keywords: []
+          }
+        }
+      ],
+      selectedProjectId: "project_relay_brand",
+      lastTabProjectId: "project_relay_brand",
+      boundProject: { projectId: "project_relay_brand", bindingKind: "tab" },
+      approvedAssociations: []
+    })
+
+    expect(result.mode).toBe("ignore")
+    expect(result.confidence).toBe("low")
   })
 
   it("ignores unrelated chats even when the same domain was linked to another project", () => {

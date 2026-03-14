@@ -154,5 +154,8 @@ describe("DashboardPage", () => {
 
     expect(screen.getByText("Relay MVP")).toBeTruthy();
     expect(screen.getByText("Ready")).toBeTruthy();
+    expect(
+      screen.getAllByText("Browser-first project memory sidecar.").length,
+    ).toBeGreaterThan(0);
   });
 });
