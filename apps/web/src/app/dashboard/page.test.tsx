@@ -1,5 +1,27 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const {
+  getResolvedOnboardingStateForUserMock,
+  requirePageViewerMock,
+  syncViewerProfileMock,
+} =
+  vi.hoisted(() => ({
+    getResolvedOnboardingStateForUserMock: vi.fn(async () => ({
+      status: "completed" as const,
+      completedProjectId: "project-1",
+      completedVia: "web" as const,
+      completedAt: new Date().toISOString(),
+    })),
+    requirePageViewerMock: vi.fn(async () => ({
+      userId: "user-1",
+      mode: "session" as const,
+      email: "user@example.com",
+      name: "Relay User",
+      image: null,
+    })),
+    syncViewerProfileMock: vi.fn(async () => undefined),
+  }));
 
 vi.mock("motion/react", () => ({
   motion: new Proxy(
@@ -28,16 +50,13 @@ vi.mock("@/components/layout/app-shell", () => ({
   AppShell: ({ children }: { children: any }) => <div>{children}</div>,
 }));
 
-vi.mock("@/server/policies/viewer", () => ({
-  requirePageViewer: vi.fn(async () => ({
-    userId: "user-1",
-    mode: "session",
-  })),
-  requireSessionViewer: vi.fn(async () => ({
-    userId: "user-1",
-    mode: "session",
-  })),
-}));
+vi.mock("@/server/policies/viewer", () => {
+  return {
+    requirePageViewer: requirePageViewerMock,
+    requireSessionViewer: requirePageViewerMock,
+    syncViewerProfile: syncViewerProfileMock,
+  };
+});
 
 vi.mock("@/server/services/project-service", () => ({
   listProjectsForUser: vi.fn(async () => [
@@ -146,9 +165,26 @@ vi.mock("@/server/services/project-service", () => ({
   })),
 }));
 
+vi.mock("@/server/services/onboarding-service", () => ({
+  getResolvedOnboardingStateForUser: getResolvedOnboardingStateForUserMock,
+}));
+
 import DashboardPage from "./page";
 
 describe("DashboardPage", () => {
+  beforeEach(() => {
+    requirePageViewerMock.mockClear();
+    syncViewerProfileMock.mockReset();
+    syncViewerProfileMock.mockResolvedValue(undefined);
+    getResolvedOnboardingStateForUserMock.mockReset();
+    getResolvedOnboardingStateForUserMock.mockResolvedValue({
+      status: "completed",
+      completedProjectId: "project-1",
+      completedVia: "web",
+      completedAt: new Date().toISOString(),
+    } as any);
+  });
+
   it("renders the project index heading", async () => {
     render(await DashboardPage({ searchParams: Promise.resolve({}) }));
 
@@ -157,5 +193,36 @@ describe("DashboardPage", () => {
     expect(
       screen.getAllByText("Browser-first project memory sidecar.").length,
     ).toBeGreaterThan(0);
+  });
+
+  it("still renders when viewer profile sync fails", async () => {
+    syncViewerProfileMock.mockImplementationOnce(async () => {
+      try {
+        throw new Error("sync failed");
+      } catch {}
+    });
+
+    render(await DashboardPage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByText("Relay MVP")).toBeTruthy();
+    expect(syncViewerProfileMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-1",
+      }),
+    );
+  });
+
+  it("renders onboarding when setup is still pending", async () => {
+    getResolvedOnboardingStateForUserMock.mockResolvedValueOnce({
+      status: "pending",
+      completedProjectId: null,
+      completedVia: null,
+      completedAt: null,
+    } as any);
+
+    render(await DashboardPage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByText("Welcome to Relay")).toBeTruthy();
+    expect(screen.getByText("Create")).toBeTruthy();
   });
 });

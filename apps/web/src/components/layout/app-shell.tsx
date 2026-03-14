@@ -12,6 +12,10 @@ interface AppShellProps extends PropsWithChildren {
   projects?: { id: string; name: string }[];
   currentProjectId?: string;
   workspaceSnapshot?: WorkspaceSnapshot;
+  account?: {
+    name?: string | null;
+    email?: string | null;
+  };
 }
 
 export async function AppShell({
@@ -19,10 +23,20 @@ export async function AppShell({
   projects,
   currentProjectId,
   workspaceSnapshot,
+  account,
 }: AppShellProps) {
-  const auth = getAuthServer();
-  const { data } = auth ? await auth.getSession() : { data: null };
-  const user = data?.user;
+  let user = account ?? null;
+
+  if (!user) {
+    const auth = getAuthServer();
+    const { data } = auth ? await auth.getSession() : { data: null };
+    user = data?.user
+      ? {
+          name: data.user.name ?? null,
+          email: data.user.email ?? null,
+        }
+      : null;
+  }
 
   return (
     <div className="flex min-h-screen bg-[var(--relay-bg)] text-[var(--relay-ink)]">

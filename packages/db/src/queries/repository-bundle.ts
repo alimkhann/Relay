@@ -1,3 +1,4 @@
+import { BrowserSessionHandoffRepository } from "../repositories/browser-session-handoff-repository"
 import { AiJobRunRepository } from "../repositories/ai-job-run-repository"
 import { BindingRepository } from "../repositories/binding-repository"
 import { BootstrapPacketRepository } from "../repositories/bootstrap-packet-repository"
@@ -16,6 +17,7 @@ import { SessionDigestRepository } from "../repositories/session-digest-reposito
 import { SettingsRepository } from "../repositories/settings-repository"
 import { TargetProfileRepository } from "../repositories/target-profile-repository"
 import { TurnRepository } from "../repositories/turn-repository"
+import { UserOnboardingRepository } from "../repositories/user-onboarding-repository"
 import { createRepositoryProvider, type DatabaseProvider } from "../store/provider"
 
 export interface RepositoryBundle {
@@ -38,6 +40,8 @@ export interface RepositoryBundle {
   targetProfiles: TargetProfileRepository
   extensionTokens: ExtensionTokenRepository
   extensionConnectGrants: ExtensionConnectGrantRepository
+  userOnboarding: UserOnboardingRepository
+  browserSessionHandoffs: BrowserSessionHandoffRepository
 }
 
 export function createRepositoryBundle(viewerUserId?: string): RepositoryBundle {
@@ -62,6 +66,8 @@ export function createRepositoryBundle(viewerUserId?: string): RepositoryBundle 
     settings: new SettingsRepository(provider),
     targetProfiles: new TargetProfileRepository(provider),
     extensionTokens: new ExtensionTokenRepository(provider),
-    extensionConnectGrants: new ExtensionConnectGrantRepository(provider)
+    extensionConnectGrants: new ExtensionConnectGrantRepository(provider),
+    userOnboarding: new UserOnboardingRepository(provider),
+    browserSessionHandoffs: new BrowserSessionHandoffRepository(provider)
   }
 }

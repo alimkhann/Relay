@@ -70,8 +70,40 @@ export async function reconcileProfileForAuthUser(input: SyncAuthUserInput) {
          delete from user_settings
          where user_id = $1
        ),
+       merged_onboarding as (
+         insert into user_onboarding (
+           user_id,
+           status,
+           completed_project_id,
+           completed_via,
+           completed_at
+         )
+         select
+           $2,
+           status,
+           completed_project_id,
+           completed_via,
+           completed_at
+         from user_onboarding
+         where user_id = $1
+         on conflict (user_id) do update
+         set status = excluded.status,
+             completed_project_id = excluded.completed_project_id,
+             completed_via = excluded.completed_via,
+             completed_at = excluded.completed_at,
+             updated_at = now()
+       ),
+       deleted_onboarding as (
+         delete from user_onboarding
+         where user_id = $1
+       ),
        moved_tokens as (
          update extension_api_tokens
+         set user_id = $2
+         where user_id = $1
+       ),
+       moved_browser_handoffs as (
+         update browser_session_handoffs
          set user_id = $2
          where user_id = $1
        ),

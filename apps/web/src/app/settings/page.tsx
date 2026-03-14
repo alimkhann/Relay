@@ -1,6 +1,6 @@
 import { AppShell } from "@/components/layout/app-shell";
 import { SettingsPreferences } from "@/components/settings/settings-preferences";
-import { requirePageViewer } from "@/server/policies/viewer";
+import { requirePageViewer, syncViewerProfile } from "@/server/policies/viewer";
 import { listExtensionTokensForUser } from "@/server/services/extension-token-service";
 import { getUserSettings } from "@/server/services/settings-service";
 
@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const viewer = await requirePageViewer("/settings");
+  await syncViewerProfile(viewer);
   const [settings, tokens] = await Promise.all([
     getUserSettings(viewer.userId),
     listExtensionTokensForUser(viewer.userId),
@@ -16,6 +17,10 @@ export default async function SettingsPage() {
 
   return (
     <AppShell
+      account={{
+        name: viewer.name,
+        email: viewer.email,
+      }}
       workspaceSnapshot={{
         kind: "settings",
         cacheKey: "settings",

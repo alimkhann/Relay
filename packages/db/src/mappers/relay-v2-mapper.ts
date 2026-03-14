@@ -9,7 +9,14 @@ import type {
 
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
-  return value.map((item) => String(item)).filter(Boolean)
+  return value.flatMap((item) => {
+    if (typeof item !== "string") {
+      return []
+    }
+
+    const normalized = item.trim()
+    return normalized ? [normalized] : []
+  })
 }
 
 export function toSessionDigestRow(record: Record<string, unknown>): SessionDigestRow {

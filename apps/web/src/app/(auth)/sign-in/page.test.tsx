@@ -1,7 +1,15 @@
 import { render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+const { redirectMock, resolveOptionalViewerMock } = vi.hoisted(() => ({
+  redirectMock: vi.fn((href: string) => {
+    throw new Error(`REDIRECT:${href}`)
+  }),
+  resolveOptionalViewerMock: vi.fn(async () => null)
+}))
+
 vi.mock("next/navigation", () => ({
+  redirect: redirectMock,
   useRouter: () => ({
     replace: vi.fn()
   })
@@ -46,6 +54,8 @@ vi.mock("@/components/telemetry/page-telemetry", () => ({
 }))
 
 vi.mock("@/server/policies/viewer", () => ({
+  resolveAuthenticatedAppPath: () => "/dashboard",
+  resolveOptionalViewer: resolveOptionalViewerMock,
   resolveSafeNextPath: (value: string | null | undefined, fallback = "/dashboard") =>
     value && value.startsWith("/") ? value : fallback,
   resolveWebAuthIntent: (value: string | null | undefined) => (value === "sign-up" ? "sign-up" : "sign-in")
@@ -57,9 +67,12 @@ describe("SignInPage", () => {
   beforeEach(() => {
     vi.stubEnv("NEON_AUTH_BASE_URL", "https://auth.example.com")
     vi.stubEnv("NEON_AUTH_COOKIE_SECRET", "secret")
+    redirectMock.mockClear()
+    resolveOptionalViewerMock.mockReset()
+    resolveOptionalViewerMock.mockResolvedValue(null)
   })
 
-  it("passes the requested next path to the session gate", async () => {
+  it("uses the dashboard as the existing-session destination", async () => {
     render(
       await SignInPage({
         searchParams: Promise.resolve({
@@ -69,7 +82,7 @@ describe("SignInPage", () => {
     )
 
     expect(screen.getByTestId("sign-in-session-gate").getAttribute("data-next-path")).toBe(
-      "/projects/project-1"
+      "/dashboard"
     )
     expect(
       screen
@@ -95,6 +108,22 @@ describe("SignInPage", () => {
       screen
         .getByTestId("sign-in-session-gate")
         .getAttribute("data-allow-existing-session"),
-    ).toBe("false")
+    ).toBe("true")
+  })
+
+  it("redirects authenticated visitors away from the sign-in page", async () => {
+    resolveOptionalViewerMock.mockResolvedValueOnce({
+      userId: "user-1",
+      mode: "session"
+    } as any)
+
+    await expect(
+      SignInPage({
+        searchParams: Promise.resolve({
+          next: "/dashboard",
+          intent: "sign-up"
+        })
+      })
+    ).rejects.toThrow("REDIRECT:/dashboard")
   })
 })

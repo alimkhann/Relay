@@ -1,4 +1,4 @@
-import type { ProjectStateStatusDto } from "@relay/shared"
+import type { ProjectStateStatusDto, RelayOnboardingState } from "@relay/shared"
 
 import type {
   RelayActiveProjectState,
@@ -23,6 +23,7 @@ export interface BuildRelayActiveProjectStateInput {
   projectOptions: RelayProjectOption[]
   showCue: boolean
   page: RelayPageState
+  onboarding: RelayOnboardingState
   stateStatus: ProjectStateStatusDto | null
   trust: RelayTrustMetadata
   remoteStatus: RelayRemoteStatus
@@ -100,6 +101,12 @@ export function createEmptyActiveProjectState(
     contextPreview: createEmptyContextPreview(),
     chatAssociation: createEmptyChatAssociation(),
     routingReview: null,
+    onboarding: {
+      status: "pending",
+      completedProjectId: null,
+      completedVia: null,
+      completedAt: null
+    },
     ...overrides
   }
 }
@@ -204,6 +211,10 @@ function deriveViewState(input: BuildRelayActiveProjectStateInput): RelaySidebar
     return "disconnected"
   }
 
+  if (input.onboarding.status === "pending") {
+    return "connected-empty"
+  }
+
   if (!input.page.supported) {
     return "unsupported"
   }
@@ -289,7 +300,8 @@ export function deriveRelayActiveProjectState(input: BuildRelayActiveProjectStat
     capturePending: input.capturePending,
     contextPreview: input.contextPreview,
     chatAssociation: input.chatAssociation,
-    routingReview: input.routingReview
+    routingReview: input.routingReview,
+    onboarding: input.onboarding
   }
 }
 

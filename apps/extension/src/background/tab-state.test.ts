@@ -11,6 +11,15 @@ import {
   shouldScheduleAutoCapture
 } from "./tab-state"
 
+function makeCompletedOnboarding() {
+  return {
+    status: "completed" as const,
+    completedProjectId: "project_123",
+    completedVia: "web" as const,
+    completedAt: "2026-03-11T00:00:00.000Z"
+  }
+}
+
 function makeStateStatus(input: Partial<ProjectStateStatusDto> = {}): ProjectStateStatusDto {
   return {
     rawCapturePresent: true,
@@ -43,6 +52,7 @@ describe("deriveRelayActiveProjectState", () => {
         promptReady: true,
         isFreshChat: true
       },
+      onboarding: makeCompletedOnboarding(),
       stateStatus: makeStateStatus(),
       trust: createEmptyTrustMetadata(),
       remoteStatus: "stale",
@@ -72,6 +82,7 @@ describe("deriveRelayActiveProjectState", () => {
         promptReady: true,
         isFreshChat: true
       },
+      onboarding: makeCompletedOnboarding(),
       stateStatus: makeStateStatus({
         digestStatus: "failed",
         projectStateReady: false,
@@ -107,6 +118,7 @@ describe("view states", () => {
         promptReady: true,
         isFreshChat: false
       },
+      onboarding: makeCompletedOnboarding(),
       stateStatus: makeStateStatus({
         projectStateReady: false,
         rawCapturePresent: false,
@@ -123,6 +135,35 @@ describe("view states", () => {
 
     expect(state.viewState).toBe("connected-loading")
     expect(state.message).toBe("Checking this chat…")
+  })
+
+  it("uses onboarding state instead of project count to show setup", () => {
+    const state = deriveRelayActiveProjectState({
+      connected: true,
+      projectId: null,
+      projectName: null,
+      projectOptions: [],
+      showCue: true,
+      page: {
+        supported: false
+      },
+      onboarding: {
+        status: "pending",
+        completedProjectId: null,
+        completedVia: null,
+        completedAt: null
+      },
+      stateStatus: null,
+      trust: createEmptyTrustMetadata(),
+      remoteStatus: "ready",
+      lastSuccessfulSyncAt: null,
+      capturePending: false,
+      contextPreview: createEmptyContextPreview(),
+      chatAssociation: createEmptyChatAssociation(),
+      routingReview: null
+    })
+
+    expect(state.viewState).toBe("connected-empty")
   })
 })
 

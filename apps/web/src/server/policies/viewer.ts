@@ -3,6 +3,7 @@ import { hashContent } from "@relay/shared"
 import { redirect } from "next/navigation"
 
 import { requireAuthServer } from "@/lib/auth/server"
+import { logServerEvent } from "@/server/logging/logger"
 import { reconcileProfileForAuthUser } from "@/server/services/auth-sync-service"
 
 export class AuthRequiredError extends Error {
@@ -16,6 +17,8 @@ export interface Viewer {
   userId: string
   mode: "session" | "extension"
   email?: string | null
+  name?: string | null
+  image?: string | null
 }
 
 export type WebAuthIntent = "sign-in" | "sign-up"
@@ -54,12 +57,12 @@ export async function requireSessionViewer(): Promise<Viewer> {
     throw new AuthRequiredError()
   }
 
-  await upsertProfile(user)
-
   return {
     userId: user.id,
     mode: "session",
-    email: user.email ?? null
+    email: user.email ?? null,
+    name: user.name ?? null,
+    image: user.image ?? null
   }
 }
 
@@ -75,7 +78,9 @@ export async function resolveViewer(authorizationHeader?: string | null): Promis
       return {
         userId: tokenRecord.userId,
         mode: "extension",
-        email: null
+        email: null,
+        name: null,
+        image: null
       }
     }
   }
@@ -127,6 +132,10 @@ export function resolveSafeNextPath(value: string | null | undefined, fallback =
   return value
 }
 
+export function resolveAuthenticatedAppPath(value: string | null | undefined = "/dashboard") {
+  return resolveSafeNextPath(value, "/dashboard")
+}
+
 export async function requirePageViewer(nextPath = "/dashboard"): Promise<Viewer> {
   try {
     return await requireSessionViewer()
@@ -136,5 +145,30 @@ export async function requirePageViewer(nextPath = "/dashboard"): Promise<Viewer
     }
 
     throw error
+  }
+}
+
+export async function syncViewerProfile(viewer: Viewer) {
+  if (viewer.mode !== "session") {
+    return
+  }
+
+  try {
+    await upsertProfile({
+      id: viewer.userId,
+      email: viewer.email ?? null,
+      name: viewer.name ?? null,
+      image: viewer.image ?? null
+    })
+  } catch (error) {
+    await logServerEvent({
+      level: "error",
+      surface: "web-dashboard",
+      area: "auth",
+      event: "viewer.profile_sync_failed",
+      message: "Viewer profile sync failed after auth.",
+      userId: viewer.userId,
+      error
+    })
   }
 }

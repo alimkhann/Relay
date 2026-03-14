@@ -3,6 +3,7 @@ import { projectInputSchema, slugify, updateProjectSchema } from "@relay/shared"
 
 import { BadRequestError } from "@/server/http/errors"
 import { logServerEvent } from "@/server/logging/logger"
+import { completeOnboardingForUser } from "./onboarding-service"
 import { resolveProjectAiBudget } from "./ai-budget-service"
 
 const PROJECT_SLUG_MAX_LENGTH = 80
@@ -39,7 +40,11 @@ export async function getProjectDashboardForUser(userId: string, projectId: stri
   }
 }
 
-export async function createProjectForUser(userId: string, input: unknown) {
+export async function createProjectForUser(
+  userId: string,
+  input: unknown,
+  options: { onboardingVia?: "web" | "extension" } = {}
+) {
   const repositories = createRepositoryBundle(userId)
   const parsed = projectInputSchema.parse(input)
   const baseSlug = slugify(parsed.slug ?? parsed.name)
@@ -71,6 +76,7 @@ export async function createProjectForUser(userId: string, input: unknown) {
       })
 
       await repositories.members.ensureOwner(project.id, userId)
+      await completeOnboardingForUser(userId, project.id, options.onboardingVia ?? "web")
       await logServerEvent({
         level: "info",
         surface: "web-api",

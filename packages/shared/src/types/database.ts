@@ -19,6 +19,8 @@ export type AiJobStatus = (typeof aiJobStatuses)[number]
 export type SourceTurnRole = (typeof sourceTurnRoles)[number]
 export type MemoryItemType = (typeof memoryItemTypes)[number]
 export type BindingKind = (typeof bindingKinds)[number]
+export type RelayOnboardingStatus = "pending" | "completed"
+export type RelayOnboardingCompletionSurface = "web" | "extension"
 
 export interface ProfileRow {
   id: string
@@ -198,6 +200,36 @@ export interface ExtensionConnectGrantRow {
   grantHash: string
   grantPrefix: string
   apiBase: string
+  expiresAt: string
+  consumedAt: string | null
+  createdAt: string
+}
+
+export interface UserOnboardingRow {
+  userId: string
+  status: RelayOnboardingStatus
+  completedProjectId: string | null
+  completedVia: RelayOnboardingCompletionSurface | null
+  completedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface RelayOnboardingState {
+  status: RelayOnboardingStatus
+  completedProjectId: string | null
+  completedVia: RelayOnboardingCompletionSurface | null
+  completedAt: string | null
+}
+
+export interface BrowserSessionHandoffRow {
+  id: string
+  userId: string
+  handoffHash: string
+  handoffPrefix: string
+  encryptedGoogleAccessToken: string
+  encryptedGoogleIdToken: string
+  nextPath: string
   expiresAt: string
   consumedAt: string | null
   createdAt: string

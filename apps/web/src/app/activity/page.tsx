@@ -1,19 +1,22 @@
 import { AppShell } from "@/components/layout/app-shell";
 import { PageTelemetry } from "@/components/telemetry/page-telemetry";
 import { ActivityFeed } from "@/features/activity/activity-feed";
-import { requirePageViewer } from "@/server/policies/viewer";
-import { listProjectsForUser } from "@/server/services/project-service";
+import { requirePageViewer, syncViewerProfile } from "@/server/policies/viewer";
 import { listActivityFeedForUser } from "@/server/services/activity-service";
 
 export const dynamic = "force-dynamic";
 
 export default async function ActivityPage() {
   const viewer = await requirePageViewer("/activity");
-  const projects = await listProjectsForUser(viewer.userId);
+  await syncViewerProfile(viewer);
   const feed = await listActivityFeedForUser(viewer.userId);
 
   return (
     <AppShell
+      account={{
+        name: viewer.name,
+        email: viewer.email,
+      }}
       workspaceSnapshot={{
         kind: "activity",
         cacheKey: "activity",

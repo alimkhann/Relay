@@ -1,4 +1,7 @@
-import type { TelemetryEventInput } from "@relay/shared";
+import type {
+  RelayOnboardingState,
+  TelemetryEventInput,
+} from "@relay/shared";
 
 export interface RelayProjectOption {
   id: string;
@@ -100,6 +103,7 @@ export interface RelayActiveProjectState {
   contextPreview: RelayContextPreview;
   chatAssociation: RelayChatAssociation;
   routingReview: RelayRoutingReview | null;
+  onboarding: RelayOnboardingState;
 }
 
 export type RelayMessage =
@@ -175,11 +179,11 @@ export type RelayMessage =
     }
   | { type: "RELAY_REFRESH_SESSION" }
   | { type: "RELAY_OPEN_SIDE_PANEL" }
-  | { type: "RELAY_OPEN_CONNECT"; payload: { deviceName: string; flowId?: string } }
+  | { type: "RELAY_OPEN_DASHBOARD"; payload?: { nextPath?: string; flowId?: string } }
   | { type: "RELAY_GOOGLE_SIGN_IN"; payload: { deviceName: string; flowId?: string } }
   | {
       type: "RELAY_CREATE_PROJECT";
-      payload: { name: string; slug?: string; flowId?: string };
+      payload: { name: string; slug?: string; description?: string | null; flowId?: string };
     }
   | {
       type: "RELAY_SHOW_ASSOCIATION_TOAST";

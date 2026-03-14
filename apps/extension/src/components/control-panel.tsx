@@ -113,6 +113,12 @@ const emptyActiveState: RelayActiveProjectState = {
     capturedAt: null,
   },
   routingReview: null,
+  onboarding: {
+    status: "pending",
+    completedProjectId: null,
+    completedVia: null,
+    completedAt: null,
+  },
 };
 
 function isRelayActiveProjectState(
@@ -140,6 +146,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     null | "approving_held"
   >(null);
   const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectDescription, setNewProjectDescription] = useState("");
+  const [showDashboardPrompt, setShowDashboardPrompt] = useState(false);
   const [expandedSections, setExpandedSections] = useState<
     Record<ContextSection, boolean>
   >({
@@ -321,6 +329,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             assumedProjectName: nextState.projectName ?? "",
             trust: nextState.trust,
             projectOptions: nextState.projectOptions,
+            onboarding: nextState.onboarding,
           }
         : current,
     );
@@ -402,21 +411,29 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
   }
 
-  async function openConnectFlow() {
+  async function openDashboard(nextPath = "/dashboard") {
     setBusy(true);
-    setStatus("Opening Relay pairing…");
+    setStatus("Opening Relay dashboard…");
+    const flowId = createExtensionFlowId("ext-dashboard");
 
     try {
-      await chrome.runtime.sendMessage({
-        type: "RELAY_OPEN_CONNECT",
+      const result = (await chrome.runtime.sendMessage({
+        type: "RELAY_OPEN_DASHBOARD",
         payload: {
-          deviceName: deviceName || defaultDeviceName(),
+          nextPath,
+          flowId,
         },
-      });
-      setStatus("Finish pairing in the Relay tab, then return here.");
+      })) as { ok?: boolean; reason?: string };
+
+      if (!result?.ok) {
+        throw new Error(result?.reason ?? "Failed to open the Relay dashboard.");
+      }
+
+      setStatus("Opened the Relay dashboard in a new tab.");
+      setShowDashboardPrompt(false);
     } catch (cause) {
       setStatus(
-        cause instanceof Error ? cause.message : "Failed to open pairing flow.",
+        cause instanceof Error ? cause.message : "Failed to open the Relay dashboard.",
       );
     } finally {
       setBusy(false);
@@ -471,6 +488,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         message: "Google sign-in completed in the extension UI.",
       });
       setStatus("Signed in with Google.");
+      setShowDashboardPrompt(false);
       await refreshLocalSession();
       await refreshActiveProjectState();
     } catch (cause) {
@@ -494,6 +512,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   async function createProject() {
     const name = newProjectName.trim();
     if (!name) return;
+    const description = newProjectDescription.trim();
 
     setBusy(true);
     setStatus("Creating project…");
@@ -515,7 +534,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     try {
       const result = (await chrome.runtime.sendMessage({
         type: "RELAY_CREATE_PROJECT",
-        payload: { name, slug, flowId },
+        payload: { name, slug, description: description || null, flowId },
       })) as {
         ok?: boolean;
         reason?: string;
@@ -552,6 +571,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         },
       });
       setNewProjectName("");
+      setNewProjectDescription("");
+      setShowDashboardPrompt(true);
       setStatus(`Created project "${result.project?.name}".`);
       await refreshLocalSession();
       await refreshActiveProjectState();
@@ -1115,17 +1136,12 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     session?.projectId ??
     session?.assumedProjectId ??
     "";
-  const dashboardHref = (() => {
-    if (!session?.apiBase) {
-      return "#";
-    }
-
-    const url = new URL("/dashboard", session.apiBase);
+  const dashboardPath = (() => {
+    const url = new URL("/dashboard", "http://relay.local");
     if (selectedProjectId) {
       url.searchParams.set("project", selectedProjectId);
     }
-    url.searchParams.set("extensionId", chrome.runtime.id);
-    return url.toString();
+    return `${url.pathname}${url.search}`;
   })();
   const contextSections: ContextSection[] = [
     "decisions",
@@ -1150,20 +1166,19 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       {/* ─── Header ─── */}
       <header className={styles.header}>
         <div className={styles.headerBrand}>
-          <a
+          <button
+            type="button"
             className={styles.logoLink}
-            href={dashboardHref}
-            target="_blank"
-            rel="noreferrer"
             aria-label="Open dashboard"
             title="Open dashboard"
+            onClick={() => void openDashboard(dashboardPath)}
           >
             <img
               className={styles.logoMark}
               src={relayIconUrl}
               alt="Relay"
             />
-          </a>
+          </button>
         </div>
         {activeState.page.supported ? (
           <span className={styles.pageBadge}>
@@ -1189,20 +1204,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           >
             {busy ? "Signing in…" : "Sign in with Google"}
           </button>
-
-          <div className={styles.dividerRow}>
-            <span className={styles.dividerLine} />
-            <span className={styles.dividerLabel}>or</span>
-            <span className={styles.dividerLine} />
-          </div>
-
-          <button
-            className={styles.secondaryButton}
-            disabled={busy}
-            onClick={() => void openConnectFlow()}
-          >
-            Pair via web
-          </button>
         </section>
       ) : activeState.viewState === "connected-empty" ? (
         /* ─── No projects yet ─── */
@@ -1210,8 +1211,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           <section className={styles.panel}>
             <h2 className={styles.sectionTitle}>Create your first project</h2>
             <p className={styles.copy}>
-              Projects group your chats and context. Name it after what you are
-              working on.
+              Projects group your chats and context. Finish setup here or continue in the dashboard.
             </p>
 
             <label className={styles.field}>
@@ -1226,13 +1226,32 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               />
             </label>
 
-            <button
-              className={styles.primaryButton}
-              disabled={busy || !newProjectName.trim()}
-              onClick={() => void createProject()}
-            >
-              {busy ? "Creating…" : "Create project"}
-            </button>
+            <label className={styles.field}>
+              <span>Project description</span>
+              <textarea
+                value={newProjectDescription}
+                onChange={(event) => setNewProjectDescription(event.target.value)}
+                placeholder="What is this project for?"
+                maxLength={200}
+              />
+            </label>
+
+            <div className={styles.advancedButtons}>
+              <button
+                className={styles.primaryButton}
+                disabled={busy || !newProjectName.trim()}
+                onClick={() => void createProject()}
+              >
+                {busy ? "Creating…" : "Create project"}
+              </button>
+              <button
+                className={styles.secondaryButton}
+                disabled={busy}
+                onClick={() => void openDashboard("/dashboard")}
+              >
+                Finish in dashboard
+              </button>
+            </div>
           </section>
         </>
       ) : activeState.viewState === "connected-loading" ? (
@@ -1278,6 +1297,22 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         </section>
       ) : (
         <>
+          {showDashboardPrompt ? (
+            <section className={styles.panel}>
+              <h2 className={styles.sectionTitle}>Open the dashboard</h2>
+              <p className={styles.copy}>
+                Your project is ready. Open the dashboard to finish the browser session and continue there.
+              </p>
+              <button
+                className={styles.primaryButton}
+                disabled={busy}
+                onClick={() => void openDashboard(dashboardPath)}
+              >
+                Open dashboard
+              </button>
+            </section>
+          ) : null}
+
           {/* ─── Project + Status ─── */}
           <section className={styles.panel}>
             <div className={styles.panelTopRow}>

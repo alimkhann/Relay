@@ -28,3 +28,5 @@ export async function updateUserSettings(userId: string, input: unknown) {
     showSidepanelOnSupportedSites: partial.showSidepanelOnSupportedSites ?? defaultSettings.showSidepanelOnSupportedSites
   })
 }
+
+export { defaultSettings }

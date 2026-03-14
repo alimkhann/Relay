@@ -1,4 +1,4 @@
-import type { ProjectStateStatusDto } from "@relay/shared"
+import type { ProjectStateStatusDto, RelayOnboardingState } from "@relay/shared"
 
 import type { RelayTargetMode } from "../utils/target-profile"
 import type { RelayProjectOption, RelayTrustMetadata } from "../messaging/contracts"
@@ -20,8 +20,18 @@ const keys = {
   assumedProjectId: "relay.assumedProjectId",
   assumedProjectName: "relay.assumedProjectName",
   trust: "relay.trust",
-  projectOptions: "relay.projectOptions"
+  projectOptions: "relay.projectOptions",
+  onboarding: "relay.onboarding"
 } as const
+
+function createPendingOnboardingState(): RelayOnboardingState {
+  return {
+    status: "pending",
+    completedProjectId: null,
+    completedVia: null,
+    completedAt: null
+  }
+}
 
 export interface RelaySessionState {
   apiBase: string
@@ -39,6 +49,7 @@ export interface RelaySessionState {
   assumedProjectName: string
   trust: RelayTrustMetadata
   projectOptions: RelayProjectOption[]
+  onboarding: RelayOnboardingState
 }
 
 export function normalizeRelaySession(values: Record<string, unknown>): RelaySessionState {
@@ -69,7 +80,9 @@ export function normalizeRelaySession(values: Record<string, unknown>): RelaySes
       },
     projectOptions: Array.isArray(values[keys.projectOptions])
       ? (values[keys.projectOptions] as RelayProjectOption[])
-      : []
+      : [],
+    onboarding:
+      (values[keys.onboarding] as RelayOnboardingState | undefined) ?? createPendingOnboardingState()
   }
 }
 
@@ -95,7 +108,8 @@ export async function getRelaySession() {
         recentChatCount: 0,
         savedContextCount: 0
       },
-      projectOptions: []
+      projectOptions: [],
+      onboarding: createPendingOnboardingState()
     }
   }
 
@@ -123,6 +137,7 @@ export async function setRelaySession(input: Partial<RelaySessionState>) {
   if (input.assumedProjectName !== undefined) payload[keys.assumedProjectName] = input.assumedProjectName
   if (input.trust !== undefined) payload[keys.trust] = input.trust
   if (input.projectOptions !== undefined) payload[keys.projectOptions] = input.projectOptions
+  if (input.onboarding !== undefined) payload[keys.onboarding] = input.onboarding
 
   if (Object.keys(payload).length > 0) {
     await storage.set(payload)

@@ -1,10 +1,13 @@
 import Image from "next/image";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 import { SignInSessionGate } from "@/components/auth/sign-in-session-gate";
 import { PageTelemetry } from "@/components/telemetry/page-telemetry";
 import {
+  resolveAuthenticatedAppPath,
+  resolveOptionalViewer,
   resolveSafeNextPath,
   resolveWebAuthIntent,
 } from "@/server/policies/viewer";
@@ -19,6 +22,11 @@ export default async function SignInPage({
   const params = await searchParams;
   const nextPath = resolveSafeNextPath(params.next, "/dashboard");
   const intent = resolveWebAuthIntent(params.intent);
+  const viewer = await resolveOptionalViewer();
+
+  if (viewer) {
+    redirect(resolveAuthenticatedAppPath("/dashboard"));
+  }
 
   const authConfigured = Boolean(
     process.env.NEON_AUTH_BASE_URL && process.env.NEON_AUTH_COOKIE_SECRET,
@@ -27,8 +35,8 @@ export default async function SignInPage({
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#FAFAF8] px-6">
       <SignInSessionGate
-        nextPath={nextPath}
-        allowExistingSession={intent !== "sign-up"}
+        nextPath={resolveAuthenticatedAppPath("/dashboard")}
+        allowExistingSession
       />
       <PageTelemetry
         surface="web-auth"

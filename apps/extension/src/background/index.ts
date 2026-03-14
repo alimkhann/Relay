@@ -1,6 +1,10 @@
 import { createFlowId } from "@relay/shared/utils/telemetry";
 import { slugify } from "@relay/shared/utils/text";
-import type { ProjectStateStatusDto, SupportedPlatform } from "@relay/shared";
+import type {
+  ProjectStateStatusDto,
+  RelayOnboardingState,
+  SupportedPlatform,
+} from "@relay/shared";
 
 import type {
   RelayActiveProjectState,
@@ -22,7 +26,11 @@ import {
   rememberIgnoredChatKey,
   removeApprovedAssociationBySession,
 } from "../storage/routing";
-import { getRelaySession, setRelaySession } from "../storage/session";
+import {
+  clearRelaySession,
+  getRelaySession,
+  setRelaySession,
+} from "../storage/session";
 import { setRelayThemeMode, type RelayThemeMode } from "../storage/theme";
 import { relayFetch } from "../utils/api";
 import { resolveTargetProfile } from "../utils/target-profile";
@@ -61,6 +69,11 @@ interface RemoteSettingsPayload {
     defaultTargetProfileKey: string;
     showSidepanelOnSupportedSites?: boolean;
   };
+}
+
+interface RemoteSettingsResponsePayload {
+  settings: { settings: RemoteSettingsPayload["settings"] };
+  onboarding?: RelayOnboardingState;
 }
 
 interface ProjectDashboardPayload {
@@ -152,6 +165,7 @@ let sessionDataCache: {
     connected: boolean;
     projects: RelayProjectOption[];
     settings: RemoteSettingsPayload | null;
+    onboarding: RelayOnboardingState;
   };
   fetchedAt: number;
 } | null = null;
@@ -186,6 +200,94 @@ function wait(ms: number) {
 
 function createOAuthNonce() {
   return crypto.randomUUID();
+}
+
+async function requestGoogleIdentityTokens(input: {
+  interactive: boolean;
+  prompt: "none" | "select_account";
+}) {
+  const googleClientId = process.env.PLASMO_PUBLIC_CRX_GOOGLE_CLIENT_ID;
+  if (!googleClientId) {
+    throw new Error("Google sign-in is not configured (missing client ID).");
+  }
+
+  const redirectUrl = chrome.identity.getRedirectURL();
+  const state = createOAuthNonce();
+  const nonce = createOAuthNonce();
+  const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  authUrl.searchParams.set("client_id", googleClientId);
+  authUrl.searchParams.set("redirect_uri", redirectUrl);
+  authUrl.searchParams.set("response_type", "token id_token");
+  authUrl.searchParams.set("scope", "openid email profile");
+  authUrl.searchParams.set("prompt", input.prompt);
+  authUrl.searchParams.set("nonce", nonce);
+  authUrl.searchParams.set("state", state);
+
+  const callbackUrl = await chrome.identity.launchWebAuthFlow({
+    url: authUrl.toString(),
+    interactive: input.interactive,
+  });
+
+  if (!callbackUrl) {
+    throw new Error("Google sign-in was cancelled.");
+  }
+
+  const hashParams = new URLSearchParams(new URL(callbackUrl).hash.slice(1));
+  const callbackState = hashParams.get("state");
+  if (callbackState !== state) {
+    throw new Error("Google sign-in returned an invalid state.");
+  }
+
+  const accessToken = hashParams.get("access_token");
+  const idToken = hashParams.get("id_token");
+  if (!accessToken || !idToken) {
+    throw new Error("Google sign-in did not return the required tokens.");
+  }
+
+  return {
+    accessToken,
+    idToken,
+  };
+}
+
+function createPendingOnboardingState(): RelayOnboardingState {
+  return {
+    status: "pending",
+    completedProjectId: null,
+    completedVia: null,
+    completedAt: null,
+  };
+}
+
+function isAuthFailureMessage(message: string) {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("authentication is required") ||
+    normalized.includes("account not found") ||
+    normalized.includes("user not found") ||
+    normalized.includes("deleted account") ||
+    normalized.includes("invalid session")
+  );
+}
+
+async function resetStoredSession(reason: string) {
+  const session = await getRelaySession();
+  sessionDataCache = null;
+  await clearRelaySession();
+  await setRelaySession({
+    apiBase:
+      session.apiBase ||
+      process.env.PLASMO_PUBLIC_RELAY_API_BASE ||
+      "http://localhost:3000",
+    connected: false,
+    token: "",
+    projectId: "",
+    assumedProjectId: "",
+    assumedProjectName: "",
+    projectOptions: [],
+    lastStatus: reason,
+    onboarding: createPendingOnboardingState(),
+  });
 }
 
 async function retryRemote<T>(
@@ -591,6 +693,7 @@ async function loadSessionData() {
       connected: false,
       projects: [] as RelayProjectOption[],
       settings: null as RemoteSettingsPayload | null,
+      onboarding: createPendingOnboardingState(),
     };
   }
 
@@ -608,15 +711,47 @@ async function loadSessionData() {
     );
 
     if (!projectsResponse.ok) {
-      throw new Error(
-        await readErrorResponse(projectsResponse, "Failed to load projects."),
+      const message = await readErrorResponse(
+        projectsResponse,
+        "Failed to load projects.",
       );
+      if (
+        projectsResponse.status === 401 ||
+        projectsResponse.status === 403 ||
+        isAuthFailureMessage(message)
+      ) {
+        await resetStoredSession(message);
+        return {
+          connected: false,
+          projects: [] as RelayProjectOption[],
+          settings: null as RemoteSettingsPayload | null,
+          onboarding: createPendingOnboardingState(),
+        };
+      }
+
+      throw new Error(message);
     }
 
     if (!settingsResponse.ok) {
-      throw new Error(
-        await readErrorResponse(settingsResponse, "Failed to load settings."),
+      const message = await readErrorResponse(
+        settingsResponse,
+        "Failed to load settings.",
       );
+      if (
+        settingsResponse.status === 401 ||
+        settingsResponse.status === 403 ||
+        isAuthFailureMessage(message)
+      ) {
+        await resetStoredSession(message);
+        return {
+          connected: false,
+          projects: [] as RelayProjectOption[],
+          settings: null as RemoteSettingsPayload | null,
+          onboarding: createPendingOnboardingState(),
+        };
+      }
+
+      throw new Error(message);
     }
 
     const projectsPayload = (await projectsResponse.json()) as {
@@ -633,9 +768,9 @@ async function loadSessionData() {
         } | null;
       }>;
     };
-    const settingsPayload = (await settingsResponse.json()) as {
-      settings: { settings: RemoteSettingsPayload["settings"] };
-    };
+    const settingsPayload =
+      (await settingsResponse.json()) as RemoteSettingsResponsePayload;
+    const onboarding = settingsPayload.onboarding ?? createPendingOnboardingState();
 
     const projects = projectsPayload.projects.map((project) => ({
       id: project.id,
@@ -656,10 +791,15 @@ async function loadSessionData() {
       });
     }
     const nextProjectId =
-      session.projectId &&
-      projects.some((project) => project.id === session.projectId)
-        ? session.projectId
-        : (projects[0]?.id ?? "");
+      onboarding.status === "completed"
+        ? session.projectId &&
+          projects.some((project) => project.id === session.projectId)
+          ? session.projectId
+          : onboarding.completedProjectId &&
+              projects.some((project) => project.id === onboarding.completedProjectId)
+            ? onboarding.completedProjectId
+            : (projects[0]?.id ?? "")
+        : "";
 
     await setRelaySession({
       connected: true,
@@ -669,12 +809,14 @@ async function loadSessionData() {
       targetProfileKey:
         session.targetMode === "manual" ? session.targetProfileKey : "",
       projectOptions: projects,
+      onboarding,
     });
 
     const data = {
       connected: true,
       projects,
       settings: settingsPayload.settings,
+      onboarding,
     };
 
     sessionDataCache = {
@@ -782,15 +924,21 @@ async function resolveActiveProject(
       ? remote.projects.find((project) => project.id === preferredProjectId) ?? null
       : null;
   const fallbackProject =
-    remote.projects.find((project) => project.id === session.projectId) ??
-    remote.projects[0] ??
-    null;
-  const activeProject = preferredProject ?? bound?.project ?? fallbackProject;
+    remote.onboarding.status === "completed"
+      ? remote.projects.find((project) => project.id === session.projectId) ??
+        remote.projects[0] ??
+        null
+      : null;
+  const activeProject =
+    remote.onboarding.status === "completed"
+      ? preferredProject ?? bound?.project ?? fallbackProject
+      : null;
 
   return {
     connected: remote.connected,
     projects: remote.projects,
     settings: remote.settings,
+    onboarding: remote.onboarding,
     activeProject,
     boundProject: bound
       ? {
@@ -879,16 +1027,21 @@ async function buildActiveProjectState(
   }
 
   const associationProject = getRetargetableAssociationProject(state);
+  const onboarding = session.onboarding ?? createPendingOnboardingState();
   const effectiveProjectId =
-    associationProject?.projectId ??
-    state.projectId ??
-    (session.assumedProjectId || null);
+    onboarding.status === "completed"
+      ? associationProject?.projectId ??
+        state.projectId ??
+        (session.assumedProjectId || null)
+      : null;
   const effectiveProjectName =
-    associationProject?.projectName ??
-    state.projectName ??
-    session.assumedProjectName ??
-    session.projectOptions.find((project) => project.id === effectiveProjectId)?.name ??
-    null;
+    onboarding.status === "completed"
+      ? associationProject?.projectName ??
+        state.projectName ??
+        session.assumedProjectName ??
+        session.projectOptions.find((project) => project.id === effectiveProjectId)?.name ??
+        null
+      : null;
 
   return deriveRelayActiveProjectState({
     connected: session.connected && Boolean(session.token),
@@ -908,6 +1061,7 @@ async function buildActiveProjectState(
     contextPreview: state.contextPreview,
     chatAssociation: state.chatAssociation,
     routingReview: state.routingReview,
+    onboarding,
   });
 }
 
@@ -998,7 +1152,7 @@ async function syncTabRemoteState(
       getRetargetableAssociationProject(state)?.projectId ??
       findApprovedAssociationMatch(state.page, approvedAssociations)?.projectId ??
       null;
-    const { connected, projects, activeProject, settings, boundProject } =
+    const { connected, projects, activeProject, settings, boundProject, onboarding } =
       await resolveActiveProject(tabId, state.page, preferredProjectId);
     const dashboard = activeProject
       ? await fetchProjectDashboard(activeProject.id)
@@ -1041,11 +1195,13 @@ async function syncTabRemoteState(
 
     await setRelaySession({
       connected,
+      projectId: onboarding.status === "completed" ? activeProject?.id ?? "" : "",
       assumedProjectId: activeProject?.id ?? "",
       assumedProjectName: activeProject?.name ?? "",
       stateStatus: nextStateStatus,
       trust,
       projectOptions: projects,
+      onboarding,
     });
   } catch (cause) {
     state.lastError =
@@ -2000,11 +2156,71 @@ chrome.runtime.onMessage.addListener(
           return;
         }
 
-        if (message.type === "RELAY_OPEN_CONNECT") {
-          const session = await getRelaySession();
-          const url = `${session.apiBase}/extension/connect?extensionId=${chrome.runtime.id}&deviceName=${encodeURIComponent(message.payload.deviceName)}`;
-          await chrome.tabs.create({ url });
-          sendResponse({ ok: true });
+        if (message.type === "RELAY_OPEN_DASHBOARD") {
+          try {
+            const flowId = message.payload?.flowId ?? createFlowId("ext-dashboard");
+            const session = await getRelaySession();
+            if (!session.token) {
+              sendResponse({ ok: false, reason: "Sign in to Relay first." });
+              return;
+            }
+
+            let googleTokens;
+            try {
+              googleTokens = await requestGoogleIdentityTokens({
+                interactive: false,
+                prompt: "none",
+              });
+            } catch {
+              googleTokens = await requestGoogleIdentityTokens({
+                interactive: true,
+                prompt: "select_account",
+              });
+            }
+
+            const apiBase =
+              session.apiBase ||
+              process.env.PLASMO_PUBLIC_RELAY_API_BASE ||
+              "http://localhost:3000";
+            const nextUrl = new URL(message.payload?.nextPath ?? "/dashboard", apiBase);
+            nextUrl.searchParams.set("extensionId", chrome.runtime.id);
+            const response = await fetch(`${apiBase}/api/extension/browser-handoff/start`, {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                authorization: `Bearer ${session.token}`,
+                "x-relay-flow-id": flowId,
+              },
+              body: JSON.stringify({
+                googleAccessToken: googleTokens.accessToken,
+                googleIdToken: googleTokens.idToken,
+                nextPath: `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`,
+              }),
+            });
+
+            if (!response.ok) {
+              sendResponse({
+                ok: false,
+                reason: await readErrorResponse(
+                  response,
+                  "Failed to open the Relay dashboard.",
+                ),
+              });
+              return;
+            }
+
+            const payload = (await response.json()) as { url: string };
+            await chrome.tabs.create({ url: payload.url });
+            sendResponse({ ok: true });
+          } catch (cause) {
+            sendResponse({
+              ok: false,
+              reason:
+                cause instanceof Error
+                  ? cause.message
+                  : "Failed to open the Relay dashboard.",
+            });
+          }
           return;
         }
 
@@ -2023,79 +2239,10 @@ chrome.runtime.onMessage.addListener(
                 deviceName: message.payload.deviceName,
               },
             });
-            const googleClientId = process.env.PLASMO_PUBLIC_CRX_GOOGLE_CLIENT_ID;
-            if (!googleClientId) {
-              recordBackgroundTelemetry({
-                level: "error",
-                surface: "extension-background",
-                area: "auth",
-                event: "google_sign_in.client_id_missing",
-                flowId,
-                message: "Google sign-in could not start because the client ID was missing.",
-              });
-              sendResponse({ ok: false, reason: "Google sign-in is not configured (missing client ID)." });
-              return;
-            }
-            const redirectUrl = chrome.identity.getRedirectURL();
-            const state = createOAuthNonce();
-            const nonce = createOAuthNonce();
-            console.log("[Relay BG] redirect URL:", redirectUrl);
-            const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-            authUrl.searchParams.set("client_id", googleClientId);
-            authUrl.searchParams.set("redirect_uri", redirectUrl);
-            authUrl.searchParams.set("response_type", "token id_token");
-            authUrl.searchParams.set("scope", "openid email profile");
-            authUrl.searchParams.set("prompt", "select_account");
-            authUrl.searchParams.set("nonce", nonce);
-            authUrl.searchParams.set("state", state);
-            console.log("[Relay BG] launching web auth flow...");
-            const callbackUrl = await chrome.identity.launchWebAuthFlow({
-              url: authUrl.toString(),
+            const googleTokens = await requestGoogleIdentityTokens({
               interactive: true,
+              prompt: "select_account",
             });
-            console.log("[Relay BG] callbackUrl:", callbackUrl);
-            if (!callbackUrl) {
-              recordBackgroundTelemetry({
-                level: "warn",
-                surface: "extension-background",
-                area: "auth",
-                event: "google_sign_in.cancelled",
-                flowId,
-                message: "Google sign-in was cancelled before a callback URL was returned.",
-              });
-              sendResponse({ ok: false, reason: "Google sign-in was cancelled." });
-              return;
-            }
-            const hashParams = new URLSearchParams(new URL(callbackUrl).hash.slice(1));
-            const callbackState = hashParams.get("state");
-            if (callbackState !== state) {
-              recordBackgroundTelemetry({
-                level: "error",
-                surface: "extension-background",
-                area: "auth",
-                event: "google_sign_in.invalid_state",
-                flowId,
-                message: "Google sign-in returned an invalid state value.",
-              });
-              sendResponse({ ok: false, reason: "Google sign-in returned an invalid state." });
-              return;
-            }
-            const accessToken = hashParams.get("access_token");
-            const idToken = hashParams.get("id_token");
-            console.log("[Relay BG] accessToken present:", !!accessToken);
-            console.log("[Relay BG] idToken present:", !!idToken);
-            if (!accessToken || !idToken) {
-              recordBackgroundTelemetry({
-                level: "error",
-                surface: "extension-background",
-                area: "auth",
-                event: "google_sign_in.tokens_missing",
-                flowId,
-                message: "Google sign-in callback did not include the required OAuth tokens.",
-              });
-              sendResponse({ ok: false, reason: "Google sign-in did not return the required tokens." });
-              return;
-            }
 
             const session = await getRelaySession();
             const apiBase =
@@ -2111,8 +2258,8 @@ chrome.runtime.onMessage.addListener(
                   "x-relay-flow-id": flowId,
                 },
                 body: JSON.stringify({
-                  googleAccessToken: accessToken,
-                  googleIdToken: idToken,
+                  googleAccessToken: googleTokens.accessToken,
+                  googleIdToken: googleTokens.idToken,
                   deviceName: message.payload.deviceName,
                 }),
               },
@@ -2152,6 +2299,8 @@ chrome.runtime.onMessage.addListener(
               token: string;
               apiBase: string;
               projectId: string;
+              projects?: RelayProjectOption[];
+              onboarding?: RelayOnboardingState;
               settings?: { settings?: { autoCapture?: boolean } };
             };
             console.log("[Relay BG] extension auth payload:", {
@@ -2191,6 +2340,8 @@ chrome.runtime.onMessage.addListener(
               assumedProjectId: payload.projectId,
               assumedProjectName: "",
               trust: createEmptyTrustMetadata(),
+              projectOptions: payload.projects ?? [],
+              onboarding: payload.onboarding ?? createPendingOnboardingState(),
             });
             const storedSession = await getRelaySession();
             console.log("[Relay BG] stored session after Google auth:", {
@@ -2257,7 +2408,11 @@ chrome.runtime.onMessage.addListener(
               headers: {
                 "x-relay-flow-id": flowId,
               },
-              body: JSON.stringify({ name: message.payload.name, slug }),
+              body: JSON.stringify({
+                name: message.payload.name,
+                slug,
+                description: message.payload.description ?? null,
+              }),
             });
             console.log("[Relay BG] create project response status:", response.status);
             recordBackgroundTelemetry({
@@ -2296,12 +2451,20 @@ chrome.runtime.onMessage.addListener(
 
             const payload = (await response.json()) as {
               project: { id: string; name: string; slug?: string };
+              onboarding?: RelayOnboardingState;
             };
             sessionDataCache = null;
             await setRelaySession({
               projectId: payload.project.id,
               assumedProjectId: payload.project.id,
               assumedProjectName: payload.project.name,
+              onboarding:
+                payload.onboarding ?? {
+                  status: "completed",
+                  completedProjectId: payload.project.id,
+                  completedVia: "extension",
+                  completedAt: new Date().toISOString(),
+                },
             });
             recordBackgroundTelemetry({
               level: "info",
@@ -2709,58 +2872,10 @@ chrome.runtime.onMessageExternal.addListener(
           sendResponse({ ok: false, reason: "Unsupported external message." });
           return;
         }
-
-        const response = await fetch(
-          `${message.payload.apiBase}/api/extension/connect/complete`,
-          {
-            method: "POST",
-            headers: {
-              "content-type": "application/json",
-            },
-            body: JSON.stringify({
-              grantToken: message.payload.grantToken,
-            }),
-          },
-        );
-
-        if (!response.ok) {
-          sendResponse({
-            ok: false,
-            reason: await readErrorResponse(
-              response,
-              "Extension pairing failed.",
-            ),
-          });
-          return;
-        }
-
-        const payload = (await response.json()) as {
-          token: string;
-          apiBase: string;
-          projectId: string;
-          targetProfileKey: string;
-          settings?: { settings?: { autoCapture?: boolean } };
-        };
-
-        sessionDataCache = null;
-        await setRelaySession({
-          apiBase: payload.apiBase,
-          token: payload.token,
-          projectId: payload.projectId,
-          targetMode: "auto",
-          targetProfileKey: "",
-          resolvedTargetProfileKey: "",
-          connected: true,
-          autoCapture: payload.settings?.settings?.autoCapture ?? true,
-          limitedMode: false,
-          lastStatus: "Extension connected.",
-          stateStatus: null,
-          assumedProjectId: payload.projectId,
-          assumedProjectName: "",
-          trust: createEmptyTrustMetadata(),
+        sendResponse({
+          ok: false,
+          reason: "Extension web pairing has been removed. Use Google sign-in from the extension.",
         });
-
-        sendResponse({ ok: true });
       } catch (cause) {
         sendResponse({
           ok: false,
