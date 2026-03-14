@@ -1381,6 +1381,7 @@ async function buildActiveProjectState(
     state.routingReview?.confidence ?? "none";
   const associationToast =
     state.associationToast.visible &&
+    !state.associationToast.paused &&
     state.associationToast.expiresAt &&
     state.associationToast.expiresAt <= Date.now()
       ? createEmptyAssociationToast()
@@ -1871,6 +1872,7 @@ async function setAssociationToastPaused(
   if (payload.paused) {
     state.pendingAssociation = pausePendingAutoSaveAssociation(pendingAssociation);
     clearPendingAssociationTimer(state);
+    clearAssociationToastTimer(state);
   } else {
     state.pendingAssociation = resumePendingAutoSaveAssociation(pendingAssociation);
     startPendingAssociationTimer(tabId, state);
@@ -1881,6 +1883,18 @@ async function setAssociationToastPaused(
     paused: state.pendingAssociation.paused,
     expiresAt: state.pendingAssociation.expiresAt,
   };
+
+  if (!payload.paused) {
+    scheduleAssociationToastExpiry(tabId, {
+      mode: state.associationToast.mode as "auto_save" | "held_review",
+      projectId: state.associationToast.projectId!,
+      projectName: state.associationToast.projectName!,
+      projectOptions: state.associationToast.projectOptions ?? [],
+      sessionId: state.associationToast.sessionId ?? null,
+      expiresAt: state.pendingAssociation.expiresAt,
+    });
+  }
+
   await broadcastActiveProjectState(tabId);
 
   return {
