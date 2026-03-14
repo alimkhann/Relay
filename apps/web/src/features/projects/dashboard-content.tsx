@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import type { ProjectDashboardDto, ProjectStateStatusDto } from "@relay/shared";
 import {
   RefreshCw,
@@ -72,6 +71,15 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
   const [editingMemory, setEditingMemory] = useState(false);
+  const [editingProject, setEditingProject] = useState(false);
+  const [projectNameDraft, setProjectNameDraft] = useState(project.name);
+  const [projectDescriptionDraft, setProjectDescriptionDraft] = useState(
+    project.description ?? "",
+  );
+  const [projectMeta, setProjectMeta] = useState({
+    name: project.name,
+    description: project.description ?? "",
+  });
   const initialDrafts = deriveProjectMemoryDrafts({
     dashboard,
     fallbackOverview: project.description,
@@ -81,6 +89,13 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
   const [progress, setProgress] = useState(initialDrafts.progress);
 
   useEffect(() => {
+    setProjectMeta({
+      name: project.name,
+      description: project.description ?? "",
+    });
+    setProjectNameDraft(project.name);
+    setProjectDescriptionDraft(project.description ?? "");
+    setEditingProject(false);
     const nextDrafts = deriveProjectMemoryDrafts({
       dashboard,
       fallbackOverview: project.description,
@@ -225,6 +240,64 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
     );
   }
 
+  function saveProjectMetadata() {
+    const nextName = projectNameDraft.trim();
+    const nextDescription = projectDescriptionDraft.trim();
+
+    if (nextName.length < 2) {
+      setStatus("Project name must be at least 2 characters.");
+      return;
+    }
+
+    if (nextDescription.length > 200) {
+      setStatus("Project description must be 200 characters or less.");
+      return;
+    }
+
+    if (
+      nextName === projectMeta.name &&
+      nextDescription === projectMeta.description
+    ) {
+      setEditingProject(false);
+      setStatus("No project changes to save.");
+      return;
+    }
+
+    runMutation(
+      async () => {
+        const res = await relayClientFetch(`/api/projects/${project.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            name: nextName,
+            description: nextDescription || null,
+          }),
+        });
+
+        if (!res.ok) {
+          const payload = (await res.json().catch(() => ({}))) as {
+            error?: string;
+          };
+          throw new Error(payload.error ?? "Project update failed.");
+        }
+
+        const payload = (await res.json()) as {
+          project: { name: string; description: string | null };
+        };
+
+        setProjectMeta({
+          name: payload.project.name,
+          description: payload.project.description ?? "",
+        });
+        setProjectNameDraft(payload.project.name);
+        setProjectDescriptionDraft(payload.project.description ?? "");
+        setEditingProject(false);
+      },
+      "Saving project…",
+      "Project updated.",
+    );
+  }
+
   function toggleSessionArchive(sessionId: string, archived: boolean) {
     runMutation(
       async () => {
@@ -249,10 +322,20 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
       <FadeIn>
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl font-semibold tracking-tight text-[var(--relay-ink)]">
-                {project.name}
-              </h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="group/header flex items-center gap-2 rounded-[var(--relay-radius-sm)] pr-1">
+                <h1 className="text-xl font-semibold tracking-tight text-[var(--relay-ink)]">
+                  {projectMeta.name}
+                </h1>
+                <button
+                  type="button"
+                  onClick={() => setEditingProject((current) => !current)}
+                  className="inline-flex h-7 items-center gap-1 rounded-[var(--relay-radius-sm)] px-2 text-[11px] font-medium text-[var(--relay-muted)] opacity-0 transition hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--relay-accent)] group-hover/header:opacity-100"
+                >
+                  <Pencil className="h-3 w-3" />
+                  Edit
+                </button>
+              </div>
               <span
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium",
@@ -272,11 +355,74 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
                 {statusText}
               </span>
             </div>
-            {dashboard.projectState?.currentObjective && (
+            {projectMeta.description ? (
               <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--relay-muted)] line-clamp-1 max-w-2xl">
-                {dashboard.projectState.currentObjective}
+                {projectMeta.description}
               </p>
-            )}
+            ) : null}
+            {editingProject ? (
+              <div className="mt-3 w-full max-w-2xl rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-3 shadow-[var(--relay-shadow-sm)]">
+                <div className="space-y-3">
+                  <label className="block space-y-1.5">
+                    <span className="text-[11px] font-medium text-[var(--relay-muted)]">
+                      Project name
+                    </span>
+                    <input
+                      className="w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] px-2.5 py-2 text-[13px] text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)]"
+                      value={projectNameDraft}
+                      onChange={(event) =>
+                        setProjectNameDraft(event.target.value)
+                      }
+                      maxLength={80}
+                      disabled={pending}
+                    />
+                  </label>
+                  <label className="block space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-medium text-[var(--relay-muted)]">
+                        Description
+                      </span>
+                      <span className="text-[10px] text-[var(--relay-faint)]">
+                        {projectDescriptionDraft.length}/200
+                      </span>
+                    </div>
+                    <textarea
+                      className="min-h-[84px] w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] px-2.5 py-2 text-[13px] leading-relaxed text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)] resize-none"
+                      value={projectDescriptionDraft}
+                      onChange={(event) =>
+                        setProjectDescriptionDraft(event.target.value)
+                      }
+                      placeholder="Describe the project so Relay can associate the right chats."
+                      maxLength={200}
+                      disabled={pending}
+                    />
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      disabled={pending}
+                      onClick={saveProjectMetadata}
+                      className="h-7 text-[11px]"
+                    >
+                      Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={pending}
+                      onClick={() => {
+                        setProjectNameDraft(projectMeta.name);
+                        setProjectDescriptionDraft(projectMeta.description);
+                        setEditingProject(false);
+                      }}
+                      className="h-7 text-[11px]"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Button
@@ -288,14 +434,6 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
             >
               <RefreshCw className="h-3 w-3" />
               Rebuild
-            </Button>
-            <Button
-              asChild
-              variant="secondary"
-              size="sm"
-              className="h-7 text-xs"
-            >
-              <Link href={`/projects/${project.id}`}>Edit</Link>
             </Button>
           </div>
         </div>

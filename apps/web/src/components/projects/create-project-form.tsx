@@ -85,7 +85,7 @@ export function CreateProjectForm() {
           slug: result.project.slug
         }
       })
-      router.push(`/projects/${result.project.id}`)
+      router.push(`/dashboard?project=${result.project.id}`)
       router.refresh()
     } catch (cause) {
       logClientEvent({
@@ -119,16 +119,20 @@ export function CreateProjectForm() {
 
         <label className="block space-y-2">
           <span className="text-sm font-medium flex items-baseline gap-2">
-            <span className="text-[var(--relay-ink)]">Purpose</span>
+            <span className="text-[var(--relay-ink)]">Description</span>
             <span className="text-xs text-[var(--relay-muted)] font-normal">Optional</span>
           </span>
           <textarea
             className="min-h-24 w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-transparent px-3 py-2 text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)] resize-y"
-            placeholder="A brief explanation of what this is and who it's for."
+            placeholder="A short description of the project so Relay can route related chats correctly."
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             disabled={pending}
+            maxLength={200}
           />
+          <p className="text-xs leading-relaxed text-[var(--relay-muted)]">
+            Recommended for project association and other features. 200 characters max. You can change or add it later.
+          </p>
         </label>
       </div>
 
