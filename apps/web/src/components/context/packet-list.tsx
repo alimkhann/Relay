@@ -32,9 +32,9 @@ export function PacketList({
               </span>
             ) : null}
           </div>
-          <pre className="mt-3 whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-[var(--relay-ink-secondary)]">
+          <p className="mt-3 line-clamp-4 text-[13px] leading-relaxed text-[var(--relay-ink-secondary)]">
             {packet.content}
-          </pre>
+          </p>
         </div>
       ))}
     </div>
