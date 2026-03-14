@@ -23,6 +23,7 @@ import {
   removeApprovedAssociationBySession,
 } from "../storage/routing";
 import { getRelaySession, setRelaySession } from "../storage/session";
+import { setRelayThemeMode, type RelayThemeMode } from "../storage/theme";
 import { relayFetch } from "../utils/api";
 import { resolveTargetProfile } from "../utils/target-profile";
 import {
@@ -921,6 +922,21 @@ async function broadcastActiveProjectState(tabId: number) {
   void chrome.tabs.sendMessage(tabId, message).catch(() => undefined);
 }
 
+async function broadcastThemeChange(theme: RelayThemeMode) {
+  const message: RelayMessage = {
+    type: "RELAY_EXTENSION_THEME_CHANGED",
+    payload: { theme },
+  };
+
+  void chrome.runtime.sendMessage(message).catch(() => undefined);
+
+  const tabs = await chrome.tabs.query({});
+  for (const tab of tabs) {
+    if (!tab.id) continue;
+    void chrome.tabs.sendMessage(tab.id, message).catch(() => undefined);
+  }
+}
+
 function scheduleRetry(tabId: number) {
   const state = getOrCreateTabState(tabId);
   if (state.retryTimer) return;
@@ -1183,7 +1199,7 @@ async function dismissCaptureReview(tabId: number) {
     projectId: null,
     projectName: null,
     sessionId: null,
-    reason: "Relay will ignore this chat until you save it manually.",
+    reason: "Relay will ignore this chat until you manually associate it.",
     capturedAt: null,
   };
   await broadcastActiveProjectState(tabId);
@@ -1532,7 +1548,7 @@ async function captureObservedChange(
           projectId: null,
           projectName: null,
           sessionId: null,
-          reason: "Relay will ignore this chat until you save it manually.",
+          reason: "Relay will ignore this chat until you manually associate it.",
           capturedAt: null,
         };
         state.routingReview = {
@@ -2676,6 +2692,19 @@ chrome.runtime.onMessageExternal.addListener(
   ) => {
     void (async () => {
       try {
+        if (message?.type === "RELAY_SYNC_THEME") {
+          const theme = message?.payload?.theme;
+          if (theme !== "light" && theme !== "dark" && theme !== "system") {
+            sendResponse({ ok: false, reason: "Unsupported theme mode." });
+            return;
+          }
+
+          await setRelayThemeMode(theme);
+          await broadcastThemeChange(theme);
+          sendResponse({ ok: true });
+          return;
+        }
+
         if (message?.type !== "RELAY_CONNECT_GRANT") {
           sendResponse({ ok: false, reason: "Unsupported external message." });
           return;

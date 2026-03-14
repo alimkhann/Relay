@@ -1,6 +1,7 @@
 (function () {
   const PAGE_STABLE_MS = 1800;
   const FRESH_CHAT_STABILIZE_MS = 800;
+  const RELAY_THEME_STORAGE_KEY = "relay.themeMode";
 
   const platformUiConfigs = {
     chatgpt: {
@@ -47,7 +48,49 @@
       removeTimer: null,
       countdownTimer: null,
     },
+    themeMode: "system",
+    resolvedTheme: window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light",
   };
+
+  function resolveRelayTheme(mode) {
+    if (mode === "system") {
+      return window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light";
+    }
+
+    return mode === "light" ? "light" : "dark";
+  }
+
+  function applyRelayTheme(mode) {
+    relayChipState.themeMode = mode;
+    relayChipState.resolvedTheme = resolveRelayTheme(mode);
+    const chipRoot = document.getElementById("relay-inline-chip");
+    if (chipRoot) {
+      chipRoot.dataset.theme = relayChipState.resolvedTheme;
+    }
+
+    const toastRoot = document.getElementById("relay-association-toast");
+    if (toastRoot) {
+      toastRoot.dataset.theme = relayChipState.resolvedTheme;
+    }
+  }
+
+  async function initializeRelayTheme() {
+    try {
+      const values = await chrome.storage.local.get(RELAY_THEME_STORAGE_KEY);
+      const mode = values[RELAY_THEME_STORAGE_KEY];
+      applyRelayTheme(
+        mode === "light" || mode === "dark" || mode === "system"
+          ? mode
+          : "system",
+      );
+    } catch (_error) {
+      applyRelayTheme("system");
+    }
+  }
 
   function escapeHtml(value) {
     return String(value)
@@ -343,19 +386,46 @@
     style.id = "relay-inline-chip-styles";
     style.textContent = `
       .relay-inline-chip {
+        --relay-bg: #1a1a1c;
+        --relay-surface: #202022;
+        --relay-ink: #e4e4e7;
+        --relay-ink-secondary: #b4b4bb;
+        --relay-muted: #71717a;
+        --relay-faint: #52525b;
+        --relay-line: rgba(255, 255, 255, 0.07);
+        --relay-accent: #e4e4e7;
+        --relay-accent-text: #09090b;
+        --relay-hover: rgba(255, 255, 255, 0.08);
+        --relay-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+        --relay-tooltip-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
         min-width: 280px;
         max-width: min(600px, calc(100vw - 32px));
-        border: 1px solid rgba(255, 255, 255, 0.07);
+        border: 1px solid var(--relay-line);
         border-radius: 8px;
-        background: #1a1a1c;
-        color: #e4e4e7;
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+        background: var(--relay-bg);
+        color: var(--relay-ink);
+        box-shadow: var(--relay-shadow);
         font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
         overflow: hidden;
         z-index: 2147483000;
         opacity: 0;
         transform: translateY(6px);
         transition: opacity 140ms ease-out, transform 140ms ease-out;
+      }
+
+      .relay-inline-chip[data-theme="light"] {
+        --relay-bg: #f4f1e8;
+        --relay-surface: #fffdf7;
+        --relay-ink: #191814;
+        --relay-ink-secondary: #464136;
+        --relay-muted: #7f7768;
+        --relay-faint: #a19887;
+        --relay-line: rgba(25, 24, 20, 0.1);
+        --relay-accent: #191814;
+        --relay-accent-text: #f7f4eb;
+        --relay-hover: rgba(25, 24, 20, 0.06);
+        --relay-shadow: 0 6px 24px rgba(25, 24, 20, 0.16);
+        --relay-tooltip-shadow: 0 10px 26px rgba(25, 24, 20, 0.14);
       }
 
       .relay-inline-chip--visible {
@@ -410,15 +480,15 @@
         border: none;
         border-radius: 6px;
         background: transparent;
-        color: #52525b;
+        color: var(--relay-faint);
         font-size: 14px;
         cursor: pointer;
         transition: background 120ms, color 120ms;
       }
 
       .relay-inline-chip__close:hover {
-        background: rgba(255, 255, 255, 0.08);
-        color: #e4e4e7;
+        background: var(--relay-hover);
+        color: var(--relay-ink);
       }
 
       .relay-inline-chip__statusRow {
@@ -436,18 +506,18 @@
       }
 
       .relay-inline-chip__dot--ready {
-        background: #e4e4e7;
+        background: var(--relay-ink);
       }
 
       .relay-inline-chip__dot--waiting {
-        background: #71717a;
+        background: var(--relay-muted);
       }
 
       .relay-inline-chip__status {
         margin: 0;
         font-size: 12px;
         line-height: 1.5;
-        color: #b4b4bb;
+        color: var(--relay-ink-secondary);
       }
 
       .relay-inline-chip__statusCopy {
@@ -473,10 +543,10 @@
         justify-content: center;
         width: 14px;
         height: 14px;
-        border: 1px solid rgba(255, 255, 255, 0.07);
+        border: 1px solid var(--relay-line);
         border-radius: 999px;
         background: transparent;
-        color: #52525b;
+        color: var(--relay-faint);
         font-size: 9px;
         font-weight: 700;
         cursor: help;
@@ -489,14 +559,14 @@
         width: min(220px, calc(100% - 8px));
         max-width: 220px;
         border-radius: 8px;
-        background: #e4e4e7;
-        color: #09090b;
+        background: var(--relay-ink);
+        color: var(--relay-accent-text);
         padding: 8px 10px;
         font-size: 11px;
         line-height: 1.45;
         white-space: normal;
         overflow-wrap: anywhere;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        box-shadow: var(--relay-tooltip-shadow);
         opacity: 0;
         pointer-events: none;
         transform: translateY(3px);
@@ -511,7 +581,7 @@
 
       .relay-inline-chip__trust {
         font-size: 11px;
-        color: #52525b;
+        color: var(--relay-faint);
         line-height: 1.4;
       }
 
@@ -536,8 +606,8 @@
         min-height: 36px;
         border: none;
         border-radius: 4px;
-        background: #e4e4e7;
-        color: #09090b;
+        background: var(--relay-accent);
+        color: var(--relay-accent-text);
         padding: 0 14px;
         font-size: 13px;
         font-weight: 500;
@@ -559,8 +629,8 @@
       }
 
       .relay-inline-chip__button--success {
-        background: #71717a;
-        color: #09090b;
+        background: var(--relay-muted);
+        color: var(--relay-accent-text);
       }
 
       .relay-inline-chip__shortcut {
@@ -571,10 +641,10 @@
         flex-shrink: 0;
         min-height: 36px;
         border-radius: 6px;
-        border: 1px solid rgba(255, 255, 255, 0.07);
+        border: 1px solid var(--relay-line);
         background: transparent;
         padding: 0 10px;
-        color: #52525b;
+        color: var(--relay-faint);
         font-size: 11px;
         font-weight: 500;
       }
@@ -586,10 +656,10 @@
 
       .relay-inline-chip__select {
         width: 100%;
-        border: 1px solid rgba(255, 255, 255, 0.07);
+        border: 1px solid var(--relay-line);
         border-radius: 8px;
-        background: #202022;
-        color: #e4e4e7;
+        background: var(--relay-surface);
+        color: var(--relay-ink);
         padding: 7px 10px;
         font-size: 12px;
         font-family: inherit;
@@ -602,7 +672,7 @@
 
       .relay-inline-chip__button--loading {
         opacity: 1;
-        background: #e4e4e7;
+        background: var(--relay-accent);
       }
 
       .relay-inline-chip__shimmer {
@@ -615,6 +685,17 @@
       }
 
       .relay-association-toast {
+        --relay-bg: rgba(26, 26, 28, 0.94);
+        --relay-surface: #202022;
+        --relay-ink: #e4e4e7;
+        --relay-ink-secondary: #b4b4bb;
+        --relay-muted: #71717a;
+        --relay-faint: #52525b;
+        --relay-line: rgba(255, 255, 255, 0.07);
+        --relay-accent: #e4e4e7;
+        --relay-accent-text: #09090b;
+        --relay-hover: rgba(255, 255, 255, 0.08);
+        --relay-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
         position: fixed;
         top: 18px;
         right: 18px;
@@ -623,16 +704,30 @@
         min-width: 220px;
         max-width: min(340px, calc(100vw - 36px));
         padding: 12px 14px 12px 14px;
-        border: 1px solid rgba(255, 255, 255, 0.07);
+        border: 1px solid var(--relay-line);
         border-radius: 14px;
-        background: rgba(26, 26, 28, 0.94);
-        color: #e4e4e7;
-        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+        background: var(--relay-bg);
+        color: var(--relay-ink);
+        box-shadow: var(--relay-shadow);
         font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
         z-index: 2147483001;
         opacity: 0;
         transform: translateY(-8px);
         transition: opacity 160ms ease, transform 160ms ease;
+      }
+
+      .relay-association-toast[data-theme="light"] {
+        --relay-bg: rgba(255, 253, 247, 0.97);
+        --relay-surface: #fffdf7;
+        --relay-ink: #191814;
+        --relay-ink-secondary: #464136;
+        --relay-muted: #7f7768;
+        --relay-faint: #a19887;
+        --relay-line: rgba(25, 24, 20, 0.1);
+        --relay-accent: #191814;
+        --relay-accent-text: #f7f4eb;
+        --relay-hover: rgba(25, 24, 20, 0.06);
+        --relay-shadow: 0 14px 32px rgba(25, 24, 20, 0.16);
       }
 
       .relay-association-toast--visible {
@@ -673,30 +768,30 @@
         border: none;
         border-radius: 999px;
         background: transparent;
-        color: #71717a;
+        color: var(--relay-muted);
         font-size: 14px;
         cursor: pointer;
         transition: background 120ms ease, color 120ms ease;
       }
 
       .relay-association-toast__dismiss:hover:not(:disabled) {
-        background: rgba(255, 255, 255, 0.08);
-        color: #e4e4e7;
+        background: var(--relay-hover);
+        color: var(--relay-ink);
       }
 
       .relay-association-toast__meta {
         margin: 0;
         font-size: 11px;
         line-height: 1.45;
-        color: #b4b4bb;
+        color: var(--relay-ink-secondary);
       }
 
       .relay-association-toast__select {
         width: 100%;
-        border: 1px solid rgba(255, 255, 255, 0.07);
+        border: 1px solid var(--relay-line);
         border-radius: 8px;
-        background: #202022;
-        color: #e4e4e7;
+        background: var(--relay-surface);
+        color: var(--relay-ink);
         padding: 7px 10px;
         font-size: 12px;
         font-family: inherit;
@@ -711,10 +806,10 @@
 
       .relay-association-toast__button {
         width: fit-content;
-        border: 1px solid rgba(255, 255, 255, 0.07);
+        border: 1px solid var(--relay-line);
         border-radius: 999px;
         background: transparent;
-        color: #e4e4e7;
+        color: var(--relay-ink);
         padding: 4px 10px;
         font-size: 11px;
         font-weight: 600;
@@ -733,8 +828,8 @@
       }
 
       .relay-association-toast__button--primary {
-        background: #e4e4e7;
-        color: #09090b;
+        background: var(--relay-accent);
+        color: var(--relay-accent-text);
       }
 
       .relay-association-toast__button--loading {
@@ -742,13 +837,13 @@
       }
 
       .relay-association-toast__button--subtle {
-        color: #b4b4bb;
+        color: var(--relay-ink-secondary);
       }
 
       .relay-association-toast__countdown {
         margin-left: auto;
         font-size: 11px;
-        color: #71717a;
+        color: var(--relay-muted);
       }
     `;
 
@@ -767,6 +862,8 @@
         root.classList.add("relay-inline-chip--visible");
       });
     }
+
+    root.dataset.theme = relayChipState.resolvedTheme;
 
     return root;
   }
@@ -1233,6 +1330,7 @@
       root.className = "relay-association-toast";
       document.body.appendChild(root);
     }
+    root.dataset.theme = relayChipState.resolvedTheme;
     delete root.dataset.pendingAction;
 
     const title =
@@ -1526,6 +1624,11 @@
       return false;
     }
 
+    if (message.type === "RELAY_EXTENSION_THEME_CHANGED") {
+      applyRelayTheme(message.payload?.theme || "system");
+      return false;
+    }
+
     if (message.type === "RELAY_PAGE_STATE") {
       const pageState =
         relayChipState.pageState ?? computePageState(getSiteConfig());
@@ -1755,5 +1858,14 @@
     });
   });
 
+  window
+    .matchMedia("(prefers-color-scheme: dark)")
+    .addEventListener("change", () => {
+      if (relayChipState.themeMode === "system") {
+        applyRelayTheme("system");
+      }
+    });
+
+  void initializeRelayTheme();
   scheduleObservation();
 })();

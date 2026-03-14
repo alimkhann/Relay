@@ -9,6 +9,12 @@ import {
   type ReactNode,
 } from "react";
 
+import {
+  rememberExtensionIdFromLocation,
+  syncThemeModeToExtension,
+  type RelayThemeMode,
+} from "@/lib/extension-theme-bridge";
+
 type Theme = "light" | "dark" | "system";
 
 interface ThemeContextValue {
@@ -45,6 +51,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [resolved, setResolved] = useState<"light" | "dark">("light");
 
   useEffect(() => {
+    rememberExtensionIdFromLocation();
     const stored = localStorage.getItem("relay-theme") as Theme | null;
     const initial =
       stored && ["light", "dark", "system"].includes(stored)
@@ -54,6 +61,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const res = initial === "system" ? getSystemPreference() : initial;
     setResolved(res);
     applyThemeClass(res);
+    void syncThemeModeToExtension(initial as RelayThemeMode);
   }, []);
 
   useEffect(() => {
@@ -75,6 +83,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const res = next === "system" ? getSystemPreference() : next;
     setResolved(res);
     applyThemeClass(res);
+    void syncThemeModeToExtension(next);
   }, []);
 
   return (

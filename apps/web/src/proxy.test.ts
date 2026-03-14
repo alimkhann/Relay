@@ -15,10 +15,6 @@ vi.mock("@/lib/auth/server", () => ({
   getAuthServer: getAuthServerMock
 }))
 
-vi.mock("@/server/policies/viewer", () => ({
-  buildSignInHref: () => "/sign-in?next=%2Fdashboard&intent=sign-up"
-}))
-
 import proxy from "./proxy"
 
 describe("proxy", () => {
@@ -28,25 +24,25 @@ describe("proxy", () => {
     getAuthServerMock.mockClear()
   })
 
-  it("routes get-started through signup intent login", async () => {
+  it("keeps standard sign-in for protected app routes", async () => {
     const request = {
       nextUrl: {
-        pathname: "/get-started"
+        pathname: "/dashboard"
       }
     } as any
 
     await proxy(request)
 
     expect(middlewareFactory).toHaveBeenCalledWith({
-      loginUrl: "/sign-in?next=%2Fdashboard&intent=sign-up"
+      loginUrl: "/sign-in"
     })
     expect(middlewareFn).toHaveBeenCalledWith(request)
   })
 
-  it("keeps standard sign-in for protected app routes", async () => {
+  it("does not special-case get-started in middleware anymore", async () => {
     const request = {
       nextUrl: {
-        pathname: "/dashboard"
+        pathname: "/settings"
       }
     } as any
 

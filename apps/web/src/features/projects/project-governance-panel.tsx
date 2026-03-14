@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import type { MemoryItemType, ProjectDashboardDto } from "@relay/shared"
 import { Pencil, RotateCcw, Trash2 } from "lucide-react"
@@ -10,6 +10,10 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { createClientFlowId } from "@/lib/telemetry/client"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
+import {
+  buildProjectMemoryOverridePatch,
+  deriveProjectMemoryDrafts,
+} from "@/features/projects/project-memory-state"
 
 type ContextSection = "decision" | "constraint" | "task"
 
@@ -81,9 +85,13 @@ export function ProjectGovernancePanel({
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [status, setStatus] = useState("Edit the effective state Relay carries forward, not just the raw digest.")
-  const [overview, setOverview] = useState(dashboard.stateOverrides?.projectOverviewOverride ?? dashboard.projectState?.projectOverview ?? "")
-  const [objective, setObjective] = useState(dashboard.stateOverrides?.currentObjectiveOverride ?? dashboard.projectState?.currentObjective ?? "")
-  const [progress, setProgress] = useState(dashboard.stateOverrides?.recentProgressOverride ?? dashboard.projectState?.recentProgress ?? "")
+  const initialDrafts = deriveProjectMemoryDrafts({
+    dashboard,
+    fallbackOverview: dashboard.project.description,
+  })
+  const [overview, setOverview] = useState(initialDrafts.overview)
+  const [objective, setObjective] = useState(initialDrafts.objective)
+  const [progress, setProgress] = useState(initialDrafts.progress)
   const [drafts, setDrafts] = useState<Record<ContextSection, string>>({
     decision: "",
     constraint: "",
@@ -91,6 +99,16 @@ export function ProjectGovernancePanel({
   })
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editingText, setEditingText] = useState("")
+
+  useEffect(() => {
+    const nextDrafts = deriveProjectMemoryDrafts({
+      dashboard,
+      fallbackOverview: dashboard.project.description,
+    })
+    setOverview(nextDrafts.overview)
+    setObjective(nextDrafts.objective)
+    setProgress(nextDrafts.progress)
+  }, [projectId, dashboard])
 
   const sections: ContextSection[] = ["decision", "task", "constraint"]
 
@@ -138,6 +156,20 @@ export function ProjectGovernancePanel({
   }
 
   function saveStateOverrides() {
+    const payload = buildProjectMemoryOverridePatch(
+      {
+        overview,
+        objective,
+        progress,
+      },
+      initialDrafts,
+    )
+
+    if (!payload) {
+      setStatus("No state changes to save.")
+      return
+    }
+
     runMutation(
       async () => {
         const response = await relayClientFetch(`/api/projects/${projectId}/state`, {
@@ -145,11 +177,7 @@ export function ProjectGovernancePanel({
           headers: {
             "content-type": "application/json"
           },
-          body: JSON.stringify({
-            projectOverviewOverride: overview.trim() || null,
-            currentObjectiveOverride: objective.trim() || null,
-            recentProgressOverride: progress.trim() || null
-          })
+          body: JSON.stringify(payload)
         })
 
         if (!response.ok) {

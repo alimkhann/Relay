@@ -11,6 +11,13 @@ import {
   type RelaySessionState,
 } from "../storage/session";
 import {
+  getRelayThemeMode,
+  resolveRelayThemeMode,
+  type RelayResolvedTheme,
+  type RelayThemeMode,
+} from "../storage/theme";
+import { deriveAssociationCardPresentation } from "./control-panel-state";
+import {
   createExtensionFlowId,
   logExtensionEvent,
 } from "../utils/telemetry";
@@ -147,15 +154,39 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   });
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
+  const [themeMode, setThemeMode] = useState<RelayThemeMode>("system");
+  const [resolvedTheme, setResolvedTheme] =
+    useState<RelayResolvedTheme>("dark");
   const activeStateRequestInFlight = useRef(false);
+
+  function applyResolvedTheme(nextResolvedTheme: RelayResolvedTheme) {
+    document.documentElement.dataset.relayTheme = nextResolvedTheme;
+    document.body.dataset.relayTheme = nextResolvedTheme;
+    setResolvedTheme(nextResolvedTheme);
+  }
 
   useEffect(() => {
     void (async () => {
       setDeviceName(defaultDeviceName());
+      const nextThemeMode = await getRelayThemeMode();
+      setThemeMode(nextThemeMode);
+      applyResolvedTheme(resolveRelayThemeMode(nextThemeMode));
       await refreshLocalSession();
       await refreshActiveProjectState();
     })();
   }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = () => {
+      if (themeMode === "system") {
+        applyResolvedTheme(resolveRelayThemeMode("system"));
+      }
+    };
+
+    media.addEventListener("change", handleChange);
+    return () => media.removeEventListener("change", handleChange);
+  }, [themeMode]);
 
   useEffect(() => {
     const handleTabActivated = () => {
@@ -183,6 +214,27 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
   useEffect(() => {
     const handleRuntimeMessage = (message: unknown) => {
+      if (
+        message &&
+        typeof message === "object" &&
+        "type" in message &&
+        message.type === "RELAY_EXTENSION_THEME_CHANGED" &&
+        "payload" in message &&
+        message.payload &&
+        typeof message.payload === "object" &&
+        "theme" in message.payload
+      ) {
+        const nextTheme =
+          message.payload.theme === "light" ||
+          message.payload.theme === "dark" ||
+          message.payload.theme === "system"
+            ? message.payload.theme
+            : "system";
+        setThemeMode(nextTheme);
+        applyResolvedTheme(resolveRelayThemeMode(nextTheme));
+        return;
+      }
+
       const payload =
         message &&
         typeof message === "object" &&
@@ -643,6 +695,54 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
   }
 
+  async function associateIgnoredChat() {
+    const tab = await getActiveTab();
+    if (!tab?.id || !activeState.page.supported) {
+      setStatus("Associate chat works only on a supported AI tab.");
+      return;
+    }
+
+    if (!activeState.projectId) {
+      setStatus("Choose a project first.");
+      return;
+    }
+
+    setBusy(true);
+    setStatus("Associating this chat…");
+
+    try {
+      const result = (await chrome.runtime.sendMessage({
+        type: "RELAY_CAPTURE_VISIBLE",
+        payload: {
+          projectId: activeState.projectId,
+          tabId: tab.id,
+        },
+      })) as {
+        ok?: boolean;
+        turns?: number;
+        reason?: string;
+        digestQueued?: boolean;
+      };
+
+      setStatus(
+        result?.ok
+          ? `Associated this chat with the selected project.${result?.digestQueued ? " Relay is updating your project brief." : ""}`
+          : (result?.reason ?? "Associate chat failed."),
+      );
+
+      if (result?.ok) {
+        await refreshLocalSession();
+        await refreshActiveProjectState();
+      }
+    } catch (cause) {
+      setStatus(
+        cause instanceof Error ? cause.message : "Associate chat failed.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleProjectChange(nextProjectId: string) {
     if (!nextProjectId) return;
 
@@ -1015,12 +1115,18 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     session?.projectId ??
     session?.assumedProjectId ??
     "";
-  const dashboardHref =
-    session?.apiBase && selectedProjectId
-      ? `${session.apiBase}/dashboard?project=${encodeURIComponent(selectedProjectId)}`
-      : session?.apiBase
-        ? `${session.apiBase}/dashboard`
-        : "#";
+  const dashboardHref = (() => {
+    if (!session?.apiBase) {
+      return "#";
+    }
+
+    const url = new URL("/dashboard", session.apiBase);
+    if (selectedProjectId) {
+      url.searchParams.set("project", selectedProjectId);
+    }
+    url.searchParams.set("extensionId", chrome.runtime.id);
+    return url.toString();
+  })();
   const contextSections: ContextSection[] = [
     "decisions",
     "tasks",
@@ -1031,27 +1137,32 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     (!activeState.canInsert ||
       activeState.remoteStatus === "stale" ||
       activeState.remoteStatus === "unavailable");
+  const associationPresentation =
+    activeState.chatAssociation.status !== "none"
+      ? deriveAssociationCardPresentation(activeState.chatAssociation)
+      : null;
 
   return (
     <div
       className={`${styles.shell} ${compact ? styles.compact : styles.expanded}`}
+      data-theme={resolvedTheme}
     >
       {/* ─── Header ─── */}
       <header className={styles.header}>
         <div className={styles.headerBrand}>
-          <img
-            className={styles.logoMark}
-            src={relayIconUrl}
-            alt="Relay"
-          />
           <a
-            className={styles.inlineLink}
+            className={styles.logoLink}
             href={dashboardHref}
             target="_blank"
             rel="noreferrer"
-            style={{ fontSize: 11 }}
+            aria-label="Open dashboard"
+            title="Open dashboard"
           >
-            Dashboard
+            <img
+              className={styles.logoMark}
+              src={relayIconUrl}
+              alt="Relay"
+            />
           </a>
         </div>
         {activeState.page.supported ? (
@@ -1284,25 +1395,12 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               <div className={styles.associationHeader}>
                 <div>
                   <h2 className={styles.sectionTitle}>Chat association</h2>
-                  <p className={styles.copy}>
-                    {activeState.chatAssociation.status === "pending"
-                      ? `Relay is ready to save this chat to ${activeState.chatAssociation.projectName ?? "the selected project"} unless you cancel the toast.`
-                      : activeState.chatAssociation.status === "held"
-                      ? activeState.chatAssociation.reason?.includes(
-                          "seeding its first chat context",
-                        )
-                        ? `Relay is treating this as the first chat for ${activeState.chatAssociation.projectName ?? "this project"} and is waiting for your approval.`
-                        : `Relay thinks this chat belongs to ${activeState.chatAssociation.projectName ?? "this project"}, but it is waiting for your approval.`
-                      : activeState.chatAssociation.status === "saved"
-                        ? `This chat is currently associated with ${activeState.chatAssociation.projectName ?? "the selected project"}.`
-                        : activeState.chatAssociation.status === "archived"
-                          ? "This chat was detached from the project. You can restore it if Relay should use it again."
-                          : activeState.chatAssociation.reason ?? "Relay is leaving this chat out of automatic capture."}
-                  </p>
+                  <p className={styles.copy}>{associationPresentation?.summary}</p>
                 </div>
               </div>
 
-              {activeState.chatAssociation.reason ? (
+              {associationPresentation?.showMeta &&
+              activeState.chatAssociation.reason ? (
                 <p className={styles.metaText}>
                   {activeState.chatAssociation.reason}
                 </p>
@@ -1345,6 +1443,17 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                     onClick={() => void updateChatAssociation(false)}
                   >
                     Restore chat
+                  </button>
+                ) : null}
+                {activeState.chatAssociation.status === "ignored" ? (
+                  <button
+                    className={styles.primaryButton}
+                    disabled={
+                      busy || !activeState.projectId || !activeState.page.supported
+                    }
+                    onClick={() => void associateIgnoredChat()}
+                  >
+                    Associate chat
                   </button>
                 ) : null}
               </div>

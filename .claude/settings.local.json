@@ -10,7 +10,18 @@
       "mcp__plugin_playwright_playwright__browser_take_screenshot",
       "mcp__plugin_playwright_playwright__browser_click",
       "Bash(find /Users/alim/Developer/Projects/Apps/Relay/apps/web/src/app -name \"layout.tsx\" | xargs ls -la)",
-      "Bash(ls -la /Users/alim/Developer/Projects/Apps/Relay/apps/web/src/app/projects/[projectId]/)"
+      "Bash(ls -la /Users/alim/Developer/Projects/Apps/Relay/apps/web/src/app/projects/[projectId]/)",
+      "Bash(ls .env* 2>/dev/null && cat .env.local 2>/dev/null || cat .env 2>/dev/null || echo \"No .env found\")",
+      "Bash(npx playwright:*)",
+      "Bash(curl -s http://localhost:3000/dashboard 2>&1 | head -5)",
+      "Bash(pkill -f \"next dev\" 2>/dev/null; sleep 1; lsof -ti:3000 | xargs kill -9 2>/dev/null; echo \"killed\")",
+      "Bash(curl -s http://localhost:3000/api/health 2>/dev/null; echo \"\"; curl -s http://localhost:3000/ -o /dev/null -w \"home: %{http_code}\\\\n\")",
+      "Bash(ls /Users/alim/Developer/Projects/Apps/Relay/.env* /Users/alim/Developer/Projects/Apps/Relay/apps/web/.env* 2>/dev/null)",
+      "mcp__plugin_playwright_playwright__browser_close",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/dashboard 2>/dev/null || echo \"not running\")",
+      "Bash(pnpm --filter @relay/web add @radix-ui/react-popover)",
+      "Bash(npx vitest:*)",
+      "Bash(cd apps/web && npx eslint src/features/projects/dashboard-content.tsx src/features/projects/governance-section.tsx src/components/layout/account-menu.tsx src/components/layout/app-shell.tsx src/components/settings/settings-preferences.tsx src/app/dashboard/loading.tsx src/features/projects/dashboard-content.test.tsx --ext .ts,.tsx 2>&1)"
     ]
   }
 }

@@ -104,6 +104,10 @@ export interface RelayActiveProjectState {
 
 export type RelayMessage =
   | { type: "RELAY_PAGE_STATE" }
+  | {
+      type: "RELAY_EXTENSION_THEME_CHANGED";
+      payload: { theme: "light" | "dark" | "system" };
+    }
   | { type: "RELAY_PAGE_STATE_UPDATE"; payload: RelayPageState }
   | {
       type: "RELAY_SHOW_INLINE_CHIP";

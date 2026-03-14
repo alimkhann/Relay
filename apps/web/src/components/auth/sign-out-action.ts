@@ -11,5 +11,5 @@ export async function signOutAction() {
     throw new Error(result.error.message ?? "Sign out failed.")
   }
 
-  redirect("/sign-in")
+  redirect("/get-started")
 }

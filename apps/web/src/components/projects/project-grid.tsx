@@ -13,7 +13,7 @@ export function ProjectGrid({ projects }: { projects: ProjectSummaryDto[] }) {
   return (
     <div className="grid gap-3 md:grid-cols-2">
       {projects.map((project) => (
-        <Link key={project.id} href={`/projects/${project.id}`}>
+        <Link key={project.id} href={`/dashboard?project=${project.id}`}>
           <div className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-transparent p-5 transition hover:bg-[var(--relay-soft)]">
             <div className="flex items-start justify-between gap-3">
               <h3 className="text-[15px] font-medium tracking-tight text-[var(--relay-ink)]">

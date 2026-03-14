@@ -4,11 +4,14 @@ import { useState, useTransition } from "react";
 
 import type { UserSettingsRow } from "@relay/shared";
 
+import { deleteAccountAction } from "@/components/auth/delete-account-action";
+import { signOutAction } from "@/components/auth/sign-out-action";
 import { createClientFlowId } from "@/lib/telemetry/client";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
 
 interface SettingsPreferencesProps {
   initialSettings: UserSettingsRow["settings"];
+  hasConnectedExtension: boolean;
 }
 
 const platformOptions = [
@@ -48,10 +51,12 @@ function Toggle({
 
 export function SettingsPreferences({
   initialSettings,
+  hasConnectedExtension,
 }: SettingsPreferencesProps) {
   const [settings, setSettings] = useState(initialSettings);
   const [toast, setToast] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   async function save(nextSettings: typeof settings) {
     const flowId = createClientFlowId("settings");
@@ -85,30 +90,50 @@ export function SettingsPreferences({
   }
 
   return (
-    <div className="space-y-12 max-w-2xl pt-6">
+    <div className="space-y-4 max-w-2xl pt-6">
       {/* ─── Connection ─── */}
-      <section className="border-t border-[var(--relay-line)] pt-8">
-        <h2 className="text-sm font-medium tracking-wide uppercase text-[var(--relay-ink)]">Chrome extension</h2>
-        <p className="mt-2 text-[15px] leading-relaxed text-[var(--relay-muted)]">
-          Open the Relay sidepanel in Chrome and tap{" "}
-          <strong className="text-[var(--relay-ink)] font-semibold">Connect</strong> to pair
-          your browser.
-        </p>
+      <section className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">
+        <div className="px-5 py-4">
+          <h2 className="text-sm font-semibold text-[var(--relay-ink)]">Chrome extension</h2>
+        </div>
+        <div className="border-t border-[var(--relay-line)] px-5 py-4">
+          {hasConnectedExtension ? (
+            <div className="flex items-start gap-3">
+              <span className="mt-1 inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" />
+              <div className="space-y-1">
+                <p className="text-[15px] font-medium text-[var(--relay-ink)]">
+                  Chrome extension connected
+                </p>
+                <p className="text-[13px] leading-relaxed text-[var(--relay-muted)]">
+                  Relay already has an active browser connection for this account.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[15px] leading-relaxed text-[var(--relay-muted)]">
+              Open the Relay sidepanel in Chrome and tap{" "}
+              <strong className="text-[var(--relay-ink)] font-semibold">Connect</strong> to pair
+              your browser.
+            </p>
+          )}
+        </div>
       </section>
 
       {/* ─── Platforms ─── */}
-      <section className="border-t border-[var(--relay-line)] pt-8">
-        <h2 className="text-sm font-medium tracking-wide uppercase text-[var(--relay-ink)]">Platforms</h2>
-        <p className="mt-1 text-[15px] text-[var(--relay-muted)]">
-          Choose which AI chats Relay watches.
-        </p>
-        <div className="mt-6 divide-y divide-[var(--relay-line)] border-y border-[var(--relay-line)]">
+      <section className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">
+        <div className="px-5 py-4">
+          <h2 className="text-sm font-semibold text-[var(--relay-ink)]">Platforms</h2>
+          <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
+            Choose which AI chats Relay watches.
+          </p>
+        </div>
+        <div className="border-t border-[var(--relay-line)] divide-y divide-[var(--relay-line)]">
           {platformOptions.map((platform) => {
             const checked = settings.enabledPlatforms.includes(platform.key);
             return (
               <div
                 key={platform.key}
-                className="flex items-center justify-between py-4"
+                className="flex items-center justify-between px-5 py-3.5"
               >
                 <span className="text-[15px] font-medium text-[var(--relay-ink)]">{platform.label}</span>
                 <Toggle
@@ -133,16 +158,18 @@ export function SettingsPreferences({
       </section>
 
       {/* ─── Behavior ─── */}
-      <section className="border-t border-[var(--relay-line)] pt-8">
-        <h2 className="text-sm font-medium tracking-wide uppercase text-[var(--relay-ink)]">Behavior</h2>
-        <p className="mt-1 text-[15px] text-[var(--relay-muted)]">
-          Fine-tune how Relay runs in the background.
-        </p>
-        <div className="mt-6 divide-y divide-[var(--relay-line)] border-y border-[var(--relay-line)]">
-          <div className="flex items-center justify-between py-4">
+      <section className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">
+        <div className="px-5 py-4">
+          <h2 className="text-sm font-semibold text-[var(--relay-ink)]">Behavior</h2>
+          <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
+            Fine-tune how Relay runs in the background.
+          </p>
+        </div>
+        <div className="border-t border-[var(--relay-line)] divide-y divide-[var(--relay-line)]">
+          <div className="flex items-center justify-between px-5 py-3.5">
             <div>
               <p className="text-[15px] font-medium text-[var(--relay-ink)]">Auto-capture</p>
-              <p className="text-sm text-[var(--relay-muted)] mt-1">
+              <p className="text-sm text-[var(--relay-muted)] mt-0.5">
                 Save chat content automatically.
               </p>
             </div>
@@ -157,10 +184,10 @@ export function SettingsPreferences({
               }
             />
           </div>
-          <div className="flex items-center justify-between gap-4 py-4">
+          <div className="flex items-center justify-between gap-4 px-5 py-3.5">
             <div>
               <p className="text-[15px] font-medium text-[var(--relay-ink)]">Inline chip</p>
-              <p className="text-sm text-[var(--relay-muted)] mt-1">
+              <p className="text-sm text-[var(--relay-muted)] mt-0.5">
                 Show a brief-insert chip on new chats.
               </p>
             </div>
@@ -178,14 +205,77 @@ export function SettingsPreferences({
         </div>
       </section>
 
-      {/* ─── Fallback note ─── */}
-      <section className="border-t border-[var(--relay-line)] pt-8 pb-10">
-        <h2 className="text-sm font-medium tracking-wide uppercase text-[var(--relay-ink)]">Offline fallback</h2>
-        <p className="mt-2 text-[15px] leading-relaxed text-[var(--relay-muted)]">
-          When AI is unavailable, Relay inserts a bounded brief from saved
-          project context.
-        </p>
+      {/* ─── Offline fallback ─── */}
+      <section className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">
+        <div className="px-5 py-4">
+          <h2 className="text-sm font-semibold text-[var(--relay-ink)]">Offline fallback</h2>
+        </div>
+        <div className="border-t border-[var(--relay-line)] px-5 py-4">
+          <p className="text-[15px] leading-relaxed text-[var(--relay-muted)]">
+            When AI is unavailable, Relay inserts a bounded brief from saved
+            project context.
+          </p>
+        </div>
       </section>
+
+      {/* ─── Sign out ─── */}
+      <section className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">
+        <div className="px-5 py-4 flex items-start justify-between gap-6">
+          <div>
+            <h2 className="text-sm font-semibold text-[var(--relay-ink)]">Account</h2>
+            <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
+              Sign out of Relay or permanently delete this account and all of its data.
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-3">
+            <form action={signOutAction}>
+              <button
+                type="submit"
+                className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-danger)]/30 bg-[var(--relay-danger)]/10 px-4 py-2 text-[13px] font-medium text-[var(--relay-danger)] transition hover:bg-[var(--relay-danger)]/20"
+              >
+                Sign out
+              </button>
+            </form>
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-danger)]/40 px-4 py-2 text-[13px] font-medium text-[var(--relay-danger)] transition hover:bg-[var(--relay-danger)]/10"
+            >
+              Delete account
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {confirmDelete ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
+          <div className="w-full max-w-md rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-5 shadow-[var(--relay-shadow-lg)]">
+            <h3 className="text-base font-semibold text-[var(--relay-ink)]">
+              Delete account?
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-[var(--relay-muted)]">
+              This permanently deletes your Relay account, projects, captures, memory, settings, and extension connections. This cannot be undone.
+            </p>
+            <div className="mt-5 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(false)}
+                className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-4 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition hover:bg-[var(--relay-soft)]"
+              >
+                Cancel
+              </button>
+              <form action={deleteAccountAction}>
+                <button
+                  type="submit"
+                  className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-danger)]/30 bg-[var(--relay-danger)] px-4 py-2 text-[13px] font-medium text-white transition hover:opacity-90"
+                >
+                  Delete account
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* ─── Toast ─── */}
       {(toast || pending) && (
