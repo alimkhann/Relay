@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useRef } from "react"
-import { useRouter } from "next/navigation"
 
 import { authClient } from "@/lib/auth/client"
 
@@ -33,17 +32,17 @@ function NeonSignInSessionGate({
   nextPath: string
   allowExistingSession?: boolean
 }) {
-  const router = useRouter()
   const session = authClient.useSession()
   const userId = session.data?.user?.id
+  const isPending = session.isPending
   const hasRedirected = useRef(false)
 
   useEffect(() => {
-    if (allowExistingSession && userId && !hasRedirected.current) {
+    if (!isPending && allowExistingSession && userId && !hasRedirected.current) {
       hasRedirected.current = true
-      router.replace(nextPath)
+      window.location.replace(nextPath)
     }
-  }, [allowExistingSession, nextPath, router, userId])
+  }, [allowExistingSession, isPending, nextPath, userId])
 
   return null
 }
