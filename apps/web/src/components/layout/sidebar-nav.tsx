@@ -72,6 +72,7 @@ export function SidebarNav({
       kind: "activity",
       label: "Activity",
       icon: <Activity className="h-4 w-4" />,
+      requiresProject: true,
     },
   ];
 
