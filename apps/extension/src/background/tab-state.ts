@@ -123,7 +123,7 @@ export function createEmptyActiveProjectState(
     viewState: "unsupported",
     showCue: true,
     status: "unavailable",
-    message: "Open ChatGPT, Claude, Codex, or Perplexity to use Relay.",
+    message: "Open a supported AI chat to use Relay.",
     trustLine: "Built from recent chats and saved project context",
     freshnessText: null,
     shortcutLabel: RELAY_SHORTCUT_LABEL,
@@ -163,8 +163,16 @@ export function looksLikeFreshChatRoute(page: RelayPageState) {
     return pathname.includes("/new")
   }
 
-  if (page.platform === "chatgpt" || page.platform === "codex" || page.platform === "perplexity") {
+  if (page.platform === "chatgpt" || page.platform === "codex" || page.platform === "perplexity" || page.platform === "deepseek") {
     return pathname === "/"
+  }
+
+  if (page.platform === "gemini") {
+    return pathname === "/app" || pathname === "/app/"
+  }
+
+  if (page.platform === "grok") {
+    return pathname === "/" || pathname === "/i/grok"
   }
 
   return false
@@ -212,7 +220,7 @@ export function deriveRelayIssue(input: BuildRelayActiveProjectStateInput): Rela
   if (!input.page.supported) {
     return {
       kind: "unsupported",
-      detail: "Open ChatGPT, Claude, Codex, or Perplexity to use Relay.",
+      detail: "Open a supported AI chat to use Relay.",
       recoverable: false
     }
   }
@@ -294,7 +302,7 @@ export function deriveRelayActiveProjectState(input: BuildRelayActiveProjectStat
   if (!input.connected) {
     message = "Sign in once to keep your project ready."
   } else if (!input.page.supported) {
-    message = "Open ChatGPT, Claude, Codex, or Perplexity to use Relay."
+    message = "Open a supported AI chat to use Relay."
   } else if (viewState === "connected-loading") {
     status = "updating"
     message = "Checking this chat…"
@@ -359,6 +367,25 @@ export function deriveRelayActiveProjectState(input: BuildRelayActiveProjectStat
 export function shouldScheduleAutoCapture(input: AutoCaptureDecisionInput) {
   if (!input.page.supported) return false
   if (input.page.isFreshChat) return false
+  if (!input.page.isStable) return false
+  if (input.page.isStreaming) return false
+  if ((input.page.turns ?? 0) === 0) return false
+  if (!input.page.captureSignature) return false
+  if (input.capturePending) return false
+
+  return input.page.captureSignature !== input.lastCapturedSignature
+}
+
+export interface IncrementalCaptureDecisionInput {
+  page: RelayPageState
+  capturePending: boolean
+  lastCapturedSignature: string | null
+  associationStatus: RelayChatAssociation["status"]
+}
+
+export function shouldScheduleIncrementalCapture(input: IncrementalCaptureDecisionInput) {
+  if (input.associationStatus !== "saved") return false
+  if (!input.page.supported) return false
   if (!input.page.isStable) return false
   if (input.page.isStreaming) return false
   if ((input.page.turns ?? 0) === 0) return false

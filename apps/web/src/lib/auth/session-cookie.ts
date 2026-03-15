@@ -3,6 +3,13 @@ import { cookies, headers } from "next/headers"
 import { readLocalSessionUserFromCookie } from "./local-session"
 import { getAuthProvider } from "./provider"
 
+const AUTH_CACHE_TTL_MS = 10_000
+const authCache = new Map<string, { user: SessionCookieUser; expiresAt: number }>()
+
+export function clearAuthCacheForTests() {
+  authCache.clear()
+}
+
 const NEON_AUTH_COOKIE_PREFIX = "__Secure-neon-auth"
 const SESSION_DATA_COOKIE_NAME = `${NEON_AUTH_COOKIE_PREFIX}.local.session_data`
 const SESSION_TOKEN_COOKIE_NAME = `${NEON_AUTH_COOKIE_PREFIX}.session_token`
@@ -119,18 +126,28 @@ async function fetchSessionUserFromAuthServer(
     requestHeaders.set("Origin", origin)
   }
 
-  const response = await fetch(new URL("get-session", baseUrl), {
-    method: "GET",
-    headers: requestHeaders,
-    cache: "no-store"
-  })
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await fetch(new URL("get-session", baseUrl), {
+        method: "GET",
+        headers: requestHeaders,
+        cache: "no-store"
+      })
 
-  if (!response.ok) {
-    return null
+      if (!response.ok) {
+        if (attempt === 0) continue
+        return null
+      }
+
+      const payload = await response.json().catch(() => null)
+      return extractSessionUser(payload)
+    } catch {
+      if (attempt === 0) continue
+      return null
+    }
   }
 
-  const payload = await response.json().catch(() => null)
-  return extractSessionUser(payload)
+  return null
 }
 
 export async function readSessionUserFromCookie(): Promise<SessionCookieUser | null> {
@@ -145,6 +162,12 @@ export async function readSessionUserFromCookie(): Promise<SessionCookieUser | n
     return null
   }
 
+  // Check in-memory cache first (prevents auth flicker during rapid tab switches)
+  const cached = authCache.get(sessionToken)
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.user
+  }
+
   const secret = process.env.NEON_AUTH_COOKIE_SECRET
 
   if (!secret) {
@@ -154,10 +177,11 @@ export async function readSessionUserFromCookie(): Promise<SessionCookieUser | n
   const sessionDataCookie = cookieStore.get(SESSION_DATA_COOKIE_NAME)?.value
 
   if (sessionDataCookie) {
-    const cachedUser = await verifySessionDataCookie(sessionDataCookie, secret)
+    const verifiedUser = await verifySessionDataCookie(sessionDataCookie, secret)
 
-    if (cachedUser) {
-      return cachedUser
+    if (verifiedUser) {
+      authCache.set(sessionToken, { user: verifiedUser, expiresAt: Date.now() + AUTH_CACHE_TTL_MS })
+      return verifiedUser
     }
   }
 
@@ -167,5 +191,9 @@ export async function readSessionUserFromCookie(): Promise<SessionCookieUser | n
     return null
   }
 
-  return fetchSessionUserFromAuthServer(sessionToken, baseUrl)
+  const user = await fetchSessionUserFromAuthServer(sessionToken, baseUrl)
+  if (user) {
+    authCache.set(sessionToken, { user, expiresAt: Date.now() + AUTH_CACHE_TTL_MS })
+  }
+  return user
 }

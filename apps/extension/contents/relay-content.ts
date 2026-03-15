@@ -7,7 +7,12 @@ export const config: PlasmoCSConfig = {
     "https://perplexity.ai/*",
     "https://www.perplexity.ai/*",
     "https://codex.openai.com/*",
-    "https://claude.ai/*"
+    "https://claude.ai/*",
+    "https://gemini.google.com/*",
+    "https://aistudio.google.com/*",
+    "https://grok.com/*",
+    "https://x.com/i/grok*",
+    "https://chat.deepseek.com/*"
   ],
   run_at: "document_idle"
 }

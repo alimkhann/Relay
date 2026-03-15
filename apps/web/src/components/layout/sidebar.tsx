@@ -116,7 +116,7 @@ export function Sidebar({ projects, currentProjectId, user }: SidebarProps) {
         {projects && projects.length > 0 && (
           <SidebarProjectSwitcher
             projects={projects}
-            currentId={currentProjectId ?? projects[0]!.id}
+            currentId={currentProjectId}
             collapsed={collapsed}
           />
         )}

@@ -22,7 +22,7 @@ vi.mock("next/headers", () => ({
   headers: headersMock
 }))
 
-import { readSessionUserFromCookie } from "./session-cookie"
+import { clearAuthCacheForTests, readSessionUserFromCookie } from "./session-cookie"
 
 const SESSION_DATA_COOKIE_NAME = "__Secure-neon-auth.local.session_data"
 const SESSION_TOKEN_COOKIE_NAME = "__Secure-neon-auth.session_token"
@@ -72,6 +72,7 @@ describe("readSessionUserFromCookie", () => {
     headerState.clear()
     cookiesMock.mockClear()
     headersMock.mockClear()
+    clearAuthCacheForTests()
     vi.stubEnv("NEON_AUTH_COOKIE_SECRET", COOKIE_SECRET)
     vi.stubEnv("NEON_AUTH_BASE_URL", "https://auth.example.com")
     vi.unstubAllGlobals()

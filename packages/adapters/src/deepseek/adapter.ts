@@ -6,29 +6,30 @@ import type {
 
 import { BaseSiteAdapter } from "../base/site-adapter"
 import { collectTurns, findPrompt, injectText } from "../base/dom-utils"
-import { claudePromptSelectors, claudeTurnSelectors } from "./selectors"
+import { deepseekPromptSelectors, deepseekTurnSelectors } from "./selectors"
 
-export class ClaudeAdapter extends BaseSiteAdapter {
+export class DeepseekAdapter extends BaseSiteAdapter {
   canHandle(url: string): boolean {
-    return /claude\.ai/.test(url)
+    return /chat\.deepseek\.com/.test(url)
   }
 
   getPlatform() {
-    return "claude" as const
+    return "deepseek" as const
   }
 
   extractVisibleTurns(doc = document): ParsedTurn[] {
-    return collectTurns(doc, claudeTurnSelectors, (node) => {
-      if (node.getAttribute("data-testid") === "message-human") {
-        return "user"
-      }
-
+    return collectTurns(doc, deepseekTurnSelectors, (node) => {
+      const role = node.getAttribute("data-message-role")
+      if (role === "user") return "user"
+      if (role === "assistant") return "assistant"
+      if (node.classList.contains("chat-message-user")) return "user"
+      if (node.classList.contains("chat-message-assistant")) return "assistant"
       return "assistant"
     }).map(({ contentHash: _contentHash, ...turn }) => turn)
   }
 
   findPromptInput(doc = document) {
-    return findPrompt(doc, claudePromptSelectors)
+    return findPrompt(doc, deepseekPromptSelectors)
   }
 
   async insertTextIntoPrompt(text: string, doc = document) {
@@ -38,12 +39,7 @@ export class ClaudeAdapter extends BaseSiteAdapter {
 
   getPageMetadata(doc = document): PageMetadata {
     const url = new URL(doc.location.href)
-    let routeKind: PageRouteKind = "chat"
-    if (url.pathname.includes("/new")) {
-      routeKind = "fresh"
-    } else if (/^\/project\/[^/]+\/?$/.test(url.pathname)) {
-      routeKind = "project_root"
-    }
+    const routeKind: PageRouteKind = url.pathname === "/" ? "fresh" : "chat"
     return {
       title: doc.title,
       url: url.toString(),

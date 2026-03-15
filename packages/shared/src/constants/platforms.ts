@@ -1,6 +1,6 @@
-export const supportedPlatforms = ["chatgpt", "perplexity", "claude", "codex"] as const
+export const supportedPlatforms = ["chatgpt", "perplexity", "claude", "codex", "gemini", "grok", "deepseek"] as const
 
-export const targetPlatforms = ["chatgpt", "perplexity", "claude_code", "codex"] as const
+export const targetPlatforms = ["chatgpt", "perplexity", "claude_code", "codex", "gemini_exploration", "grok_conversation", "deepseek_reasoning"] as const
 
 export const bootstrapPacketKinds = ["quick_continuity", "fresh_chat_bootstrap"] as const
 

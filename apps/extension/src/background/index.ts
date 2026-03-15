@@ -67,6 +67,7 @@ import {
   looksLikeFreshChatRoute,
   shouldScheduleAutoCapture,
   shouldScheduleAutoCaptureRouting,
+  shouldScheduleIncrementalCapture,
 } from "./tab-state";
 import {
   flushBackgroundTelemetry,
@@ -928,9 +929,8 @@ function restoreApprovedAssociationState(
 ) {
   clearPendingAssociation(state);
   clearAssociationToast(state);
-  state.lastCapturedSignature =
-    state.page.captureSignature ?? state.lastObservedSignature;
-  state.lastCapturedTurns = state.page.turns ?? state.lastObservedTurns;
+  // Don't update lastCapturedSignature here — no actual capture happened.
+  // This allows shouldScheduleAutoCapture to fire and re-capture new content.
   state.lastRoutedSignature = state.page.captureSignature ?? buildAssociationKey(state.page);
   state.projectId = association.projectId;
   state.projectName = association.projectName;
@@ -2119,18 +2119,25 @@ async function captureObservedChange(
         };
         clearPendingAssociation(state);
         clearAssociationToast(state);
-        state.lastCapturedSignature =
-          state.page.captureSignature ?? state.lastObservedSignature;
-        state.lastCapturedTurns = state.page.turns ?? state.lastObservedTurns;
         state.lastRoutedSignature = state.page.captureSignature ?? chatKey;
-        return {
-          ok: true,
-          restored: true,
-          captured: false,
-          projectId,
-          sessionId: state.chatAssociation.sessionId ?? null,
-          reason: "This chat is already associated with the project.",
-        };
+
+        const signatureChanged =
+          state.page.captureSignature &&
+          state.page.captureSignature !== state.lastCapturedSignature;
+
+        if (!signatureChanged) {
+          return {
+            ok: true,
+            restored: true,
+            captured: false,
+            projectId,
+            sessionId: state.chatAssociation.sessionId ?? null,
+            reason: "This chat is already associated with the project.",
+          };
+        }
+
+        // Signature changed — fall through to re-capture with the saved project
+        autoAssociated = true;
       } else if (state.chatAssociation.status === "archived") {
         clearPendingAssociation(state, { clearChatAssociation: false });
         clearAssociationToast(state);
@@ -2460,6 +2467,32 @@ async function scheduleAutoCapture(
         skipAssociationToast: true,
       });
     }, options.immediate ? 0 : 120);
+    return;
+  }
+
+  // Incremental re-capture for saved associations with new content
+  if (
+    shouldScheduleIncrementalCapture({
+      page: state.page,
+      capturePending: state.capturePending,
+      lastCapturedSignature: state.lastCapturedSignature,
+      associationStatus: state.chatAssociation.status,
+    }) &&
+    state.chatAssociation.projectId
+  ) {
+    if (state.captureTimer) {
+      return;
+    }
+
+    state.capturePending = true;
+    void broadcastActiveProjectState(tabId);
+    state.captureTimer = setTimeout(() => {
+      state.captureTimer = null;
+      void captureObservedChange(tabId, state.chatAssociation.projectId ?? undefined, {
+        manualSelection: false,
+        skipAssociationToast: true,
+      });
+    }, options.immediate ? 0 : 500);
     return;
   }
 

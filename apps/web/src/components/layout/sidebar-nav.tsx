@@ -161,9 +161,7 @@ export function SidebarNav({
               startWorkspaceNavigation({
                 href: item.href,
                 cacheKey: item.cacheKey,
-                kind: item.kind === "memory" || item.kind === "brief"
-                  ? "dashboard"
-                  : item.kind,
+                kind: item.kind,
                 projectId:
                   item.kind !== "activity" ? currentProjectId : undefined,
               });

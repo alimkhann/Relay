@@ -6,29 +6,27 @@ import type {
 
 import { BaseSiteAdapter } from "../base/site-adapter"
 import { collectTurns, findPrompt, injectText } from "../base/dom-utils"
-import { claudePromptSelectors, claudeTurnSelectors } from "./selectors"
+import { grokPromptSelectors, grokTurnSelectors } from "./selectors"
 
-export class ClaudeAdapter extends BaseSiteAdapter {
+export class GrokAdapter extends BaseSiteAdapter {
   canHandle(url: string): boolean {
-    return /claude\.ai/.test(url)
+    return /grok\.com|x\.com\/i\/grok/.test(url)
   }
 
   getPlatform() {
-    return "claude" as const
+    return "grok" as const
   }
 
   extractVisibleTurns(doc = document): ParsedTurn[] {
-    return collectTurns(doc, claudeTurnSelectors, (node) => {
-      if (node.getAttribute("data-testid") === "message-human") {
-        return "user"
-      }
-
+    return collectTurns(doc, grokTurnSelectors, (node) => {
+      const role = node.getAttribute("data-message-role") ?? node.getAttribute("data-testid")
+      if (role === "user" || role === "user-message") return "user"
       return "assistant"
     }).map(({ contentHash: _contentHash, ...turn }) => turn)
   }
 
   findPromptInput(doc = document) {
-    return findPrompt(doc, claudePromptSelectors)
+    return findPrompt(doc, grokPromptSelectors)
   }
 
   async insertTextIntoPrompt(text: string, doc = document) {
@@ -38,12 +36,7 @@ export class ClaudeAdapter extends BaseSiteAdapter {
 
   getPageMetadata(doc = document): PageMetadata {
     const url = new URL(doc.location.href)
-    let routeKind: PageRouteKind = "chat"
-    if (url.pathname.includes("/new")) {
-      routeKind = "fresh"
-    } else if (/^\/project\/[^/]+\/?$/.test(url.pathname)) {
-      routeKind = "project_root"
-    }
+    const routeKind: PageRouteKind = url.pathname === "/" || url.pathname === "/i/grok" ? "fresh" : "chat"
     return {
       title: doc.title,
       url: url.toString(),

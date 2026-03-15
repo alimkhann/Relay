@@ -60,7 +60,7 @@ export type WorkspaceSnapshot =
 interface PendingWorkspaceRoute {
   cacheKey: string
   href: string
-  kind: WorkspaceSnapshot["kind"]
+  kind: WorkspaceSnapshot["kind"] | "memory" | "brief"
   projectId?: string | null
 }
 
@@ -232,9 +232,72 @@ function renderWorkspaceSnapshot(snapshot: WorkspaceSnapshot) {
   )
 }
 
-function renderWorkspaceLoading(kind: WorkspaceSnapshot["kind"]) {
-  const title =
-    kind === "dashboard" ? "Overview" : kind === "activity" ? "Activity" : "Settings"
+function renderWorkspaceLoading(kind: PendingWorkspaceRoute["kind"]) {
+  const titleMap: Record<PendingWorkspaceRoute["kind"], string> = {
+    dashboard: "Overview",
+    activity: "Activity",
+    settings: "Settings",
+    memory: "Memory",
+    brief: "Brief",
+  }
+  const title = titleMap[kind] ?? "Overview"
+
+  function renderSkeleton() {
+    if (kind === "dashboard") {
+      return (
+        <div className="animate-pulse space-y-3">
+          <div className="grid grid-cols-3 gap-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="h-16 rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]" />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="h-48 rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]" />
+            <div className="h-48 rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]" />
+          </div>
+        </div>
+      )
+    }
+
+    if (kind === "activity") {
+      return (
+        <div className="animate-pulse space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex items-start gap-3 rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-4">
+              <div className="h-8 w-8 shrink-0 rounded-full bg-[var(--relay-soft)]" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 w-3/4 rounded bg-[var(--relay-soft)]" />
+                <div className="h-3 w-1/2 rounded bg-[var(--relay-soft)]" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )
+    }
+
+    if (kind === "settings") {
+      return (
+        <div className="animate-pulse space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-5 space-y-3">
+              <div className="h-4 w-24 rounded bg-[var(--relay-soft)]" />
+              <div className="h-3 w-48 rounded bg-[var(--relay-soft)]" />
+            </div>
+          ))}
+        </div>
+      )
+    }
+
+    // memory / brief
+    return (
+      <div className="animate-pulse space-y-3">
+        <div className="h-5 w-32 rounded bg-[var(--relay-soft)]" />
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="h-12 rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]" />
+        ))}
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-5">
@@ -244,11 +307,7 @@ function renderWorkspaceLoading(kind: WorkspaceSnapshot["kind"]) {
         </h1>
         <p className="mt-1 text-[13px] text-[var(--relay-muted)]">Loading…</p>
       </div>
-      <div className="space-y-3">
-        <div className="h-24 animate-pulse rounded-[var(--relay-radius)] bg-[var(--relay-soft)]" />
-        <div className="h-24 animate-pulse rounded-[var(--relay-radius)] bg-[var(--relay-soft)]" />
-        <div className="h-24 animate-pulse rounded-[var(--relay-radius)] bg-[var(--relay-soft)]" />
-      </div>
+      {renderSkeleton()}
     </div>
   )
 }

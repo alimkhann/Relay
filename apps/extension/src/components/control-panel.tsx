@@ -92,7 +92,7 @@ const emptyActiveState: RelayActiveProjectState = {
   viewState: "unsupported",
   showCue: true,
   status: "unavailable",
-  message: "Open ChatGPT, Claude, Codex, or Perplexity to use Relay.",
+  message: "Open a supported AI chat to use Relay.",
   trustLine: "Built from recent chats and saved project context",
   freshnessText: null,
   shortcutLabel: "Mod+Shift+I",
@@ -1776,7 +1776,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                           disabled={busy || !drafts[section].trim()}
                           onClick={() => void addContext(section)}
                         >
-                          Add {sectionLabels[section].slice(0, -1)}
+                          Add
                         </button>
                       </div>
                     ) : null}

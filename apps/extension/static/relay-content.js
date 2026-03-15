@@ -25,6 +25,25 @@
         "[data-testid='stop-generating']",
       ],
     },
+    gemini: {
+      streamingSelectors: [
+        "button[aria-label*='Stop']",
+        "[data-testid='stop-button']",
+        "mat-icon[data-mat-icon-name='stop_circle']",
+      ],
+    },
+    grok: {
+      streamingSelectors: [
+        "button[aria-label*='Stop']",
+        "[data-testid='stop-button']",
+      ],
+    },
+    deepseek: {
+      streamingSelectors: [
+        "button[aria-label*='Stop']",
+        ".stop-generating",
+      ],
+    },
   };
 
   const relayChipState = {
@@ -138,6 +157,9 @@
     if (/chatgpt\.com|chat\.openai\.com/.test(url)) return "chatgpt";
     if (/claude\.ai/.test(url)) return "claude";
     if (/perplexity\.ai/.test(url)) return "perplexity";
+    if (/gemini\.google\.com|aistudio\.google\.com/.test(url)) return "gemini";
+    if (/grok\.com|x\.com\/i\/grok/.test(url)) return "grok";
+    if (/chat\.deepseek\.com/.test(url)) return "deepseek";
     return null;
   }
 

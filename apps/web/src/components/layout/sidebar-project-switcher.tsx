@@ -17,7 +17,7 @@ export function SidebarProjectSwitcher({
   collapsed = false,
 }: {
   projects: Project[];
-  currentId: string;
+  currentId?: string;
   collapsed?: boolean;
 }) {
   const router = useRouter();

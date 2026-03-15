@@ -11,7 +11,7 @@ const steps = [
   {
     num: "01",
     title: "Relay saves useful parts of your AI chats automatically",
-    copy: "Work in ChatGPT, Claude, Codex, or Perplexity. Relay quietly captures what matters — decisions, tasks, constraints.",
+    copy: "Work in ChatGPT, Claude, Gemini, Grok, Perplexity, or DeepSeek. Relay quietly captures what matters — decisions, tasks, constraints.",
   },
   {
     num: "02",
@@ -25,7 +25,7 @@ const steps = [
   },
 ];
 
-const platforms = ["ChatGPT", "Claude", "Codex", "Perplexity"];
+const platforms = ["ChatGPT", "Claude", "Gemini", "Grok", "Perplexity", "DeepSeek"];
 
 export default function MarketingPage() {
   return (

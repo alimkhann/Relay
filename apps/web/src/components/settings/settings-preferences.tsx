@@ -19,8 +19,11 @@ interface SettingsPreferencesProps {
 const platformOptions = [
   { key: "chatgpt", label: "ChatGPT" },
   { key: "claude", label: "Claude" },
-  { key: "codex", label: "Codex" },
+  { key: "gemini", label: "Gemini" },
+  { key: "grok", label: "Grok" },
   { key: "perplexity", label: "Perplexity" },
+  { key: "deepseek", label: "DeepSeek" },
+  { key: "codex", label: "Codex" },
 ] as const;
 
 const themeOptions = [
@@ -45,7 +48,7 @@ function Toggle({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${
-        checked ? "bg-[var(--relay-accent)]" : "bg-[var(--relay-line-strong)]"
+        checked ? "bg-emerald-500" : "bg-[var(--relay-line-strong)]"
       } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
     >
       <span
@@ -82,16 +85,18 @@ export function SettingsPreferences({
       body: JSON.stringify(nextSettings),
     });
     if (!response.ok) throw new Error("Save failed");
-    setSettings(nextSettings);
   }
 
   function update(nextSettings: typeof settings, message: string) {
+    const previousSettings = settings;
+    setSettings(nextSettings);
     startTransition(async () => {
       try {
         await save(nextSettings);
         setToast(message);
         setTimeout(() => setToast(null), 2000);
       } catch (error) {
+        setSettings(previousSettings);
         setToast(error instanceof Error ? error.message : "Save failed");
         setTimeout(() => setToast(null), 3000);
       }
