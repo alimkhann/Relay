@@ -16,17 +16,29 @@ function loadEnvFile(filePath) {
     .split("\n")
     .forEach((line) => {
       const m = line.match(/^([^#=]+)=(.*)$/);
-      if (m) process.env[m[1].trim()] = m[2].trim().replace(/^["']|["']$/g, "");
+      if (!m) {
+        return;
+      }
+      const key = m[1].trim();
+      if (process.env[key] !== undefined) {
+        return;
+      }
+      process.env[key] = m[2].trim().replace(/^["']|["']$/g, "");
     });
 }
 
 loadEnvFile(path.resolve(__dirname, "../.env"));
 loadEnvFile(dotenvPath);
 
-const connectionString = process.env.LOCAL_DATABASE_URL || process.env.DATABASE_URL;
+const connectionString =
+  process.env.MIGRATION_DATABASE_URL ||
+  process.env.DATABASE_URL ||
+  process.env.LOCAL_DATABASE_URL;
 
 if (!connectionString) {
-  throw new Error("LOCAL_DATABASE_URL or DATABASE_URL is required.");
+  throw new Error(
+    "MIGRATION_DATABASE_URL, DATABASE_URL, or LOCAL_DATABASE_URL is required."
+  );
 }
 
 const pool = new Pool({
