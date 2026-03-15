@@ -14,7 +14,11 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { startWorkspaceNavigation } from "@/components/layout/workspace-cache";
+import {
+  startWorkspaceNavigation,
+  getWorkspaceCachedSnapshot,
+  revalidateRoute,
+} from "@/components/layout/workspace-cache";
 
 interface CommandAction {
   id: string;
@@ -46,12 +50,20 @@ export function CommandPalette({ projects = [], currentProjectId }: CommandPalet
       action: () => {
         const href = currentProjectId ? `/dashboard?project=${currentProjectId}` : "/dashboard";
         if (currentProjectId) {
-          startWorkspaceNavigation({
+          const route = {
             href,
             cacheKey: `dashboard:${currentProjectId}`,
-            kind: "dashboard",
+            kind: "dashboard" as const,
             projectId: currentProjectId,
-          });
+          };
+          const cached = getWorkspaceCachedSnapshot(route.cacheKey);
+          if (cached) {
+            window.history.pushState(null, "", href);
+            startWorkspaceNavigation(route);
+            void revalidateRoute(route);
+            return;
+          }
+          startWorkspaceNavigation(route);
         }
         router.push(href);
       },
@@ -65,12 +77,20 @@ export function CommandPalette({ projects = [], currentProjectId }: CommandPalet
       action: () => {
         const href = currentProjectId ? `/memory?project=${currentProjectId}` : "/memory";
         if (currentProjectId) {
-          startWorkspaceNavigation({
+          const route = {
             href,
             cacheKey: `memory:${currentProjectId}`,
-            kind: "memory",
+            kind: "memory" as const,
             projectId: currentProjectId,
-          });
+          };
+          const cached = getWorkspaceCachedSnapshot(route.cacheKey);
+          if (cached) {
+            window.history.pushState(null, "", href);
+            startWorkspaceNavigation(route);
+            void revalidateRoute(route);
+            return;
+          }
+          startWorkspaceNavigation(route);
         }
         router.push(href);
       },
@@ -84,12 +104,20 @@ export function CommandPalette({ projects = [], currentProjectId }: CommandPalet
       action: () => {
         const href = currentProjectId ? `/brief?project=${currentProjectId}` : "/brief";
         if (currentProjectId) {
-          startWorkspaceNavigation({
+          const route = {
             href,
             cacheKey: `brief:${currentProjectId}`,
-            kind: "brief",
+            kind: "brief" as const,
             projectId: currentProjectId,
-          });
+          };
+          const cached = getWorkspaceCachedSnapshot(route.cacheKey);
+          if (cached) {
+            window.history.pushState(null, "", href);
+            startWorkspaceNavigation(route);
+            void revalidateRoute(route);
+            return;
+          }
+          startWorkspaceNavigation(route);
         }
         router.push(href);
       },
@@ -101,11 +129,19 @@ export function CommandPalette({ projects = [], currentProjectId }: CommandPalet
       icon: <Activity className="h-4 w-4" />,
       shortcut: "G A",
       action: () => {
-        startWorkspaceNavigation({
+        const route = {
           href: "/activity",
           cacheKey: "activity",
-          kind: "activity",
-        });
+          kind: "activity" as const,
+        };
+        const cached = getWorkspaceCachedSnapshot(route.cacheKey);
+        if (cached) {
+          window.history.pushState(null, "", "/activity");
+          startWorkspaceNavigation(route);
+          void revalidateRoute(route);
+          return;
+        }
+        startWorkspaceNavigation(route);
         router.push("/activity");
       },
       section: "Navigation",
@@ -116,11 +152,19 @@ export function CommandPalette({ projects = [], currentProjectId }: CommandPalet
       icon: <Settings className="h-4 w-4" />,
       shortcut: "G S",
       action: () => {
-        startWorkspaceNavigation({
+        const route = {
           href: "/settings",
           cacheKey: "settings",
-          kind: "settings",
-        });
+          kind: "settings" as const,
+        };
+        const cached = getWorkspaceCachedSnapshot(route.cacheKey);
+        if (cached) {
+          window.history.pushState(null, "", "/settings");
+          startWorkspaceNavigation(route);
+          void revalidateRoute(route);
+          return;
+        }
+        startWorkspaceNavigation(route);
         router.push("/settings");
       },
       section: "Navigation",

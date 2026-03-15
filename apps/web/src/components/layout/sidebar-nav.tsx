@@ -6,7 +6,11 @@ import { usePathname, useRouter } from "next/navigation";
 import { LayoutDashboard, Activity, Brain, FileDown } from "lucide-react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { cn } from "@/lib/cn";
-import { startWorkspaceNavigation } from "@/components/layout/workspace-cache";
+import {
+  startWorkspaceNavigation,
+  getWorkspaceCachedSnapshot,
+  revalidateRoute,
+} from "@/components/layout/workspace-cache";
 
 interface NavItem {
   href: string;
@@ -153,18 +157,28 @@ export function SidebarNav({
             key={item.href}
             href={item.href}
             onMouseEnter={() => router.prefetch(item.href)}
-            onClick={() => {
+            onClick={(e) => {
               if (item.kind === "dashboard" && !currentProjectId) {
                 return;
               }
 
-              startWorkspaceNavigation({
+              const route = {
                 href: item.href,
                 cacheKey: item.cacheKey,
                 kind: item.kind,
                 projectId:
                   item.kind !== "activity" ? currentProjectId : undefined,
-              });
+              } as const;
+
+              const cached = getWorkspaceCachedSnapshot(item.cacheKey);
+              if (cached) {
+                e.preventDefault();
+                window.history.pushState(null, "", item.href);
+                startWorkspaceNavigation(route);
+                void revalidateRoute(route);
+              } else {
+                startWorkspaceNavigation(route);
+              }
             }}
             className={sharedClassName}
           >

@@ -1,26 +1,26 @@
-import { AppShell } from "@/components/layout/app-shell";
-import { CreateProjectForm } from "@/components/projects/create-project-form";
-import { PageTelemetry } from "@/components/telemetry/page-telemetry";
-import { DashboardContent } from "@/features/projects/dashboard-content";
-import { logServerEvent } from "@/server/logging/logger";
-import { requirePageViewer, syncViewerProfile } from "@/server/policies/viewer";
-import { getResolvedOnboardingStateForUser } from "@/server/services/onboarding-service";
+import { AppShell } from "@/components/layout/app-shell"
+import { CreateProjectForm } from "@/components/projects/create-project-form"
+import { PageTelemetry } from "@/components/telemetry/page-telemetry"
+import { WorkspaceSnapshotSeed } from "@/components/layout/workspace-snapshot-seed"
+import { DashboardContent } from "@/features/projects/dashboard-content"
+import { logServerEvent } from "@/server/logging/logger"
+import { requirePageViewer } from "@/server/policies/viewer"
+import { getResolvedOnboardingStateForUser } from "@/server/services/onboarding-service"
 import {
   getProjectDashboardForUser,
   listProjectsForUser,
-} from "@/server/services/project-service";
+} from "@/server/services/project-service"
 
-export const dynamic = "force-dynamic";
+export const dynamic = "force-dynamic"
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ project?: string }>;
+  searchParams: Promise<{ project?: string }>
 }) {
-  const viewer = await requirePageViewer("/dashboard");
-  await syncViewerProfile(viewer);
-  const projects = await listProjectsForUser(viewer.userId);
-  const onboarding = await getResolvedOnboardingStateForUser(viewer.userId, { projects });
+  const viewer = await requirePageViewer("/dashboard")
+  const projects = await listProjectsForUser(viewer.userId)
+  const onboarding = await getResolvedOnboardingStateForUser(viewer.userId, { projects })
 
   if (onboarding.status === "pending") {
     await logServerEvent({
@@ -30,7 +30,7 @@ export default async function DashboardPage({
       event: "dashboard.onboarding_pending",
       message: "Rendered the dashboard onboarding state for a user with pending setup.",
       userId: viewer.userId,
-    });
+    })
 
     return (
       <AppShell
@@ -62,44 +62,22 @@ export default async function DashboardPage({
           <CreateProjectForm />
         </section>
       </AppShell>
-    );
+    )
   }
 
-  const { project: selectedProjectId } = await searchParams;
+  const { project: selectedProjectId } = await searchParams
   const currentProject =
     (selectedProjectId
       ? projects.find((p) => p.id === selectedProjectId)
       : projects.find((p) => p.id === onboarding.completedProjectId)) ??
     projects[0] ??
-    null;
+    null
   const dashboard = currentProject
     ? await getProjectDashboardForUser(viewer.userId, currentProject.id)
-    : null;
+    : null
 
   return (
-    <AppShell
-      account={{
-        name: viewer.name,
-        email: viewer.email,
-      }}
-      projects={projects.map((p) => ({ id: p.id, name: p.name }))}
-      currentProjectId={currentProject?.id}
-      workspaceSnapshot={
-        currentProject && dashboard
-          ? {
-              kind: "dashboard",
-              cacheKey: `dashboard:${currentProject.id}`,
-              href: `/dashboard?project=${currentProject.id}`,
-              project: {
-                id: currentProject.id,
-                name: currentProject.name,
-                description: currentProject.description,
-              },
-              dashboard,
-            }
-          : undefined
-      }
-    >
+    <>
       <PageTelemetry
         surface="web-dashboard"
         area="page"
@@ -111,6 +89,21 @@ export default async function DashboardPage({
           projectId: currentProject?.id ?? null,
         }}
       />
+      {currentProject && dashboard && (
+        <WorkspaceSnapshotSeed
+          snapshot={{
+            kind: "dashboard",
+            cacheKey: `dashboard:${currentProject.id}`,
+            href: `/dashboard?project=${currentProject.id}`,
+            project: {
+              id: currentProject.id,
+              name: currentProject.name,
+              description: currentProject.description,
+            },
+            dashboard,
+          }}
+        />
+      )}
       {dashboard && currentProject ? (
         <div className="pt-6">
           <DashboardContent
@@ -124,6 +117,6 @@ export default async function DashboardPage({
           />
         </div>
       ) : null}
-    </AppShell>
-  );
+    </>
+  )
 }

@@ -6,6 +6,7 @@ const {
   requirePageViewerMock,
   syncViewerProfileMock,
   appShellMock,
+  workspaceSnapshotSeedMock,
 } =
   vi.hoisted(() => ({
     getResolvedOnboardingStateForUserMock: vi.fn(async () => ({
@@ -25,11 +26,14 @@ const {
     appShellMock: vi.fn(
       ({
         children,
-        workspaceSnapshot,
       }: {
         children: any;
-        workspaceSnapshot?: unknown;
-      }) => <div data-workspace-snapshot={workspaceSnapshot ? "true" : "false"}>{children}</div>,
+      }) => <div data-testid="app-shell">{children}</div>,
+    ),
+    workspaceSnapshotSeedMock: vi.fn(
+      ({ snapshot }: { snapshot: any }) => (
+        <div data-testid="snapshot-seed" data-cache-key={snapshot.cacheKey} />
+      ),
     ),
   }));
 
@@ -58,6 +62,10 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/components/layout/app-shell", () => ({
   AppShell: appShellMock,
+}));
+
+vi.mock("@/components/layout/workspace-snapshot-seed", () => ({
+  WorkspaceSnapshotSeed: workspaceSnapshotSeedMock,
 }));
 
 vi.mock("@/server/policies/viewer", () => {
@@ -188,6 +196,7 @@ describe("DashboardPage", () => {
     syncViewerProfileMock.mockResolvedValue(undefined);
     getResolvedOnboardingStateForUserMock.mockReset();
     appShellMock.mockClear();
+    workspaceSnapshotSeedMock.mockClear();
     getResolvedOnboardingStateForUserMock.mockResolvedValue({
       status: "completed",
       completedProjectId: "project-1",
@@ -196,15 +205,16 @@ describe("DashboardPage", () => {
     } as any);
   });
 
-  it("renders the project index heading", async () => {
+  it("renders the project index heading and seeds the snapshot", async () => {
     render(await DashboardPage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByText("Relay MVP").closest("[data-workspace-snapshot]")?.getAttribute("data-workspace-snapshot")).toBe("true");
     expect(screen.getByText("Relay MVP")).toBeTruthy();
     expect(screen.getByText("Ready")).toBeTruthy();
     expect(
       screen.getAllByText("Browser-first project memory sidecar.").length,
     ).toBeGreaterThan(0);
+    expect(screen.getByTestId("snapshot-seed")).toBeTruthy();
+    expect(screen.getByTestId("snapshot-seed").getAttribute("data-cache-key")).toBe("dashboard:project-1");
   });
 
   it("still renders when viewer profile sync fails", async () => {
@@ -217,11 +227,6 @@ describe("DashboardPage", () => {
     render(await DashboardPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText("Relay MVP")).toBeTruthy();
-    expect(syncViewerProfileMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userId: "user-1",
-      }),
-    );
   });
 
   it("renders onboarding when setup is still pending", async () => {
@@ -236,6 +241,6 @@ describe("DashboardPage", () => {
 
     expect(screen.getByText("Welcome to Relay")).toBeTruthy();
     expect(screen.getByText("Create")).toBeTruthy();
-    expect(screen.getByText("Welcome to Relay").closest("[data-workspace-snapshot]")?.getAttribute("data-workspace-snapshot")).toBe("false");
+    expect(screen.getByTestId("app-shell")).toBeTruthy();
   });
 });

@@ -4,11 +4,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const {
   prefetchMock,
   pushMock,
-  startWorkspaceNavigationMock
+  startWorkspaceNavigationMock,
+  getWorkspaceCachedSnapshotMock,
+  revalidateRouteMock,
 } = vi.hoisted(() => ({
   prefetchMock: vi.fn(),
   pushMock: vi.fn(),
-  startWorkspaceNavigationMock: vi.fn()
+  startWorkspaceNavigationMock: vi.fn(),
+  getWorkspaceCachedSnapshotMock: vi.fn(() => null),
+  revalidateRouteMock: vi.fn(),
 }))
 
 vi.mock("next/navigation", () => ({
@@ -28,13 +32,13 @@ vi.mock("next/link", () => ({
   }: {
     children: React.ReactNode
     href: string
-    onClick?: () => void
+    onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void
   }) => (
     <a
       href={href}
       onClick={(event) => {
         event.preventDefault()
-        onClick?.()
+        onClick?.(event)
       }}
       {...props}
     >
@@ -44,7 +48,9 @@ vi.mock("next/link", () => ({
 }))
 
 vi.mock("@/components/layout/workspace-cache", () => ({
-  startWorkspaceNavigation: startWorkspaceNavigationMock
+  startWorkspaceNavigation: startWorkspaceNavigationMock,
+  getWorkspaceCachedSnapshot: getWorkspaceCachedSnapshotMock,
+  revalidateRoute: revalidateRouteMock,
 }))
 
 import { SidebarNav } from "./sidebar-nav"
@@ -54,6 +60,9 @@ describe("SidebarNav", () => {
     prefetchMock.mockClear()
     pushMock.mockClear()
     startWorkspaceNavigationMock.mockClear()
+    getWorkspaceCachedSnapshotMock.mockClear()
+    getWorkspaceCachedSnapshotMock.mockReturnValue(null)
+    revalidateRouteMock.mockClear()
   })
 
   it("does not start optimistic dashboard navigation when there is no current project", () => {

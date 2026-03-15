@@ -191,7 +191,11 @@ export function resetWorkspaceStoreForTests() {
   }
 }
 
-async function revalidateRoute(route: PendingWorkspaceRoute) {
+export function getWorkspaceCachedSnapshot(cacheKey: string): WorkspaceSnapshot | null {
+  return workspaceStore.cache.get(cacheKey) ?? null
+}
+
+export async function revalidateRoute(route: PendingWorkspaceRoute) {
   if (refreshingKeys.has(route.cacheKey)) return
   if ((route.kind === "dashboard" || route.kind === "memory" || route.kind === "brief") && !route.projectId) return
 
@@ -431,6 +435,41 @@ export function WorkspaceViewport({
         {renderWorkspaceLoading(pending.kind)}
       </div>
     )
+  }
+
+  return <>{children}</>
+}
+
+export function WorkspaceLayoutViewport({
+  children,
+}: {
+  children: ReactNode
+}) {
+  const store = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+  const pending = store.pending
+
+  useEffect(() => {
+    if (!pending) return
+
+    const cached = store.cache.get(pending.cacheKey)
+    if (cached) {
+      void revalidateRoute(pending)
+    }
+  }, [pending, store.cache])
+
+  if (pending) {
+    const cachedSnapshot = store.cache.get(pending.cacheKey)
+    if (cachedSnapshot) {
+      return (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 text-[12px] font-medium text-[var(--relay-muted)]">
+            <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--relay-accent)]" />
+            Refreshing…
+          </div>
+          {renderWorkspaceSnapshot(cachedSnapshot)}
+        </div>
+      )
+    }
   }
 
   return <>{children}</>
