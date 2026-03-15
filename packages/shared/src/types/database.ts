@@ -280,3 +280,17 @@ export interface ExtensionApiTokenRow {
   createdAt: string
   revokedAt: string | null
 }
+
+export interface CliAuthSessionRow {
+  id: string
+  sessionCode: string
+  sessionHash: string
+  sessionPrefix: string
+  userId: string | null
+  deviceName: string
+  status: "pending" | "confirmed" | "expired"
+  apiToken: string | null
+  expiresAt: string
+  confirmedAt: string | null
+  createdAt: string
+}

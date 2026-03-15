@@ -1,4 +1,5 @@
 import { BrowserSessionHandoffRepository } from "../repositories/browser-session-handoff-repository"
+import { CliAuthSessionRepository } from "../repositories/cli-auth-session-repository"
 import { AiJobRunRepository } from "../repositories/ai-job-run-repository"
 import { BindingRepository } from "../repositories/binding-repository"
 import { BootstrapPacketRepository } from "../repositories/bootstrap-packet-repository"
@@ -42,6 +43,7 @@ export interface RepositoryBundle {
   extensionConnectGrants: ExtensionConnectGrantRepository
   userOnboarding: UserOnboardingRepository
   browserSessionHandoffs: BrowserSessionHandoffRepository
+  cliAuthSessions: CliAuthSessionRepository
 }
 
 export function createRepositoryBundle(viewerUserId?: string): RepositoryBundle {
@@ -68,6 +70,7 @@ export function createRepositoryBundle(viewerUserId?: string): RepositoryBundle 
     extensionTokens: new ExtensionTokenRepository(provider),
     extensionConnectGrants: new ExtensionConnectGrantRepository(provider),
     userOnboarding: new UserOnboardingRepository(provider),
-    browserSessionHandoffs: new BrowserSessionHandoffRepository(provider)
+    browserSessionHandoffs: new BrowserSessionHandoffRepository(provider),
+    cliAuthSessions: new CliAuthSessionRepository(provider)
   }
 }
