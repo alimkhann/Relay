@@ -1,0 +1,111 @@
+import { describe, it, expect, vi, beforeEach } from "vitest"
+import { RelayClient } from "./client.js"
+
+function createClient(baseUrl = "https://relay.test") {
+  return new RelayClient({ apiBase: baseUrl, token: "relay_test123" })
+}
+
+describe("RelayClient", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("sends GET requests with bearer auth", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ projects: [] })
+    })
+    vi.stubGlobal("fetch", mockFetch)
+
+    const client = createClient()
+    await client.get("/api/projects")
+
+    expect(mockFetch).toHaveBeenCalledWith("https://relay.test/api/projects", {
+      method: "GET",
+      headers: {
+        Authorization: "Bearer relay_test123",
+        Accept: "application/json"
+      },
+      body: undefined
+    })
+  })
+
+  it("sends POST requests with JSON body", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ item: { id: "1" } })
+    })
+    vi.stubGlobal("fetch", mockFetch)
+
+    const client = createClient()
+    await client.post("/api/memory", { type: "note", content: "test" })
+
+    expect(mockFetch).toHaveBeenCalledWith("https://relay.test/api/memory", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer relay_test123",
+        Accept: "application/json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ type: "note", content: "test" })
+    })
+  })
+
+  it("sends PATCH requests", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ item: { id: "1" } })
+    })
+    vi.stubGlobal("fetch", mockFetch)
+
+    const client = createClient()
+    await client.patch("/api/memory/123", { content: "updated" })
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://relay.test/api/memory/123",
+      expect.objectContaining({ method: "PATCH" })
+    )
+  })
+
+  it("sends DELETE requests", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal("fetch", mockFetch)
+
+    const client = createClient()
+    await client.delete("/api/memory/123")
+
+    expect(mockFetch).toHaveBeenCalledWith("https://relay.test/api/memory/123", {
+      method: "DELETE",
+      headers: { Authorization: "Bearer relay_test123" }
+    })
+  })
+
+  it("throws on non-ok response with parsed error", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      text: () => Promise.resolve(JSON.stringify({ error: "Invalid token" }))
+    })
+    vi.stubGlobal("fetch", mockFetch)
+
+    const client = createClient()
+    await expect(client.get("/api/projects")).rejects.toThrow("Invalid token")
+  })
+
+  it("strips trailing slashes from base URL", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({})
+    })
+    vi.stubGlobal("fetch", mockFetch)
+
+    const client = createClient("https://relay.test///")
+    await client.get("/api/projects")
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://relay.test/api/projects",
+      expect.anything()
+    )
+  })
+})
