@@ -75,10 +75,6 @@ export function SidebarNav({
     },
   ];
 
-  const visibleItems = navItems.filter(
-    (item) => !item.requiresProject || currentProjectId,
-  );
-
   useEffect(() => {
     router.prefetch(overviewHref);
     router.prefetch("/activity");
@@ -90,10 +86,66 @@ export function SidebarNav({
 
   return (
     <nav className="flex flex-col gap-0.5">
-      {visibleItems.map((item) => {
+      {navItems.map((item) => {
+        const isDisabled = item.requiresProject && !currentProjectId;
         const itemPath = item.href.split("?")[0] ?? item.href;
         const isActive =
-          pathname === itemPath || pathname.startsWith(itemPath + "/");
+          !isDisabled &&
+          (pathname === itemPath || pathname.startsWith(itemPath + "/"));
+
+        const sharedClassName = cn(
+          "flex items-center rounded-[var(--relay-radius-sm)] text-[13px] font-medium transition-colors",
+          collapsed
+            ? "justify-center p-2"
+            : "gap-2.5 px-2.5 py-1.5",
+          isDisabled
+            ? "pointer-events-none opacity-40 text-[var(--relay-muted)]"
+            : isActive
+              ? "bg-[var(--relay-soft)] text-[var(--relay-ink)]"
+              : "text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]",
+        );
+
+        const iconClassName = cn(
+          "shrink-0",
+          isDisabled
+            ? "text-[var(--relay-faint)]"
+            : isActive
+              ? "text-[var(--relay-ink)]"
+              : "text-[var(--relay-faint)]",
+        );
+
+        if (isDisabled) {
+          const disabledContent = (
+            <span
+              key={item.href}
+              className={sharedClassName}
+              aria-disabled="true"
+            >
+              <span className={iconClassName}>{item.icon}</span>
+              {!collapsed && <span>{item.label}</span>}
+            </span>
+          );
+
+          if (collapsed) {
+            return (
+              <Tooltip.Root key={item.href}>
+                <Tooltip.Trigger asChild>{disabledContent}</Tooltip.Trigger>
+                <Tooltip.Portal>
+                  <Tooltip.Content
+                    side="right"
+                    sideOffset={8}
+                    className="z-50 rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--relay-bg)] shadow-[var(--relay-shadow)]"
+                  >
+                    {item.label}
+                    <Tooltip.Arrow className="fill-[var(--relay-ink)]" />
+                  </Tooltip.Content>
+                </Tooltip.Portal>
+              </Tooltip.Root>
+            );
+          }
+
+          return disabledContent;
+        }
 
         const linkContent = (
           <Link
@@ -115,24 +167,9 @@ export function SidebarNav({
                   item.kind !== "activity" ? currentProjectId : undefined,
               });
             }}
-            className={cn(
-              "flex items-center rounded-[var(--relay-radius-sm)] text-[13px] font-medium transition-colors",
-              collapsed
-                ? "justify-center p-2"
-                : "gap-2.5 px-2.5 py-1.5",
-              isActive
-                ? "bg-[var(--relay-soft)] text-[var(--relay-ink)]"
-                : "text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]",
-            )}
+            className={sharedClassName}
           >
-            <span
-              className={cn(
-                "shrink-0",
-                isActive
-                  ? "text-[var(--relay-ink)]"
-                  : "text-[var(--relay-faint)]",
-              )}
-            >
+            <span className={iconClassName}>
               {item.icon}
             </span>
             {!collapsed && <span>{item.label}</span>}
