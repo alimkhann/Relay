@@ -1,0 +1,27 @@
+{
+  "name": "@relay/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "relay": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.9.1",
+    "open": "^10.2.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2"
+  }
+}

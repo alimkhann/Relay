@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 
-import type { UserSettingsRow } from "@relay/shared";
+import type { ExtensionApiTokenRow, UserSettingsRow } from "@relay/shared";
 
 import { deleteAccountAction } from "@/components/auth/delete-account-action";
 import { signOutAction } from "@/components/auth/sign-out-action";
@@ -14,6 +14,7 @@ import { cn } from "@/lib/cn";
 interface SettingsPreferencesProps {
   initialSettings: UserSettingsRow["settings"];
   hasConnectedExtension: boolean;
+  initialTokens: ExtensionApiTokenRow[];
 }
 
 const platformOptions = [
@@ -63,12 +64,80 @@ function Toggle({
 export function SettingsPreferences({
   initialSettings,
   hasConnectedExtension,
+  initialTokens,
 }: SettingsPreferencesProps) {
   const [settings, setSettings] = useState(initialSettings);
   const [toast, setToast] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const { theme, setTheme } = useTheme();
+
+  // Token management state
+  const [tokens, setTokens] = useState<ExtensionApiTokenRow[]>(initialTokens);
+  const [newTokenName, setNewTokenName] = useState("");
+  const [issuedToken, setIssuedToken] = useState<string | null>(null);
+  const [tokenCopied, setTokenCopied] = useState(false);
+  const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
+  const [tokenPending, setTokenPending] = useState(false);
+
+  async function createToken() {
+    if (!newTokenName.trim() || tokenPending) return;
+    setTokenPending(true);
+    try {
+      const flowId = createClientFlowId("settings");
+      const response = await relayClientFetch("/api/extension/tokens", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        telemetry: {
+          surface: "web-dashboard",
+          area: "settings",
+          event: "token.create",
+          flowId,
+          logSuccess: true,
+        },
+        body: JSON.stringify({ deviceName: newTokenName.trim() }),
+      });
+      if (!response.ok) throw new Error("Failed to create token");
+      const data = (await response.json()) as { token: string; record: ExtensionApiTokenRow };
+      setTokens((prev) => [data.record, ...prev]);
+      setIssuedToken(data.token);
+      setNewTokenName("");
+      setToast("Token created");
+      setTimeout(() => setToast(null), 2000);
+    } catch {
+      setToast("Failed to create token");
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setTokenPending(false);
+    }
+  }
+
+  async function revokeToken(tokenId: string) {
+    setTokenPending(true);
+    try {
+      const flowId = createClientFlowId("settings");
+      const response = await relayClientFetch(`/api/extension/tokens/${tokenId}`, {
+        method: "DELETE",
+        telemetry: {
+          surface: "web-dashboard",
+          area: "settings",
+          event: "token.revoke",
+          flowId,
+          logSuccess: true,
+        },
+      });
+      if (!response.ok) throw new Error("Failed to revoke token");
+      setTokens((prev) => prev.filter((t) => t.id !== tokenId));
+      setConfirmRevokeId(null);
+      setToast("Token revoked");
+      setTimeout(() => setToast(null), 2000);
+    } catch {
+      setToast("Failed to revoke token");
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setTokenPending(false);
+    }
+  }
 
   async function save(nextSettings: typeof settings) {
     const flowId = createClientFlowId("settings");
@@ -160,6 +229,140 @@ export function SettingsPreferences({
           )}
         </div>
       </section>
+
+      {/* ─── API Tokens ─── */}
+      <section className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">
+        <div className="px-5 py-4">
+          <h2 className="text-sm font-semibold text-[var(--relay-ink)]">API Tokens</h2>
+          <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
+            Create tokens for the MCP server, CLI tools, or other integrations.
+          </p>
+        </div>
+        <div className="border-t border-[var(--relay-line)] px-5 py-4 space-y-4">
+          {/* Create token */}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newTokenName}
+              onChange={(e) => setNewTokenName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void createToken();
+              }}
+              placeholder="Device or label name"
+              className="flex-1 rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] px-3 py-2 text-[13px] text-[var(--relay-ink)] placeholder:text-[var(--relay-muted)] focus:border-[var(--relay-accent)] focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => void createToken()}
+              disabled={!newTokenName.trim() || tokenPending}
+              className="shrink-0 rounded-[var(--relay-radius-sm)] bg-[var(--relay-accent)] px-4 py-2 text-[13px] font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+            >
+              Create token
+            </button>
+          </div>
+
+          {/* Newly issued token */}
+          {issuedToken && (
+            <div className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-soft)] p-3 space-y-2">
+              <p className="text-[13px] font-medium text-[var(--relay-ink)]">
+                Token created — copy it now, it won&apos;t be shown again.
+              </p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded bg-[var(--relay-bg)] border border-[var(--relay-line)] px-3 py-2 text-[12px] font-mono text-[var(--relay-ink)] select-all break-all">
+                  {issuedToken}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(issuedToken);
+                    setTokenCopied(true);
+                    setTimeout(() => setTokenCopied(false), 2000);
+                  }}
+                  className="shrink-0 rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-3 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition hover:bg-[var(--relay-soft)]"
+                >
+                  {tokenCopied ? "Copied" : "Copy"}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIssuedToken(null)}
+                className="text-[12px] text-[var(--relay-muted)] hover:text-[var(--relay-ink)] transition"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {/* Token list */}
+          {tokens.length > 0 ? (
+            <div className="divide-y divide-[var(--relay-line)] rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)]">
+              {tokens.map((token) => (
+                <div key={token.id} className="flex items-center justify-between px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-medium text-[var(--relay-ink)] truncate">
+                      {token.deviceName}
+                    </p>
+                    <p className="text-[12px] text-[var(--relay-muted)]">
+                      <span className="font-mono">{token.tokenPrefix}...</span>
+                      {" · "}
+                      Created {new Date(token.createdAt).toLocaleDateString()}
+                      {token.lastUsedAt && (
+                        <>
+                          {" · "}
+                          Last used {new Date(token.lastUsedAt).toLocaleDateString()}
+                        </>
+                      )}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmRevokeId(token.id)}
+                    disabled={tokenPending}
+                    className="shrink-0 ml-3 rounded-[var(--relay-radius-sm)] border border-[var(--relay-danger)]/30 px-3 py-1.5 text-[12px] font-medium text-[var(--relay-danger)] transition hover:bg-[var(--relay-danger)]/10 disabled:opacity-50"
+                  >
+                    Revoke
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[13px] text-[var(--relay-muted)]">
+              No active tokens. Create one to connect Relay MCP to your coding tools.
+            </p>
+          )}
+        </div>
+      </section>
+
+      {/* Revoke confirmation modal */}
+      {confirmRevokeId ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
+          <div className="w-full max-w-md rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-5 shadow-[var(--relay-shadow-lg)]">
+            <h3 className="text-base font-semibold text-[var(--relay-ink)]">
+              Revoke token?
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-[var(--relay-muted)]">
+              Any integration using this token will immediately lose access.
+            </p>
+            <div className="mt-5 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmRevokeId(null)}
+                className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-4 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition hover:bg-[var(--relay-soft)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void revokeToken(confirmRevokeId)}
+                disabled={tokenPending}
+                className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-danger)]/30 bg-[var(--relay-danger)] px-4 py-2 text-[13px] font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+              >
+                Revoke token
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* ─── Platforms ─── */}
       <section className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">

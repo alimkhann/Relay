@@ -13,6 +13,8 @@ export default async function SettingsPage() {
   ])
   const hasConnectedExtension = tokens.some((token) => !token.revokedAt)
 
+  const activeTokens = tokens.filter((token) => !token.revokedAt)
+
   return (
     <>
       <div className="max-w-2xl">
@@ -23,6 +25,7 @@ export default async function SettingsPage() {
         <SettingsPreferences
           initialSettings={settings.settings}
           hasConnectedExtension={hasConnectedExtension}
+          initialTokens={activeTokens}
         />
       </div>
     </>
