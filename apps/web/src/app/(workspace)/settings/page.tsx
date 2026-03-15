@@ -1,4 +1,3 @@
-import { WorkspaceSnapshotSeed } from "@/components/layout/workspace-snapshot-seed"
 import { SettingsPreferences } from "@/components/settings/settings-preferences"
 import { requirePageViewer } from "@/server/policies/viewer"
 import { listExtensionTokensForUser } from "@/server/services/extension-token-service"
@@ -16,15 +15,6 @@ export default async function SettingsPage() {
 
   return (
     <>
-      <WorkspaceSnapshotSeed
-        snapshot={{
-          kind: "settings",
-          cacheKey: "settings",
-          href: "/settings",
-          settings: settings.settings,
-          hasConnectedExtension,
-        }}
-      />
       <div className="max-w-2xl">
         <h1 className="text-lg font-semibold tracking-tight text-[var(--relay-ink)]">Settings</h1>
         <p className="mt-1 text-[13px] text-[var(--relay-muted)]">

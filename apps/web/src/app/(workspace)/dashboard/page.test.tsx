@@ -6,7 +6,6 @@ const {
   requirePageViewerMock,
   syncViewerProfileMock,
   appShellMock,
-  workspaceSnapshotSeedMock,
 } =
   vi.hoisted(() => ({
     getResolvedOnboardingStateForUserMock: vi.fn(async () => ({
@@ -29,11 +28,6 @@ const {
       }: {
         children: any;
       }) => <div data-testid="app-shell">{children}</div>,
-    ),
-    workspaceSnapshotSeedMock: vi.fn(
-      ({ snapshot }: { snapshot: any }) => (
-        <div data-testid="snapshot-seed" data-cache-key={snapshot.cacheKey} />
-      ),
     ),
   }));
 
@@ -62,10 +56,6 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/components/layout/app-shell", () => ({
   AppShell: appShellMock,
-}));
-
-vi.mock("@/components/layout/workspace-snapshot-seed", () => ({
-  WorkspaceSnapshotSeed: workspaceSnapshotSeedMock,
 }));
 
 vi.mock("@/server/policies/viewer", () => {
@@ -196,7 +186,6 @@ describe("DashboardPage", () => {
     syncViewerProfileMock.mockResolvedValue(undefined);
     getResolvedOnboardingStateForUserMock.mockReset();
     appShellMock.mockClear();
-    workspaceSnapshotSeedMock.mockClear();
     getResolvedOnboardingStateForUserMock.mockResolvedValue({
       status: "completed",
       completedProjectId: "project-1",
@@ -205,7 +194,7 @@ describe("DashboardPage", () => {
     } as any);
   });
 
-  it("renders the project index heading and seeds the snapshot", async () => {
+  it("renders the project index heading", async () => {
     render(await DashboardPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText("Relay MVP")).toBeTruthy();
@@ -213,8 +202,6 @@ describe("DashboardPage", () => {
     expect(
       screen.getAllByText("Browser-first project memory sidecar.").length,
     ).toBeGreaterThan(0);
-    expect(screen.getByTestId("snapshot-seed")).toBeTruthy();
-    expect(screen.getByTestId("snapshot-seed").getAttribute("data-cache-key")).toBe("dashboard:project-1");
   });
 
   it("still renders when viewer profile sync fails", async () => {

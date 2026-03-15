@@ -9,7 +9,6 @@ import { Settings, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 import { signOutAction } from "@/components/auth/sign-out-action";
-import { startWorkspaceNavigation } from "@/components/layout/workspace-cache";
 import { cn } from "@/lib/cn";
 
 interface AccountMenuProps {
@@ -107,11 +106,6 @@ export function AccountMenu({ name, email, collapsed = false }: AccountMenuProps
                   onMouseEnter={() => router.prefetch("/settings")}
                   onClick={() => {
                     setOpen(false);
-                    startWorkspaceNavigation({
-                      href: "/settings",
-                      cacheKey: "settings",
-                      kind: "settings",
-                    });
                   }}
                   className="flex items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-2.5 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition-colors hover:bg-[var(--relay-soft)]"
                 >

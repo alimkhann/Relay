@@ -1,5 +1,4 @@
 import { PageTelemetry } from "@/components/telemetry/page-telemetry"
-import { WorkspaceSnapshotSeed } from "@/components/layout/workspace-snapshot-seed"
 import { ActivityFeed } from "@/features/activity/activity-feed"
 import { requirePageViewer } from "@/server/policies/viewer"
 import { listActivityFeedForUser } from "@/server/services/activity-service"
@@ -17,14 +16,6 @@ export default async function ActivityPage() {
         area="page"
         event="activity.viewed"
         message="Rendered the activity page."
-      />
-      <WorkspaceSnapshotSeed
-        snapshot={{
-          kind: "activity",
-          cacheKey: "activity",
-          href: "/activity",
-          feed,
-        }}
       />
       <div className="space-y-5">
         <div>

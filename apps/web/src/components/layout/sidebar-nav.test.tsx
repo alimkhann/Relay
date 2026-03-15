@@ -1,56 +1,31 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const {
-  prefetchMock,
-  pushMock,
-  startWorkspaceNavigationMock,
-  getWorkspaceCachedSnapshotMock,
-  revalidateRouteMock,
-} = vi.hoisted(() => ({
+const { prefetchMock } = vi.hoisted(() => ({
   prefetchMock: vi.fn(),
-  pushMock: vi.fn(),
-  startWorkspaceNavigationMock: vi.fn(),
-  getWorkspaceCachedSnapshotMock: vi.fn(() => null),
-  revalidateRouteMock: vi.fn(),
 }))
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/dashboard",
   useRouter: () => ({
     prefetch: prefetchMock,
-    push: pushMock
-  })
+    push: vi.fn(),
+  }),
 }))
 
 vi.mock("next/link", () => ({
   default: ({
     children,
     href,
-    onClick,
     ...props
   }: {
     children: React.ReactNode
     href: string
-    onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void
   }) => (
-    <a
-      href={href}
-      onClick={(event) => {
-        event.preventDefault()
-        onClick?.(event)
-      }}
-      {...props}
-    >
+    <a href={href} {...props}>
       {children}
     </a>
-  )
-}))
-
-vi.mock("@/components/layout/workspace-cache", () => ({
-  startWorkspaceNavigation: startWorkspaceNavigationMock,
-  getWorkspaceCachedSnapshot: getWorkspaceCachedSnapshotMock,
-  revalidateRoute: revalidateRouteMock,
+  ),
 }))
 
 import { SidebarNav } from "./sidebar-nav"
@@ -58,31 +33,32 @@ import { SidebarNav } from "./sidebar-nav"
 describe("SidebarNav", () => {
   beforeEach(() => {
     prefetchMock.mockClear()
-    pushMock.mockClear()
-    startWorkspaceNavigationMock.mockClear()
-    getWorkspaceCachedSnapshotMock.mockClear()
-    getWorkspaceCachedSnapshotMock.mockReturnValue(null)
-    revalidateRouteMock.mockClear()
   })
 
-  it("does not start optimistic dashboard navigation when there is no current project", () => {
-    render(<SidebarNav />)
-
-    fireEvent.click(screen.getByText("Overview"))
-
-    expect(startWorkspaceNavigationMock).not.toHaveBeenCalled()
-  })
-
-  it("starts optimistic dashboard navigation when a current project exists", () => {
+  it("renders all nav items", () => {
     render(<SidebarNav currentProjectId="project-1" />)
 
-    fireEvent.click(screen.getByText("Overview"))
+    expect(screen.getByText("Overview")).toBeTruthy()
+    expect(screen.getByText("Memory")).toBeTruthy()
+    expect(screen.getByText("Brief")).toBeTruthy()
+    expect(screen.getByText("Activity")).toBeTruthy()
+  })
 
-    expect(startWorkspaceNavigationMock).toHaveBeenCalledWith({
-      href: "/dashboard?project=project-1",
-      cacheKey: "dashboard:project-1",
-      kind: "dashboard",
-      projectId: "project-1"
-    })
+  it("disables project-dependent items when no project is selected", () => {
+    render(<SidebarNav />)
+
+    const memoryEl = screen.getByText("Memory").closest("[aria-disabled]")
+    expect(memoryEl).toBeTruthy()
+    expect(memoryEl?.getAttribute("aria-disabled")).toBe("true")
+  })
+
+  it("renders links with correct hrefs when project is selected", () => {
+    render(<SidebarNav currentProjectId="project-1" />)
+
+    const overviewLink = screen.getByText("Overview").closest("a")
+    expect(overviewLink?.getAttribute("href")).toBe("/dashboard?project=project-1")
+
+    const memoryLink = screen.getByText("Memory").closest("a")
+    expect(memoryLink?.getAttribute("href")).toBe("/memory?project=project-1")
   })
 })

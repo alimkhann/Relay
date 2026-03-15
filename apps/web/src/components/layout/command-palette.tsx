@@ -14,11 +14,6 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
-import {
-  startWorkspaceNavigation,
-  getWorkspaceCachedSnapshot,
-  revalidateRoute,
-} from "@/components/layout/workspace-cache";
 
 interface CommandAction {
   id: string;
@@ -49,22 +44,6 @@ export function CommandPalette({ projects = [], currentProjectId }: CommandPalet
       shortcut: "G O",
       action: () => {
         const href = currentProjectId ? `/dashboard?project=${currentProjectId}` : "/dashboard";
-        if (currentProjectId) {
-          const route = {
-            href,
-            cacheKey: `dashboard:${currentProjectId}`,
-            kind: "dashboard" as const,
-            projectId: currentProjectId,
-          };
-          const cached = getWorkspaceCachedSnapshot(route.cacheKey);
-          if (cached) {
-            window.history.pushState(null, "", href);
-            startWorkspaceNavigation(route);
-            void revalidateRoute(route);
-            return;
-          }
-          startWorkspaceNavigation(route);
-        }
         router.push(href);
       },
       section: "Navigation",
@@ -76,22 +55,6 @@ export function CommandPalette({ projects = [], currentProjectId }: CommandPalet
       shortcut: "G M",
       action: () => {
         const href = currentProjectId ? `/memory?project=${currentProjectId}` : "/memory";
-        if (currentProjectId) {
-          const route = {
-            href,
-            cacheKey: `memory:${currentProjectId}`,
-            kind: "memory" as const,
-            projectId: currentProjectId,
-          };
-          const cached = getWorkspaceCachedSnapshot(route.cacheKey);
-          if (cached) {
-            window.history.pushState(null, "", href);
-            startWorkspaceNavigation(route);
-            void revalidateRoute(route);
-            return;
-          }
-          startWorkspaceNavigation(route);
-        }
         router.push(href);
       },
       section: "Navigation",
@@ -103,22 +66,6 @@ export function CommandPalette({ projects = [], currentProjectId }: CommandPalet
       shortcut: "G B",
       action: () => {
         const href = currentProjectId ? `/brief?project=${currentProjectId}` : "/brief";
-        if (currentProjectId) {
-          const route = {
-            href,
-            cacheKey: `brief:${currentProjectId}`,
-            kind: "brief" as const,
-            projectId: currentProjectId,
-          };
-          const cached = getWorkspaceCachedSnapshot(route.cacheKey);
-          if (cached) {
-            window.history.pushState(null, "", href);
-            startWorkspaceNavigation(route);
-            void revalidateRoute(route);
-            return;
-          }
-          startWorkspaceNavigation(route);
-        }
         router.push(href);
       },
       section: "Navigation",
@@ -129,19 +76,6 @@ export function CommandPalette({ projects = [], currentProjectId }: CommandPalet
       icon: <Activity className="h-4 w-4" />,
       shortcut: "G A",
       action: () => {
-        const route = {
-          href: "/activity",
-          cacheKey: "activity",
-          kind: "activity" as const,
-        };
-        const cached = getWorkspaceCachedSnapshot(route.cacheKey);
-        if (cached) {
-          window.history.pushState(null, "", "/activity");
-          startWorkspaceNavigation(route);
-          void revalidateRoute(route);
-          return;
-        }
-        startWorkspaceNavigation(route);
         router.push("/activity");
       },
       section: "Navigation",
@@ -152,19 +86,6 @@ export function CommandPalette({ projects = [], currentProjectId }: CommandPalet
       icon: <Settings className="h-4 w-4" />,
       shortcut: "G S",
       action: () => {
-        const route = {
-          href: "/settings",
-          cacheKey: "settings",
-          kind: "settings" as const,
-        };
-        const cached = getWorkspaceCachedSnapshot(route.cacheKey);
-        if (cached) {
-          window.history.pushState(null, "", "/settings");
-          startWorkspaceNavigation(route);
-          void revalidateRoute(route);
-          return;
-        }
-        startWorkspaceNavigation(route);
         router.push("/settings");
       },
       section: "Navigation",

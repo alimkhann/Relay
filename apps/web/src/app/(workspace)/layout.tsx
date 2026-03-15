@@ -3,7 +3,6 @@ import type { ReactNode } from "react"
 import { SidebarProvider } from "@/components/layout/sidebar-context"
 import { SidebarMainArea } from "@/components/layout/sidebar-main-area"
 import { WorkspaceSidebarShell } from "@/components/layout/workspace-sidebar-shell"
-import { WorkspaceLayoutViewport } from "@/components/layout/workspace-cache"
 import { requirePageViewer, syncViewerProfile } from "@/server/policies/viewer"
 import { listProjectsForUser } from "@/server/services/project-service"
 
@@ -31,9 +30,7 @@ export default async function WorkspaceLayout({
 
         <SidebarMainArea>
           <div className="mx-auto max-w-4xl p-8 lg:p-12">
-            <WorkspaceLayoutViewport>
-              {children}
-            </WorkspaceLayoutViewport>
+            {children}
           </div>
         </SidebarMainArea>
       </div>

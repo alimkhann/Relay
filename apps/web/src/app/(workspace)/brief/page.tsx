@@ -2,7 +2,6 @@ import { redirect } from "next/navigation"
 
 import { EmptyState } from "@/components/ui/empty-state"
 import { PageTelemetry } from "@/components/telemetry/page-telemetry"
-import { WorkspaceSnapshotSeed } from "@/components/layout/workspace-snapshot-seed"
 import { BriefPageContent } from "@/features/brief/brief-page-content"
 import { requirePageViewer } from "@/server/policies/viewer"
 import {
@@ -44,17 +43,6 @@ export default async function BriefPage({
         message="Rendered the brief page."
         context={{ projectId: currentProject.id }}
       />
-      {dashboard && (
-        <WorkspaceSnapshotSeed
-          snapshot={{
-            kind: "brief",
-            cacheKey: `brief:${currentProject.id}`,
-            href: `/brief?project=${currentProject.id}`,
-            project: { id: currentProject.id, name: currentProject.name },
-            dashboard,
-          }}
-        />
-      )}
       {dashboard ? (
         <BriefPageContent
           project={{ id: currentProject.id, name: currentProject.name }}

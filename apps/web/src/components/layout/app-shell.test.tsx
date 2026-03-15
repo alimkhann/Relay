@@ -37,9 +37,6 @@ vi.mock("@/components/layout/sidebar-main-area", () => ({
   SidebarMainArea: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
-vi.mock("@/components/layout/workspace-cache", () => ({
-  WorkspaceViewport: ({ children }: { children: ReactNode }) => <>{children}</>,
-}));
 
 import { AppShell } from "./app-shell";
 

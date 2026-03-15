@@ -1,7 +1,6 @@
 import { AppShell } from "@/components/layout/app-shell"
 import { CreateProjectForm } from "@/components/projects/create-project-form"
 import { PageTelemetry } from "@/components/telemetry/page-telemetry"
-import { WorkspaceSnapshotSeed } from "@/components/layout/workspace-snapshot-seed"
 import { DashboardContent } from "@/features/projects/dashboard-content"
 import { logServerEvent } from "@/server/logging/logger"
 import { requirePageViewer } from "@/server/policies/viewer"
@@ -89,21 +88,6 @@ export default async function DashboardPage({
           projectId: currentProject?.id ?? null,
         }}
       />
-      {currentProject && dashboard && (
-        <WorkspaceSnapshotSeed
-          snapshot={{
-            kind: "dashboard",
-            cacheKey: `dashboard:${currentProject.id}`,
-            href: `/dashboard?project=${currentProject.id}`,
-            project: {
-              id: currentProject.id,
-              name: currentProject.name,
-              description: currentProject.description,
-            },
-            dashboard,
-          }}
-        />
-      )}
       {dashboard && currentProject ? (
         <div className="pt-6">
           <DashboardContent
