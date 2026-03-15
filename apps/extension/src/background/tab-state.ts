@@ -168,7 +168,7 @@ export function looksLikeFreshChatRoute(page: RelayPageState) {
   }
 
   if (page.platform === "gemini") {
-    return pathname === "/app" || pathname === "/app/"
+    return pathname === "/app" || pathname === "/app/" || /^\/prompts\/new/.test(pathname)
   }
 
   if (page.platform === "grok") {

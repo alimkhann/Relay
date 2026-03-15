@@ -34,7 +34,10 @@ export class PerplexityAdapter extends BaseSiteAdapter {
 
   getPageMetadata(doc = document): PageMetadata {
     const url = new URL(doc.location.href)
-    const routeKind: PageRouteKind = url.pathname === "/" ? "fresh" : "chat"
+    const routeKind: PageRouteKind =
+      url.pathname === "/" || url.pathname === "/search" || url.pathname === "/home"
+        ? "fresh"
+        : "chat"
     return {
       title: doc.title,
       url: url.toString(),

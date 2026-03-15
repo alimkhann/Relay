@@ -13,6 +13,10 @@ function resolveRouteKind(pathname: string): PageRouteKind {
     return "fresh"
   }
 
+  if (/^\/prompts\/new/.test(pathname)) {
+    return "fresh"
+  }
+
   if (/^\/gems\/[^/]+/.test(pathname)) {
     return "project_root"
   }
@@ -21,7 +25,11 @@ function resolveRouteKind(pathname: string): PageRouteKind {
     return "chat"
   }
 
-  return "unknown"
+  if (/^\/prompts\/[^/]+/.test(pathname)) {
+    return "chat"
+  }
+
+  return "fresh"
 }
 
 export class GeminiAdapter extends BaseSiteAdapter {

@@ -272,7 +272,7 @@
       pathname: url.pathname,
       pageFingerprint: url.pathname.split("/").filter(Boolean).pop() || null,
       domain: url.hostname,
-      routeKind: url.pathname === "/" || url.pathname.includes("/new") ? "fresh" : "chat",
+      routeKind: null,
     };
   }
 
@@ -280,7 +280,10 @@
     chatgpt: ["#prompt-textarea", "div[contenteditable='true']", "textarea"],
     codex: ["#prompt-textarea", "div[contenteditable='true']", "textarea"],
     claude: ["div[contenteditable='true']", "textarea"],
-    perplexity: ["textarea"],
+    perplexity: ["textarea[placeholder*='Ask']", "textarea", "[contenteditable='true']"],
+    gemini: [".ql-editor", "rich-textarea [contenteditable='true']", "[contenteditable='true']", "textarea"],
+    grok: ["textarea", "[contenteditable='true']"],
+    deepseek: ["textarea", "[contenteditable='true']"],
   };
 
   function findPrompt(config) {
@@ -339,14 +342,27 @@
   }
 
   function inferRouteKind(config, metadata) {
-    if (metadata.routeKind) {
+    if (metadata.routeKind && metadata.routeKind !== "unknown") {
       return metadata.routeKind;
     }
 
     const pathname = metadata.pathname || "/";
 
     if (config.platform === "claude") {
+      if (/^\/project\/[^/]+\/?$/.test(pathname)) return "project_root";
       return pathname.includes("/new") ? "fresh" : "chat";
+    }
+
+    if (config.platform === "gemini") {
+      if (pathname === "/app" || pathname === "/app/") return "fresh";
+      if (/^\/prompts\/new/.test(pathname)) return "fresh";
+      if (/^\/gems\/[^/]+/.test(pathname)) return "project_root";
+      if (/^\/app\/[^/]+/.test(pathname)) return "chat";
+      return "fresh";
+    }
+
+    if (config.platform === "grok") {
+      return pathname === "/" || pathname === "/i/grok" ? "fresh" : "chat";
     }
 
     return pathname === "/" ? "fresh" : "chat";
