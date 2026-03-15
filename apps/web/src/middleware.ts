@@ -3,7 +3,13 @@ import { NextResponse, type NextRequest } from "next/server"
 import { getAuthServer } from "@/lib/auth/server"
 import { buildExtensionPreflightResponse, isExtensionOrigin } from "@/server/http/extension-cors"
 
-export default function proxy(request: NextRequest) {
+export default function middleware(request: NextRequest) {
+  // Let extension API routes through without session auth — they use
+  // their own Bearer-token / Google-token authentication.
+  if (request.nextUrl.pathname.startsWith("/api/extension/")) {
+    return NextResponse.next()
+  }
+
   if (
     request.nextUrl.pathname.startsWith("/api/") &&
     request.method === "OPTIONS" &&
