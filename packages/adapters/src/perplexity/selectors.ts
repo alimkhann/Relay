@@ -4,10 +4,7 @@ export const perplexityTurnSelectors = [
   "[data-testid='thread-query']",
   "[data-testid='thread-answer']",
   ".pb-md [data-message-role]",
-  "main .prose",
-  "main article",
   "[data-testid='search-result']",
-  ".mb-md .break-words"
 ]
 
 export const perplexityPromptSelectors = [
