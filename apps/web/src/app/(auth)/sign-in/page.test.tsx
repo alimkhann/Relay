@@ -33,28 +33,13 @@ vi.mock("@/components/auth/google-sign-in-button", () => ({
   )
 }))
 
-vi.mock("@/components/auth/sign-in-session-gate", () => ({
-  SignInSessionGate: ({
-    nextPath,
-    allowExistingSession,
-  }: {
-    nextPath: string
-    allowExistingSession?: boolean
-  }) => (
-    <div
-      data-testid="sign-in-session-gate"
-      data-next-path={nextPath}
-      data-allow-existing-session={String(Boolean(allowExistingSession))}
-    />
-  )
-}))
-
 vi.mock("@/components/telemetry/page-telemetry", () => ({
   PageTelemetry: () => null
 }))
 
 vi.mock("@/server/policies/viewer", () => ({
-  resolveAuthenticatedAppPath: () => "/dashboard",
+  resolveAuthenticatedAppPath: (v: string | null | undefined) =>
+    v && v.startsWith("/") ? v : "/dashboard",
   resolveOptionalViewer: resolveOptionalViewerMock,
   resolveSafeNextPath: (value: string | null | undefined, fallback = "/dashboard") =>
     value && value.startsWith("/") ? value : fallback,
@@ -72,7 +57,7 @@ describe("SignInPage", () => {
     resolveOptionalViewerMock.mockResolvedValue(null)
   })
 
-  it("uses the dashboard as the existing-session destination", async () => {
+  it("passes nextPath to Google sign-in button", async () => {
     render(
       await SignInPage({
         searchParams: Promise.resolve({
@@ -81,14 +66,9 @@ describe("SignInPage", () => {
       })
     )
 
-    expect(screen.getByTestId("sign-in-session-gate").getAttribute("data-next-path")).toBe(
-      "/dashboard"
+    expect(screen.getByTestId("google-sign-in-button").getAttribute("data-next-path")).toBe(
+      "/projects/project-1"
     )
-    expect(
-      screen
-        .getByTestId("sign-in-session-gate")
-        .getAttribute("data-allow-existing-session"),
-    ).toBe("true")
   })
 
   it("passes signup intent to the Google button", async () => {
@@ -104,14 +84,9 @@ describe("SignInPage", () => {
     expect(screen.getByText("Create your Relay account")).toBeTruthy()
     expect(screen.getByTestId("google-sign-in-button").getAttribute("data-intent")).toBe("sign-up")
     expect(screen.getByTestId("google-sign-in-button").getAttribute("data-next-path")).toBe("/dashboard")
-    expect(
-      screen
-        .getByTestId("sign-in-session-gate")
-        .getAttribute("data-allow-existing-session"),
-    ).toBe("true")
   })
 
-  it("redirects authenticated visitors away from the sign-in page", async () => {
+  it("redirects authenticated visitors to the next path", async () => {
     resolveOptionalViewerMock.mockResolvedValueOnce({
       userId: "user-1",
       mode: "session"
@@ -120,10 +95,10 @@ describe("SignInPage", () => {
     await expect(
       SignInPage({
         searchParams: Promise.resolve({
-          next: "/dashboard",
-          intent: "sign-up"
+          next: "/cli-onboarding?code=TEST",
+          intent: "sign-in"
         })
       })
-    ).rejects.toThrow("REDIRECT:/dashboard")
+    ).rejects.toThrow("REDIRECT:/cli-onboarding?code=TEST")
   })
 })

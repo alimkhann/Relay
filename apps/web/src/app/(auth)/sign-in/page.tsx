@@ -5,7 +5,6 @@ import { ArrowLeft } from "lucide-react";
 
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 import { LocalSignInForm } from "@/components/auth/local-sign-in-form";
-import { SignInSessionGate } from "@/components/auth/sign-in-session-gate";
 import { getAuthProvider } from "@/lib/auth/provider";
 import { PageTelemetry } from "@/components/telemetry/page-telemetry";
 import {
@@ -39,11 +38,6 @@ export default async function SignInPage({
 
   return (
     <main className="flex min-h-screen bg-[var(--relay-bg)]">
-      <SignInSessionGate
-        nextPath={resolveAuthenticatedAppPath(nextPath)}
-        allowExistingSession
-        provider={authProvider}
-      />
       <PageTelemetry
         surface="web-auth"
         area="page"
