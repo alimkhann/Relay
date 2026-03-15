@@ -532,7 +532,8 @@
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
   width: 100%;
   min-width: 0;
   border: 1px solid var(--line);
@@ -547,9 +548,15 @@
 }
 
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
   border-color: var(--ink);
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.06);
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 60px;
 }
 
 /* ── Debug panel ── */
