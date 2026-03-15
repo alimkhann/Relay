@@ -28,7 +28,7 @@ export default async function SignInPage({
   const viewer = await resolveOptionalViewer();
 
   if (viewer) {
-    redirect(resolveAuthenticatedAppPath("/dashboard"));
+    redirect(resolveAuthenticatedAppPath(nextPath));
   }
 
   const authProvider = getAuthProvider();
@@ -40,7 +40,7 @@ export default async function SignInPage({
   return (
     <main className="flex min-h-screen bg-[var(--relay-bg)]">
       <SignInSessionGate
-        nextPath={resolveAuthenticatedAppPath("/dashboard")}
+        nextPath={resolveAuthenticatedAppPath(nextPath)}
         allowExistingSession
         provider={authProvider}
       />
