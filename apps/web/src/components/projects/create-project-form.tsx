@@ -87,6 +87,7 @@ export function CreateProjectForm({ onSuccess }: { onSuccess?: () => void } = {}
       })
       onSuccess?.()
       router.push(`/dashboard?project=${result.project.id}`)
+      router.refresh()
     } catch (cause) {
       logClientEvent({
         level: "error",
