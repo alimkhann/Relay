@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as Popover from "@radix-ui/react-popover";
+import * as Tooltip from "@radix-ui/react-tooltip";
 import { Settings, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -14,37 +15,68 @@ import { cn } from "@/lib/cn";
 interface AccountMenuProps {
   name: string;
   email?: string;
+  collapsed?: boolean;
 }
 
-export function AccountMenu({ name, email }: AccountMenuProps) {
+export function AccountMenu({ name, email, collapsed = false }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const initial = (name || email || "U").charAt(0).toUpperCase();
 
+  const avatar = (
+    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--relay-accent)] text-[11px] font-semibold text-[var(--relay-accent-text)]">
+      {initial}
+    </span>
+  );
+
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
-        <button
-          className={cn(
-            "flex w-full items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-2 py-1.5 text-left transition-colors",
-            "hover:bg-[var(--relay-soft)]",
-            open && "bg-[var(--relay-soft)]",
-          )}
-        >
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--relay-accent)] text-[11px] font-semibold text-white">
-            {initial}
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] font-medium text-[var(--relay-ink)]">
-              {name || "Account"}
-            </span>
-            {email && (
-              <span className="block truncate text-[11px] text-[var(--relay-muted)]">
-                {email}
-              </span>
+        {collapsed ? (
+          <Tooltip.Root>
+            <Tooltip.Trigger asChild>
+              <button
+                className={cn(
+                  "flex w-full items-center justify-center rounded-[var(--relay-radius-sm)] py-1.5 transition-colors",
+                  "hover:bg-[var(--relay-soft)]",
+                  open && "bg-[var(--relay-soft)]",
+                )}
+              >
+                {avatar}
+              </button>
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Content
+                side="right"
+                sideOffset={8}
+                className="z-50 rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--relay-bg)] shadow-[var(--relay-shadow)]"
+              >
+                {name || "Account"}
+                <Tooltip.Arrow className="fill-[var(--relay-ink)]" />
+              </Tooltip.Content>
+            </Tooltip.Portal>
+          </Tooltip.Root>
+        ) : (
+          <button
+            className={cn(
+              "flex w-full items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-2 py-1.5 text-left transition-colors",
+              "hover:bg-[var(--relay-soft)]",
+              open && "bg-[var(--relay-soft)]",
             )}
-          </span>
-        </button>
+          >
+            {avatar}
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-medium text-[var(--relay-ink)]">
+                {name || "Account"}
+              </span>
+              {email && (
+                <span className="block truncate text-[11px] text-[var(--relay-muted)]">
+                  {email}
+                </span>
+              )}
+            </span>
+          </button>
+        )}
       </Popover.Trigger>
 
       <AnimatePresence>
@@ -52,10 +84,15 @@ export function AccountMenu({ name, email }: AccountMenuProps) {
           <Popover.Portal forceMount>
             <Popover.Content
               side="top"
-              align="start"
+              align={collapsed ? "center" : "start"}
               sideOffset={8}
               forceMount
-              className="z-50 w-[var(--relay-sidebar-width)] px-4"
+              className={cn(
+                "z-50",
+                collapsed
+                  ? "w-48"
+                  : "w-[var(--relay-sidebar-width)]",
+              )}
               onCloseAutoFocus={(e) => e.preventDefault()}
             >
               <motion.div

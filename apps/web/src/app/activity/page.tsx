@@ -3,13 +3,17 @@ import { PageTelemetry } from "@/components/telemetry/page-telemetry";
 import { ActivityFeed } from "@/features/activity/activity-feed";
 import { requirePageViewer, syncViewerProfile } from "@/server/policies/viewer";
 import { listActivityFeedForUser } from "@/server/services/activity-service";
+import { listProjectsForUser } from "@/server/services/project-service";
 
 export const dynamic = "force-dynamic";
 
 export default async function ActivityPage() {
   const viewer = await requirePageViewer("/activity");
   await syncViewerProfile(viewer);
-  const feed = await listActivityFeedForUser(viewer.userId);
+  const [feed, projects] = await Promise.all([
+    listActivityFeedForUser(viewer.userId),
+    listProjectsForUser(viewer.userId),
+  ]);
 
   return (
     <AppShell
@@ -17,6 +21,8 @@ export default async function ActivityPage() {
         name: viewer.name,
         email: viewer.email,
       }}
+      projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+      currentProjectId={projects[0]?.id}
       workspaceSnapshot={{
         kind: "activity",
         cacheKey: "activity",

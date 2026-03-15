@@ -3,26 +3,26 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Plus, Check, Loader2 } from "lucide-react";
+import * as Dialog from "@radix-ui/react-dialog";
+import * as Tooltip from "@radix-ui/react-tooltip";
 
-import { slugify } from "@relay/shared/utils/text";
 import { cn } from "@/lib/cn";
-import { createClientFlowId } from "@/lib/telemetry/client";
-import { relayClientFetch } from "@/lib/telemetry/fetch";
+import { CreateProjectForm } from "@/components/projects/create-project-form";
 
 type Project = { id: string; name: string };
 
 export function SidebarProjectSwitcher({
   projects,
   currentId,
+  collapsed = false,
 }: {
   projects: Project[];
   currentId: string;
+  collapsed?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [createPending, setCreatePending] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [switchPending, startSwitchTransition] = useTransition();
   const [optimisticCurrentId, setOptimisticCurrentId] = useState(currentId);
   const [pendingProjectId, setPendingProjectId] = useState<string | null>(null);
@@ -37,7 +37,6 @@ export function SidebarProjectSwitcher({
     function handler(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
-        setCreating(false);
       }
     }
     document.addEventListener("mousedown", handler);
@@ -47,42 +46,10 @@ export function SidebarProjectSwitcher({
   const current =
     projects.find((p) => p.id === optimisticCurrentId) ?? projects[0];
 
-  async function handleCreate() {
-    if (!newName.trim() || newName.trim().length < 2) return;
-    setCreatePending(true);
-    try {
-      const flowId = createClientFlowId("project");
-      const slug = slugify(newName.trim()).slice(0, 80);
-      const res = await relayClientFetch("/api/projects", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        telemetry: {
-          surface: "web-dashboard",
-          area: "projects",
-          event: "sidebar_switcher.create",
-          flowId,
-          logSuccess: true,
-        },
-        body: JSON.stringify({ name: newName.trim(), slug }),
-      });
-      if (res.ok) {
-        const { project } = (await res.json()) as { project: { id: string } };
-        setNewName("");
-        setCreating(false);
-        setOpen(false);
-        router.push(`/dashboard?project=${project.id}`);
-        router.refresh();
-      }
-    } finally {
-      setCreatePending(false);
-    }
-  }
-
   function switchProject(nextProjectId: string) {
     if (
       nextProjectId === optimisticCurrentId ||
       switchPending ||
-      createPending ||
       pendingProjectId
     ) {
       return;
@@ -97,6 +64,41 @@ export function SidebarProjectSwitcher({
     });
   }
 
+  if (collapsed) {
+    return (
+      <div className="mb-4 flex justify-center">
+        <Tooltip.Root>
+          <Tooltip.Trigger asChild>
+            <button
+              onClick={() => !pendingProjectId && setOpen(!open)}
+              disabled={Boolean(pendingProjectId)}
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-[var(--relay-radius-sm)] text-[11px] font-bold transition-colors",
+                "bg-[var(--relay-soft)] text-[var(--relay-ink)] hover:bg-[var(--relay-soft-hover)] disabled:cursor-default disabled:opacity-75",
+              )}
+            >
+              {pendingProjectId ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                (current?.name ?? "P").charAt(0).toUpperCase()
+              )}
+            </button>
+          </Tooltip.Trigger>
+          <Tooltip.Portal>
+            <Tooltip.Content
+              side="right"
+              sideOffset={8}
+              className="z-50 rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--relay-bg)] shadow-[var(--relay-shadow)]"
+            >
+              {current?.name ?? "Projects"}
+              <Tooltip.Arrow className="fill-[var(--relay-ink)]" />
+            </Tooltip.Content>
+          </Tooltip.Portal>
+        </Tooltip.Root>
+      </div>
+    );
+  }
+
   return (
     <div className="relative mb-4" ref={ref}>
       <button
@@ -104,7 +106,7 @@ export function SidebarProjectSwitcher({
         disabled={Boolean(pendingProjectId)}
         className={cn(
           "flex w-full items-center justify-between gap-2 rounded-[var(--relay-radius-sm)] px-2.5 py-1.5 text-[13px] font-medium transition-colors",
-          "text-[var(--relay-ink)] hover:bg-[var(--relay-soft)] disabled:cursor-default disabled:opacity-75"
+          "text-[var(--relay-ink)] hover:bg-[var(--relay-soft)] disabled:cursor-default disabled:opacity-75",
         )}
       >
         <span className="truncate">
@@ -117,7 +119,7 @@ export function SidebarProjectSwitcher({
           <ChevronDown
             className={cn(
               "h-3.5 w-3.5 shrink-0 text-[var(--relay-faint)] transition-transform duration-200",
-              open && "rotate-180"
+              open && "rotate-180",
             )}
           />
         )}
@@ -128,15 +130,14 @@ export function SidebarProjectSwitcher({
           {projects.map((p) => (
             <button
               key={p.id}
-              disabled={Boolean(pendingProjectId) || createPending}
+              disabled={Boolean(pendingProjectId)}
               onClick={() => switchProject(p.id)}
               className={cn(
                 "flex w-full items-center gap-2 rounded-[var(--relay-radius-sm)] px-2.5 py-1.5 text-left text-[13px] transition-colors",
                 p.id === optimisticCurrentId
                   ? "bg-[var(--relay-soft)] font-medium text-[var(--relay-ink)]"
                   : "text-[var(--relay-ink-secondary)] hover:bg-[var(--relay-soft)]",
-                (Boolean(pendingProjectId) || createPending) &&
-                  "cursor-default opacity-60"
+                Boolean(pendingProjectId) && "cursor-default opacity-60",
               )}
             >
               {p.id === optimisticCurrentId && pendingProjectId !== p.id && (
@@ -151,39 +152,37 @@ export function SidebarProjectSwitcher({
 
           <div className="my-1 border-t border-[var(--relay-line)]" />
 
-          {creating ? (
-            <div className="flex items-center gap-1.5 px-1 py-1">
-              <input
-                autoFocus
-                className="flex-1 min-w-0 rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] px-2 py-1 text-[12px] outline-none focus:border-[var(--relay-accent)]"
-                placeholder="Project name"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void handleCreate();
-                  if (e.key === "Escape") setCreating(false);
-                }}
-              />
-              <button
-                disabled={createPending || Boolean(pendingProjectId)}
-                onClick={() => void handleCreate()}
-                className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-accent)] px-2 py-1 text-[11px] font-semibold text-[var(--relay-accent-text)] transition hover:opacity-90 disabled:opacity-40"
-              >
-                {createPending ? "…" : "Add"}
-              </button>
-            </div>
-          ) : (
-            <button
-              disabled={Boolean(pendingProjectId)}
-              onClick={() => setCreating(true)}
-              className="flex w-full items-center gap-2 rounded-[var(--relay-radius-sm)] px-2.5 py-1.5 text-[12px] text-[var(--relay-muted)] transition hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
-            >
-              <Plus className="h-3 w-3" />
-              New project
-            </button>
-          )}
+          <button
+            disabled={Boolean(pendingProjectId)}
+            onClick={() => {
+              setOpen(false);
+              setDialogOpen(true);
+            }}
+            className="flex w-full items-center gap-2 rounded-[var(--relay-radius-sm)] px-2.5 py-1.5 text-[12px] text-[var(--relay-muted)] transition hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
+          >
+            <Plus className="h-3 w-3" />
+            New project
+          </button>
         </div>
       )}
+
+      {/* Create project dialog */}
+      <Dialog.Root open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/45" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-[var(--relay-radius-lg)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-6 shadow-[var(--relay-shadow-lg)]">
+            <Dialog.Title className="text-lg font-semibold text-[var(--relay-ink)]">
+              New project
+            </Dialog.Title>
+            <Dialog.Description className="mt-1 text-[13px] text-[var(--relay-muted)]">
+              Create a project boundary so Relay can route the right chats.
+            </Dialog.Description>
+            <div className="mt-5">
+              <CreateProjectForm onSuccess={() => setDialogOpen(false)} />
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }

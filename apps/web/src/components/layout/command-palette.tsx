@@ -7,6 +7,10 @@ import {
   Search,
   LayoutDashboard,
   Activity,
+  Brain,
+  FileDown,
+  Settings,
+  RefreshCw,
   ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -54,6 +58,28 @@ export function CommandPalette({ projects = [], currentProjectId }: CommandPalet
       section: "Navigation",
     },
     {
+      id: "nav-memory",
+      label: "Go to Memory",
+      icon: <Brain className="h-4 w-4" />,
+      shortcut: "G M",
+      action: () => {
+        const href = currentProjectId ? `/memory?project=${currentProjectId}` : "/memory";
+        router.push(href);
+      },
+      section: "Navigation",
+    },
+    {
+      id: "nav-brief",
+      label: "Go to Brief",
+      icon: <FileDown className="h-4 w-4" />,
+      shortcut: "G B",
+      action: () => {
+        const href = currentProjectId ? `/brief?project=${currentProjectId}` : "/brief";
+        router.push(href);
+      },
+      section: "Navigation",
+    },
+    {
       id: "nav-activity",
       label: "Go to Activity",
       icon: <Activity className="h-4 w-4" />,
@@ -67,6 +93,35 @@ export function CommandPalette({ projects = [], currentProjectId }: CommandPalet
         router.push("/activity");
       },
       section: "Navigation",
+    },
+    {
+      id: "nav-settings",
+      label: "Go to Settings",
+      icon: <Settings className="h-4 w-4" />,
+      shortcut: "G S",
+      action: () => {
+        startWorkspaceNavigation({
+          href: "/settings",
+          cacheKey: "settings",
+          kind: "settings",
+        });
+        router.push("/settings");
+      },
+      section: "Navigation",
+    },
+    {
+      id: "action-rebuild",
+      label: "Rebuild State",
+      icon: <RefreshCw className="h-4 w-4" />,
+      action: () => {
+        if (currentProjectId) {
+          void fetch(`/api/projects/${currentProjectId}/state`, {
+            method: "POST",
+            credentials: "include",
+          }).then(() => router.refresh());
+        }
+      },
+      section: "Actions",
     },
     ...projects
       .filter((p) => p.id !== currentProjectId)

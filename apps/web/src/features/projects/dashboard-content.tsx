@@ -13,8 +13,15 @@ import {
   Pencil,
 } from "lucide-react";
 
+import Link from "next/link";
 import { motion, AnimatePresence } from "motion/react";
 
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { FadeIn } from "@/components/ui/fade-in";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -59,6 +66,109 @@ function targetLabel(key: string): string {
     perplexity_research: "Perplexity",
   };
   return map[key] ?? key;
+}
+
+/* ─── Truncated accordion helpers ─── */
+
+function TruncatedContent({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div>
+      <p
+        className={cn(
+          "text-[12px] leading-relaxed text-[var(--relay-ink-secondary)]",
+          !expanded && "line-clamp-3",
+        )}
+      >
+        {text}
+      </p>
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="mt-1 text-[11px] font-medium text-[var(--relay-muted)] hover:text-[var(--relay-ink)] transition-colors"
+      >
+        {expanded ? "Show less" : "Show more"}
+      </button>
+    </div>
+  );
+}
+
+function MemoryAccordion({
+  overview,
+  objective,
+  progress,
+}: {
+  overview: string;
+  objective: string;
+  progress: string;
+}) {
+  const defaults = [
+    overview && "overview",
+    objective && "objective",
+    progress && "progress",
+  ].filter(Boolean) as string[];
+
+  return (
+    <Accordion type="multiple" defaultValue={defaults}>
+      {overview ? (
+        <AccordionItem value="overview">
+          <AccordionTrigger>Overview</AccordionTrigger>
+          <AccordionContent>
+            <TruncatedContent text={overview} />
+          </AccordionContent>
+        </AccordionItem>
+      ) : null}
+      {objective ? (
+        <AccordionItem value="objective">
+          <AccordionTrigger>Objective</AccordionTrigger>
+          <AccordionContent>
+            <TruncatedContent text={objective} />
+          </AccordionContent>
+        </AccordionItem>
+      ) : null}
+      {progress ? (
+        <AccordionItem value="progress">
+          <AccordionTrigger>Progress</AccordionTrigger>
+          <AccordionContent>
+            <TruncatedContent text={progress} />
+          </AccordionContent>
+        </AccordionItem>
+      ) : null}
+    </Accordion>
+  );
+}
+
+function BriefAccordion({
+  packets,
+}: {
+  packets: DashboardContentProps["dashboard"]["packets"];
+}) {
+  const defaults = packets.map((_, i) => `brief-${i}`);
+
+  return (
+    <Accordion type="multiple" defaultValue={defaults}>
+      {packets.map((packet, index) => (
+        <AccordionItem
+          key={`${packet.targetProfileKey}-${index}`}
+          value={`brief-${index}`}
+        >
+          <AccordionTrigger>
+            <span className="flex items-center gap-2">
+              {targetLabel(packet.targetProfileKey)}
+              <span className="text-[10px] text-[var(--relay-faint)] rounded-full bg-[var(--relay-soft)] px-1.5 py-0.5 font-normal">
+                {packet.kind === "fresh_chat_bootstrap"
+                  ? "Full brief"
+                  : "Continuity"}
+              </span>
+            </span>
+          </AccordionTrigger>
+          <AccordionContent>
+            <TruncatedContent text={packet.content} />
+          </AccordionContent>
+        </AccordionItem>
+      ))}
+    </Accordion>
+  );
 }
 
 /* ─── Component ─── */
@@ -463,7 +573,7 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
                   </span>
                 </div>
                 {projectMeta.description ? (
-                  <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--relay-muted)] line-clamp-1 max-w-2xl">
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--relay-muted)] max-w-2xl">
                     {projectMeta.description}
                   </p>
                 ) : null}
@@ -529,9 +639,12 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
           {/* Memory card */}
           <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">
             <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-[var(--relay-line)]">
-              <span className="text-xs font-medium text-[var(--relay-ink)]">
+              <Link
+                href={`/memory?project=${project.id}`}
+                className="text-xs font-medium text-[var(--relay-ink)] hover:text-[var(--relay-accent)] transition-colors"
+              >
                 Memory
-              </span>
+              </Link>
               <button
                 onClick={() => setEditingMemory(!editingMemory)}
                 className="flex items-center gap-1 text-[11px] text-[var(--relay-muted)] hover:text-[var(--relay-ink)] transition-colors"
@@ -584,41 +697,14 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
                 </>
               ) : (
                 <>
-                  {overview ? (
-                    <div>
-                      <p className="text-[11px] font-medium text-[var(--relay-muted)] mb-0.5">
-                        Overview
-                      </p>
-                      <p className="text-[12px] leading-relaxed text-[var(--relay-ink-secondary)] line-clamp-3">
-                        {overview}
-                      </p>
-                    </div>
-                  ) : null}
-                  {objective ? (
-                    <div>
-                      <p className="text-[11px] font-medium text-[var(--relay-muted)] mb-0.5">
-                        Objective
-                      </p>
-                      <p className="text-[12px] leading-relaxed text-[var(--relay-ink-secondary)] line-clamp-3">
-                        {objective}
-                      </p>
-                    </div>
-                  ) : null}
-                  {progress ? (
-                    <div>
-                      <p className="text-[11px] font-medium text-[var(--relay-muted)] mb-0.5">
-                        Progress
-                      </p>
-                      <p className="text-[12px] leading-relaxed text-[var(--relay-ink-secondary)] line-clamp-3">
-                        {progress}
-                      </p>
-                    </div>
-                  ) : null}
-                  {!overview && !objective && !progress && (
-                    <p className="text-[12px] text-[var(--relay-muted)] py-2">
-                      No memory yet. Relay will populate this after your first
-                      chat.
-                    </p>
+                  {(overview || objective || progress) ? (
+                    <MemoryAccordion overview={overview} objective={objective} progress={progress} />
+                  ) : (
+                    <EmptyState
+                      title="No memory yet"
+                      description="Relay will populate this after your first chat."
+                      className="py-4"
+                    />
                   )}
                 </>
               )}
@@ -628,12 +714,15 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
           {/* Project Brief card */}
           <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">
             <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-[var(--relay-line)]">
-              <div className="flex items-center gap-2">
+              <Link
+                href={`/brief?project=${project.id}`}
+                className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+              >
                 <FileDown className="h-3.5 w-3.5 text-[var(--relay-faint)]" />
                 <span className="text-xs font-medium text-[var(--relay-ink)]">
                   Project Brief
                 </span>
-              </div>
+              </Link>
               <Button
                 variant="ghost"
                 size="sm"
@@ -645,28 +734,8 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
               </Button>
             </div>
             <div className="px-3.5 py-3">
-              {latestPacket ? (
-                <div>
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <span className="text-[11px] font-medium text-[var(--relay-ink)]">
-                      {targetLabel(latestPacket.targetProfileKey)}
-                    </span>
-                    <span className="text-[10px] text-[var(--relay-faint)] rounded-full bg-[var(--relay-soft)] px-1.5 py-0.5">
-                      {latestPacket.kind === "fresh_chat_bootstrap"
-                        ? "Full brief"
-                        : "Continuity"}
-                    </span>
-                  </div>
-                  <p className="text-[12px] leading-relaxed text-[var(--relay-ink-secondary)] line-clamp-4">
-                    {latestPacket.content}
-                  </p>
-                  {dashboard.packets.length > 1 && (
-                    <p className="mt-2 text-[11px] text-[var(--relay-muted)]">
-                      +{dashboard.packets.length - 1} more brief
-                      {dashboard.packets.length > 2 ? "s" : ""}
-                    </p>
-                  )}
-                </div>
+              {dashboard.packets.length > 0 ? (
+                <BriefAccordion packets={dashboard.packets} />
               ) : (
                 <EmptyState
                   title="No briefs yet"
@@ -683,15 +752,18 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
       <FadeIn delay={0.15}>
         <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">
           <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-[var(--relay-line)]">
-            <div className="flex items-center gap-2">
+            <Link
+              href="/activity"
+              className="flex items-center gap-2 hover:text-[var(--relay-accent)] transition-colors"
+            >
               <MessageSquare className="h-3.5 w-3.5 text-[var(--relay-faint)]" />
-              <span className="text-xs font-medium text-[var(--relay-ink)]">
+              <span className="text-xs font-medium">
                 Recent Activity
               </span>
               <span className="text-[11px] text-[var(--relay-faint)] tabular-nums">
                 {totalChats}
               </span>
-            </div>
+            </Link>
           </div>
           <div className="divide-y divide-[var(--relay-line)]">
             {dashboard.sessionHistory.length === 0 ? (

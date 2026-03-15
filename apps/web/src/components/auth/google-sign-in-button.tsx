@@ -20,7 +20,7 @@ export function GoogleSignInButton({
   return (
     <div className="space-y-3">
       <Button
-        className="w-full rounded-xl bg-[#111210] px-6 py-3 text-white shadow-sm hover:bg-[#2a2d2a] hover:shadow-md transition-all"
+        className="w-full rounded-[var(--relay-radius)] bg-[var(--relay-ink)] px-6 py-3 text-[var(--relay-bg)] shadow-sm hover:opacity-90 hover:shadow-md transition-all"
         disabled={pending}
         onClick={() =>
           startTransition(async () => {

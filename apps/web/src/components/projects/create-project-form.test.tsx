@@ -91,6 +91,6 @@ describe("CreateProjectForm", () => {
     await waitFor(() => {
       expect(push).toHaveBeenCalledWith("/dashboard?project=project_123");
     });
-    expect(refresh).not.toHaveBeenCalled();
+    expect(refresh).toHaveBeenCalled();
   });
 });

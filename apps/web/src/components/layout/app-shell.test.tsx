@@ -18,22 +18,23 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-vi.mock("@/components/ui/theme-toggle", () => ({
-  ThemeToggle: () => <div data-testid="theme-toggle" />,
+vi.mock("next/image", () => ({
+  default: (props: Record<string, unknown>) => <img {...props} />,
 }));
 
-vi.mock("@/components/layout/sidebar-nav", () => ({
-  SidebarNav: () => <nav data-testid="sidebar-nav" />,
+vi.mock("@/components/layout/sidebar-context", () => ({
+  SidebarProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  useSidebar: () => ({ collapsed: false, setCollapsed: () => {}, toggle: () => {} }),
 }));
 
-vi.mock("@/components/layout/sidebar-project-switcher", () => ({
-  SidebarProjectSwitcher: () => <div data-testid="project-switcher" />,
-}));
-
-vi.mock("@/components/layout/account-menu", () => ({
-  AccountMenu: ({ name, email }: { name: string; email?: string }) => (
-    <div data-testid="account-menu" data-name={name} data-email={email ?? ""} />
+vi.mock("@/components/layout/sidebar", () => ({
+  Sidebar: ({ user }: { user: { name: string; email?: string } | null }) => (
+    <div data-testid="sidebar" data-name={user?.name ?? ""} data-email={user?.email ?? ""} />
   ),
+}));
+
+vi.mock("@/components/layout/sidebar-main-area", () => ({
+  SidebarMainArea: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
 vi.mock("@/components/layout/workspace-cache", () => ({
@@ -58,7 +59,7 @@ describe("AppShell", () => {
 
     expect(getAuthServerMock).not.toHaveBeenCalled();
     expect(screen.getByText("Dashboard body")).toBeTruthy();
-    expect(screen.getByTestId("account-menu").getAttribute("data-name")).toBe("Relay User");
-    expect(screen.getByTestId("account-menu").getAttribute("data-email")).toBe("user@example.com");
+    expect(screen.getByTestId("sidebar").getAttribute("data-name")).toBe("Relay User");
+    expect(screen.getByTestId("sidebar").getAttribute("data-email")).toBe("user@example.com");
   });
 });

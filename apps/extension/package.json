@@ -67,6 +67,19 @@
       "default_title": "Relay",
       "default_popup": "popup.html"
     },
+    "web_accessible_resources": [
+      {
+        "resources": ["assets/relay_logo_white.png"],
+        "matches": [
+          "https://chatgpt.com/*",
+          "https://chat.openai.com/*",
+          "https://perplexity.ai/*",
+          "https://www.perplexity.ai/*",
+          "https://codex.openai.com/*",
+          "https://claude.ai/*"
+        ]
+      }
+    ],
     "commands": {
       "insert-project-brief": {
         "suggested_key": {

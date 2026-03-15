@@ -133,18 +133,28 @@
     return String(hash);
   }
 
+  function detectPlatformFromUrl(url) {
+    if (/codex\.openai\.com/.test(url) || /chatgpt\.com\/codex|chat\.openai\.com\/codex/.test(url)) return "codex";
+    if (/chatgpt\.com|chat\.openai\.com/.test(url)) return "chatgpt";
+    if (/claude\.ai/.test(url)) return "claude";
+    if (/perplexity\.ai/.test(url)) return "perplexity";
+    return null;
+  }
+
   function getSiteConfig() {
     const runtime = getAdapterRuntime();
     const resolved = runtime ? runtime.resolve(window.location.href) : null;
 
-    if (!resolved) {
+    const platform = resolved ? resolved.platform : detectPlatformFromUrl(window.location.href);
+
+    if (!platform) {
       return null;
     }
 
     return {
-      platform: resolved.platform,
+      platform,
       streamingSelectors:
-        platformUiConfigs[resolved.platform]?.streamingSelectors || [],
+        platformUiConfigs[platform]?.streamingSelectors || [],
     };
   }
 
@@ -240,13 +250,45 @@
       pathname: url.pathname,
       pageFingerprint: url.pathname.split("/").filter(Boolean).pop() || null,
       domain: url.hostname,
-      routeKind: url.pathname === "/" ? "fresh" : "chat",
+      routeKind: url.pathname === "/" || url.pathname.includes("/new") ? "fresh" : "chat",
     };
   }
 
+  const platformPromptSelectors = {
+    chatgpt: ["#prompt-textarea", "div[contenteditable='true']", "textarea"],
+    codex: ["#prompt-textarea", "div[contenteditable='true']", "textarea"],
+    claude: ["div[contenteditable='true']", "textarea"],
+    perplexity: ["textarea"],
+  };
+
   function findPrompt(config) {
     const runtime = getAdapterRuntime();
-    return runtime ? runtime.findPrompt(document, window.location.href) : null;
+    const result = runtime ? runtime.findPrompt(document, window.location.href) : null;
+    if (result) return result;
+
+    const selectors = platformPromptSelectors[config.platform] || ["div[contenteditable='true']", "textarea"];
+    for (const selector of selectors) {
+      const nodes = document.querySelectorAll(selector);
+      for (const node of nodes) {
+        const rect = node.getBoundingClientRect();
+        const style = window.getComputedStyle(node);
+        if (
+          rect.width > 0 && rect.height > 0 &&
+          style.visibility !== "hidden" &&
+          style.display !== "none" &&
+          !node.hasAttribute("disabled")
+        ) {
+          return {
+            element: node,
+            isContentEditable:
+              node.isContentEditable ||
+              node.contentEditable === "true" ||
+              node.getAttribute("contenteditable") === "true",
+          };
+        }
+      }
+    }
+    return null;
   }
 
   function readPromptText(target) {
@@ -515,15 +557,15 @@
         --relay-hover: rgba(255, 255, 255, 0.08);
         --relay-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
         --relay-tooltip-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-        min-width: 280px;
-        max-width: min(600px, calc(100vw - 32px));
+        min-width: 240px;
+        max-width: min(90%, calc(100vw - 32px));
         border: 1px solid var(--relay-line);
-        border-radius: 8px;
+        border-radius: 10px;
         background: var(--relay-bg);
         color: var(--relay-ink);
         box-shadow: var(--relay-shadow);
         font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-        overflow: hidden;
+        overflow: visible;
         z-index: 2147483000;
         opacity: 0;
         transform: translateY(6px);
@@ -558,6 +600,9 @@
 
       .relay-inline-chip--anchored {
         position: fixed;
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+        border-bottom: none;
       }
 
       .relay-inline-chip--floating {
@@ -567,16 +612,70 @@
       }
 
       .relay-inline-chip__body {
+        position: relative;
         display: grid;
-        gap: 10px;
+        grid-template-columns: 22px 1fr auto;
+        grid-template-rows: auto auto;
+        gap: 2px 10px;
         padding: 8px 12px;
+        align-items: center;
       }
 
-      .relay-inline-chip__top {
+      /* ── Close button: top-right corner ── */
+      .relay-inline-chip__close {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--relay-faint);
+        font-size: 12px;
+        line-height: 1;
+        cursor: pointer;
+        z-index: 2;
+        transition: background 120ms, color 120ms;
+      }
+
+      .relay-inline-chip__close:hover {
+        background: var(--relay-hover);
+        color: var(--relay-ink);
+      }
+
+      /* ── Logo: column 1, spans both rows, vertically centered ── */
+      .relay-inline-chip__logo {
+        grid-column: 1;
+        grid-row: 1 / 3;
+        align-self: center;
+        justify-self: center;
+        width: 20px;
+        height: 20px;
+        flex-shrink: 0;
+        object-fit: contain;
+      }
+
+      .relay-inline-chip[data-theme="dark"] .relay-inline-chip__logo,
+      .relay-inline-chip:not([data-theme]) .relay-inline-chip__logo {
+        filter: brightness(1);
+      }
+
+      .relay-inline-chip[data-theme="light"] .relay-inline-chip__logo {
+        filter: brightness(0);
+      }
+
+      /* ── Row 1: project picker (col 2) + insert button (col 3) ── */
+      .relay-inline-chip__row1 {
+        grid-column: 2;
+        grid-row: 1;
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 10px;
+        gap: 6px;
+        min-width: 0;
       }
 
       .relay-inline-chip__titleWrap {
@@ -587,7 +686,7 @@
 
       .relay-inline-chip__title {
         margin: 0;
-        font-size: 14px;
+        font-size: 12px;
         font-weight: 600;
         line-height: 1.3;
         letter-spacing: -0.01em;
@@ -598,12 +697,14 @@
         max-width: 100%;
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: 4px;
         border: none;
         background: transparent;
-        padding: 0;
+        padding: 2px 0;
         color: inherit;
         cursor: pointer;
+        font-size: inherit;
+        font-family: inherit;
       }
 
       .relay-inline-chip__titleLabel {
@@ -613,8 +714,8 @@
       }
 
       .relay-inline-chip__titleChevron {
-        width: 13px;
-        height: 13px;
+        width: 11px;
+        height: 11px;
         color: var(--relay-faint);
         transition: transform 120ms ease, color 120ms ease;
       }
@@ -628,148 +729,34 @@
         transform: rotate(180deg);
       }
 
-      .relay-inline-chip__close {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 22px;
-        height: 22px;
-        flex-shrink: 0;
-        border: none;
-        border-radius: 6px;
-        background: transparent;
-        color: var(--relay-faint);
-        font-size: 14px;
-        cursor: pointer;
-        transition: background 120ms, color 120ms;
-      }
-
-      .relay-inline-chip__close:hover {
-        background: var(--relay-hover);
-        color: var(--relay-ink);
-      }
-
-      .relay-inline-chip__statusRow {
+      /* ── Insert button: col 3, spans both rows, vertically centered ── */
+      .relay-inline-chip__insertWrap {
+        grid-column: 3;
+        grid-row: 1 / 3;
+        align-self: center;
         display: flex;
-        align-items: flex-start;
-        gap: 8px;
-      }
-
-      .relay-inline-chip__dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        flex-shrink: 0;
-        margin-top: 6px;
-      }
-
-      .relay-inline-chip__dot--ready {
-        background: var(--relay-ink);
-      }
-
-      .relay-inline-chip__dot--waiting {
-        background: var(--relay-muted);
-      }
-
-      .relay-inline-chip__status {
-        margin: 0;
-        font-size: 12px;
-        line-height: 1.5;
-        color: var(--relay-ink-secondary);
-      }
-
-      .relay-inline-chip__statusCopy {
-        min-width: 0;
-        flex: 1;
-        display: inline-flex;
-        align-items: flex-start;
+        align-items: center;
         gap: 6px;
-        flex-wrap: wrap;
-        position: relative;
-      }
-
-      .relay-inline-chip__infoWrap {
-        position: static;
-        display: inline-flex;
-        flex: 0 0 auto;
-        margin-top: 2px;
-      }
-
-      .relay-inline-chip__info {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 14px;
-        height: 14px;
-        border: 1px solid var(--relay-line);
-        border-radius: 999px;
-        background: transparent;
-        color: var(--relay-faint);
-        font-size: 9px;
-        font-weight: 700;
-        cursor: help;
-      }
-
-      .relay-inline-chip__tooltip {
-        position: absolute;
-        right: 0;
-        top: calc(100% + 6px);
-        width: min(220px, calc(100% - 8px));
-        max-width: 220px;
-        border-radius: 8px;
-        background: var(--relay-ink);
-        color: var(--relay-accent-text);
-        padding: 8px 10px;
-        font-size: 11px;
-        line-height: 1.45;
-        white-space: normal;
-        overflow-wrap: anywhere;
-        box-shadow: var(--relay-tooltip-shadow);
-        opacity: 0;
-        pointer-events: none;
-        transform: translateY(3px);
-        transition: opacity 120ms ease, transform 120ms ease;
-      }
-
-      .relay-inline-chip__infoWrap:hover .relay-inline-chip__tooltip,
-      .relay-inline-chip__infoWrap:focus-within .relay-inline-chip__tooltip {
-        opacity: 1;
-        transform: translateY(0);
-      }
-
-      .relay-inline-chip__trust {
-        font-size: 11px;
-        color: var(--relay-faint);
-        line-height: 1.4;
-      }
-
-      .relay-inline-chip__controls {
-        display: grid;
-        gap: 8px;
-      }
-
-      .relay-inline-chip__row {
-        display: flex;
-        align-items: stretch;
-        gap: 8px;
+        padding-right: 20px;
       }
 
       .relay-inline-chip__button {
         position: relative;
-        flex: 1;
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        gap: 6px;
         min-width: 0;
-        min-height: 36px;
+        height: 26px;
         border: none;
-        border-radius: 4px;
+        border-radius: 5px;
         background: var(--relay-accent);
         color: var(--relay-accent-text);
-        padding: 0 14px;
-        font-size: 13px;
+        padding: 0 10px;
+        font-size: 11px;
         font-weight: 500;
         cursor: pointer;
+        white-space: nowrap;
         transition: background 120ms, opacity 120ms;
       }
 
@@ -791,43 +778,98 @@
         color: var(--relay-accent-text);
       }
 
-      .relay-inline-chip__shortcut {
+      .relay-inline-chip__shortcutKey {
+        font-size: 10px;
+        font-weight: 400;
+        opacity: 0.5;
+        margin-left: 4px;
+      }
+
+      /* ── Row 2: stats (spans col 2-3) ── */
+      .relay-inline-chip__row2 {
+        grid-column: 2 / 4;
+        grid-row: 2;
+        font-size: 10px;
+        color: var(--relay-faint);
+        line-height: 1.4;
+      }
+
+      /* ── Issue tooltip ── */
+      .relay-inline-chip__infoWrap {
+        position: relative;
+        display: inline-flex;
+        flex: 0 0 auto;
+      }
+
+      .relay-inline-chip__info {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 6px;
-        flex-shrink: 0;
-        min-height: 36px;
-        border-radius: 6px;
+        width: 14px;
+        height: 14px;
         border: 1px solid var(--relay-line);
+        border-radius: 999px;
         background: transparent;
-        padding: 0 10px;
         color: var(--relay-faint);
-        font-size: 11px;
-        font-weight: 500;
+        font-size: 9px;
+        font-weight: 700;
+        cursor: help;
       }
 
-      .relay-inline-chip__shortcut svg {
-        width: 12px;
-        height: 12px;
+      .relay-inline-chip__tooltip {
+        position: absolute;
+        right: 0;
+        bottom: calc(100% + 6px);
+        width: 220px;
+        max-width: 220px;
+        border-radius: 8px;
+        background: var(--relay-ink);
+        color: var(--relay-accent-text);
+        padding: 8px 10px;
+        font-size: 11px;
+        line-height: 1.45;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        box-shadow: var(--relay-tooltip-shadow);
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(-3px);
+        transition: opacity 120ms ease, transform 120ms ease;
+        z-index: 10;
+      }
+
+      .relay-inline-chip__infoWrap:hover .relay-inline-chip__tooltip,
+      .relay-inline-chip__infoWrap:focus-within .relay-inline-chip__tooltip {
+        opacity: 1;
+        transform: translateY(0);
       }
 
       .relay-inline-chip__projectMenu,
       .relay-association-toast__projectMenu {
         display: grid;
-        gap: 6px;
-        padding: 8px;
+        gap: 2px;
+        padding: 6px;
         border: 1px solid var(--relay-line);
-        border-radius: 10px;
+        border-radius: 8px;
         background: var(--relay-surface);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
       }
 
       .relay-inline-chip__projectMenu {
-        margin-top: 8px;
+        position: absolute;
+        bottom: calc(100% + 6px);
+        left: 0;
+        min-width: 180px;
+        z-index: 20;
       }
 
       .relay-association-toast__projectMenu {
-        margin-top: -2px;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        margin-top: 4px;
+        z-index: 10;
       }
 
       .relay-inline-chip__projectOption,
@@ -835,17 +877,16 @@
         width: 100%;
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        border: 1px solid transparent;
-        border-radius: 8px;
+        gap: 8px;
+        border: none;
+        border-radius: 6px;
         background: transparent;
-        color: var(--relay-ink);
-        padding: 8px 10px;
+        color: var(--relay-ink-secondary);
+        padding: 7px 10px;
         font-size: 12px;
         text-align: left;
         cursor: pointer;
-        transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+        transition: background 100ms ease;
       }
 
       .relay-inline-chip__projectOption:hover,
@@ -855,8 +896,8 @@
 
       .relay-inline-chip__projectOption--active,
       .relay-association-toast__projectOption--active {
-        border-color: var(--relay-line);
-        background: var(--relay-hover);
+        color: var(--relay-ink);
+        font-weight: 600;
       }
 
       @keyframes relay-shimmer {
@@ -892,22 +933,27 @@
         --relay-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
         position: fixed;
         top: 18px;
-        right: 18px;
+        right: 0;
         display: grid;
         gap: 10px;
         min-width: 220px;
-        max-width: min(340px, calc(100vw - 36px));
+        max-width: min(340px, calc(100vw - 16px));
         padding: 12px 14px 12px 14px;
         border: 1px solid var(--relay-line);
-        border-radius: 14px;
+        border-top-left-radius: 14px;
+        border-top-right-radius: 0;
+        border-bottom-left-radius: 14px;
+        border-bottom-right-radius: 0;
+        border-right: none;
         background: var(--relay-bg);
         color: var(--relay-ink);
         box-shadow: var(--relay-shadow);
         font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
         z-index: 2147483001;
+        overflow: visible;
         opacity: 0;
-        transform: translateY(-8px);
-        transition: opacity 160ms ease, transform 160ms ease;
+        transform: translateX(100%);
+        transition: opacity 200ms ease, transform 200ms ease;
       }
 
       .relay-association-toast[data-theme="light"] {
@@ -926,12 +972,12 @@
 
       .relay-association-toast--visible {
         opacity: 1;
-        transform: translateY(0);
+        transform: translateX(0);
       }
 
       .relay-association-toast--hiding {
         opacity: 0;
-        transform: translateY(-10px);
+        transform: translateX(100%);
       }
 
       .relay-association-toast--clickable {
@@ -946,6 +992,7 @@
       }
 
       .relay-association-toast__titleWrap {
+        position: relative;
         min-width: 0;
         flex: 1;
         display: grid;
@@ -1414,8 +1461,8 @@
             type="button"
             data-project-id="${escapeHtml(project.id)}"
           >
+            ${active ? '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 8.5 6.5 12 13 4"></polyline></svg>' : '<span style="width:12px"></span>'}
             <span>${escapeHtml(project.name)}</span>
-            <span>${active ? "Current" : "Switch"}</span>
           </button>
         `;
       })
@@ -1550,9 +1597,6 @@
       ]
         .filter(Boolean)
         .join(" ");
-      const dotClass = activeState.canInsert
-        ? "relay-inline-chip__dot--ready"
-        : "relay-inline-chip__dot--waiting";
       const chipTitle =
         activeState.projectOptions.length > 1
           ? `
@@ -1577,48 +1621,38 @@
           `
           : `<div class="relay-inline-chip__titleWrap"><p class="relay-inline-chip__title">${escapeHtml(activeState.projectName || "No project")}</p></div>`;
 
+      // Note: All user-controlled values are sanitized via escapeHtml() before insertion.
+      // chipTitle is built from escapeHtml'd values above. buttonClassName uses only hardcoded class names.
+      const shortcutDisplay = escapeHtml(activeState.shortcutLabel || "\u2318\u21e7I");
+      const trustStats = activeState.trust &&
+        (activeState.trust.recentChatCount > 0 || activeState.trust.savedContextCount > 0)
+          ? `${escapeHtml(String(activeState.trust.recentChatCount))} chats \u00b7 ${escapeHtml(String(activeState.trust.savedContextCount))} saved`
+          : escapeHtml(activeState.trustLine || "");
+      const freshnessText = activeState.freshnessText ? ` \u00b7 ${escapeHtml(activeState.freshnessText)}` : "";
+      const logoUrl = typeof chrome !== "undefined" && chrome.runtime ? chrome.runtime.getURL("assets/relay_logo_white.png") : "";
+
       root.innerHTML = `
         <div class="relay-inline-chip__body">
-          <div class="relay-inline-chip__top">
+          <button class="relay-inline-chip__close" type="button" aria-label="Dismiss">\u00d7</button>
+          <img class="relay-inline-chip__logo" src="${escapeHtml(logoUrl)}" alt="Relay" />
+          <div class="relay-inline-chip__row1">
             ${chipTitle}
-            <button class="relay-inline-chip__close" type="button" aria-label="Dismiss">×</button>
           </div>
-          <div class="relay-inline-chip__statusRow">
-            <span class="relay-inline-chip__dot ${dotClass}"></span>
-            <div class="relay-inline-chip__statusCopy">
-              <p class="relay-inline-chip__status">${escapeHtml(activeState.message || "")}</p>
-              ${
-                shouldShowIssue
-                  ? `<div class="relay-inline-chip__infoWrap">
-                      <button class="relay-inline-chip__info" type="button" aria-label="Details">i</button>
-                      <div class="relay-inline-chip__tooltip">${escapeHtml(activeState.issue.detail)}</div>
-                    </div>`
-                  : ""
-              }
-            </div>
-          </div>
-          <div class="relay-inline-chip__trust">
+          <div class="relay-inline-chip__insertWrap">
             ${
-              activeState.trust &&
-              (activeState.trust.recentChatCount > 0 ||
-                activeState.trust.savedContextCount > 0)
-                ? `<span>${activeState.trust.recentChatCount} chats · ${activeState.trust.savedContextCount} saved</span>`
-                : `<span>${escapeHtml(activeState.trustLine || "")}</span>`
-            }${activeState.freshnessText ? ` · <span>${escapeHtml(activeState.freshnessText)}</span>` : ""}
+              shouldShowIssue
+                ? `<div class="relay-inline-chip__infoWrap">
+                    <button class="relay-inline-chip__info" type="button" aria-label="Details">i</button>
+                    <div class="relay-inline-chip__tooltip">${escapeHtml(activeState.issue.detail)}</div>
+                  </div>`
+                : ""
+            }
+            <button class="${buttonClassName}" type="button" ${activeState.canInsert && insertUiState.mode !== "loading" ? "" : "disabled"}>
+              ${getButtonLabel(activeState)}<span class="relay-inline-chip__shortcutKey">${shortcutDisplay}</span>
+            </button>
           </div>
-          <div class="relay-inline-chip__controls">
-            <div class="relay-inline-chip__row">
-              <button class="${buttonClassName}" type="button" ${activeState.canInsert && insertUiState.mode !== "loading" ? "" : "disabled"}>
-                ${getButtonLabel(activeState)}
-              </button>
-              <div class="relay-inline-chip__shortcut" aria-label="${escapeHtml(activeState.shortcutLabel || "Mod+Shift+I")} shortcut">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <rect x="3.5" y="5" width="17" height="14" rx="2.8"></rect>
-                  <path d="M7.5 10.5h.01M11.5 10.5h.01M15.5 10.5h.01M7.5 14.5h8"></path>
-                </svg>
-                <span>${escapeHtml(activeState.shortcutLabel || "Mod+Shift+I")}</span>
-              </div>
-            </div>
+          <div class="relay-inline-chip__row2">
+            ${trustStats}${freshnessText}
           </div>
         </div>
       `;
@@ -2122,7 +2156,19 @@
       hideAssociationToast();
     }
 
-    const pageState = computePageState(getSiteConfig());
+    let pageState;
+    try {
+      pageState = computePageState(getSiteConfig());
+    } catch (err) {
+      emitInlineTelemetry({
+        level: "error",
+        area: "runtime",
+        event: "inline_chip.compute_page_state_error",
+        message: "computePageState threw during observation.",
+        error: { message: String(err && err.message || err) },
+      });
+      pageState = { supported: false };
+    }
     relayChipState.pageState = pageState;
     const nextKey = buildPageStateKey(pageState);
 
@@ -2240,8 +2286,13 @@
     }
 
     if (message.type === "RELAY_PAGE_STATE") {
-      const pageState =
-        relayChipState.pageState ?? computePageState(getSiteConfig());
+      let pageState;
+      try {
+        pageState =
+          relayChipState.pageState ?? computePageState(getSiteConfig());
+      } catch (err) {
+        pageState = { supported: false };
+      }
       relayChipState.pageState = pageState;
       sendResponse(pageState);
       return true;

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
 
-export function CreateProjectForm() {
+export function CreateProjectForm({ onSuccess }: { onSuccess?: () => void } = {}) {
   const router = useRouter()
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
@@ -85,7 +85,9 @@ export function CreateProjectForm() {
           slug: result.project.slug
         }
       })
+      onSuccess?.()
       router.push(`/dashboard?project=${result.project.id}`)
+      router.refresh()
     } catch (cause) {
       logClientEvent({
         level: "error",

@@ -6,8 +6,10 @@ import type { UserSettingsRow } from "@relay/shared";
 
 import { deleteAccountAction } from "@/components/auth/delete-account-action";
 import { signOutAction } from "@/components/auth/sign-out-action";
+import { useTheme } from "@/components/theme-provider";
 import { createClientFlowId } from "@/lib/telemetry/client";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
+import { cn } from "@/lib/cn";
 
 interface SettingsPreferencesProps {
   initialSettings: UserSettingsRow["settings"];
@@ -19,6 +21,12 @@ const platformOptions = [
   { key: "claude", label: "Claude" },
   { key: "codex", label: "Codex" },
   { key: "perplexity", label: "Perplexity" },
+] as const;
+
+const themeOptions = [
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+  { value: "system", label: "System" },
 ] as const;
 
 function Toggle({
@@ -57,6 +65,7 @@ export function SettingsPreferences({
   const [toast, setToast] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const { theme, setTheme } = useTheme();
 
   async function save(nextSettings: typeof settings) {
     const flowId = createClientFlowId("settings");
@@ -91,6 +100,34 @@ export function SettingsPreferences({
 
   return (
     <div className="space-y-4 max-w-2xl pt-6">
+      {/* ─── Appearance ─── */}
+      <section className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">
+        <div className="px-5 py-4">
+          <h2 className="text-sm font-semibold text-[var(--relay-ink)]">Appearance</h2>
+          <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
+            Choose your preferred color scheme.
+          </p>
+        </div>
+        <div className="border-t border-[var(--relay-line)] px-5 py-4">
+          <div className="flex gap-2">
+            {themeOptions.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => setTheme(option.value as "light" | "dark" | "system")}
+                className={cn(
+                  "rounded-[var(--relay-radius-sm)] border px-4 py-2 text-[13px] font-medium transition-colors",
+                  theme === option.value
+                    ? "border-[var(--relay-accent)] bg-[var(--relay-soft)] text-[var(--relay-ink)]"
+                    : "border-[var(--relay-line)] text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]",
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ─── Connection ─── */}
       <section className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">
         <div className="px-5 py-4">
@@ -218,32 +255,48 @@ export function SettingsPreferences({
         </div>
       </section>
 
-      {/* ─── Sign out ─── */}
+      {/* ─── Account: Sign out ─── */}
       <section className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">
-        <div className="px-5 py-4 flex items-start justify-between gap-6">
+        <div className="px-5 py-4">
+          <h2 className="text-sm font-semibold text-[var(--relay-ink)]">Account</h2>
+        </div>
+        <div className="border-t border-[var(--relay-line)] px-5 py-4 flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-[var(--relay-ink)]">Account</h2>
-            <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
-              Sign out of Relay or permanently delete this account and all of its data.
+            <p className="text-[15px] font-medium text-[var(--relay-ink)]">Sign out</p>
+            <p className="text-sm text-[var(--relay-muted)] mt-0.5">
+              End your current session.
             </p>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-3">
-            <form action={signOutAction}>
-              <button
-                type="submit"
-                className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-danger)]/30 bg-[var(--relay-danger)]/10 px-4 py-2 text-[13px] font-medium text-[var(--relay-danger)] transition hover:bg-[var(--relay-danger)]/20"
-              >
-                Sign out
-              </button>
-            </form>
+          <form action={signOutAction}>
             <button
-              type="button"
-              onClick={() => setConfirmDelete(true)}
-              className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-danger)]/40 px-4 py-2 text-[13px] font-medium text-[var(--relay-danger)] transition hover:bg-[var(--relay-danger)]/10"
+              type="submit"
+              className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-4 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition hover:bg-[var(--relay-soft)]"
             >
-              Delete account
+              Sign out
             </button>
+          </form>
+        </div>
+      </section>
+
+      {/* ─── Danger zone ─── */}
+      <section className="rounded-[var(--relay-radius)] border border-[var(--relay-danger)]/20 bg-[var(--relay-surface)] overflow-hidden">
+        <div className="px-5 py-4">
+          <h2 className="text-sm font-semibold text-[var(--relay-danger)]">Danger zone</h2>
+        </div>
+        <div className="border-t border-[var(--relay-danger)]/20 px-5 py-4 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-[15px] font-medium text-[var(--relay-ink)]">Delete account</p>
+            <p className="text-sm text-[var(--relay-muted)] mt-0.5">
+              Permanently delete your account, projects, and all data. This cannot be undone.
+            </p>
           </div>
+          <button
+            type="button"
+            onClick={() => setConfirmDelete(true)}
+            className="shrink-0 rounded-[var(--relay-radius-sm)] border border-[var(--relay-danger)]/30 bg-[var(--relay-danger)]/10 px-4 py-2 text-[13px] font-medium text-[var(--relay-danger)] transition hover:bg-[var(--relay-danger)]/20"
+          >
+            Delete account
+          </button>
         </div>
       </section>
 

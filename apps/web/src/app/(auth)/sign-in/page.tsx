@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 import { LocalSignInForm } from "@/components/auth/local-sign-in-form";
@@ -37,7 +38,7 @@ export default async function SignInPage({
   );
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#FAFAF8] px-6">
+    <main className="flex min-h-screen bg-[var(--relay-bg)]">
       <SignInSessionGate
         nextPath={resolveAuthenticatedAppPath("/dashboard")}
         allowExistingSession
@@ -49,54 +50,113 @@ export default async function SignInPage({
         event="auth_page.viewed"
         message="Rendered the sign-in page."
       />
-      <div className="w-full max-w-sm text-center">
+
+      {/* Left column — hero */}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
         <Image
-          src="/images/relay_logo_white.png"
-          alt="Relay"
-          width={36}
-          height={36}
-          className="mx-auto brightness-0"
+          src="/images/hero-hills.jpg"
+          alt=""
+          fill
+          className="object-cover"
+          priority
         />
+        <div className="absolute inset-0 bg-black/50" />
+        <div className="relative z-10 flex flex-col justify-between p-12 w-full">
+          <Image
+            src="/images/relay_logo_white.png"
+            alt="Relay"
+            width={28}
+            height={28}
+          />
 
-        <h1 className="mt-6 text-2xl font-bold tracking-tight text-gray-900">
-          {intent === "sign-up" ? "Create your Relay account" : "Sign in to Relay"}
-        </h1>
-        <p className="mt-2 text-sm text-gray-400">
-          {intent === "sign-up"
-            ? authProvider === "local"
-              ? "Use local dev auth and land in your dashboard."
-              : "Start with Google and land in your dashboard."
-            : authProvider === "local"
-              ? "Use local dev auth to keep your project brief ready."
-              : "Keep your project brief ready for every fresh AI chat."}
-        </p>
-
-        <div className="mt-8">
-          {authConfigured ? (
-            authProvider === "local" ? (
-              <LocalSignInForm nextPath={nextPath} />
-            ) : (
-              <GoogleSignInButton nextPath={nextPath} intent={intent} />
-            )
-          ) : (
-            <p className="rounded-2xl bg-gray-100 px-4 py-4 text-sm text-gray-400">
-              Add auth environment variables to enable sign-in.
+          <div className="max-w-md">
+            <h2 className="text-[28px] font-semibold tracking-tight leading-tight text-white">
+              Cross-AI memory
+              <br />
+              for your projects.
+            </h2>
+            <p className="mt-4 text-[15px] leading-relaxed text-white/70">
+              Relay keeps context synchronized between ChatGPT, Claude, Codex,
+              and Perplexity — so every AI tool knows what the others learned.
             </p>
-          )}
-        </div>
+          </div>
 
-        <div className="mt-8 flex items-center justify-center gap-4 text-[13px] text-gray-400">
-          <Link href="/" className="transition hover:text-gray-600">
+          <p className="text-[12px] text-white/50">
+            Built for engineers who work across AI tools.
+          </p>
+        </div>
+      </div>
+
+      {/* Right column — auth */}
+      <div className="flex flex-1 items-center justify-center px-6 py-12">
+        <div className="w-full max-w-sm">
+          {/* Back button */}
+          <Link
+            href="/"
+            className="mb-6 inline-flex items-center gap-1.5 text-[13px] text-[var(--relay-muted)] transition hover:text-[var(--relay-ink)]"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
             Home
           </Link>
-          <span className="text-gray-200">·</span>
-          <Link href="/terms" className="transition hover:text-gray-600">
-            Terms
-          </Link>
-          <span className="text-gray-200">·</span>
-          <Link href="/privacy" className="transition hover:text-gray-600">
-            Privacy
-          </Link>
+
+          {/* Mobile-only logo */}
+          <div className="lg:hidden flex justify-center mb-8">
+            <Image
+              src="/images/relay_logo_white.png"
+              alt="Relay"
+              width={36}
+              height={36}
+              className="brightness-0 dark:brightness-100"
+            />
+          </div>
+
+          <h1 className="text-2xl font-bold tracking-tight text-[var(--relay-ink)] text-center lg:text-left">
+            {intent === "sign-up"
+              ? "Create your Relay account"
+              : "Sign in to Relay"}
+          </h1>
+          <p className="mt-2 text-sm text-[var(--relay-muted)] text-center lg:text-left">
+            {intent === "sign-up"
+              ? authProvider === "local"
+                ? "Use local dev auth and land in your dashboard."
+                : "Start with Google and land in your dashboard."
+              : authProvider === "local"
+                ? "Use local dev auth to keep your project brief ready."
+                : "Keep your project brief ready for every fresh AI chat."}
+          </p>
+
+          <div className="mt-8">
+            {authConfigured ? (
+              authProvider === "local" ? (
+                <LocalSignInForm nextPath={nextPath} />
+              ) : (
+                <GoogleSignInButton nextPath={nextPath} intent={intent} />
+              )
+            ) : (
+              <p className="rounded-[var(--relay-radius)] bg-[var(--relay-soft)] px-4 py-4 text-sm text-[var(--relay-muted)]">
+                Add auth environment variables to enable sign-in.
+              </p>
+            )}
+          </div>
+
+          <p className="mt-6 text-center text-[11px] leading-relaxed text-[var(--relay-faint)]">
+            By continuing, you agree to our{" "}
+            <Link
+              href="/terms"
+              className="underline underline-offset-2 transition hover:text-[var(--relay-muted)]"
+            >
+              Terms
+            </Link>{" "}
+            and{" "}
+            <Link
+              href="/privacy"
+              className="underline underline-offset-2 transition hover:text-[var(--relay-muted)]"
+            >
+              Privacy Policy
+            </Link>
+            .
+          </p>
+
         </div>
       </div>
     </main>

@@ -4,10 +4,13 @@ import type { ProjectDashboardDto } from "@relay/shared"
 
 export interface ActivityEntry {
   kind: "capture" | "digest"
+  projectId: string
   projectName: string
+  sessionId?: string
   title: string
   detail: string
   timestamp: string
+  isArchived?: boolean
 }
 
 export function buildActivityFeed(
@@ -24,16 +27,20 @@ export function buildActivityFeed(
     for (const session of dashboard.sessionHistory) {
       entries.push({
         kind: "capture",
+        projectId: project.id,
         projectName: project.name,
+        sessionId: session.id,
         title: session.title ?? session.url,
         detail: `${session.platform} · ${session.turnCount} turns${session.isArchived ? " · detached" : ""}`,
         timestamp: session.capturedAt ?? "",
+        isArchived: session.isArchived,
       })
     }
 
     for (const digest of dashboard.recentDigests) {
       entries.push({
         kind: "digest",
+        projectId: project.id,
         projectName: project.name,
         title: digest.summaryShort ?? "Digest run",
         detail: `confidence ${Math.round((digest.confidence ?? 0) * 100)}%${digest.shouldMerge ? " · merged" : ""}`,

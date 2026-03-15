@@ -162,7 +162,7 @@ export function deterministicDigest(session: SourceSessionRow, turns: SourceTurn
     newDecisions: [],
     newConstraints: [],
     newTasks: currentObjectiveDelta ? [currentObjectiveDelta] : [],
-    projectOverviewDelta: state?.projectOverview ? null : session.title ?? null,
+    projectOverviewDelta: session.title ?? null,
     currentObjectiveDelta,
     recentProgressDelta: recentSummary,
     relevantToolsDelta: shouldMerge ? [session.platform] : [],
