@@ -1,8 +1,10 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect } from "react"
 
 import { authClient } from "@/lib/auth/client"
+
+const REDIRECT_ATTEMPTED_KEY = "relay:sign-in-gate-attempted"
 
 export function SignInSessionGate({
   nextPath,
@@ -35,13 +37,19 @@ function NeonSignInSessionGate({
   const session = authClient.useSession()
   const userId = session.data?.user?.id
   const isPending = session.isPending
-  const hasRedirected = useRef(false)
 
   useEffect(() => {
-    if (!isPending && allowExistingSession && userId && !hasRedirected.current) {
-      hasRedirected.current = true
-      window.location.replace(nextPath)
+    if (isPending || !allowExistingSession || !userId) {
+      return
     }
+
+    const alreadyAttempted = sessionStorage.getItem(REDIRECT_ATTEMPTED_KEY)
+    if (alreadyAttempted) {
+      return
+    }
+
+    sessionStorage.setItem(REDIRECT_ATTEMPTED_KEY, "1")
+    window.location.replace(nextPath)
   }, [allowExistingSession, isPending, nextPath, userId])
 
   return null

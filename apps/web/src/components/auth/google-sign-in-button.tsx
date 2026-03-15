@@ -25,6 +25,7 @@ export function GoogleSignInButton({
         onClick={() =>
           startTransition(async () => {
             setError(null);
+            sessionStorage.removeItem("relay:sign-in-gate-attempted");
             const flowId = createClientFlowId("auth");
 
             logClientEvent({
