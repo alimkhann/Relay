@@ -14,7 +14,7 @@ export const config: PlasmoCSConfig = {
     "https://x.com/*",
     "https://chat.deepseek.com/*"
   ],
-  run_at: "document_idle"
+  run_at: "document_end"
 }
 
 import "../src/content/adapter-runtime"

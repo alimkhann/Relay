@@ -1337,18 +1337,91 @@ async function rememberProjectSelection(
   });
 }
 
-async function requestPageStateFromTab(tabId: number) {
+function detectPlatformFromTabUrl(url: string): string | null {
+  if (/codex\.openai\.com/.test(url) || /chatgpt\.com\/codex|chat\.openai\.com\/codex/.test(url)) return "codex";
+  if (/chatgpt\.com|chat\.openai\.com/.test(url)) return "chatgpt";
+  if (/claude\.ai/.test(url)) return "claude";
+  if (/perplexity\.ai/.test(url)) return "perplexity";
+  if (/gemini\.google\.com|aistudio\.google\.com/.test(url)) return "gemini";
+  if (/grok\.com|x\.com\/i\/grok/.test(url)) return "grok";
+  if (/chat\.deepseek\.com/.test(url)) return "deepseek";
+  return null;
+}
+
+async function ensureContentScriptInjected(tabId: number): Promise<void> {
   try {
-    const page = ((await chrome.tabs.sendMessage(tabId, {
-      type: "RELAY_PAGE_STATE",
-    })) as RelayPageState | undefined) ?? { supported: false };
-    updateTabPageState(tabId, page);
-    return page;
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab.url || !detectPlatformFromTabUrl(tab.url)) return;
+
+    // Try injecting the content script programmatically. If it was already
+    // injected declaratively this is a no-op (the IIFE guards with mounted flag).
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: [
+        // Use the content script entry from the manifest
+        ...((chrome.runtime.getManifest().content_scripts?.[0]?.js as string[]) ?? []),
+      ],
+    });
   } catch {
-    const page = { supported: false } satisfies RelayPageState;
-    updateTabPageState(tabId, page);
-    return page;
+    // Injection can fail if the tab is a special page or was closed
   }
+}
+
+async function requestPageStateFromTab(tabId: number) {
+  const attempt = async (): Promise<RelayPageState> => {
+    try {
+      return ((await chrome.tabs.sendMessage(tabId, {
+        type: "RELAY_PAGE_STATE",
+      })) as RelayPageState | undefined) ?? { supported: false };
+    } catch {
+      return { supported: false };
+    }
+  };
+
+  let page = await attempt();
+
+  // If declarative content script didn't respond, try programmatic injection
+  // then retry. This handles cases where Chrome didn't inject the content
+  // script for unknown reasons (observed on Perplexity).
+  if (!page.supported) {
+    await ensureContentScriptInjected(tabId);
+    await new Promise((r) => setTimeout(r, 300));
+    page = await attempt();
+  }
+
+  // Last resort: use tab URL to provide a minimal supported state
+  if (!page.supported) {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (tab.url) {
+        const platform = detectPlatformFromTabUrl(tab.url);
+        if (platform) {
+          const parsedUrl = new URL(tab.url);
+          page = {
+            supported: true,
+            platform,
+            routeKind: "chat",
+            title: tab.title ?? null,
+            url: tab.url,
+            domain: parsedUrl.hostname,
+            pathname: parsedUrl.pathname,
+            pageFingerprint: parsedUrl.pathname.split("/").pop() ?? null,
+            turns: 0,
+            promptReady: false,
+            isFreshRoute: false,
+            isFreshChat: false,
+            isStable: false,
+            isStreaming: false,
+          };
+        }
+      }
+    } catch {
+      // tabs.get can fail if tab was closed
+    }
+  }
+
+  updateTabPageState(tabId, page);
+  return page;
 }
 
 async function buildActiveProjectState(

@@ -47,4 +47,8 @@ export function installRelayAdapterRuntime() {
   }
 }
 
-installRelayAdapterRuntime()
+try {
+  installRelayAdapterRuntime()
+} catch (err) {
+  console.error("[Relay] Failed to install adapter runtime:", err)
+}

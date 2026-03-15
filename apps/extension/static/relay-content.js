@@ -1,4 +1,8 @@
 (function () {
+  // Guard against double-injection (declarative + programmatic fallback)
+  if (window.__relayContentScriptLoaded) return;
+  window.__relayContentScriptLoaded = true;
+
   const PAGE_STABLE_MS = 1800;
   const FRESH_CHAT_STABILIZE_MS = 800;
   const RELAY_THEME_STORAGE_KEY = "relay.themeMode";
