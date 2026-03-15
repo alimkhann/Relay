@@ -41,6 +41,21 @@ export default async function MemoryPage({
       account={{ name: viewer.name, email: viewer.email }}
       projects={projects.map((p) => ({ id: p.id, name: p.name }))}
       currentProjectId={currentProject.id}
+      workspaceSnapshot={
+        dashboard
+          ? {
+              kind: "memory",
+              cacheKey: `memory:${currentProject.id}`,
+              href: `/memory?project=${currentProject.id}`,
+              project: {
+                id: currentProject.id,
+                name: currentProject.name,
+                description: currentProject.description,
+              },
+              dashboard,
+            }
+          : undefined
+      }
     >
       <PageTelemetry
         surface="web-dashboard"

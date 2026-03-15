@@ -28,6 +28,20 @@ const WorkspaceSettingsView = dynamic(
     })),
   { ssr: false }
 )
+const WorkspaceMemoryView = dynamic(
+  () =>
+    import("@/components/layout/workspace-memory-view").then((module) => ({
+      default: module.WorkspaceMemoryView
+    })),
+  { ssr: false }
+)
+const WorkspaceBriefView = dynamic(
+  () =>
+    import("@/components/layout/workspace-brief-view").then((module) => ({
+      default: module.WorkspaceBriefView
+    })),
+  { ssr: false }
+)
 
 type DashboardSnapshot = {
   kind: "dashboard"
@@ -52,15 +66,33 @@ type SettingsSnapshot = {
   hasConnectedExtension: boolean
 }
 
+type MemorySnapshot = {
+  kind: "memory"
+  cacheKey: string
+  href: string
+  project: { id: string; name: string; description?: string | null }
+  dashboard: ProjectDashboardDto
+}
+
+type BriefSnapshot = {
+  kind: "brief"
+  cacheKey: string
+  href: string
+  project: { id: string; name: string }
+  dashboard: ProjectDashboardDto
+}
+
 export type WorkspaceSnapshot =
   | DashboardSnapshot
   | ActivitySnapshot
   | SettingsSnapshot
+  | MemorySnapshot
+  | BriefSnapshot
 
 interface PendingWorkspaceRoute {
   cacheKey: string
   href: string
-  kind: WorkspaceSnapshot["kind"] | "memory" | "brief"
+  kind: WorkspaceSnapshot["kind"]
   projectId?: string | null
 }
 
@@ -161,7 +193,7 @@ export function resetWorkspaceStoreForTests() {
 
 async function revalidateRoute(route: PendingWorkspaceRoute) {
   if (refreshingKeys.has(route.cacheKey)) return
-  if (route.kind === "dashboard" && !route.projectId) return
+  if ((route.kind === "dashboard" || route.kind === "memory" || route.kind === "brief") && !route.projectId) return
 
   refreshingKeys.add(route.cacheKey)
   try {
@@ -195,6 +227,7 @@ async function revalidateRoute(route: PendingWorkspaceRoute) {
       return
     }
 
+    // dashboard, memory, and brief all use the project endpoint
     const response = await fetch(`/api/projects/${route.projectId}`, {
       credentials: "include",
     })
@@ -203,6 +236,29 @@ async function revalidateRoute(route: PendingWorkspaceRoute) {
       project: DashboardSnapshot["project"]
       dashboard: ProjectDashboardDto
     }
+
+    if (route.kind === "memory") {
+      cacheWorkspaceSnapshot({
+        kind: "memory",
+        cacheKey: route.cacheKey,
+        href: route.href,
+        project: payload.project,
+        dashboard: payload.dashboard,
+      })
+      return
+    }
+
+    if (route.kind === "brief") {
+      cacheWorkspaceSnapshot({
+        kind: "brief",
+        cacheKey: route.cacheKey,
+        href: route.href,
+        project: { id: payload.project.id, name: payload.project.name },
+        dashboard: payload.dashboard,
+      })
+      return
+    }
+
     cacheWorkspaceSnapshot({
       kind: "dashboard",
       cacheKey: route.cacheKey,
@@ -222,6 +278,14 @@ function renderWorkspaceSnapshot(snapshot: WorkspaceSnapshot) {
 
   if (snapshot.kind === "activity") {
     return <WorkspaceActivityView feed={snapshot.feed} />
+  }
+
+  if (snapshot.kind === "memory") {
+    return <WorkspaceMemoryView project={snapshot.project} dashboard={snapshot.dashboard} />
+  }
+
+  if (snapshot.kind === "brief") {
+    return <WorkspaceBriefView project={snapshot.project} dashboard={snapshot.dashboard} />
   }
 
   return (

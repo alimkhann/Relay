@@ -41,6 +41,17 @@ export default async function BriefPage({
       account={{ name: viewer.name, email: viewer.email }}
       projects={projects.map((p) => ({ id: p.id, name: p.name }))}
       currentProjectId={currentProject.id}
+      workspaceSnapshot={
+        dashboard
+          ? {
+              kind: "brief",
+              cacheKey: `brief:${currentProject.id}`,
+              href: `/brief?project=${currentProject.id}`,
+              project: { id: currentProject.id, name: currentProject.name },
+              dashboard,
+            }
+          : undefined
+      }
     >
       <PageTelemetry
         surface="web-dashboard"

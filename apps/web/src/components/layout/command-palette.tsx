@@ -64,6 +64,14 @@ export function CommandPalette({ projects = [], currentProjectId }: CommandPalet
       shortcut: "G M",
       action: () => {
         const href = currentProjectId ? `/memory?project=${currentProjectId}` : "/memory";
+        if (currentProjectId) {
+          startWorkspaceNavigation({
+            href,
+            cacheKey: `memory:${currentProjectId}`,
+            kind: "memory",
+            projectId: currentProjectId,
+          });
+        }
         router.push(href);
       },
       section: "Navigation",
@@ -75,6 +83,14 @@ export function CommandPalette({ projects = [], currentProjectId }: CommandPalet
       shortcut: "G B",
       action: () => {
         const href = currentProjectId ? `/brief?project=${currentProjectId}` : "/brief";
+        if (currentProjectId) {
+          startWorkspaceNavigation({
+            href,
+            cacheKey: `brief:${currentProjectId}`,
+            kind: "brief",
+            projectId: currentProjectId,
+          });
+        }
         router.push(href);
       },
       section: "Navigation",

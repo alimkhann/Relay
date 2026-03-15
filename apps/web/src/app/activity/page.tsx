@@ -22,6 +22,7 @@ export default async function ActivityPage() {
         email: viewer.email,
       }}
       projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+      currentProjectId={projects[0]?.id}
       workspaceSnapshot={{
         kind: "activity",
         cacheKey: "activity",
