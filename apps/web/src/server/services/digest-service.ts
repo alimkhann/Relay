@@ -1,7 +1,8 @@
 import { createRepositoryBundle, type RepositoryBundle } from "@relay/db"
 import type { AiJobRunRow, ProjectStateRow, SessionDigestShape, SourceSessionRow, SourceTurnRow } from "@relay/shared"
-import { buildCaptureSignature, normalizeText } from "@relay/shared"
+import { buildCaptureSignature, normalizeText, truncateSentence } from "@relay/shared"
 
+import { reconcileAfterDigest } from "./context-reconciliation-service"
 import { describeGeminiError, GEMINI_MODELS, runGeminiJsonWithFallback, type GeminiStage } from "./gemini-service"
 import { mergeDigestIntoState } from "./project-state-service"
 import { resolveProjectAiBudget } from "./ai-budget-service"
@@ -149,11 +150,13 @@ export function deterministicDigest(session: SourceSessionRow, turns: SourceTurn
     .reverse()
     .find((turn) => turn.role === "user" && !isLowSignalUserTurn(turn.content))
   const latestMeaningfulAssistantTurn = findLatestMeaningfulAssistantTurn(cleanedTurns)
-  const recentSummary = latestMeaningfulAssistantTurn?.content?.slice(0, 280) ?? null
+  const recentSummary = latestMeaningfulAssistantTurn?.content
+    ? truncateSentence(latestMeaningfulAssistantTurn.content, 280)
+    : null
 
   const currentObjectiveDelta =
     latestMeaningfulUserTurn && normalizeText(latestMeaningfulUserTurn.content) !== normalizeText(state?.currentObjective ?? "")
-      ? normalizeText(latestMeaningfulUserTurn.content).slice(0, 220)
+      ? truncateSentence(normalizeText(latestMeaningfulUserTurn.content), 220)
       : null
   const shouldMerge = Boolean(currentObjectiveDelta || recentSummary || !state?.projectOverview)
 
@@ -179,13 +182,13 @@ export function sanitizeDigest(input: DigestModelShape): DigestModelShape {
   const normalizedImportanceScore = rawImportanceScore <= 1 ? Math.round(rawImportanceScore * 100) : Math.round(rawImportanceScore)
 
   return {
-    summaryShort: normalizeText(String(input.summaryShort ?? "")).slice(0, 320) || "Captured a project update.",
+    summaryShort: truncateSentence(normalizeText(String(input.summaryShort ?? "")), 320) || "Captured a project update.",
     newDecisions: normalizeList(input.newDecisions),
     newConstraints: normalizeList(input.newConstraints),
     newTasks: normalizeList(input.newTasks),
-    projectOverviewDelta: input.projectOverviewDelta ? normalizeText(String(input.projectOverviewDelta)).slice(0, 400) : null,
-    currentObjectiveDelta: input.currentObjectiveDelta ? normalizeText(String(input.currentObjectiveDelta)).slice(0, 280) : null,
-    recentProgressDelta: input.recentProgressDelta ? normalizeText(String(input.recentProgressDelta)).slice(0, 400) : null,
+    projectOverviewDelta: input.projectOverviewDelta ? truncateSentence(normalizeText(String(input.projectOverviewDelta)), 400) : null,
+    currentObjectiveDelta: input.currentObjectiveDelta ? truncateSentence(normalizeText(String(input.currentObjectiveDelta)), 280) : null,
+    recentProgressDelta: input.recentProgressDelta ? truncateSentence(normalizeText(String(input.recentProgressDelta)), 400) : null,
     relevantToolsDelta: normalizeList(input.relevantToolsDelta),
     importanceScore: Math.max(0, Math.min(100, normalizedImportanceScore)),
     shouldMerge: Boolean(input.shouldMerge),
@@ -313,12 +316,12 @@ async function generateDigest(
       "Use short strings. Arrays should contain only durable carry-forward items.",
       "Ignore trivial meta prompts like 'yes', 'do that', 'continue', or 'what's better?' unless they clearly redefine the project goal.",
       "Ignore transcript wrappers like 'You said:' and 'ChatGPT said:'.",
-      `Project description: ${projectDescription ?? "None provided."}`,
-      `Existing project overview: ${projectState?.projectOverview ?? "None."}`,
-      `Existing current objective: ${projectState?.currentObjective ?? "None."}`,
-      `Existing decisions: ${(projectState?.decisions ?? []).join(" | ") || "None."}`,
-      `Existing constraints: ${(projectState?.constraints ?? []).join(" | ") || "None."}`,
-      `Existing open tasks: ${(projectState?.openTasks ?? []).join(" | ") || "None."}`,
+      ...(projectDescription ? [`Project description: ${projectDescription}`] : []),
+      ...(projectState?.projectOverview ? [`Existing project overview: ${projectState.projectOverview}`] : []),
+      ...(projectState?.currentObjective ? [`Existing current objective: ${projectState.currentObjective}`] : []),
+      ...((projectState?.decisions ?? []).length ? [`Existing decisions: ${projectState!.decisions.join(" | ")}`] : []),
+      ...((projectState?.constraints ?? []).length ? [`Existing constraints: ${projectState!.constraints.join(" | ")}`] : []),
+      ...((projectState?.openTasks ?? []).length ? [`Existing open tasks: ${projectState!.openTasks.join(" | ")}`] : []),
       `Session title: ${session.title ?? "Untitled session"}`,
       `Session platform: ${session.platform}`,
       "Recent turns:",
@@ -436,9 +439,13 @@ async function persistDigestResult(
       dirty: nextState.dirty
     })
     await repositories.sessionDigests.markMerged(digest.id)
+
+    // Auto-archive memory items superseded by the digest
+    const reconciliation = await reconcileAfterDigest(repositories, input.projectId, input.digest)
+    return { digest, reconciliation }
   }
 
-  return digest
+  return { digest, reconciliation: { archivedCount: 0, archivedItems: [] } }
 }
 
 export async function runDeterministicDigestInline(
@@ -519,7 +526,7 @@ export async function runDeterministicDigestInline(
     summaryShort: digestShape.summaryShort,
     reason: input.reason
   })
-  const digest = await persistDigestResult(repositories, userId, {
+  const { digest } = await persistDigestResult(repositories, userId, {
     projectId: input.projectId,
     session,
     projectState,
@@ -635,7 +642,7 @@ async function runDigestJobInternal(
       tokenUsage
     })
 
-    const digest = await persistDigestResult(repositories, userId, {
+    const { digest } = await persistDigestResult(repositories, userId, {
       projectId: job.projectId,
       session,
       projectState,

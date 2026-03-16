@@ -7,6 +7,7 @@ export interface CreateMemoryItemInput {
   title?: string | null
   content: string
   pinned?: boolean
+  tags?: string[]
   metadata?: Record<string, unknown>
 }
 
@@ -15,5 +16,6 @@ export interface UpdateMemoryItemInput {
   content?: string
   type?: MemoryItemType
   pinned?: boolean
+  tags?: string[]
   isArchived?: boolean
 }

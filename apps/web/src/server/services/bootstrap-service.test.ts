@@ -108,7 +108,8 @@ describe("renderBootstrapMarkdown", () => {
     )
 
     expect(nextShape.currentObjective).toBe("Make quiet recapture work on existing chats.")
-    expect(nextShape.recentProgress).toContain("share the same tab state")
+    // quick_continuity prefers the raw digest summary over the richer recentProgressDelta
+    expect(nextShape.recentProgress).toContain("quietly recapture changed turns")
     expect(nextShape.openTasks).toContain("Verify recapture after a streamed assistant reply.")
   })
 })

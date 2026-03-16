@@ -90,6 +90,7 @@ export interface MemoryItemRow {
   pinned: boolean
   isArchived: boolean
   sortOrder: number | null
+  tags: string[]
   metadata: Record<string, unknown>
   createdBy: string
   createdAt: string

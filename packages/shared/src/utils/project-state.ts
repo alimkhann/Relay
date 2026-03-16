@@ -1,19 +1,6 @@
 import type { MemoryItemType } from "../types/database"
 import type { MemoryItemDto, ProjectStateDto, ProjectStateOverrideDto } from "../types/project"
-
-function dedupe(items: string[]) {
-  const seen = new Set<string>()
-  const next: string[] = []
-
-  for (const item of items.map((value) => value.trim()).filter(Boolean)) {
-    const key = item.toLowerCase()
-    if (seen.has(key)) continue
-    seen.add(key)
-    next.push(item)
-  }
-
-  return next
-}
+import { mergeGovernedList } from "./merge-governed"
 
 function applyHidden(items: string[], hidden: string[]) {
   const hiddenKeys = new Set(hidden.map((value) => value.trim().toLowerCase()).filter(Boolean))
@@ -63,18 +50,21 @@ export function buildEffectiveProjectState(
       overrides?.recentProgressOverride !== null && overrides?.recentProgressOverride !== undefined
         ? overrides.recentProgressOverride
         : base.recentProgress,
-    decisions: dedupe([
-      ...applyHidden(base.decisions, overrides?.hiddenDecisions ?? []),
-      ...manualContext(memory, "decision")
-    ]),
-    constraints: dedupe([
-      ...applyHidden(base.constraints, overrides?.hiddenConstraints ?? []),
-      ...manualContext(memory, "constraint")
-    ]),
-    openTasks: dedupe([
-      ...applyHidden(base.openTasks, overrides?.hiddenOpenTasks ?? []),
-      ...manualContext(memory, "task")
-    ]),
+    decisions: mergeGovernedList(
+      applyHidden(base.decisions, overrides?.hiddenDecisions ?? []),
+      manualContext(memory, "decision"),
+      "decision"
+    ),
+    constraints: mergeGovernedList(
+      applyHidden(base.constraints, overrides?.hiddenConstraints ?? []),
+      manualContext(memory, "constraint"),
+      "constraint"
+    ),
+    openTasks: mergeGovernedList(
+      applyHidden(base.openTasks, overrides?.hiddenOpenTasks ?? []),
+      manualContext(memory, "task"),
+      "task"
+    ),
     updatedAt: overrides?.updatedAt ?? base.updatedAt
   }
 }

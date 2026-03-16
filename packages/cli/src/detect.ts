@@ -23,12 +23,12 @@ export async function detectIDEs(): Promise<DetectedIDE[]> {
   const home = homedir()
   const ides: DetectedIDE[] = []
 
-  // Claude Code (global)
+  // Claude Code (global) — config lives in ~/.claude.json, not ~/.claude/mcp.json
   if (await exists(join(home, ".claude"))) {
     ides.push({
       name: "Claude Code",
       id: "claude",
-      mcpConfigPath: join(home, ".claude", "mcp.json"),
+      mcpConfigPath: join(home, ".claude.json"),
       skillDir: join(home, ".claude", "skills", "relay")
     })
   }

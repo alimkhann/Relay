@@ -8,8 +8,8 @@ import { getProjectStateSchema, getProjectState } from "./tools/get-project-stat
 import { searchContextSchema, searchContext } from "./tools/search-context.js"
 import { addMemorySchema, addMemory } from "./tools/add-memory.js"
 import { saveContextSchema, saveContext } from "./tools/save-context.js"
-import { updateMemorySchema, updateMemory } from "./tools/update-memory.js"
-import { deleteMemorySchema, deleteMemory } from "./tools/delete-memory.js"
+import { manageMemorySchema, manageMemory } from "./tools/manage-memory.js"
+import { updateProjectSchema, updateProject } from "./tools/update-project.js"
 import { readProjectBrief } from "./resources/project-brief.js"
 
 interface ProjectSummary {
@@ -64,14 +64,14 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
 
   server.tool(
     "relay_list_projects",
-    "List all Relay projects you have access to. Returns project IDs, names, and metadata.",
+    "List all Relay projects you have access to. Returns project IDs, names, and metadata. Call this first if you need to find a project ID.",
     listProjectsSchema.shape,
     async () => listProjects(client)
   )
 
   server.tool(
     "relay_get_brief",
-    "Fetch a project context brief from Relay. Returns a markdown document with project state, decisions, constraints, and recent activity — ideal for starting or continuing a coding session.",
+    "Fetch a project context brief from Relay. Returns a markdown document with project state, decisions, constraints, tasks, and key notes. Call this at the start of every coding session to restore project memory.",
     getBriefSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -81,7 +81,7 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
 
   server.tool(
     "relay_get_project_state",
-    "Get full structured project state including overview, objectives, decisions, constraints, tasks, and all memory items grouped by type.",
+    "Get full structured project state including overview, objectives, decisions, constraints, tasks, and all memory items grouped by type. Use for debugging or when you need raw structured data.",
     getProjectStateSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -91,7 +91,7 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
 
   server.tool(
     "relay_search_context",
-    "Search memory items and project context by keyword. Useful for finding specific decisions, constraints, or notes.",
+    "Search memory items and project context by keyword. Supports stemming (e.g., 'auth' matches 'authentication') and tag filtering. Use to check if a decision or constraint already exists before adding duplicates.",
     searchContextSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -101,7 +101,7 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
 
   server.tool(
     "relay_add_memory",
-    "Add a single memory item to the project. Use for recording decisions, constraints, tasks, notes, or other structured knowledge during a coding session.",
+    "Add a single memory item to the project. Use for recording decisions, constraints, tasks, notes, or other structured knowledge during a coding session. Tag items with relevant keywords for easier search.",
     addMemorySchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -111,7 +111,7 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
 
   server.tool(
     "relay_save_context",
-    "Save a structured coding session summary to Relay. Creates multiple memory items from a session summary, decisions, progress, next steps, constraints, and notes. Call this before ending a coding session.",
+    "Save a structured coding session summary to Relay. Creates multiple memory items atomically from a session summary, decisions, progress, next steps, constraints, and notes. Call this before ending a session to preserve context for the next agent.",
     saveContextSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -120,17 +120,20 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
   )
 
   server.tool(
-    "relay_update_memory",
-    "Update an existing memory item. Use this to correct outdated decisions, refine constraints, or update task status. Helps keep context clean and accurate.",
-    updateMemorySchema.shape,
-    async (args) => updateMemory(client, args)
+    "relay_manage_memory",
+    "Update, delete, or archive memory items. Supports bulk operations for cleaning up outdated or contradicting items. Use to keep project context lean and accurate.",
+    manageMemorySchema.shape,
+    async (args) => manageMemory(client, args)
   )
 
   server.tool(
-    "relay_delete_memory",
-    "Delete one or more memory items by ID. Use this to remove contradicted decisions, resolved tasks, outdated constraints, or duplicate entries. Keeps project context lean and relevant for brief generation.",
-    deleteMemorySchema.shape,
-    async (args) => deleteMemory(client, args)
+    "relay_update_project",
+    "Update a project's name or description. Use this to fix outdated project metadata.",
+    updateProjectSchema.shape,
+    async (args) => {
+      const projectId = await resolveProjectId(args.projectId)
+      return updateProject(client, args, projectId)
+    }
   )
 
   // --- Resources ---

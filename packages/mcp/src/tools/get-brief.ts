@@ -14,7 +14,11 @@ export const getBriefSchema = z.object({
   generate: z
     .boolean()
     .default(true)
-    .describe("Whether to generate a new brief or fetch the latest cached one")
+    .describe("Whether to generate a new brief or fetch the latest cached one"),
+  include: z
+    .array(z.enum(["state", "memory"]))
+    .optional()
+    .describe("Append raw JSON sections after the markdown brief: 'state' for effective project state, 'memory' for memory items")
 })
 
 interface BootstrapResponse {
@@ -27,6 +31,50 @@ interface BootstrapResponse {
 
 interface LatestResponse {
   packet: { id: string; kind: string; content: string; targetProfileKey: string; createdAt: string } | null
+}
+
+interface DashboardResponse {
+  dashboard: {
+    projectState: Record<string, unknown> | null
+    memory: Array<{
+      id: string
+      type: string
+      title: string | null
+      content: string
+      pinned: boolean
+      updatedAt: string
+    }>
+  }
+}
+
+async function appendIncludeSections(
+  client: RelayClient,
+  resolvedProjectId: string,
+  briefText: string,
+  include: Array<"state" | "memory">
+): Promise<string> {
+  if (include.length === 0) return briefText
+
+  try {
+    const data = await client.get<DashboardResponse>(`/api/projects/${resolvedProjectId}`)
+    const sections: string[] = [briefText, "", "---"]
+
+    if (include.includes("state") && data.dashboard.projectState) {
+      sections.push("")
+      sections.push("## Raw State (JSON)")
+      sections.push(JSON.stringify(data.dashboard.projectState, null, 2))
+    }
+
+    if (include.includes("memory") && data.dashboard.memory.length > 0) {
+      sections.push("")
+      sections.push("## Memory Items (JSON)")
+      sections.push(JSON.stringify(data.dashboard.memory, null, 2))
+    }
+
+    return sections.join("\n")
+  } catch {
+    return briefText
+  }
 }
 
 export async function getBrief(
@@ -65,8 +113,13 @@ export async function getBrief(
       }
     }
 
+    let text = data.packet.content
+    if (args.include?.length) {
+      text = await appendIncludeSections(client, resolvedProjectId, text, args.include)
+    }
+
     return {
-      content: [{ type: "text" as const, text: data.packet.content }]
+      content: [{ type: "text" as const, text }]
     }
   }
 
@@ -86,7 +139,12 @@ export async function getBrief(
     }
   }
 
+  let text = data.packet.content
+  if (args.include?.length) {
+    text = await appendIncludeSections(client, resolvedProjectId, text, args.include)
+  }
+
   return {
-    content: [{ type: "text" as const, text: data.packet.content }]
+    content: [{ type: "text" as const, text }]
   }
 }

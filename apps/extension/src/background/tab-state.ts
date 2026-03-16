@@ -40,6 +40,7 @@ export interface BuildRelayActiveProjectStateInput {
   associationSuppressed: boolean
   insertState: RelayInsertState
   lastError?: string | null
+  lastReconciliation?: { archivedCount: number; archivedItems: string[] } | null
 }
 
 export interface AutoCaptureDecisionInput {
@@ -148,6 +149,7 @@ export function createEmptyActiveProjectState(
       completedVia: null,
       completedAt: null
     },
+    lastReconciliation: null,
     ...overrides
   }
 }
@@ -360,7 +362,8 @@ export function deriveRelayActiveProjectState(input: BuildRelayActiveProjectStat
     associationToast: input.associationToast,
     associationSuppressed: input.associationSuppressed,
     insertState: input.insertState,
-    onboarding: input.onboarding
+    onboarding: input.onboarding,
+    lastReconciliation: input.lastReconciliation ?? null
   }
 }
 

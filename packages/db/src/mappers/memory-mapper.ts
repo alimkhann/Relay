@@ -11,6 +11,7 @@ export function toMemoryRow(record: Record<string, unknown>): MemoryItemRow {
     pinned: Boolean(record.pinned),
     isArchived: Boolean(record.is_archived),
     sortOrder: record.sort_order === null || record.sort_order === undefined ? null : Number(record.sort_order),
+    tags: Array.isArray(record.tags) ? (record.tags as string[]) : [],
     metadata: (record.metadata as Record<string, unknown>) ?? {},
     createdBy: String(record.created_by),
     createdAt: String(record.created_at),

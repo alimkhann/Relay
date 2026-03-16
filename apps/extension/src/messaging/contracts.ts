@@ -128,6 +128,7 @@ export interface RelayActiveProjectState {
   associationSuppressed: boolean;
   insertState: RelayInsertState;
   onboarding: RelayOnboardingState;
+  lastReconciliation: { archivedCount: number; archivedItems: string[] } | null;
 }
 
 export type RelayMessage =

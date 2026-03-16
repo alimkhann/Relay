@@ -7,6 +7,7 @@ export const createMemoryItemSchema = z.object({
   title: z.string().max(120).nullable().optional(),
   content: z.string().min(1),
   pinned: z.boolean().optional(),
+  tags: z.array(z.string().max(50)).max(10).optional(),
   metadata: z.record(z.string(), z.unknown()).optional()
 })
 
@@ -15,5 +16,6 @@ export const updateMemoryItemSchema = z.object({
   content: z.string().min(1).optional(),
   type: z.enum(["note", "decision", "constraint", "requirement", "task", "artifact"]).optional(),
   pinned: z.boolean().optional(),
+  tags: z.array(z.string().max(50)).max(10).optional(),
   isArchived: z.boolean().optional()
 })

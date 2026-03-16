@@ -179,6 +179,7 @@ interface RelayTabState {
   lastCapturedSignature: string | null;
   lastCapturedTurns: number;
   lastRoutedSignature: string | null;
+  lastReconciliation: { archivedCount: number; archivedItems: string[] } | null;
 }
 
 interface PendingInsertedBriefState {
@@ -706,6 +707,7 @@ function createTabState(tabId: number): RelayTabState {
     lastCapturedSignature: null,
     lastCapturedTurns: 0,
     lastRoutedSignature: null,
+    lastReconciliation: null,
   };
 }
 
@@ -1483,6 +1485,7 @@ async function buildActiveProjectState(
     associationSuppressed: state.associationSuppressed,
     insertState: state.insertState,
     onboarding,
+    lastReconciliation: state.lastReconciliation,
   });
 }
 
@@ -1744,6 +1747,7 @@ async function captureTab(projectId: string, tabId: number) {
     digestQueued: Boolean(payload.digestQueued),
     digestStrategy: payload.digestStrategy ?? "skip",
     stateStatus: payload.stateStatus ?? null,
+    reconciliation: payload.reconciliation ?? null,
   };
 }
 
@@ -2421,6 +2425,7 @@ async function captureObservedChange(
       state.projectId = projectId;
       state.projectName = projectName || state.projectName;
       state.stateStatus = result.stateStatus ?? state.stateStatus;
+      state.lastReconciliation = result.reconciliation ?? null;
       state.chatAssociation = {
         status: "saved",
         projectId,

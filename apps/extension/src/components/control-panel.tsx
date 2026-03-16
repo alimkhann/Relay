@@ -147,6 +147,7 @@ const emptyActiveState: RelayActiveProjectState = {
     completedVia: null,
     completedAt: null,
   },
+  lastReconciliation: null,
 };
 
 function isRelayActiveProjectState(
@@ -1601,6 +1602,13 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               unresolvedAssociationPresentation?.detail ? (
                 <p className={styles.metaText}>
                   {unresolvedAssociationPresentation.detail}
+                </p>
+              ) : null}
+              {activeState.lastReconciliation &&
+              activeState.lastReconciliation.archivedCount > 0 ? (
+                <p className={styles.metaText}>
+                  Archived {activeState.lastReconciliation.archivedCount} superseded
+                  {activeState.lastReconciliation.archivedCount === 1 ? " item" : " items"}
                 </p>
               ) : null}
 

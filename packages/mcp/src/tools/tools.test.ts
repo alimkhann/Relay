@@ -1,13 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
-import { RelayClient } from "../client.js"
+import { describe, it, expect, vi } from "vitest"
+import type { RelayClient } from "../client.js"
 import { listProjects } from "./list-projects.js"
 import { getBrief } from "./get-brief.js"
 import { getProjectState } from "./get-project-state.js"
 import { searchContext } from "./search-context.js"
 import { addMemory } from "./add-memory.js"
 import { saveContext } from "./save-context.js"
-import { updateMemory } from "./update-memory.js"
-import { deleteMemory } from "./delete-memory.js"
+import { manageMemory } from "./manage-memory.js"
 
 function mockClient(overrides: Record<string, unknown> = {}) {
   return {
@@ -27,6 +26,10 @@ function mockClient(overrides: Record<string, unknown> = {}) {
             }
           ]
         })
+      }
+      if (path.includes("/memory/search")) {
+        // Simulate server-side search not available (forces fallback)
+        return Promise.reject(new Error("404 Not Found"))
       }
       if (path.includes("/memory")) {
         return Promise.resolve({
@@ -190,14 +193,26 @@ describe("relay_add_memory", () => {
       content: "Use TypeScript everywhere",
       title: "TypeScript adoption",
       pinned: false,
+      tags: [],
       metadata: { source: "mcp" }
     })
   })
 })
 
 describe("relay_save_context", () => {
-  it("creates multiple memory items from session context", async () => {
-    const client = mockClient()
+  it("creates multiple memory items via batch endpoint", async () => {
+    const client = mockClient({
+      post: vi.fn().mockResolvedValue({
+        items: [
+          { id: "m1", type: "note", title: "IDE Session Summary" },
+          { id: "m2", type: "note", title: "Session Progress" },
+          { id: "m3", type: "decision", title: null },
+          { id: "m4", type: "constraint", title: null },
+          { id: "m5", type: "task", title: null },
+          { id: "m6", type: "note", title: null }
+        ]
+      })
+    })
     const result = await saveContext(
       client,
       {
@@ -211,28 +226,37 @@ describe("relay_save_context", () => {
       "proj-1"
     )
 
-    // summary + progress + 1 decision + 1 constraint + 1 task + 1 note = 6
-    expect(client.post).toHaveBeenCalledTimes(6)
+    // Single batch call
+    expect(client.post).toHaveBeenCalledTimes(1)
+    expect(client.post).toHaveBeenCalledWith(
+      "/api/projects/proj-1/memory/batch",
+      expect.objectContaining({ items: expect.any(Array) })
+    )
     expect(result.content[0]!.text).toContain("Saved 6 context items")
   })
 
-  it("only creates summary when no optional fields provided", async () => {
-    const client = mockClient()
+  it("falls back to sequential creation if batch fails", async () => {
+    const postFn = vi.fn()
+      .mockRejectedValueOnce(new Error("404 Not Found"))
+      .mockResolvedValue({ item: { id: "m1", type: "note" } })
+    const client = mockClient({ post: postFn })
     const result = await saveContext(
       client,
       { summary: "Quick session" },
       "proj-1"
     )
 
-    expect(client.post).toHaveBeenCalledTimes(1)
+    // 1 batch attempt + 1 sequential fallback
+    expect(postFn).toHaveBeenCalledTimes(2)
     expect(result.content[0]!.text).toContain("Saved 1 context items")
   })
 })
 
-describe("relay_update_memory", () => {
+describe("relay_manage_memory", () => {
   it("updates a memory item", async () => {
     const client = mockClient()
-    const result = await updateMemory(client, {
+    const result = await manageMemory(client, {
+      action: "update",
       memoryId: "mem-1",
       content: "Switched to Vue",
       title: "Use Vue"
@@ -245,30 +269,41 @@ describe("relay_update_memory", () => {
     expect(result.content[0]!.text).toContain("updated")
     expect(result.content[0]!.text).toContain("Use Vue")
   })
-})
 
-describe("relay_delete_memory", () => {
   it("deletes multiple memory items", async () => {
     const client = mockClient()
-    const result = await deleteMemory(client, {
-      memoryIds: ["mem-1", "mem-2"]
+    const result = await manageMemory(client, {
+      action: "delete",
+      memoryId: ["mem-1", "mem-2"]
     })
 
     expect(client.delete).toHaveBeenCalledTimes(2)
     expect(result.content[0]!.text).toContain("Deleted 2")
   })
 
-  it("reports partial failures", async () => {
+  it("reports partial delete failures", async () => {
     const client = mockClient({
       delete: vi.fn()
         .mockResolvedValueOnce(undefined)
         .mockRejectedValueOnce(new Error("Not found"))
     })
-    const result = await deleteMemory(client, {
-      memoryIds: ["mem-1", "mem-2"]
+    const result = await manageMemory(client, {
+      action: "delete",
+      memoryId: ["mem-1", "mem-2"]
     })
 
     expect(result.content[0]!.text).toContain("Deleted 1")
     expect(result.content[0]!.text).toContain("Failed to delete 1")
+  })
+
+  it("archives memory items", async () => {
+    const client = mockClient()
+    const result = await manageMemory(client, {
+      action: "archive",
+      memoryId: ["mem-1"]
+    })
+
+    expect(client.patch).toHaveBeenCalledWith("/api/memory/mem-1", { isArchived: true })
+    expect(result.content[0]!.text).toContain("Archived 1")
   })
 })

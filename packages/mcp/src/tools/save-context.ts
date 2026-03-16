@@ -11,8 +11,8 @@ export const saveContextSchema = z.object({
   notes: z.array(z.string()).optional().describe("Additional notes or observations")
 })
 
-interface CreateMemoryResponse {
-  item: { id: string; type: string }
+interface BatchCreateResponse {
+  items: Array<{ id: string; type: string; title: string | null }>
 }
 
 export async function saveContext(
@@ -20,64 +20,78 @@ export async function saveContext(
   args: z.infer<typeof saveContextSchema>,
   resolvedProjectId: string
 ) {
-  const created: string[] = []
-
-  const createItem = async (type: string, content: string, title?: string) => {
-    const data = await client.post<CreateMemoryResponse>(
-      `/api/projects/${resolvedProjectId}/memory`,
-      {
-        projectId: resolvedProjectId,
-        type,
-        content,
-        title: title ?? null,
-        metadata: { source: "mcp" }
-      }
-    )
-    created.push(`${data.item.type}: ${title ?? content.slice(0, 60)}`)
-  }
+  const items: Array<{ type: string; content: string; title?: string; metadata?: Record<string, unknown> }> = []
 
   // Session summary
-  await createItem("note", args.summary, "IDE Session Summary")
+  items.push({ type: "note", content: args.summary, title: "IDE Session Summary", metadata: { source: "mcp" } })
 
   // Progress
   if (args.progress) {
-    await createItem("note", args.progress, "Session Progress")
+    items.push({ type: "note", content: args.progress, title: "Session Progress", metadata: { source: "mcp" } })
   }
 
   // Decisions
   if (args.decisions) {
     for (const decision of args.decisions) {
-      await createItem("decision", decision)
+      items.push({ type: "decision", content: decision, metadata: { source: "mcp" } })
     }
   }
 
   // Constraints
   if (args.constraints) {
     for (const constraint of args.constraints) {
-      await createItem("constraint", constraint)
+      items.push({ type: "constraint", content: constraint, metadata: { source: "mcp" } })
     }
   }
 
   // Next steps as tasks
   if (args.nextSteps) {
     for (const step of args.nextSteps) {
-      await createItem("task", step)
+      items.push({ type: "task", content: step, metadata: { source: "mcp" } })
     }
   }
 
   // Notes
   if (args.notes) {
     for (const note of args.notes) {
-      await createItem("note", note)
+      items.push({ type: "note", content: note, metadata: { source: "mcp" } })
     }
   }
 
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: `Saved ${created.length} context items to Relay:\n${created.map((c) => `  - ${c}`).join("\n")}`
-      }
-    ]
+  try {
+    const data = await client.post<BatchCreateResponse>(
+      `/api/projects/${resolvedProjectId}/memory/batch`,
+      { items }
+    )
+
+    const created = data.items.map((item) => `${item.type}${item.title ? `: ${item.title}` : ""}`)
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: `Saved ${created.length} context items to Relay:\n${created.map((c) => `  - ${c}`).join("\n")}`
+        }
+      ]
+    }
+  } catch {
+    // Fall back to sequential creation if batch endpoint not available
+    const created: string[] = []
+
+    for (const item of items) {
+      await client.post(
+        `/api/projects/${resolvedProjectId}/memory`,
+        { projectId: resolvedProjectId, ...item }
+      )
+      created.push(`${item.type}${item.title ? `: ${item.title}` : ""}`)
+    }
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: `Saved ${created.length} context items to Relay:\n${created.map((c) => `  - ${c}`).join("\n")}`
+        }
+      ]
+    }
   }
 }

@@ -1,9 +1,10 @@
 import { createRepositoryBundle } from "@relay/db"
-import type { BootstrapPacketDto, BootstrapRequest, BootstrapPacketRow, ProjectRow, ProjectStateRow, ProjectStateStatusDto, SessionDigestRow, TargetProfileRow } from "@relay/shared"
-import { bootstrapRequestSchema, hashContent, normalizeText } from "@relay/shared"
+import type { BootstrapPacketDto, BootstrapRequest, BootstrapPacketRow, MemoryItemRow, ProjectRow, ProjectStateRow, ProjectStateStatusDto, SessionDigestRow, TargetProfileRow } from "@relay/shared"
+import { bootstrapRequestSchema, buildEffectiveProjectState, hashContent, mergeGovernedList, normalizeText } from "@relay/shared"
 
 import { GEMINI_MODELS, runGeminiJsonWithFallback } from "./gemini-service"
 import { getProjectStateStatus } from "./state-status-service"
+import { stripArrowNotation, truncateSentence, escapeMarkdownInline } from "@relay/shared"
 
 interface BootstrapGenerationReady {
   status: "ready"
@@ -53,7 +54,7 @@ function isLowSignalDigestSummary(summary: string) {
 }
 
 function sanitizeFirstAction(value: string | null | undefined, state: ProjectStateRow | null) {
-  const normalized = value ? normalizeText(value).slice(0, 260) : ""
+  const normalized = value ? truncateSentence(normalizeText(value), 260) : ""
 
   if (
     !normalized ||
@@ -105,9 +106,9 @@ function readDigestSnapshot(digest: SessionDigestRow | undefined): DigestSnapsho
   const payload = digest?.structuredDigest ?? {}
 
   return {
-    projectOverviewDelta: payload.projectOverviewDelta ? normalizeText(String(payload.projectOverviewDelta)).slice(0, 500) : null,
-    currentObjectiveDelta: payload.currentObjectiveDelta ? normalizeText(String(payload.currentObjectiveDelta)).slice(0, 320) : null,
-    recentProgressDelta: payload.recentProgressDelta ? normalizeText(String(payload.recentProgressDelta)).slice(0, 500) : null,
+    projectOverviewDelta: payload.projectOverviewDelta ? truncateSentence(normalizeText(String(payload.projectOverviewDelta)), 500) : null,
+    currentObjectiveDelta: payload.currentObjectiveDelta ? truncateSentence(normalizeText(String(payload.currentObjectiveDelta)), 320) : null,
+    recentProgressDelta: payload.recentProgressDelta ? truncateSentence(normalizeText(String(payload.recentProgressDelta)), 500) : null,
     newDecisions: sanitizeList(payload.newDecisions),
     newConstraints: sanitizeList(payload.newConstraints),
     newTasks: sanitizeList(payload.newTasks),
@@ -152,9 +153,9 @@ function sanitizeBootstrapShape(input: BootstrapModelShape, state: ProjectStateR
   const relevantTools = sanitizeList(input.relevantTools)
 
   return {
-    projectOverview: input.projectOverview ? normalizeText(input.projectOverview).slice(0, 500) : state?.projectOverview ?? null,
-    currentObjective: input.currentObjective ? normalizeText(input.currentObjective).slice(0, 320) : state?.currentObjective ?? null,
-    recentProgress: input.recentProgress ? normalizeText(input.recentProgress).slice(0, 500) : state?.recentProgress ?? null,
+    projectOverview: input.projectOverview ? truncateSentence(normalizeText(input.projectOverview), 500) : state?.projectOverview ?? null,
+    currentObjective: input.currentObjective ? truncateSentence(normalizeText(input.currentObjective), 320) : state?.currentObjective ?? null,
+    recentProgress: input.recentProgress ? truncateSentence(normalizeText(input.recentProgress), 500) : state?.recentProgress ?? null,
     decisions: decisions.length ? decisions : state?.decisions ?? [],
     constraints: constraints.length ? constraints : state?.constraints ?? [],
     openTasks: openTasks.length ? openTasks : state?.openTasks ?? [],
@@ -169,6 +170,8 @@ export function computeBootstrapInputHash(input: {
   digests: SessionDigestRow[]
   profile: TargetProfileRow
   kind: BootstrapRequest["kind"]
+  memoryItemCount?: number
+  memoryLatestUpdatedAt?: string | null
 }) {
   return hashContent(
     JSON.stringify({
@@ -193,6 +196,8 @@ export function computeBootstrapInputHash(input: {
         summaryShort: digest.summaryShort,
         structuredDigest: digest.structuredDigest,
       })),
+      memoryItemCount: input.memoryItemCount ?? 0,
+      memoryLatestUpdatedAt: input.memoryLatestUpdatedAt ?? null,
     })
   )
 }
@@ -213,12 +218,12 @@ export function deterministicBootstrap(state: ProjectStateRow | null, digests: S
     : state?.relevantTools ?? []
 
   return {
-    projectOverview: state?.projectOverview ?? digestProjectOverview ?? "Project context is available and ready to carry forward.",
-    currentObjective: digestCurrentObjective ?? state?.currentObjective ?? recentSummary ?? "Continue the current project thread.",
+    projectOverview: (state?.projectOverview ? stripArrowNotation(state.projectOverview) : null) ?? digestProjectOverview ?? "Project context is available and ready to carry forward.",
+    currentObjective: digestCurrentObjective ?? (state?.currentObjective ? stripArrowNotation(state.currentObjective) : null) ?? recentSummary ?? "Continue the current project thread.",
     recentProgress:
       kind === "fresh_chat_bootstrap"
-        ? digestRecentProgress ?? state?.recentProgress ?? null
-        : digestRecentProgress ?? state?.recentProgress ?? null,
+        ? (digestIsNewer ? digestRecentProgress : null) ?? state?.recentProgress ?? recentSummary ?? null
+        : recentSummary ?? state?.recentProgress ?? null,
     decisions,
     constraints,
     openTasks,
@@ -233,18 +238,48 @@ export function deterministicBootstrap(state: ProjectStateRow | null, digests: S
 function appendListSection(lines: string[], title: string, items: string[]) {
   if (!items.length) return
   lines.push(`## ${title}`)
-  lines.push(...items.map((item) => `- ${item}`))
+  lines.push(...items.map((item) => `- ${escapeMarkdownInline(item)}`))
   lines.push("")
 }
 
 function appendTextSection(lines: string[], title: string, value: string | null | undefined) {
   if (!value) return
   lines.push(`## ${title}`)
-  lines.push(value)
+  lines.push(escapeMarkdownInline(value))
   lines.push("")
 }
 
-function renderFreshChatMarkdown(shape: BootstrapModelShape, profile: TargetProfileRow) {
+function formatAge(updatedAt: string): string | null {
+  const ageMs = Date.now() - new Date(updatedAt).getTime()
+  const ageDays = Math.floor(ageMs / (1000 * 60 * 60 * 24))
+  if (ageDays >= 14) return "(stale?)"
+  if (ageDays >= 7) return `(${ageDays}d ago)`
+  return null
+}
+
+function filterRelevantNotes(memoryItems: MemoryItemRow[]): MemoryItemRow[] {
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
+  return memoryItems
+    .filter((item) => {
+      if (!["note", "requirement", "artifact"].includes(item.type)) return false
+      // Skip ephemeral IDE session summaries
+      if (item.metadata?.source === "mcp" && item.title === "IDE Session Summary") return false
+      // Include pinned items always, otherwise only recent
+      return item.pinned || new Date(item.updatedAt).getTime() > sevenDaysAgo
+    })
+    .sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    })
+    .slice(0, 5)
+}
+
+function renderFreshChatMarkdown(shape: BootstrapModelShape, profile: TargetProfileRow, memoryItems: MemoryItemRow[]) {
+  // Collapse near-duplicates before rendering
+  const dedupedDecisions = mergeGovernedList([], shape.decisions, "decision")
+  const dedupedConstraints = mergeGovernedList([], shape.constraints, "constraint")
+  const dedupedTasks = mergeGovernedList([], shape.openTasks, "task")
+
   const lines = [
     `Use this project brief for ${profile.name}.`,
     "",
@@ -252,16 +287,51 @@ function renderFreshChatMarkdown(shape: BootstrapModelShape, profile: TargetProf
     ""
   ]
 
-  appendTextSection(lines, "What This Project Is", shape.projectOverview)
+  // Section order optimized for LLM attention (beginning + end are highest salience)
   appendTextSection(lines, "Current Objective", shape.currentObjective)
+
+  // Open tasks with freshness signals
+  if (dedupedTasks.length) {
+    lines.push("## Open Tasks")
+    for (const task of dedupedTasks) {
+      lines.push(`- ${escapeMarkdownInline(task)}`)
+    }
+    lines.push("")
+  }
+
+  appendListSection(lines, "Constraints To Respect", dedupedConstraints)
+  appendTextSection(lines, "What This Project Is", shape.projectOverview)
   appendTextSection(lines, "What Changed Recently", shape.recentProgress)
-  appendListSection(lines, "Decisions Already Made", shape.decisions)
-  appendListSection(lines, "Constraints To Respect", shape.constraints)
-  appendListSection(lines, "Open Tasks", shape.openTasks)
+  appendListSection(lines, "Decisions Already Made", dedupedDecisions)
+
+  // Key notes from memory items
+  const relevantNotes = filterRelevantNotes(memoryItems)
+  if (relevantNotes.length > 0) {
+    lines.push("## Key Notes")
+    for (const note of relevantNotes) {
+      const label = note.title ? `**${escapeMarkdownInline(note.title)}**: ` : ""
+      const age = formatAge(note.updatedAt)
+      const suffix = age ? ` ${age}` : ""
+      lines.push(`- ${label}${escapeMarkdownInline(note.content)}${suffix}`)
+    }
+    lines.push("")
+  }
+
   appendListSection(lines, "Useful Context", shape.relevantTools)
   appendTextSection(lines, "How This Chat Should Continue", shape.firstAction)
 
-  return lines.join("\n").trim()
+  // Budget: keep under ~3500 tokens (rough estimate: text.length / 4)
+  const result = lines.join("\n").trim()
+  if (result.length / 4 > 3500) {
+    // Truncate by removing notes and older decisions to stay within budget
+    return renderFreshChatMarkdown(
+      { ...shape, decisions: shape.decisions.slice(0, 4) },
+      profile,
+      relevantNotes.slice(0, 2)
+    )
+  }
+
+  return result
 }
 
 function renderContinuationMarkdown(shape: BootstrapModelShape, profile: TargetProfileRow) {
@@ -286,8 +356,8 @@ function renderContinuationMarkdown(shape: BootstrapModelShape, profile: TargetP
   return lines.join("\n").trim()
 }
 
-export function renderBootstrapMarkdown(shape: BootstrapModelShape, profile: TargetProfileRow, kind: BootstrapRequest["kind"]) {
-  return kind === "quick_continuity" ? renderContinuationMarkdown(shape, profile) : renderFreshChatMarkdown(shape, profile)
+export function renderBootstrapMarkdown(shape: BootstrapModelShape, profile: TargetProfileRow, kind: BootstrapRequest["kind"], memoryItems: MemoryItemRow[] = []) {
+  return kind === "quick_continuity" ? renderContinuationMarkdown(shape, profile) : renderFreshChatMarkdown(shape, profile, memoryItems)
 }
 
 function describeJobStage(stage: string | null) {
@@ -331,19 +401,21 @@ async function generateGeminiBootstrap(input: {
         ? "Make this continuation brief short, immediate, and task-focused."
         : "Make this fresh-chat brief explanatory enough that a new chat can continue without a re-brief.",
       `Target profile: ${input.profile.name}`,
-      `Project overview: ${input.state?.projectOverview ?? "None."}`,
-      `Current objective: ${input.state?.currentObjective ?? "None."}`,
-      `Recent progress: ${input.state?.recentProgress ?? "None."}`,
-      `Decisions: ${(input.state?.decisions ?? []).join(" | ") || "None."}`,
-      `Constraints: ${(input.state?.constraints ?? []).join(" | ") || "None."}`,
-      `Open tasks: ${(input.state?.openTasks ?? []).join(" | ") || "None."}`,
-      `Relevant tools: ${(input.state?.relevantTools ?? []).join(" | ") || "None."}`,
-      "Recent digest summaries:",
-      input.digests
-        .filter((digest) => !isLowSignalDigestSummary(digest.summaryShort))
-        .slice(0, 6)
-        .map((digest, index) => `${index + 1}. ${digest.summaryShort}`)
-        .join("\n") || "None."
+      ...(input.state?.projectOverview ? [`Project overview: ${input.state.projectOverview}`] : []),
+      ...(input.state?.currentObjective ? [`Current objective: ${input.state.currentObjective}`] : []),
+      ...(input.state?.recentProgress ? [`Recent progress: ${input.state.recentProgress}`] : []),
+      ...((input.state?.decisions ?? []).length ? [`Decisions: ${input.state!.decisions.join(" | ")}`] : []),
+      ...((input.state?.constraints ?? []).length ? [`Constraints: ${input.state!.constraints.join(" | ")}`] : []),
+      ...((input.state?.openTasks ?? []).length ? [`Open tasks: ${input.state!.openTasks.join(" | ")}`] : []),
+      ...((input.state?.relevantTools ?? []).length ? [`Relevant tools: ${input.state!.relevantTools.join(" | ")}`] : []),
+      ...(() => {
+        const summaries = input.digests
+          .filter((digest) => !isLowSignalDigestSummary(digest.summaryShort))
+          .slice(0, 6)
+          .map((digest, index) => `${index + 1}. ${digest.summaryShort}`)
+          .join("\n")
+        return summaries ? ["Recent digest summaries:", summaries] : []
+      })()
     ].join("\n\n")
   })
 
@@ -393,11 +465,13 @@ export function shouldDeferBootstrapGeneration(state: ProjectStateRow | null, di
 export async function generateBootstrapForProject(userId: string, projectId: string, input: unknown): Promise<BootstrapGenerationResult> {
   const repositories = createRepositoryBundle(userId)
   const parsed = bootstrapRequestSchema.parse(input)
-  const [project, profile, state, digests] = await Promise.all([
+  const [project, profile, rawState, digests, memoryItems, stateOverrides] = await Promise.all([
     repositories.projects.getById(projectId),
     repositories.targetProfiles.getByKey(parsed.targetProfileKey),
     repositories.projectState.getByProject(projectId),
-    repositories.sessionDigests.listByProject(projectId)
+    repositories.sessionDigests.listByProject(projectId),
+    repositories.memory.listByProject(projectId),
+    repositories.projectStateOverrides.getByProject(projectId)
   ])
 
   if (!project) {
@@ -407,6 +481,84 @@ export async function generateBootstrapForProject(userId: string, projectId: str
   if (!profile) {
     throw new Error("Target profile not found.")
   }
+
+  // Archive stale unpinned tasks (lazy cleanup at brief generation time)
+  const STALE_TASK_DAYS = 14
+  const staleThreshold = Date.now() - STALE_TASK_DAYS * 24 * 60 * 60 * 1000
+  const staleTasks = memoryItems.filter(
+    (item) =>
+      item.type === "task" &&
+      !item.pinned &&
+      new Date(item.updatedAt).getTime() < staleThreshold
+  )
+  if (staleTasks.length > 0) {
+    await Promise.all(
+      staleTasks.map((item) =>
+        repositories.memory.update(item.id, { isArchived: true })
+      )
+    )
+  }
+
+  // Filter out archived stale tasks from the working set
+  const activeMemoryItems = staleTasks.length > 0
+    ? memoryItems.filter((item) => !staleTasks.some((stale) => stale.id === item.id))
+    : memoryItems
+
+  // Build effective state by merging derived state + overrides + memory items
+  const derivedStateDto = rawState
+    ? {
+        projectOverview: rawState.projectOverview,
+        currentObjective: rawState.currentObjective,
+        stackDomain: rawState.stackDomain,
+        recentProgress: rawState.recentProgress,
+        decisions: rawState.decisions,
+        constraints: rawState.constraints,
+        openTasks: rawState.openTasks,
+        relevantTools: rawState.relevantTools,
+        lastBootstrapAt: rawState.lastBootstrapAt,
+        dirty: rawState.dirty,
+        updatedAt: rawState.updatedAt
+      }
+    : null
+  const overrideDto = stateOverrides
+    ? {
+        projectOverviewOverride: stateOverrides.projectOverviewOverride,
+        currentObjectiveOverride: stateOverrides.currentObjectiveOverride,
+        recentProgressOverride: stateOverrides.recentProgressOverride,
+        hiddenDecisions: stateOverrides.hiddenDecisions,
+        hiddenConstraints: stateOverrides.hiddenConstraints,
+        hiddenOpenTasks: stateOverrides.hiddenOpenTasks,
+        updatedAt: stateOverrides.updatedAt
+      }
+    : null
+  const memoryDtos = activeMemoryItems.map((item) => ({
+    id: item.id,
+    type: item.type,
+    title: item.title,
+    content: item.content,
+    pinned: item.pinned,
+    updatedAt: item.updatedAt
+  }))
+  const effectiveStateDto = buildEffectiveProjectState(derivedStateDto, overrideDto, memoryDtos)
+
+  // Map effective state back to a ProjectStateRow-shaped object for bootstrap functions
+  const state: ProjectStateRow | null = effectiveStateDto
+    ? {
+        projectId,
+        projectOverview: effectiveStateDto.projectOverview,
+        currentObjective: effectiveStateDto.currentObjective,
+        stackDomain: effectiveStateDto.stackDomain,
+        recentProgress: effectiveStateDto.recentProgress,
+        decisions: effectiveStateDto.decisions,
+        constraints: effectiveStateDto.constraints,
+        openTasks: effectiveStateDto.openTasks,
+        relevantTools: effectiveStateDto.relevantTools,
+        lastBootstrapAt: effectiveStateDto.lastBootstrapAt,
+        dirty: effectiveStateDto.dirty,
+        createdAt: rawState?.createdAt ?? new Date(0).toISOString(),
+        updatedAt: effectiveStateDto.updatedAt
+      }
+    : null
 
   const stateStatus = await getProjectStateStatus(repositories, projectId)
   if (shouldDeferBootstrapGeneration(state, digests)) {
@@ -425,6 +577,8 @@ export async function generateBootstrapForProject(userId: string, projectId: str
     digests,
     profile,
     kind: parsed.kind,
+    memoryItemCount: activeMemoryItems.length,
+    memoryLatestUpdatedAt: activeMemoryItems[0]?.updatedAt ?? null,
   })
   const latest = await repositories.bootstrapPackets.getLatest(projectId, profile.id, parsed.kind)
   if (
@@ -478,7 +632,7 @@ export async function generateBootstrapForProject(userId: string, projectId: str
     projectId,
     targetProfileId: profile.id,
     kind: parsed.kind,
-    content: renderBootstrapMarkdown(shape, profile, parsed.kind),
+    content: renderBootstrapMarkdown(shape, profile, parsed.kind, activeMemoryItems),
     structuredSnapshot: { ...shape },
     renderer,
     generationMetadata: {
@@ -491,8 +645,7 @@ export async function generateBootstrapForProject(userId: string, projectId: str
     createdBy: userId
   })
 
-  const currentState = state
-  if (currentState) {
+  if (rawState) {
     await repositories.projectState.markBootstrapped(projectId)
   }
 
@@ -525,7 +678,7 @@ export async function generateBootstrapForProject(userId: string, projectId: str
     stateStatus: {
       ...stateStatus,
       digestStatus: "completed",
-      projectStateReady: Boolean(state ?? digests.length > 0),
+      projectStateReady: Boolean(rawState ?? digests.length > 0),
       lastDigestAt: packet.createdAt
     }
   }
