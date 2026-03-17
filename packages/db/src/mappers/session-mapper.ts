@@ -11,6 +11,7 @@ export function toSessionRow(record: Record<string, unknown>): SourceSessionRow 
     windowId: record.window_id ? String(record.window_id) : null,
     pageFingerprint: record.page_fingerprint ? String(record.page_fingerprint) : null,
     captureSignature: record.capture_signature ? String(record.capture_signature) : null,
+    sourceConversationId: record.source_conversation_id ? String(record.source_conversation_id) : null,
     metadata: (record.metadata as Record<string, unknown>) ?? {},
     isArchived: Boolean(record.is_archived),
     archivedAt: record.archived_at ? String(record.archived_at) : null,

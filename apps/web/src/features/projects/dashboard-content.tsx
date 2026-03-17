@@ -36,6 +36,79 @@ import {
 
 /* ─── Helpers ─── */
 
+function platformLabel(platform: string): string {
+  const map: Record<string, string> = {
+    chatgpt: "ChatGPT",
+    claude: "Claude",
+    perplexity: "Perplexity",
+    gemini: "Gemini",
+    grok: "Grok",
+    deepseek: "DeepSeek",
+    codex: "Codex",
+    claude_code: "Claude Code",
+  };
+  return map[platform] ?? platform;
+}
+
+interface GroupedSession {
+  conversationId: string;
+  platform: string;
+  title: string | null;
+  url: string;
+  captureCount: number;
+  totalTurns: number;
+  lastCapturedAt: string;
+  sessionIds: string[];
+  allArchived: boolean;
+}
+
+/**
+ * Groups sessions by sourceConversationId (or URL as fallback).
+ * Returns compressed view for activity display.
+ */
+function groupSessionsByConversation(
+  sessions: DashboardContentProps["dashboard"]["sessionHistory"],
+): GroupedSession[] {
+  const groups = new Map<string, GroupedSession>();
+
+  for (const session of sessions) {
+    // Use sourceConversationId, falling back to URL path for grouping
+    const conversationId = session.sourceConversationId ?? session.url;
+
+    const existing = groups.get(conversationId);
+    if (existing) {
+      existing.captureCount += 1;
+      existing.totalTurns += session.turnCount;
+      existing.sessionIds.push(session.id);
+      // Update title/url if this capture is more recent
+      if (session.capturedAt > existing.lastCapturedAt) {
+        existing.title = session.title;
+        existing.url = session.url;
+        existing.lastCapturedAt = session.capturedAt;
+      }
+      // Only mark as archived if ALL sessions are archived
+      existing.allArchived = existing.allArchived && session.isArchived;
+    } else {
+      groups.set(conversationId, {
+        conversationId,
+        platform: session.platform,
+        title: session.title,
+        url: session.url,
+        captureCount: 1,
+        totalTurns: session.turnCount,
+        lastCapturedAt: session.capturedAt,
+        sessionIds: [session.id],
+        allArchived: session.isArchived,
+      });
+    }
+  }
+
+  // Sort by most recent first
+  return Array.from(groups.values()).sort((a, b) =>
+    b.lastCapturedAt > a.lastCapturedAt ? 1 : -1,
+  );
+}
+
 function describeStatus(status: ProjectStateStatusDto | undefined) {
   if (!status) return "Waiting for the first chat.";
   if (status.projectStateReady) return "Ready";
@@ -775,39 +848,48 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
                 />
               </div>
             ) : (
-              dashboard.sessionHistory.slice(0, 5).map((session) => (
-                <div
-                  key={session.id}
-                  className={cn(
-                    "group flex items-center justify-between gap-3 px-3.5 py-2.5 hover:bg-[var(--relay-soft)]/50 transition-colors",
-                    session.isArchived && "opacity-50",
-                  )}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[12px] font-medium text-[var(--relay-ink)]">
-                      {session.title ?? session.url}
-                    </p>
-                    <p className="text-[11px] text-[var(--relay-muted)]">
-                      {session.platform} · {session.turnCount} turns ·{" "}
-                      {relativeTime(session.capturedAt)}
-                      {session.isArchived ? " · detached" : ""}
-                    </p>
-                  </div>
-                  <button
-                    className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                    disabled={pending}
-                    onClick={() =>
-                      toggleSessionArchive(session.id, !session.isArchived)
-                    }
-                  >
-                    {session.isArchived ? (
-                      <RotateCcw className="h-3.5 w-3.5 text-[var(--relay-faint)] hover:text-[var(--relay-ink)]" />
-                    ) : (
-                      <Trash2 className="h-3.5 w-3.5 text-[var(--relay-faint)] hover:text-[var(--relay-danger)]" />
+              groupSessionsByConversation(dashboard.sessionHistory)
+                .slice(0, 5)
+                .map((group) => (
+                  <div
+                    key={group.conversationId}
+                    className={cn(
+                      "group flex items-center justify-between gap-3 px-3.5 py-2.5 hover:bg-[var(--relay-soft)]/50 transition-colors",
+                      group.allArchived && "opacity-50",
                     )}
-                  </button>
-                </div>
-              ))
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[12px] font-medium text-[var(--relay-ink)]">
+                        {group.title ?? group.url}
+                      </p>
+                      <p className="text-[11px] text-[var(--relay-muted)]">
+                        {platformLabel(group.platform)} ·{" "}
+                        {group.captureCount > 1
+                          ? `${group.captureCount} captures · `
+                          : ""}
+                        {group.totalTurns} turns · {relativeTime(group.lastCapturedAt)}
+                        {group.allArchived ? " · detached" : ""}
+                      </p>
+                    </div>
+                    <button
+                      className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      disabled={pending}
+                      onClick={() => {
+                        // Archive/restore the most recent session in the group
+                        const sessionId = group.sessionIds[0];
+                        if (sessionId) {
+                          toggleSessionArchive(sessionId, !group.allArchived);
+                        }
+                      }}
+                    >
+                      {group.allArchived ? (
+                        <RotateCcw className="h-3.5 w-3.5 text-[var(--relay-faint)] hover:text-[var(--relay-ink)]" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5 text-[var(--relay-faint)] hover:text-[var(--relay-danger)]" />
+                      )}
+                    </button>
+                  </div>
+                ))
             )}
           </div>
         </div>

@@ -60,6 +60,8 @@ export interface SourceSessionRow {
   windowId: string | null
   pageFingerprint: string | null
   captureSignature: string | null
+  /** Normalized conversation ID extracted from URL (e.g., "c/abc123" for ChatGPT) */
+  sourceConversationId: string | null
   metadata: Record<string, unknown>
   isArchived: boolean
   archivedAt: string | null

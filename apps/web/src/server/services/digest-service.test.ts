@@ -12,6 +12,7 @@ function makeSession(): SourceSessionRow {
     platform: "chatgpt",
     title: "Relay planning",
     url: "https://chatgpt.com/c/test",
+    sourceConversationId: "test",
     tabId: null,
     windowId: null,
     pageFingerprint: "test",

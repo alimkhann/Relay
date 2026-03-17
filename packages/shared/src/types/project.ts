@@ -66,10 +66,34 @@ export interface RecentSessionDto {
   url: string
   pageFingerprint: string | null
   captureSignature: string | null
+  sourceConversationId: string | null
   isArchived: boolean
   archivedAt: string | null
   capturedAt: string
   turnCount: number
+}
+
+/** A group of captures from the same conversation, collapsed for activity display */
+export interface GroupedSessionDto {
+  /** Conversation identifier (e.g., "c/abc123" for ChatGPT) */
+  conversationId: string
+  platform: SupportedPlatform
+  /** Title from the most recent capture */
+  title: string | null
+  /** URL from the most recent capture */
+  url: string
+  /** Number of captures in this group */
+  captureCount: number
+  /** Total turns across all captures in the group */
+  totalTurns: number
+  /** Most recent capture timestamp */
+  lastCapturedAt: string
+  /** Oldest capture timestamp in the group */
+  firstCapturedAt: string
+  /** IDs of all sessions in this group (most recent first) */
+  sessionIds: string[]
+  /** Whether all sessions in the group are archived */
+  allArchived: boolean
 }
 
 export interface ContextPacketDto {
