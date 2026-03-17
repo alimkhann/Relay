@@ -79,6 +79,16 @@
       : "light",
   };
 
+  // ─── Network capture cache ───────────────────────────────────────────
+  // Populated by MAIN world network-intercept via window.postMessage.
+  // Keyed by platform so we always have the latest full conversation.
+  const networkCaptureCache = {
+    /** @type {{ platform: string, conversationId: string|null, title: string|null, url: string, turns: Array<{role: string, content: string, turnIndex: number}>, capturedAt: number } | null} */
+    latest: null,
+    /** Stale after 60 seconds — forces DOM fallback if network data is old */
+    maxAgeMs: 60000,
+  };
+
   function resolveRelayTheme(mode) {
     if (mode === "system") {
       return window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -185,7 +195,106 @@
 
   function collectTurns(config) {
     const runtime = getAdapterRuntime();
-    return runtime ? runtime.collectTurns(document, window.location.href) : [];
+    const domTurns = runtime ? runtime.collectTurns(document, window.location.href) : [];
+
+    // Try to merge with network-captured turns for completeness
+    const merged = mergeNetworkAndDomTurns(domTurns, config);
+    return merged;
+  }
+
+  /**
+   * Merge network-intercepted turns with DOM-scraped turns.
+   *
+   * Strategy:
+   * - If network data is available and fresh, use it as the base
+   *   (it has ALL turns, not just the ones visible in the virtual-scrolled DOM).
+   * - For turns that exist in both, prefer network for content completeness
+   *   but keep DOM rawHtml if present.
+   * - If network data is stale or missing, fall back to DOM-only.
+   */
+  function mergeNetworkAndDomTurns(domTurns, config) {
+    var cache = networkCaptureCache.latest;
+    if (!cache) return tagTurnsWithSource(domTurns, "dom");
+
+    // Check freshness
+    var age = Date.now() - cache.capturedAt;
+    if (age > networkCaptureCache.maxAgeMs) {
+      return tagTurnsWithSource(domTurns, "dom");
+    }
+
+    // Check platform matches
+    if (cache.platform !== config.platform) {
+      return tagTurnsWithSource(domTurns, "dom");
+    }
+
+    var networkTurns = cache.turns;
+    if (!networkTurns || networkTurns.length === 0) {
+      return tagTurnsWithSource(domTurns, "dom");
+    }
+
+    // If DOM has more or equal turns, it's likely already complete
+    // (e.g. short conversation that fits in viewport)
+    if (domTurns.length >= networkTurns.length) {
+      return tagTurnsWithSource(domTurns, "dom");
+    }
+
+    // Network has more turns — use network as base, enrich with DOM formatting
+    // Build a lookup of DOM turns by normalized content prefix for matching
+    var domByIndex = {};
+    for (var i = 0; i < domTurns.length; i++) {
+      var dt = domTurns[i];
+      if (dt && dt.turnIndex != null) {
+        domByIndex[dt.turnIndex] = dt;
+      }
+    }
+
+    // Also build a content-prefix lookup for fuzzy matching
+    var domByPrefix = {};
+    for (var j = 0; j < domTurns.length; j++) {
+      var dtp = domTurns[j];
+      if (dtp && dtp.content) {
+        var prefix = normalizeText(dtp.content).slice(0, 80);
+        if (prefix.length >= 10) {
+          domByPrefix[prefix] = dtp;
+        }
+      }
+    }
+
+    var merged = [];
+    for (var k = 0; k < networkTurns.length; k++) {
+      var nt = networkTurns[k];
+      if (!nt) continue;
+
+      // Try to find matching DOM turn
+      var contentPrefix = normalizeText(nt.content || "").slice(0, 80);
+      var domMatch = domByPrefix[contentPrefix] || null;
+
+      merged.push({
+        role: nt.role,
+        content: nt.content,
+        turnIndex: k,
+        rawHtml: domMatch ? domMatch.rawHtml : null,
+        captureSource: domMatch ? "merged" : "network",
+      });
+    }
+
+    console.debug(
+      "[Relay] Merged network+DOM turns:",
+      networkTurns.length,
+      "network,",
+      domTurns.length,
+      "DOM →",
+      merged.length,
+      "merged"
+    );
+
+    return merged;
+  }
+
+  function tagTurnsWithSource(turns, source) {
+    return turns.map(function (t) {
+      return Object.assign({}, t, { captureSource: source });
+    });
   }
 
   function getLatestMeaningfulUserTurnText(turns) {
@@ -2578,6 +2687,42 @@
         applyRelayTheme("system");
       }
     });
+
+  // ─── MAIN world → ISOLATED world bridge ──────────────────────────────
+  // Receives network-intercepted conversation data from the MAIN world
+  // content script (network-intercept.ts) and stores it in the cache so
+  // the next collectTurns() call can merge network + DOM turns.
+  window.addEventListener("message", (event) => {
+    if (event.source !== window) return;
+    if (event.data?.type !== "RELAY_NETWORK_CAPTURE") return;
+
+    const payload = event.data.payload;
+    if (
+      !payload ||
+      typeof payload.platform !== "string" ||
+      !Array.isArray(payload.turns)
+    ) {
+      return;
+    }
+
+    networkCaptureCache.latest = {
+      platform: payload.platform,
+      conversationId: payload.conversationId ?? null,
+      title: payload.title ?? null,
+      url: payload.url ?? "",
+      turns: payload.turns,
+      capturedAt: payload.capturedAt ?? Date.now(),
+    };
+
+    if (window.__RELAY_DEBUG) {
+      console.log(
+        "[Relay] Network capture received:",
+        payload.platform,
+        payload.turns.length,
+        "turns"
+      );
+    }
+  });
 
   void initializeRelayTheme();
   scheduleObservation();

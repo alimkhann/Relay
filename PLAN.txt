@@ -1,0 +1,520 @@
+Relay Implementation Plan v2: Quality, Completeness, UX, & Monetization
+Summary of All Decisions
+Decision
+Dedup strategy (Gap #5)
+Conflict resolution
+Capture completeness
+Get Started flow
+Landing MCP presence
+Bottom CTA
+Landing screenshots
+Docs site
+CLI scope
+Referral system
+Token UI
+Source provenance links
+Dashboard chats count
+Pro pricing
+Team pricing
+Plan output
+---
+## Phase 0: MCP State Cleanup
+**Priority**: Immediate | **Effort**: 30 min | **Risk**: None
+**Problem**: Derived project state has 15+ duplicate items. Stale tasks remain. A verbatim ChatGPT excerpt was captured as a task.
+**Actions**:
+- Archive duplicate memory items: "Pricing" (keep 1), "Domain expansion" (keep 1), "Billing" (keep 1), "Prompt structure" (keep 1), "Token security" (keep 1)
+- Archive stale task: "Restart local MCP server" (`8edd4040`)
+- Archive verbatim task: "1. Pro trigger = Relay becomes part of my actual workflow..."
+- Add missing ChatGPT session items as proper memory:
+  - **Decision**: Pro trigger = Relay becomes integral to workflow, not just a cool assistant
+  - **Decision**: Target audience is builders/project-first, then general AI users
+  - **Decision**: Conflict resolution is recency-based (newest write wins) — no user prompts
+  - **Decision**: Get Started flow is a single-page animated transition on the landing page
+  - **Note**: Cost structure — Neon usage-based, Vercel $20/mo Pro, AI costs minimal
+  - **Note**: YC positioning — cross-AI truth maintenance layer
+  - **Constraint**: Free tier must create desire for Pro without being crippled
+---
+Phase 0.5: Dashboard Auth Fix (CRITICAL BUG)
+Priority: Immediate | Effort: 1 hour | Risk: Low (rename + config)
+Root cause discovered: The middleware file at apps/web/src/proxy.ts is named proxy.ts instead of middleware.ts. Next.js requires exactly middleware.ts — so the Neon Auth middleware never runs. Consequences:
+- Session data cache cookie (5-min TTL) is never refreshed by middleware
+- After ~5 minutes, every page load does a cold session fetch from Neon Auth server
+- If that fails (network latency, token expired), user bounces to sign-in
+- CLI auth confirmation also fails because /api/cli/auth/confirm needs a valid web session
+Fix:
+1. Rename apps/web/src/proxy.ts → apps/web/src/middleware.ts
+2. Rename apps/web/src/proxy.test.ts → apps/web/src/middleware.test.ts
+3. Update test import from "./proxy" to "./middleware"
+4. Increase session data TTL from 5 min to 1 hour in apps/web/src/lib/auth/server.ts:
+      sessionDataTtl: 3600  // 1 hour instead of default 300s
+   5. Verify on local dev and production
+Files: apps/web/src/proxy.ts, apps/web/src/proxy.test.ts, apps/web/src/lib/auth/server.ts
+---
+Phase 1: Capture Pipeline Dedup (5 Gaps)
+Priority: Critical | Effort: 3-4 days | Risk: Medium
+Gap 1: Service Worker Signature Reset
+File: apps/extension/src/background/index.ts (line 707)
+Root cause: lastCapturedSignature is in-memory only, resets when MV3 worker suspends (~30s).
+Fix: Persist per-tab signatures to chrome.storage.session. On worker wake, rehydrate before first capture decision.
+Changes:
+- Add persistTabSignature(tabId, signature) / getTabSignature(tabId) helpers
+- Replace direct assignment with storage-backed version
+- Cleanup on tab close
+Gap 2: Archived Sessions Bypass Dedup
+File: packages/db/src/repositories/session-repository.ts (line 64)
+Root cause: getLatestComparable() WHERE clause includes is_archived = false.
+Fix: Remove is_archived = false filter. Dedup should work regardless of archive status.
+Gap 3: Page Fingerprint Drift
+File: packages/db/src/repositories/session-repository.ts (line 64)
+Root cause: pageFingerprint in comparable key. DOM changes shift fingerprint.
+Fix: Use (project_id, platform, normalized_url) as primary key. Fingerprint becomes optional secondary signal.
+Gap 4: Weak Client Hash, No Server Verification
+Files: apps/extension/static/relay-content.js, apps/web/src/server/services/capture-service.ts
+Fix: Server computes SHA-256 of extracted_text. Reject if identical hash within 15-min window using existing capture_signature index.
+Gap 5: mergeGovernedList Near-Dupe Accumulation
+File: packages/shared/src/utils/merge-governed.ts (line 60)
+Fix: Two-layer approach:
+1. Raise isSameTopic() threshold from 60% → 85% for the fast path
+2. Items scoring 60-85% get batched for LLM dedup (new packages/shared/src/utils/llm-dedup.ts)
+3. Export configurable thresholds: MERGE_THRESHOLD_HIGH = 0.85, MERGE_THRESHOLD_GREY = 0.6
+Dashboard Chats Count Fix (alongside Phase 1)
+File: packages/db/src/queries/dashboard-queries.ts, packages/db/src/repositories/session-repository.ts
+Problem: totalChats counts source_sessions.length — duplicate sessions from re-capture inflate this.
+Fix: Count by DISTINCT source_conversation_id (or DISTINCT (platform, url) when conversation ID is null). This gives the real number of unique chats.
+Testing: New tests in merge-governed.test.ts for grey zone + capture-dedup.test.ts for each gap.
+---
+Phase 1.5: Capture Completeness (MAIN World Fetch Interception)
+Priority: High | Effort: 5-6 days | Risk: Medium-High (new architecture)
+Problem: Current capture is 100% DOM-based. Virtual scrolling means only ~15-30 messages exist in DOM. Long conversations lose 20-80% of content.
+Solution: Inject a MAIN world content script that wraps window.fetch before each AI site's app loads. Intercept full conversation API responses.
+Architecture:
+MAIN World Script (document_start)
+  → Wraps window.fetch / XHR
+  → Filters by platform URL patterns
+  → Parses response JSON / SSE streams
+  → Posts structured data to ISOLATED world via window.postMessage
+ISOLATED World Content Script (existing)
+  → Receives network-captured conversation
+  → Falls back to DOM scraping if no network data
+  → Merges / deduplicates turn data
+  → Sends to background via chrome.runtime
+Per-platform API endpoints:
+- ChatGPT: GET /backend-api/conversation/{id} — full conversation with all messages in mapping object
+- Claude: GET /api/organizations/{org}/chat_conversations/{id} — full chat_messages array
+- Perplexity: REST + WebSocket combo for thread data
+Implementation sequence:
+1. New Plasmo content script: apps/extension/contents/network-intercept.ts with world: "MAIN", run_at: "document_start"
+2. Start with ChatGPT only (best documented API)
+3. Add captureSource field to ParsedTurn: 'dom' | 'network' | 'merged'
+4. Bridge to existing content script via window.postMessage
+5. Merge logic: prefer network for content completeness, DOM for formatting
+6. Extend to Claude, then Perplexity
+7. Add completeness verification: compare turn count from network vs DOM
+8. Add telemetry: capture_source, turn_count_mismatch
+Files:
+- New: apps/extension/contents/network-intercept.ts — MAIN world fetch wrapper
+- New: apps/extension/src/capture/network-parsers/chatgpt.ts — ChatGPT API response parser
+- New: apps/extension/src/capture/network-parsers/claude.ts — Claude API response parser
+- New: apps/extension/src/capture/network-parsers/perplexity.ts — Perplexity response parser
+- Modified: apps/extension/static/relay-content.js — add window.postMessage listener, merge logic
+- Modified: packages/adapters/src/base/dom-utils.ts — add captureSource field to ParsedTurn
+---
+Phase 2: Activity Compression
+Priority: Medium | Effort: 2 days | Risk: Low
+Schema (migration 00XX):
+- Add session_group_id to source_sessions (nullable, derived from source_conversation_id or time-bucketed 15-min windows)
+Files:
+- packages/db/src/repositories/session-repository.ts — add getGroupedSessions() query
+- apps/web/src/app/api/projects/[id]/activity/route.ts — return grouped activities
+- Dashboard activity component — collapsed group view ("3 captures from Claude chat — 2h ago")
+- Extension sidebar — compressed view by default
+---
+Phase 3: Source Provenance
+Priority: Medium | Effort: 3 days | Risk: Medium (schema migration + UI)
+Schema (migration 00XX):
+ALTER TABLE memory_items ADD COLUMN source_surface text;
+ALTER TABLE memory_items ADD COLUMN source_conversation_id text;
+ALTER TABLE memory_items ADD COLUMN source_url text;
+ALTER TABLE memory_items ADD COLUMN captured_at timestamptz;
+ALTER TABLE memory_items ADD COLUMN derived_from text[];
+Linking behavior:
+- Store surface + conversation-level URL (no message-level anchoring)
+- ChatGPT: https://chatgpt.com/c/{conversation_id}
+- Claude: https://claude.ai/chat/{conversation_id}
+- Perplexity: https://perplexity.ai/search/{thread_id}
+- MCP: store source_surface = 'mcp', agent name, working directory, timestamp
+- Chips show surface icon + relative time. Click opens conversation URL in new tab.
+- For MCP/IDE sessions: chip shows agent name + timestamp (no link — but user can identify the session)
+Conflict resolution: Recency-based. captured_at timestamp wins, regardless of surface.
+Files:
+- packages/shared/src/types/database.ts — add fields to MemoryItemRow
+- packages/db/src/repositories/memory-repository.ts — update queries
+- apps/web/src/server/services/capture-service.ts — populate source_surface, source_url
+- packages/mcp/src/server.ts — MCP writes set source_surface = 'mcp'
+- packages/shared/src/utils/merge-governed.ts — use captured_at for conflict resolution
+- Dashboard + extension UI — provenance chips
+---
+Phase 4: Memory Subtabs in Extension Sidebar
+Priority: Medium | Effort: 2 days | Risk: Low
+Files:
+- apps/extension/src/components/control-panel.tsx — add tab bar under Memory section
+- New: apps/extension/src/components/memory-tabs.tsx — All / Decisions / Tasks / Constraints tabs
+- CSS module updates for tab styling
+Behavior: "All" default, filter by type, pinned first, provenance chips from Phase 3. Subtle/quiet tab design.
+---
+Phase 5: Objective & Progress Auto-Update
+Priority: Medium | Effort: 1-2 days | Risk: Low
+Enhancement: When digest signals a significant objective change, update automatically (no user confirmation). Log as activity event. Keep objective_history (last 5) for rollback.
+Files:
+- apps/web/src/server/services/project-state-service.ts — change detection + history
+- packages/db/src/repositories/project-state-repository.ts — objective_history JSONB
+- apps/web/src/server/services/digest-service.ts — flag shifts
+---
+Phase 6: Brief Structure Reorder
+Priority: Medium (quick win) | Effort: 0.5 days | Risk: None
+New order: Product thesis → Objective → Decisions → Architecture → Changes → Tasks → Risks → Constraints → Instructions
+Files:
+- apps/web/src/server/services/bootstrap-service.ts — reorder deterministicBootstrap()
+- packages/formatters/src/formatters/ — update all 7 formatters
+- Verify packages/mcp/src/server.ts output
+---
+Phase 7: Landing Page Overhaul
+Priority: High | Effort: 5-7 days | Risk: Medium (complex animations)
+Skill: Use frontend-design skill heavily
+7A: Content Changes
+Hero section updates:
+- Keep existing hero text + CTA
+- "Works with" gets two rows:
+  - Row 1 (browser AIs): ChatGPT, Claude, Gemini, Grok, Perplexity, DeepSeek
+  - Row 2 (IDE agents via MCP): Claude Code, Cursor, Codex, OpenCode, Antigravity, Gemini CLI
+  - Row 2 label: "Connects to your IDE via MCP" or similar
+New Feature section (above or below How It Works):
+- 3-4 feature cards with illustrations (not screenshots initially):
+  - Auto-capture: "Quietly saves what matters from every AI chat"
+  - Project briefs: "One-click context restoration in fresh chats"
+  - MCP integration: "Your coding agent reads and writes project memory"
+  - Cross-surface sync: "Decisions from ChatGPT flow to Claude Code automatically"
+- Clean grid layout, subtle entrance animations
+Dedicated MCP section:
+- Explain what MCP is (one sentence)
+- Show npx @relay/cli install command with copy button
+- List supported IDE agents with icons
+- Brief explanation of how the loop works (browser chat → Relay → IDE agent)
+Updated How It Works:
+- Reflect current architecture (extension captures → digest → project state → brief)
+- Mention MCP as the bridge to IDE agents
+- Update step descriptions to current reality
+Expanded FAQ — add:
+- "What is MCP and how does Relay use it?"
+- "How does Relay work with coding agents like Claude Code or Cursor?"
+- "Can I use Relay for non-coding projects?"
+- "What happens to my data if I cancel?"
+- "How accurate is the auto-capture?"
+Bottom CTA section:
+- Different copy from hero (e.g., "Ready to never lose context again?" or "Stop repeating yourself to every AI")
+- Same Get Started button
+- Background: hero-hills image with white gradient blur at top (mirroring the hero's bottom gradient but inverted — white fading into the image)
+- Height: 130vh to match hero proportions
+- White gradient effect: bg-gradient-to-t from-transparent via-white/80 to-white at the top
+Footer updates:
+- Add Docs link (opens /docs in new tab)
+- Keep Terms + Privacy
+7B: Get Started Animated Transition
+Replaces: Current /get-started (redirect) and /sign-in (separate page) with a single-page animated flow ON the landing page.
+Animation sequence (all transitions swift, not slow):
+Step 1 — Scroll alignment (~300ms):
+- On "Get Started" tap (hero or bottom CTA)
+- If user is not aligned with the triggering section, smooth-scroll so that section fills the viewport
+Step 2 — Landing content vanish (~400ms):
+- All landing content (navbar, hero text, subtitle, CTA, works-with, how-it-works, FAQ, footer) fades out with slight upward movement
+- Background hero-hills image remains
+- AnimatePresence with motion.div exit animations
+Step 3 — Image dim (~300ms):
+- Background image overlay transitions from current dark gradient to a slightly dimmer overlay (matching the sign-in page aesthetic)
+Step 4 — Auth context appear (~500ms, staggered):
+- Relay logo fades in at top-left (or center-left)
+- "Cross-AI memory for your projects" hero text appears with standard FadeIn (top-to-bottom)
+- "Built for engineers" small text appears in bottom-left corner
+- All with the existing [0.25, 0.1, 0.25, 1] easing
+Step 5 — Auth panel slide-in (~500ms):
+- Right panel slides in from off-screen right
+- Takes ~40-50% of screen width
+- White/light background with auth form
+- Auth components appear with top-to-bottom stagger
+- "Continue with Google" button, terms text
+Step 6 — Google auth expansion (~400ms):
+- On "Continue with Google" tap
+- Right auth panel expands to fill entire screen
+- Left side (image, logo, hero text, corner text) gets pushed/hidden
+- Auth form components fade out
+- Then redirect to Google OAuth
+Step 7 — Post-OAuth logo preloader:
+- On redirect back from Google, before showing dashboard
+- Full-screen white background
+- Relay logo centered, slides up from below (opacity 0 → 1, translateY 80 → 0)
+- Holds for ~1.5s
+- Logo slides up and out (translateY 0 → -80, opacity 1 → 0)
+- Background fades out
+- Dashboard appears underneath
+- Easing: cubic-bezier(.7,.2,.2,1) (from Framer component)
+Implementation approach:
+- State machine: 'landing' | 'transitioning' | 'auth-context' | 'auth-panel' | 'auth-expanding' | 'redirecting'
+- Use motion (already in project) for all animations
+- AnimatePresence for mount/unmount transitions
+- Store auth state in URL params or sessionStorage to detect post-OAuth return
+- Logo preloader as a layout-level component that checks for ?auth_callback=1 or similar
+Files:
+- apps/web/src/app/(marketing)/page.tsx — add state machine, animation orchestration
+- New: apps/web/src/app/(marketing)/get-started-transition.tsx — transition component
+- New: apps/web/src/app/(marketing)/auth-panel.tsx — inline auth panel (extracted from sign-in page)
+- New: apps/web/src/app/(marketing)/bottom-cta.tsx — bottom CTA section
+- New: apps/web/src/app/(marketing)/features-section.tsx — feature cards
+- New: apps/web/src/app/(marketing)/mcp-section.tsx — MCP explanation section
+- New: apps/web/src/components/ui/logo-preloader.tsx — post-auth preloader
+- apps/web/src/app/(marketing)/landing-header.tsx — participate in exit animation
+- apps/web/src/app/(marketing)/faq.tsx — add new FAQ items
+- apps/web/src/app/(marketing)/landing-animations.tsx — add exit animation support
+- apps/web/src/app/layout.tsx — mount preloader conditionally
+---
+Phase 8: Docs Site
+Priority: Medium | Effort: 3-4 days | Risk: Low
+Architecture: Next.js pages within existing app at /docs/*. Sidebar layout with scrollable main content area.
+Layout:
+- Sidebar navigation (left, always visible, matches Nia docs screenshot style)
+- Main content area (center, scrollable)
+- Optional: right sidebar with "On this page" anchors
+Sections:
+1. Getting Started
+   - Welcome to Relay
+   - Installation (npx @relay/cli)
+   - Quick Start guide
+2. How Relay Works
+   - Architecture overview (extension → digest → state → brief)
+   - Cross-surface sync explained
+   - Project briefs explained
+3. Extension
+   - Setup & configuration
+   - Supported platforms
+   - Auto-capture behavior
+   - Troubleshooting
+4. MCP Server
+   - Setup (move current /docs/mcp content here)
+   - Available tools reference
+   - Configuration options
+   - Supported IDE agents
+5. CLI Reference
+   - Commands: install, auth, brief, status, projects
+   - Configuration
+   - Environment variables
+6. Plans & Pricing (when billing ships)
+7. FAQ / Troubleshooting
+Dashboard + Footer links:
+- Dashboard sidebar: Add "Docs" link below Activity nav item (opens /docs in new tab)
+- Dashboard account menu: Add "Docs" option
+- Landing footer: Add "Docs" link alongside Terms and Privacy
+Files:
+- New: apps/web/src/app/docs/layout.tsx — docs layout with sidebar
+- New: apps/web/src/app/docs/page.tsx — docs index/welcome
+- New: apps/web/src/app/docs/[[...slug]]/page.tsx — catch-all for docs pages (or individual pages)
+- New: apps/web/src/components/docs/docs-sidebar.tsx — sidebar navigation
+- New: apps/web/src/components/docs/docs-layout.tsx — main content area
+- Modified: apps/web/src/components/layout/sidebar-nav.tsx — add Docs link
+- Modified: apps/web/src/components/layout/account-menu.tsx — add Docs option
+- Landing page footer — add Docs link
+---
+Phase 9: CLI Expansion
+Priority: Medium | Effort: 3-4 days | Risk: Low
+9A: Add Support for All Major AI Coding Tools
+Currently supported: Claude Code, Cursor (project + global), Windsurf
+Add support for:
+Tool
+Claude Desktop
+VS Code (Copilot)
+OpenAI Codex CLI
+OpenCode
+Gemini CLI
+Warp
+Antigravity
+File: packages/cli/src/detect.ts — add entries to IDE detection array
+9B: CLI Subcommands
+Replace single wizard with subcommand architecture:
+Command
+relay install
+relay auth
+relay brief
+relay status
+relay projects
+Files:
+- packages/cli/src/index.ts — subcommand parser (use basic arg parsing or add commander/citty)
+- New: packages/cli/src/commands/install.ts — extracted from wizard
+- New: packages/cli/src/commands/auth.ts — login/logout/status
+- New: packages/cli/src/commands/brief.ts — fetch + print brief
+- New: packages/cli/src/commands/status.ts — fetch + print state summary
+- New: packages/cli/src/commands/projects.ts — list/switch
+- packages/cli/src/config.ts — add active project tracking
+---
+Phase 10: Token UI Refresh
+Priority: Medium | Effort: 1 day | Risk: Low
+Current state: Settings shows "API Tokens" section with create/list/revoke. All tokens are the same type.
+Changes:
+- Rename section to "MCP & API Tokens"
+- Add purpose label auto-detection: tokens created by CLI get labeled "CLI / MCP", tokens created manually get "Manual"
+- Add note: "Tokens are auto-managed by npx @relay/cli. Only create manually if you need custom integrations."
+- "Create new token" collapsed by default behind an "Advanced" or "Manual setup" toggle
+- Show token list with: label, purpose badge, created date, last used, revoke button
+- Remove any extension-internal token display (extension connection uses a separate mechanism that doesn't need user visibility)
+Files:
+- apps/web/src/components/settings/settings-preferences.tsx — update token section UI
+- packages/db/src/repositories/extension-token-repository.ts — add optional purpose field
+- Migration: add purpose text column to tokens table
+---
+Phase 11: Handoff Packs & Delta Briefs
+Priority: High value | Effort: 3-4 days | Risk: Medium
+Delta Tracking ("Since Last Sync")
+Schema (migration 00XX):
+CREATE TABLE surface_sync_marks (
+  id uuid PRIMARY KEY,
+  project_id uuid REFERENCES projects(id),
+  user_id uuid REFERENCES users(id),
+  surface text NOT NULL,
+  last_sync_at timestamptz NOT NULL,
+  UNIQUE(project_id, user_id, surface)
+);
+Behavior: Each get_brief MCP call updates sync mark. Brief generation accepts optional since param.
+Handoff Context Packs
+- Dashboard "Prepare Handoff" button
+- Uses packages/formatters/ registry for per-target formatting
+- Copy-to-clipboard or extension insertion
+Files:
+- New: packages/db/src/repositories/sync-mark-repository.ts
+- apps/web/src/server/services/bootstrap-service.ts — add since param
+- packages/mcp/src/server.ts — get_brief gains since + updates sync mark
+- New: apps/web/src/server/services/handoff-service.ts
+- New: apps/web/src/app/api/projects/[id]/handoff/route.ts
+---
+Phase 12: Scoped MCP Tokens
+Priority: Important (before billing) | Effort: 4-5 days | Risk: High (security)
+Design: OAuth 2.1 + PKCE. Short-lived access tokens (15 min), refresh tokens (30 day), per-project scopes.
+Scopes: project:read, project:write, memory:read, memory:write, brief:read
+Migration path: Existing tokens work for 30 days with deprecation warning.
+Schema:
+CREATE TABLE mcp_tokens (
+  id uuid PRIMARY KEY,
+  user_id uuid REFERENCES users(id),
+  project_id uuid REFERENCES projects(id),
+  token_hash text NOT NULL,
+  scopes text[] NOT NULL,
+  expires_at timestamptz NOT NULL,
+  refresh_token_hash text,
+  refresh_expires_at timestamptz,
+  revoked_at timestamptz,
+  created_at timestamptz DEFAULT now()
+);
+Files:
+- New: packages/db/src/repositories/mcp-token-repository.ts
+- New: apps/web/src/server/services/mcp-token-service.ts
+- New API routes: /api/mcp/token, /api/mcp/refresh, /api/mcp/revoke
+- packages/mcp/src/server.ts — new token format + auto-refresh
+---
+Phase 13: Pricing & Billing
+Priority: Business critical | Effort: 5-7 days | Risk: Medium
+Tiers
+
+Active projects
+Brief depth
+MCP access
+History retention
+Capture surfaces
+Handoff packs
+Referral System
+Model: Mixed — users see "refer a friend, both get 1 month Pro free". Internally tracked as $9 credits.
+Schema:
+CREATE TABLE referral_links (
+  id uuid PRIMARY KEY,
+  user_id uuid REFERENCES users(id),
+  code text UNIQUE NOT NULL,
+  created_at timestamptz DEFAULT now()
+);
+CREATE TABLE referrals (
+  id uuid PRIMARY KEY,
+  referrer_id uuid REFERENCES users(id),
+  referred_id uuid REFERENCES users(id),
+  conversion_type text,  -- 'monthly' | 'yearly'
+  credit_amount_cents int NOT NULL,  -- 900 for monthly, 2700 for yearly
+  status text DEFAULT 'pending',     -- 'pending' | 'converted' | 'paid_out'
+  created_at timestamptz DEFAULT now()
+);
+CREATE TABLE referral_balances (
+  user_id uuid PRIMARY KEY REFERENCES users(id),
+  total_earned_cents int DEFAULT 0,
+  lifetime_cap_cents int DEFAULT 10800,  -- $108 = 12 months × $9
+  created_at timestamptz DEFAULT now()
+);
+Reward structure:
+- Monthly conversion: $9 credit (1 month free for referrer)
+- Yearly conversion: $27 credit (3 months free for referrer)
+- Referred user gets: 1 month Pro free
+- Lifetime cap: $108 (12 months of Pro)
+- Dashboard page: Referral link, stats (referred/converted/earned/remaining), referral list
+Implementation: Paddle for checkout/billing/tax. Webhook → subscriptions table. withTierCheck() middleware.
+Files:
+- New: packages/db/src/repositories/subscription-repository.ts
+- New: packages/db/src/repositories/referral-repository.ts
+- New: apps/web/src/server/services/billing-service.ts
+- New: apps/web/src/server/services/referral-service.ts
+- New: apps/web/src/app/api/webhooks/paddle/route.ts
+- New: apps/web/src/server/http/tier-check.ts
+- Dashboard billing pages + referral page
+- Landing page pricing section (if adding one)
+---
+Future Phase: Team Plan ($20/seat/mo)
+NOT in current scope — but outlined for forward-compatible schema decisions.
+Features
+- Workspace ownership: Shared workspace with multiple members
+- Per-user provenance: See who added/changed what
+- Team briefs: Briefs that include team context, not just individual
+- Role permissions: Owner / Admin / Member / Viewer
+- Shared projects: Projects belong to workspace, not individual
+- Team routing: Memory items can be assigned to team members
+- Activity feed: Team-wide activity with per-user filtering
+- SSO/SAML: Enterprise auth (potential add-on)
+Schema considerations (inform current work)
+- source_surface field (Phase 3) can include user_id for team provenance
+- mcp_tokens (Phase 12) already have user_id — add optional workspace_id
+- Subscription model (Phase 13) should support per-seat billing
+- Memory items may need workspace_id alongside project_id
+Price: $20/seat/mo includes everything in Pro + team features
+---
+Execution Order
+Phase 0   (30 min)   MCP State Cleanup
+Phase 0.5 (1 hour)   Auth Fix — CRITICAL (rename proxy.ts → middleware.ts)
+Phase 1   (3-4 days) Capture Pipeline Dedup + Chats Count Fix
+Phase 6   (0.5 day)  Brief Structure Reorder (quick win)
+Phase 1.5 (5-6 days) Capture Completeness (fetch interception)
+Phase 2   (2 days)   Activity Compression
+Phase 3   (3 days)   Source Provenance
+Phase 4   (2 days)   Memory Subtabs
+Phase 5   (1-2 days) Objective Auto-Update
+Phase 7   (5-7 days) Landing Page Overhaul + Get Started Transition
+Phase 8   (3-4 days) Docs Site
+Phase 9   (3-4 days) CLI Expansion
+Phase 10  (1 day)    Token UI Refresh
+Phase 11  (3-4 days) Handoff Packs & Delta Briefs
+Phase 12  (4-5 days) Scoped MCP Tokens
+Phase 13  (5-7 days) Pricing, Billing & Referrals
+Total estimated effort: ~45-55 days of focused work
+Milestones
+1. "Stable sessions" — After Phase 0.5: users stay logged in
+2. "No more dupes" — After Phase 1: capture pipeline is bulletproof
+3. "Context quality v3" — After Phase 6: briefs optimally structured
+4. "Complete capture" — After Phase 1.5: never miss a message
+5. "Know where it came from" — After Phase 4: full provenance + subtabs
+6. "Beautiful landing" — After Phase 7: polished landing with animated onboarding
+7. "Documented" — After Phase 8: proper docs site
+8. "Works everywhere" — After Phase 9: CLI supports all major tools
+9. "Delta-aware" — After Phase 11: since-last-sync + handoff packs
+10. "Secure" — After Phase 12: scoped tokens
+11. "Ready to charge" — After Phase 13: billing + referrals live
+12. "Team ready" — Future: Team tier
+---
+That's the complete expanded plan. Does this look right? Any phases to adjust, reorder, add, or remove before I save it to .claude/plans/ and MCP memory?

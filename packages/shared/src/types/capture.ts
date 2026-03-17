@@ -1,10 +1,13 @@
 import type { SourceTurnRole, SupportedPlatform } from "./database"
 
+export type CaptureSource = "dom" | "network" | "merged"
+
 export interface ParsedTurn {
   role: SourceTurnRole
   content: string
   turnIndex: number
   rawHtml?: string | null
+  captureSource?: CaptureSource
 }
 
 export type PageRouteKind = "fresh" | "chat" | "project_root" | "unknown"

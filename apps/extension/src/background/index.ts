@@ -2820,6 +2820,38 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel
     .setPanelBehavior({ openPanelOnActionClick: true })
     .catch(() => undefined);
+
+  // Register MAIN world content script for network interception.
+  // This must be done via scripting API because Plasmo doesn't support
+  // world: "MAIN" in its manifest transformer.
+  const networkInterceptScript = {
+    id: "relay-network-intercept",
+    matches: [
+      "https://chatgpt.com/*",
+      "https://chat.openai.com/*",
+      "https://claude.ai/*",
+      "https://perplexity.ai/*",
+      "https://www.perplexity.ai/*",
+      "https://codex.openai.com/*",
+      "https://gemini.google.com/*",
+      "https://aistudio.google.com/*",
+      "https://grok.com/*",
+      "https://x.com/i/grok*",
+      "https://chat.deepseek.com/*",
+    ],
+    js: ["static/network-intercept.js"],
+    runAt: "document_start" as const,
+    world: "MAIN" as const,
+  };
+
+  void chrome.scripting
+    .registerContentScripts([networkInterceptScript])
+    .catch(() => {
+      // Already registered from a previous install — update instead
+      void chrome.scripting
+        .updateContentScripts([networkInterceptScript])
+        .catch(() => undefined);
+    });
 });
 
 chrome.tabs.onUpdated.addListener(
