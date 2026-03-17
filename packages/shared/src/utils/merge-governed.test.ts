@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest"
 
-import { hasCompletionSignal, isSameTopic, mergeGovernedList } from "./merge-governed"
+import {
+  hasCompletionSignal,
+  isSameTopic,
+  isLikelySameTopic,
+  mergeGovernedList,
+  topicOverlapScore,
+  TOPIC_MATCH_THRESHOLD,
+  TOPIC_GREY_ZONE_MIN,
+} from "./merge-governed"
 
 describe("mergeGovernedList", () => {
   it("replaces an exact match (case-insensitive) with the incoming version", () => {
@@ -34,12 +42,12 @@ describe("mergeGovernedList", () => {
 
   it("replaces tasks with same topic unconditionally", () => {
     const result = mergeGovernedList(
-      ["Deploy migration 0008 to Neon"],
-      ["Deploy migration 0009 to Neon"],
+      ["Configure Neon database connection pooling for staging environment"],
+      ["Configure Neon database connection pooling for production environment"],
       "task"
     )
     expect(result).toHaveLength(1)
-    expect(result[0]).toContain("0009")
+    expect(result[0]).toContain("production")
   })
 
   it("appends non-overlapping items", () => {
@@ -88,11 +96,46 @@ describe("isSameTopic", () => {
     expect(isSameTopic("Use Postgres", "Use Postgres for the database layer")).toBe(true)
   })
 
-  it("returns true for high token overlap", () => {
-    expect(isSameTopic("MCP tool count is 8", "MCP tools should be 8")).toBe(true)
+  it("returns true for high token overlap above threshold", () => {
+    // Tokens: "configur", "neon", "databas", "connect", "pool" — 4/5 overlap
+    // Actually uses substring match since one contains the other
+    expect(isSameTopic(
+      "Configure Neon database connection pooling",
+      "Configure the Neon database connection pooling settings"
+    )).toBe(true)
+  })
+
+  it("returns false for moderate overlap below threshold", () => {
+    // ~67% overlap — below 0.85 threshold, should NOT merge
+    expect(isSameTopic("MCP tool count is 8", "MCP tools should be 8")).toBe(false)
   })
 
   it("returns false for unrelated topics", () => {
     expect(isSameTopic("Use Postgres for storage", "Deploy to Vercel")).toBe(false)
+  })
+})
+
+describe("isLikelySameTopic", () => {
+  it("returns true for items in the grey zone (0.6–0.85)", () => {
+    // ~67% overlap — in the grey zone
+    expect(isLikelySameTopic("MCP tool count is 8", "MCP tools should be 8")).toBe(true)
+  })
+
+  it("returns false for items above the match threshold", () => {
+    expect(isLikelySameTopic("Use Postgres", "Use Postgres for the database layer")).toBe(false)
+  })
+
+  it("returns false for unrelated items below grey zone", () => {
+    expect(isLikelySameTopic("Use Postgres for storage", "Deploy to Vercel")).toBe(false)
+  })
+})
+
+describe("thresholds", () => {
+  it("TOPIC_MATCH_THRESHOLD is 0.85", () => {
+    expect(TOPIC_MATCH_THRESHOLD).toBe(0.85)
+  })
+
+  it("TOPIC_GREY_ZONE_MIN is 0.6", () => {
+    expect(TOPIC_GREY_ZONE_MIN).toBe(0.6)
   })
 })

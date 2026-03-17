@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { getAuthServer } from "@/lib/auth/server"
 import { buildExtensionPreflightResponse, isExtensionOrigin } from "@/server/http/extension-cors"
 
-export default function proxy(request: NextRequest) {
+export default function middleware(request: NextRequest) {
   // API routes handle their own auth via withApiAuth / resolveViewer(),
   // which returns proper 401 JSON responses. The Neon Auth middleware must
   // NOT intercept API routes — it would redirect to /sign-in (HTML), causing

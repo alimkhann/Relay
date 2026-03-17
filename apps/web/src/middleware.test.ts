@@ -15,9 +15,9 @@ vi.mock("@/lib/auth/server", () => ({
   getAuthServer: getAuthServerMock
 }))
 
-import proxy from "./proxy"
+import middleware from "./middleware"
 
-describe("proxy", () => {
+describe("middleware", () => {
   beforeEach(() => {
     middlewareFn.mockReset()
     middlewareFactory.mockClear()
@@ -31,7 +31,7 @@ describe("proxy", () => {
       }
     } as any
 
-    await proxy(request)
+    await middleware(request)
 
     expect(middlewareFactory).toHaveBeenCalledWith({
       loginUrl: "/sign-in"
@@ -46,7 +46,7 @@ describe("proxy", () => {
       }
     } as any
 
-    await proxy(request)
+    await middleware(request)
 
     expect(middlewareFactory).toHaveBeenCalledWith({
       loginUrl: "/sign-in"
@@ -69,7 +69,7 @@ describe("proxy", () => {
       }
     } as any
 
-    const response = await proxy(request)
+    const response = await middleware(request)
 
     expect(response.status).toBe(204)
     expect(response.headers.get("access-control-allow-origin")).toBe(

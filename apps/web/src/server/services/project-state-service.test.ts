@@ -81,7 +81,11 @@ describe("mergeDigestIntoState", () => {
     ])
   })
 
-  it("replaces conflicting constraints when the new digest explicitly supersedes them", () => {
+  it("appends constraints in the grey zone instead of auto-merging them", () => {
+    // With the 0.85 threshold, "Do not open the sidepanel automatically" and
+    // "No longer avoid opening the sidepanel automatically during onboarding"
+    // score ~0.75 overlap — in the grey zone. The conservative behavior is to
+    // keep both until a future LLM pass resolves them.
     const next = mergeDigestIntoState(
       makeProject(),
       makeState(),
@@ -91,6 +95,7 @@ describe("mergeDigestIntoState", () => {
     )
 
     expect(next.constraints).toEqual([
+      "Do not open the sidepanel automatically.",
       "No longer avoid opening the sidepanel automatically during onboarding.",
     ])
   })

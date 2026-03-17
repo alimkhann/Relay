@@ -25,7 +25,8 @@ export function getAuthServer() {
   authInstance = createNeonAuth({
     baseUrl,
     cookies: {
-      secret
+      secret,
+      sessionDataTtl: 3600 // 1 hour — default 300s (5 min) caused session bounces
     }
   })
 

@@ -64,10 +64,11 @@ export async function getProjectSummaries(repositories: RepositoryBundle, ownerI
 
   return Promise.all(
     projects.map(async (project) => {
-      const [memoryItems, sessions, projectState] = await Promise.all([
+      const [memoryItems, sessions, projectState, conversationCount] = await Promise.all([
         repositories.memory.listByProject(project.id),
         repositories.sessions.listByProject(project.id, { includeArchived: false }),
-        repositories.projectState.getByProject(project.id)
+        repositories.projectState.getByProject(project.id),
+        repositories.sessions.countDistinctConversations(project.id, { includeArchived: false })
       ])
       const routingKeywords = extractRoutingKeywords([
         project.name,
@@ -89,7 +90,7 @@ export async function getProjectSummaries(repositories: RepositoryBundle, ownerI
         slug: project.slug,
         description: project.description,
         memoryCount: memoryItems.length,
-        sessionCount: sessions.length,
+        sessionCount: conversationCount,
         routingContext: {
           hasMeaningfulContext: memoryItems.length > 0 || sessions.length > 0,
           keywords: routingKeywords

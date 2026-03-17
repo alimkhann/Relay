@@ -1,5 +1,19 @@
 import { normalizeText } from "./text"
 
+/**
+ * Configurable thresholds for topic dedup.
+ *
+ * TOPIC_MATCH_THRESHOLD (0.85): Fast-path — items above this score are
+ * considered the same topic and merged deterministically.
+ *
+ * TOPIC_GREY_ZONE_MIN (0.6): Items scoring between 0.6 and 0.85 are
+ * "likely" the same topic. In a future phase an LLM pass will resolve
+ * these. For now they are treated as distinct (conservative — avoids
+ * false-positive merges that lose user data).
+ */
+export const TOPIC_MATCH_THRESHOLD = 0.85
+export const TOPIC_GREY_ZONE_MIN = 0.6
+
 export const COMMON_TOPIC_STOP_WORDS = new Set([
   "the",
   "and",
@@ -57,7 +71,19 @@ export function isSameTopic(left: string, right: string) {
     return true
   }
 
-  return topicOverlapScore(left, right) >= 0.6
+  return topicOverlapScore(left, right) >= TOPIC_MATCH_THRESHOLD
+}
+
+/**
+ * Returns true when two items fall in the "grey zone" — similar enough
+ * that they might be the same topic, but below the deterministic match
+ * threshold. A future LLM pass will resolve these; for now callers can
+ * use this to flag items for review.
+ */
+export function isLikelySameTopic(left: string, right: string) {
+  if (isSameTopic(left, right)) return false
+  const score = topicOverlapScore(left, right)
+  return score >= TOPIC_GREY_ZONE_MIN && score < TOPIC_MATCH_THRESHOLD
 }
 
 export function hasReplacementSignal(value: string) {

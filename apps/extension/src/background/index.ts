@@ -74,6 +74,12 @@ import {
   initializeBackgroundTelemetry,
   recordBackgroundTelemetry,
 } from "./telemetry";
+import {
+  persistTabSignature,
+  removeTabSignature,
+  getAllPersistedSignatures,
+  type TabCaptureSignature,
+} from "../storage/capture-signatures";
 
 interface RemoteSettingsPayload {
   settings: {
@@ -192,6 +198,18 @@ interface PendingInsertedBriefState {
 }
 
 const tabStates = new Map<number, RelayTabState>();
+
+/**
+ * In-memory cache of persisted capture signatures, loaded from
+ * chrome.storage.session on worker wake. Consumed once per tab
+ * in getOrCreateTabState() to restore dedup state after MV3
+ * service worker suspension.
+ */
+let rehydratedSignatures: Record<number, TabCaptureSignature> | null = null;
+
+void getAllPersistedSignatures()
+  .then((sigs: Record<number, TabCaptureSignature>) => { rehydratedSignatures = sigs; })
+  .catch(() => { rehydratedSignatures = {}; });
 const dashboardCache = new Map<
   string,
   { dashboard: ProjectDashboardPayload | null; fetchedAt: number }
@@ -716,6 +734,19 @@ function getOrCreateTabState(tabId: number) {
   if (existing) return existing;
 
   const nextState = createTabState(tabId);
+
+  // Rehydrate capture signatures from chrome.storage.session
+  // to survive MV3 service worker suspension
+  if (rehydratedSignatures) {
+    const persisted = rehydratedSignatures[tabId];
+    if (persisted) {
+      nextState.lastCapturedSignature = persisted.lastCapturedSignature;
+      nextState.lastCapturedTurns = persisted.lastCapturedTurns;
+      nextState.lastRoutedSignature = persisted.lastRoutedSignature;
+      delete rehydratedSignatures[tabId]; // consume once
+    }
+  }
+
   tabStates.set(tabId, nextState);
   return nextState;
 }
@@ -995,6 +1026,9 @@ function clearTabState(tabId: number) {
   clearAssociationToastTimer(state);
   clearInsertStateTimer(state);
   tabStates.delete(tabId);
+
+  // Clean up persisted signatures when tab closes
+  void removeTabSignature(tabId);
 }
 
 async function readErrorResponse(response: Response, fallback: string) {
@@ -2421,6 +2455,14 @@ async function captureObservedChange(
         state.page.captureSignature ?? state.lastObservedSignature;
       state.lastRoutedSignature = state.page.captureSignature ?? chatKey;
       state.lastCapturedTurns = state.page.turns ?? state.lastObservedTurns;
+
+      // Persist to chrome.storage.session so dedup survives worker suspension
+      void persistTabSignature(tabId, {
+        lastCapturedSignature: state.lastCapturedSignature,
+        lastCapturedTurns: state.lastCapturedTurns,
+        lastRoutedSignature: state.lastRoutedSignature,
+        updatedAt: Date.now(),
+      });
       state.associationSuppressed = false;
       state.projectId = projectId;
       state.projectName = projectName || state.projectName;
