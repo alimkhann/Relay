@@ -287,10 +287,13 @@ function renderFreshChatMarkdown(shape: BootstrapModelShape, profile: TargetProf
     ""
   ]
 
-  // Section order optimized for LLM attention (beginning + end are highest salience)
+  // Section order: Product thesis → Objective → Decisions → Architecture → Changes → Tasks → Notes → Constraints → Instructions
+  appendTextSection(lines, "What This Project Is", shape.projectOverview)
   appendTextSection(lines, "Current Objective", shape.currentObjective)
+  appendListSection(lines, "Decisions Already Made", dedupedDecisions)
+  appendListSection(lines, "Architecture & Tools", shape.relevantTools)
+  appendTextSection(lines, "What Changed Recently", shape.recentProgress)
 
-  // Open tasks with freshness signals
   if (dedupedTasks.length) {
     lines.push("## Open Tasks")
     for (const task of dedupedTasks) {
@@ -299,12 +302,7 @@ function renderFreshChatMarkdown(shape: BootstrapModelShape, profile: TargetProf
     lines.push("")
   }
 
-  appendListSection(lines, "Constraints To Respect", dedupedConstraints)
-  appendTextSection(lines, "What This Project Is", shape.projectOverview)
-  appendTextSection(lines, "What Changed Recently", shape.recentProgress)
-  appendListSection(lines, "Decisions Already Made", dedupedDecisions)
-
-  // Key notes from memory items
+  // Key notes from memory items (risks / context signals)
   const relevantNotes = filterRelevantNotes(memoryItems)
   if (relevantNotes.length > 0) {
     lines.push("## Key Notes")
@@ -317,8 +315,8 @@ function renderFreshChatMarkdown(shape: BootstrapModelShape, profile: TargetProf
     lines.push("")
   }
 
-  appendListSection(lines, "Useful Context", shape.relevantTools)
-  appendTextSection(lines, "How This Chat Should Continue", shape.firstAction)
+  appendListSection(lines, "Constraints", dedupedConstraints)
+  appendTextSection(lines, "How To Continue", shape.firstAction)
 
   // Budget: keep under ~3500 tokens (rough estimate: text.length / 4)
   const result = lines.join("\n").trim()
@@ -350,8 +348,8 @@ function renderContinuationMarkdown(shape: BootstrapModelShape, profile: TargetP
   }
 
   lines.push("")
-  appendListSection(lines, "Constraints", shape.constraints.slice(0, 5))
   appendListSection(lines, "Open Tasks", shape.openTasks.slice(0, 5))
+  appendListSection(lines, "Constraints", shape.constraints.slice(0, 5))
 
   return lines.join("\n").trim()
 }

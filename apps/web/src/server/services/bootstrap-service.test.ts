@@ -55,7 +55,7 @@ describe("renderBootstrapMarkdown", () => {
     const content = renderBootstrapMarkdown(shape, profile, "fresh_chat_bootstrap")
 
     expect(content).toContain("## What This Project Is")
-    expect(content).toContain("## How This Chat Should Continue")
+    expect(content).toContain("## How To Continue")
   })
 
   it("renders a shorter continuation brief without empty sections", () => {
