@@ -275,7 +275,7 @@ export function BentoDashboard({ project, dashboard, statusReady, statusText }: 
 
   /* ─── Computed ─── */
 
-  const totalChats = dashboard.sessionHistory.length;
+  const totalChats = dashboard.distinctConversationCount;
   const totalContextItems = sections.reduce((acc, s) => acc + buildContextItems(dashboard, s).length, 0);
   const latestPacket = dashboard.packets[0];
 

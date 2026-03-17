@@ -38,6 +38,7 @@ describe("project memory state helpers", () => {
         },
         recentSessions: [],
         sessionHistory: [],
+        distinctConversationCount: 0,
         recentDigests: [],
         memory: [],
         packets: [],

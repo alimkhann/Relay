@@ -147,6 +147,7 @@ vi.mock("@/server/services/project-service", () => ({
     },
     recentSessions: [],
     sessionHistory: [],
+    distinctConversationCount: 0,
     recentDigests: [],
     memory: [
       {

@@ -7,9 +7,10 @@ export async function getProjectDashboard(repositories: RepositoryBundle, ownerI
   const [projectSummary] = (await getProjectSummaries(repositories, ownerId)).filter((project) => project.id === projectId)
   if (!projectSummary) return null
 
-  const [recentSessions, sessionHistory, memory, packets, legacyPackets, targetProfiles, projectState, stateOverrides, recentDigests, digestJobs] = await Promise.all([
+  const [recentSessions, sessionHistory, distinctConversationCount, memory, packets, legacyPackets, targetProfiles, projectState, stateOverrides, recentDigests, digestJobs] = await Promise.all([
     repositories.sessions.listByProject(projectId, { includeArchived: false }),
     repositories.sessions.listByProject(projectId, { includeArchived: true, limit: 20 }),
+    repositories.sessions.countDistinctConversations(projectId, { includeArchived: false }),
     repositories.memory.listByProject(projectId),
     repositories.bootstrapPackets.listByProject(projectId),
     repositories.contextPackets.listByProject(projectId),
@@ -104,6 +105,7 @@ export async function getProjectDashboard(repositories: RepositoryBundle, ownerI
         turnCount: (await repositories.turns.listBySession(session.id)).length
       }))
     ),
+    distinctConversationCount,
     recentDigests: recentDigests.map((digest) => ({
       id: digest.id,
       sourceSessionId: digest.sourceSessionId,

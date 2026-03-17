@@ -253,7 +253,7 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
     return acc + derived.length + manual.length;
   }, 0);
 
-  const totalChats = dashboard.sessionHistory.length;
+  const totalChats = dashboard.distinctConversationCount;
   const latestPacket = dashboard.packets[0];
 
   /* ─── Mutations ─── */

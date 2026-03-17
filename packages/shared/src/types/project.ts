@@ -35,6 +35,8 @@ export interface ProjectDashboardDto {
   stateStatus: ProjectStateStatusDto
   recentSessions: RecentSessionDto[]
   sessionHistory: RecentSessionDto[]
+  /** Count of distinct conversations (by URL), not total capture rows */
+  distinctConversationCount: number
   recentDigests: SessionDigestDto[]
   memory: MemoryItemDto[]
   packets: BootstrapPacketDto[]

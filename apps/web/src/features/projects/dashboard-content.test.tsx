@@ -54,6 +54,7 @@ const project = {
 
 const dashboard = {
   sessionHistory: [],
+  distinctConversationCount: 0,
   packets: [],
   memory: [],
   stateStatus: {
