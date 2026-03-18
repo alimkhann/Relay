@@ -37,10 +37,24 @@ export function GoogleSignInButton({
             });
 
             try {
+              // Append auth_callback=1 so the LogoPreloader fires after OAuth return
+              function withAuthCallback(path: string) {
+                try {
+                  const base = window.location.origin;
+                  const url = new URL(path.startsWith("/") ? `${base}${path}` : path);
+                  url.searchParams.set("auth_callback", "1");
+                  return url.pathname + url.search;
+                } catch {
+                  return path;
+                }
+              }
+
+              const callbackPath = withAuthCallback(nextPath);
+
               const signInResult = await authClient.signIn.social({
                 provider: "google",
-                callbackURL: nextPath,
-                newUserCallbackURL: nextPath,
+                callbackURL: callbackPath,
+                newUserCallbackURL: callbackPath,
                 requestSignUp: intent === "sign-up",
                 disableRedirect: intent === "sign-up",
               });
@@ -52,6 +66,7 @@ export function GoogleSignInButton({
                   throw new Error("Google sign-in did not return an authorization URL.");
                 }
 
+                // Preserve auth_callback on the final redirect_uri if possible
                 const url = new URL(authUrl);
                 url.searchParams.set("prompt", "select_account");
                 window.location.assign(url.toString());

@@ -47,8 +47,8 @@ describe("GoogleSignInButton", () => {
     await waitFor(() => {
       expect(signInSocialMock).toHaveBeenCalledWith({
         provider: "google",
-        callbackURL: "/dashboard",
-        newUserCallbackURL: "/dashboard",
+        callbackURL: "/dashboard?auth_callback=1",
+        newUserCallbackURL: "/dashboard?auth_callback=1",
         requestSignUp: true,
         disableRedirect: true
       })
@@ -67,8 +67,8 @@ describe("GoogleSignInButton", () => {
     await waitFor(() => {
       expect(signInSocialMock).toHaveBeenCalledWith({
         provider: "google",
-        callbackURL: "/settings",
-        newUserCallbackURL: "/settings",
+        callbackURL: "/settings?auth_callback=1",
+        newUserCallbackURL: "/settings?auth_callback=1",
         requestSignUp: false,
         disableRedirect: false
       })

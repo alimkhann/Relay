@@ -6,6 +6,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 
 import { ThemeProvider } from "@/components/theme-provider";
 import { GlobalTelemetryBootstrap } from "@/components/telemetry/global-telemetry-bootstrap";
+import { LogoPreloader } from "@/components/ui/logo-preloader";
 
 import "./globals.css";
 
@@ -34,6 +35,7 @@ export default function RootLayout({
       <body>
         <ThemeProvider>
           <GlobalTelemetryBootstrap />
+          <LogoPreloader />
           {children}
         </ThemeProvider>
         <Analytics />
