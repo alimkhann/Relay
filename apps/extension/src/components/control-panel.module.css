@@ -433,6 +433,130 @@
   margin-top: 12px;
 }
 
+/* ── Memory subtabs ── */
+
+.contextTabs {
+  display: flex;
+  gap: 2px;
+  margin-top: 12px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+}
+
+.contextTab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  padding: 5px 6px;
+  border-radius: calc(var(--radius-sm) - 2px);
+  cursor: pointer;
+  transition: color 120ms, background 120ms;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.contextTab:hover {
+  color: var(--ink);
+}
+
+.contextTabActive {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.contextTabCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 14px;
+  margin-left: 3px;
+  padding: 0 4px;
+  border-radius: 7px;
+  background: var(--line);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--faint);
+  line-height: 1;
+}
+
+.contextTabActive .contextTabCount {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+/* ── Unified item list (tab-filtered) ── */
+
+.contextItemList {
+  display: grid;
+  gap: 1px;
+  margin-top: 10px;
+}
+
+.contextItemUnified {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  transition: border-color 120ms;
+}
+
+.contextItemUnified:hover {
+  border-color: var(--muted);
+}
+
+.contextItemMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.contextItemDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.contextItemDotDecisions {
+  background: #60a5fa;
+}
+
+.contextItemDotConstraints {
+  background: #fbbf24;
+}
+
+.contextItemDotTasks {
+  background: #34d399;
+}
+
+.contextItemTypeLabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.pinnedBadge {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-left: auto;
+}
+
 .contextStack {
   display: grid;
   gap: 12px;

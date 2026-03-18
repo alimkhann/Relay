@@ -38,6 +38,7 @@ interface ControlPanelProps {
 }
 
 type ContextSection = "decisions" | "constraints" | "tasks";
+type ContextTab = "all" | ContextSection;
 type ContextItem = RelayActiveProjectState["contextPreview"][ContextSection][number];
 
 const sectionColorClass: Record<ContextSection, string> = {
@@ -213,6 +214,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [localAuthEmail, setLocalAuthEmail] = useState("");
   const [localAuthName, setLocalAuthName] = useState("");
   const [showDashboardPrompt, setShowDashboardPrompt] = useState(false);
+  const [activeContextTab, setActiveContextTab] = useState<ContextTab>("all");
   const [expandedSections, setExpandedSections] = useState<
     Record<ContextSection, boolean>
   >({
@@ -1685,35 +1687,157 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               </p>
             </div>
 
-            <div className={styles.contextStack}>
-              {contextSections.map((section) => {
+            {/* ─── Subtabs ─── */}
+            <div className={styles.contextTabs}>
+              {(["all", "decisions", "tasks", "constraints"] as const).map(
+                (tab) => {
+                  const count =
+                    tab === "all"
+                      ? contextSections.reduce(
+                          (n, s) => n + activeState.contextPreview[s].length,
+                          0,
+                        )
+                      : activeState.contextPreview[tab].length;
+                  return (
+                    <button
+                      key={tab}
+                      type="button"
+                      className={`${styles.contextTab} ${activeContextTab === tab ? styles.contextTabActive : ""}`}
+                      onClick={() => setActiveContextTab(tab)}
+                    >
+                      {tab === "all" ? "All" : sectionLabels[tab]}
+                      <span className={styles.contextTabCount}>{count}</span>
+                    </button>
+                  );
+                },
+              )}
+            </div>
+
+            {/* ─── Tab content ─── */}
+            {activeContextTab === "all" ? (
+              /* All tab: show 3-card layout (original view) */
+              <div className={styles.contextStack}>
+                {contextSections.map((section) => {
+                  const items = activeState.contextPreview[section];
+                  const expanded = expandedSections[section];
+                  const visibleItems = expanded ? items.slice(0, 5) : items.slice(0, 1);
+
+                  return (
+                    <div key={section} className={`${styles.contextSection} ${styles[sectionColorClass[section]]}`}>
+                      <div className={styles.contextSectionHeader}>
+                        <span className={styles.contextLabel}>{sectionLabels[section]}</span>
+                        <button
+                          className={styles.ghostButton}
+                          type="button"
+                          onClick={() =>
+                            setExpandedSections((current) => ({
+                              ...current,
+                              [section]: !current[section],
+                            }))
+                          }
+                        >
+                          {expanded ? "Collapse" : items.length > 1 ? "Expand" : "Add"}
+                        </button>
+                      </div>
+
+                      {visibleItems.length === 0 ? (
+                        <p className={styles.emptyHint}>Nothing saved yet.</p>
+                      ) : (
+                        visibleItems.map((item) => (
+                          <div key={item.key} className={styles.contextItem}>
+                            {editingKey === item.key ? (
+                              <>
+                                <textarea
+                                  className={styles.contextEditor}
+                                  value={editingText}
+                                  onChange={(event) => setEditingText(event.target.value)}
+                                />
+                                <div className={styles.contextActions}>
+                                  <button
+                                    className={styles.secondaryButton}
+                                    disabled={busy || !editingText.trim()}
+                                    onClick={() => void saveEdit(section, item)}
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    className={styles.ghostButton}
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingKey(null);
+                                      setEditingText("");
+                                    }}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <p className={styles.contextText}>{item.text}</p>
+                                <div className={styles.contextActions}>
+                                  <button
+                                    className={styles.ghostButton}
+                                    type="button"
+                                    onClick={() => startEdit(item)}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    className={styles.ghostButton}
+                                    type="button"
+                                    onClick={() => void removeContextItem(section, item)}
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        ))
+                      )}
+
+                      {expanded ? (
+                        <div className={styles.contextComposer}>
+                          <textarea
+                            className={styles.contextEditor}
+                            value={drafts[section]}
+                            placeholder={`Add a ${section.slice(0, -1)} Relay should keep.`}
+                            onChange={(event) =>
+                              setDrafts((current) => ({
+                                ...current,
+                                [section]: event.target.value,
+                              }))
+                            }
+                          />
+                          <button
+                            className={styles.secondaryButton}
+                            disabled={busy || !drafts[section].trim()}
+                            onClick={() => void addContext(section)}
+                          >
+                            Add
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Single-section tab: unified list with composer */
+              (() => {
+                const section = activeContextTab;
                 const items = activeState.contextPreview[section];
-                const expanded = expandedSections[section];
-                const visibleItems = expanded ? items.slice(0, 5) : items.slice(0, 1);
 
                 return (
-                  <div key={section} className={`${styles.contextSection} ${styles[sectionColorClass[section]]}`}>
-                    <div className={styles.contextSectionHeader}>
-                      <span className={styles.contextLabel}>{sectionLabels[section]}</span>
-                      <button
-                        className={styles.ghostButton}
-                        type="button"
-                        onClick={() =>
-                          setExpandedSections((current) => ({
-                            ...current,
-                            [section]: !current[section],
-                          }))
-                        }
-                      >
-                        {expanded ? "Collapse" : items.length > 1 ? "Expand" : "Add"}
-                      </button>
-                    </div>
-
-                    {visibleItems.length === 0 ? (
-                      <p className={styles.emptyHint}>Nothing saved yet.</p>
+                  <div className={styles.contextItemList}>
+                    {items.length === 0 ? (
+                      <p className={styles.emptyHint}>
+                        No {sectionLabels[section].toLowerCase()} yet.
+                      </p>
                     ) : (
-                      visibleItems.map((item) => (
-                        <div key={item.key} className={styles.contextItem}>
+                      items.map((item) => (
+                        <div key={item.key} className={styles.contextItemUnified}>
                           {editingKey === item.key ? (
                             <>
                               <textarea
@@ -1721,7 +1845,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                                 value={editingText}
                                 onChange={(event) => setEditingText(event.target.value)}
                               />
-                              <div className={styles.contextActions}>
+                              <div className={styles.contextActions} style={{ opacity: 1 }}>
                                 <button
                                   className={styles.secondaryButton}
                                   disabled={busy || !editingText.trim()}
@@ -1766,32 +1890,31 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                       ))
                     )}
 
-                    {expanded ? (
-                      <div className={styles.contextComposer}>
-                        <textarea
-                          className={styles.contextEditor}
-                          value={drafts[section]}
-                          placeholder={`Add a ${section.slice(0, -1)} Relay should keep.`}
-                          onChange={(event) =>
-                            setDrafts((current) => ({
-                              ...current,
-                              [section]: event.target.value,
-                            }))
-                          }
-                        />
-                        <button
-                          className={styles.secondaryButton}
-                          disabled={busy || !drafts[section].trim()}
-                          onClick={() => void addContext(section)}
-                        >
-                          Add
-                        </button>
-                      </div>
-                    ) : null}
+                    {/* Composer always visible in single-section tab */}
+                    <div className={styles.contextComposer}>
+                      <textarea
+                        className={styles.contextEditor}
+                        value={drafts[section]}
+                        placeholder={`Add a ${section.slice(0, -1)} Relay should keep.`}
+                        onChange={(event) =>
+                          setDrafts((current) => ({
+                            ...current,
+                            [section]: event.target.value,
+                          }))
+                        }
+                      />
+                      <button
+                        className={styles.secondaryButton}
+                        disabled={busy || !drafts[section].trim()}
+                        onClick={() => void addContext(section)}
+                      >
+                        Add
+                      </button>
+                    </div>
                   </div>
                 );
-              })}
-            </div>
+              })()
+            )}
           </section>
 
           {/* ─── Debug ─── */}
