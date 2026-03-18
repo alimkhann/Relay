@@ -22,14 +22,14 @@ const MCP_TOOLS = [
 ]
 
 const pillClass =
-  "px-3.5 py-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/60 whitespace-nowrap"
+  "px-3.5 py-1.5 rounded-full border border-white/[0.1] bg-white/[0.04] text-[13px] text-white/55 whitespace-nowrap"
 
 export function LogoStrip() {
   return (
     <div className="mt-14 flex flex-col items-center gap-6">
       {/* Browser tools */}
       <div className="flex flex-col items-center gap-3">
-        <span className="text-[10px] tracking-[0.2em] font-medium text-white/25 uppercase">
+        <span className="text-[10px] tracking-[0.2em] font-medium text-white/30 uppercase">
           Works with
         </span>
         <motion.div
@@ -61,7 +61,7 @@ export function LogoStrip() {
 
       {/* MCP tools */}
       <div className="flex flex-col items-center gap-3">
-        <span className="text-[10px] tracking-[0.2em] font-medium text-white/25 uppercase">
+        <span className="text-[10px] tracking-[0.2em] font-medium text-white/30 uppercase">
           Via MCP
         </span>
         <motion.div
@@ -102,10 +102,10 @@ export function LogoStrip() {
             }}
             className={cn(
               pillClass,
-              "border-teal-400/20 text-teal-400/70 hover:text-teal-400/90 hover:border-teal-400/30 transition-colors cursor-pointer"
+              "border-white/[0.15] text-white/40 hover:text-white/70 hover:border-white/25 transition-colors cursor-pointer"
             )}
           >
-            +20 more
+            more
           </motion.a>
         </motion.div>
       </div>

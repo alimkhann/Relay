@@ -5,7 +5,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { cn } from "@/lib/cn"
 import { motion, AnimatePresence } from "motion/react"
-import { Menu, X } from "lucide-react"
+import { ArrowRight, Menu, X } from "lucide-react"
 
 const NAV_LINKS = [
   { label: "Home", href: "#top" },
@@ -15,11 +15,11 @@ const NAV_LINKS = [
 ]
 
 export function Nav() {
-  const [scrolled, setScrolled] = useState(false)
+  const [shaped, setShaped] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 40)
+    const onScroll = () => setShaped(window.scrollY > 20)
     onScroll()
     window.addEventListener("scroll", onScroll, { passive: true })
     return () => window.removeEventListener("scroll", onScroll)
@@ -27,61 +27,56 @@ export function Nav() {
 
   return (
     <>
-      <nav
-        className={cn(
-          "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
-          scrolled
-            ? "bg-[#0a0a0a]/90 backdrop-blur-xl border-b border-white/[0.06]"
-            : "bg-transparent"
-        )}
-      >
-        <div className="mx-auto max-w-6xl px-5 h-16 flex items-center justify-between">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-2.5 shrink-0">
+      <header className="fixed top-0 left-0 right-0 z-50">
+        <nav
+          className={cn(
+            "mx-auto flex items-center justify-between transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] px-6 py-5 max-w-6xl border border-transparent bg-transparent",
+            shaped &&
+              "lg:mt-3 lg:max-w-3xl lg:rounded-[20px] lg:border-white/[0.08] lg:bg-white/[0.04] lg:px-4 lg:py-2 lg:backdrop-blur-2xl lg:shadow-[0_2px_24px_rgba(0,0,0,0.3)]"
+          )}
+        >
+          {/* Logo — R mark only */}
+          <Link href="/" className="flex items-center shrink-0">
             <Image
               src="/images/relay_logo_white.png"
               alt="Relay"
-              width={28}
-              height={28}
-              className="opacity-90"
+              width={64}
+              height={64}
+              className={cn(
+                "transition-all duration-500",
+                shaped
+                  ? "scale-[0.55] -ml-3"
+                  : "scale-[0.65] drop-shadow-[0_1px_4px_rgba(0,0,0,0.4)]"
+              )}
             />
-            <span className="text-[15px] font-medium tracking-tight text-white/90">
-              Relay
-            </span>
           </Link>
 
-          {/* Desktop nav links */}
-          <div className="hidden md:flex items-center gap-8">
-            {NAV_LINKS.map((link) =>
-              link.external ? (
-                <a
-                  key={link.label}
-                  href={link.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-white/50 hover:text-white/90 transition-colors duration-200"
-                >
-                  {link.label}
-                </a>
-              ) : (
-                <a
-                  key={link.label}
-                  href={link.href}
-                  className="text-sm text-white/50 hover:text-white/90 transition-colors duration-200"
-                >
-                  {link.label}
-                </a>
-              )
-            )}
+          {/* Desktop nav links — center */}
+          <div className="hidden md:flex items-center gap-7">
+            {NAV_LINKS.map((link) => (
+              <a
+                key={link.label}
+                href={link.href}
+                {...(link.external
+                  ? { target: "_blank", rel: "noopener noreferrer" }
+                  : {})}
+                className="text-[13px] text-white/45 hover:text-white/90 transition-colors duration-200"
+              >
+                {link.label}
+              </a>
+            ))}
           </div>
 
           {/* Desktop CTA */}
           <Link
             href="/get-started"
-            className="hidden md:inline-flex items-center gap-1.5 rounded-full bg-white text-[#0a0a0a] px-5 py-2 text-sm font-medium hover:bg-white/90 transition-colors duration-200"
+            className={cn(
+              "hidden md:inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold transition-all duration-300",
+              "bg-white text-[#0a0a0a] shadow-[0_2px_12px_rgba(255,255,255,0.08)] hover:shadow-[0_4px_20px_rgba(255,255,255,0.12)] hover:-translate-y-px"
+            )}
           >
-            Get Started
-            <span className="text-xs">→</span>
+            Get started
+            <ArrowRight className="h-3.5 w-3.5" />
           </Link>
 
           {/* Mobile hamburger */}
@@ -92,8 +87,8 @@ export function Nav() {
           >
             {mobileOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
-        </div>
-      </nav>
+        </nav>
+      </header>
 
       {/* Mobile drawer */}
       <AnimatePresence>

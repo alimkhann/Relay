@@ -49,7 +49,7 @@ export function BottomCta() {
           initial={{ opacity: 0, y: 20 }}
           animate={inView ? { opacity: 1, y: 0 } : undefined}
           transition={{ duration: 0.6, delay: 0.1, ease }}
-          className="mt-6 text-base md:text-lg text-white/45 leading-relaxed max-w-xl mx-auto"
+          className="mt-6 text-base md:text-lg text-white/50 leading-relaxed max-w-xl mx-auto"
         >
           Relay keeps your project context ready so every fresh chat starts
           where you left off — across every tool you use.
@@ -74,7 +74,7 @@ export function BottomCta() {
           initial={{ opacity: 0 }}
           animate={inView ? { opacity: 1 } : undefined}
           transition={{ duration: 0.6, delay: 0.35, ease }}
-          className="mt-5 text-xs text-white/20"
+          className="mt-5 text-xs text-white/25"
         >
           Free forever · No credit card · Takes 60 seconds
         </motion.p>

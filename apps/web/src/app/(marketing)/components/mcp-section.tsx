@@ -39,10 +39,10 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="p-1.5 rounded-md hover:bg-white/[0.06] transition-colors text-white/30 hover:text-white/60"
+      className="p-1.5 rounded-md hover:bg-white/[0.06] transition-colors text-white/35 hover:text-white/60"
       aria-label="Copy to clipboard"
     >
-      {copied ? <Check size={14} className="text-teal-400/80" /> : <Copy size={14} />}
+      {copied ? <Check size={14} className="text-emerald-400/80" /> : <Copy size={14} />}
     </button>
   )
 }
@@ -61,7 +61,7 @@ export function McpSection() {
           transition={{ duration: 0.5, ease }}
           className="mb-6"
         >
-          <p className="text-[10px] tracking-[0.2em] font-medium text-white/25 uppercase mb-4">
+          <p className="text-[10px] tracking-[0.2em] font-medium text-white/30 uppercase mb-4">
             MCP Integration
           </p>
           <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-white leading-tight">
@@ -75,7 +75,7 @@ export function McpSection() {
           initial={{ opacity: 0, y: 20 }}
           animate={inView ? { opacity: 1, y: 0 } : undefined}
           transition={{ duration: 0.5, delay: 0.1, ease }}
-          className="text-base text-white/40 leading-relaxed max-w-2xl mb-14"
+          className="text-base text-white/50 leading-relaxed max-w-2xl mb-14"
         >
           MCP (Model Context Protocol) is an open standard that lets AI agents
           read and write structured memory. Relay implements it as a bridge
@@ -94,16 +94,16 @@ export function McpSection() {
               <div key={i} className="flex items-start gap-4 relative">
                 {/* Vertical line */}
                 {i < FLOW_STEPS.length - 1 && (
-                  <div className="absolute left-[11px] top-7 bottom-0 w-px bg-white/[0.06]" />
+                  <div className="absolute left-[11px] top-7 bottom-0 w-px bg-white/[0.07]" />
                 )}
-                <div className="shrink-0 w-6 h-6 rounded-full bg-teal-400/[0.08] border border-teal-400/20 flex items-center justify-center mt-0.5">
-                  <span className="text-[10px] text-teal-400/60 font-mono font-medium">
+                <div className="shrink-0 w-6 h-6 rounded-full bg-white/[0.06] border border-white/[0.1] flex items-center justify-center mt-0.5">
+                  <span className="text-[10px] text-white/45 font-mono font-medium">
                     {step.num}
                   </span>
                 </div>
                 <p
                   className={`text-sm leading-relaxed pb-6 ${
-                    step.dimmed ? "text-white/25 italic" : "text-white/50"
+                    step.dimmed ? "text-white/30 italic" : "text-white/55"
                   }`}
                 >
                   {step.text}
@@ -120,16 +120,16 @@ export function McpSection() {
             className="space-y-6"
           >
             {/* Code block */}
-            <div className="rounded-2xl border border-white/[0.06] bg-[#111] overflow-hidden">
+            <div className="rounded-2xl border border-white/[0.08] bg-[#111] overflow-hidden">
               <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/[0.06]">
-                <span className="text-[11px] text-white/30 font-mono">
+                <span className="text-[11px] text-white/35 font-mono">
                   Quick install
                 </span>
                 <CopyButton text="npx @anthropic-ai/relay install" />
               </div>
               <div className="px-4 py-4">
-                <code className="text-[13px] font-mono text-white/60">
-                  <span className="text-white/25">$</span>{" "}
+                <code className="text-[13px] font-mono text-white/65">
+                  <span className="text-white/30">$</span>{" "}
                   npx @anthropic-ai/relay install
                 </code>
               </div>
@@ -137,7 +137,7 @@ export function McpSection() {
 
             {/* Agent cloud */}
             <div className="relative">
-              <p className="text-[10px] tracking-[0.2em] font-medium text-white/20 uppercase mb-3">
+              <p className="text-[10px] tracking-[0.2em] font-medium text-white/25 uppercase mb-3">
                 Supported agents
               </p>
               <div className="flex flex-wrap gap-1.5">
@@ -146,8 +146,8 @@ export function McpSection() {
                     key={agent.name}
                     className={`text-xs px-3 py-1 rounded-full border whitespace-nowrap ${
                       agent.tier === "primary"
-                        ? "border-white/[0.08] bg-white/[0.04] text-white/50"
-                        : "border-white/[0.05] bg-white/[0.02] text-white/30"
+                        ? "border-white/[0.1] bg-white/[0.04] text-white/55"
+                        : "border-white/[0.06] bg-white/[0.02] text-white/35"
                     }`}
                   >
                     {agent.name}
@@ -160,7 +160,7 @@ export function McpSection() {
                 href="/docs"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="relative mt-3 inline-flex text-xs text-teal-400/60 hover:text-teal-400/80 transition-colors"
+                className="relative mt-3 inline-flex text-xs text-white/40 hover:text-white/60 transition-colors"
               >
                 See all supported agents →
               </a>

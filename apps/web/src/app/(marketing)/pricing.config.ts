@@ -1,8 +1,8 @@
 export const PRICING = {
   free: {
     name: "Free",
-    price: 0,
-    interval: null,
+    monthlyPrice: 0,
+    yearlyPrice: 0,
     description: "Get started, no card needed",
     cta: "Get Started",
     ctaVariant: "outline" as const,
@@ -16,8 +16,8 @@ export const PRICING = {
   },
   pro: {
     name: "Pro",
-    price: 9,
-    interval: "month",
+    monthlyPrice: 9,
+    yearlyPrice: 90,
     badge: "MOST POPULAR",
     description: "For builders who live in AI tools",
     cta: "Get Pro",

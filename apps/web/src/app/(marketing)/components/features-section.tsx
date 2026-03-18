@@ -51,7 +51,7 @@ export function FeaturesSection() {
           transition={{ duration: 0.5, ease }}
           className="mb-14"
         >
-          <p className="text-[10px] tracking-[0.2em] font-medium text-white/25 uppercase mb-4">
+          <p className="text-[10px] tracking-[0.2em] font-medium text-white/30 uppercase mb-4">
             What Relay does
           </p>
           <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-white">
@@ -71,22 +71,27 @@ export function FeaturesSection() {
                 delay: 0.1 + i * 0.08,
                 ease,
               }}
-              className="rounded-2xl border border-white/[0.06] bg-[#111] p-6 md:p-7 group hover:border-white/[0.1] transition-colors duration-300"
+              className="rounded-2xl border border-white/[0.07] bg-[#111] p-5 md:p-6 group hover:border-white/[0.12] transition-colors duration-300"
             >
-              <div className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center mb-5">
-                <feature.icon
-                  size={16}
-                  className="text-teal-400/70"
-                  strokeWidth={1.5}
-                />
+              {/* Icon + label + title in compact layout */}
+              <div className="flex items-start gap-4">
+                <div className="w-9 h-9 rounded-xl bg-white/[0.05] border border-white/[0.07] flex items-center justify-center shrink-0 mt-0.5">
+                  <feature.icon
+                    size={16}
+                    className="text-white/50"
+                    strokeWidth={1.5}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] tracking-[0.2em] font-medium text-white/35 uppercase mb-1">
+                    {feature.label}
+                  </p>
+                  <h3 className="text-base font-medium text-white/90 leading-snug">
+                    {feature.title}
+                  </h3>
+                </div>
               </div>
-              <p className="text-[10px] tracking-[0.2em] font-medium text-teal-400/50 uppercase mb-2">
-                {feature.label}
-              </p>
-              <h3 className="text-lg font-medium text-white/90 mb-2 leading-snug">
-                {feature.title}
-              </h3>
-              <p className="text-sm text-white/40 leading-relaxed">
+              <p className="mt-3 text-sm text-white/45 leading-relaxed pl-[52px]">
                 {feature.description}
               </p>
             </motion.div>

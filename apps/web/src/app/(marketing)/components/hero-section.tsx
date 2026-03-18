@@ -50,10 +50,10 @@ export function HeroSection() {
             variants={fadeUp}
             initial="hidden"
             animate="visible"
-            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-teal-400/20 bg-teal-400/[0.06] mb-8"
+            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-white/[0.12] bg-white/[0.04] mb-8"
           >
-            <span className="text-teal-400/80 text-xs">✦</span>
-            <span className="text-xs tracking-wide text-teal-400/70 font-medium">
+            <span className="text-white/60 text-xs">✦</span>
+            <span className="text-xs tracking-wide text-white/50 font-medium">
               Cross-AI context management
             </span>
           </motion.div>
@@ -69,7 +69,7 @@ export function HeroSection() {
             Stop repeating yourself
             <br />
             to{" "}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-300 to-teal-500">
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-white via-white/80 to-white/50">
               every AI.
             </span>
           </motion.h1>
@@ -80,7 +80,7 @@ export function HeroSection() {
             variants={fadeUp}
             initial="hidden"
             animate="visible"
-            className="mt-6 text-base md:text-lg text-white/50 leading-relaxed max-w-xl mx-auto"
+            className="mt-6 text-base md:text-lg text-white/55 leading-relaxed max-w-xl mx-auto"
           >
             Relay captures what matters from your AI chats and keeps a living
             project brief ready — so every fresh conversation starts exactly
@@ -106,7 +106,7 @@ export function HeroSection() {
               href="/docs"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-full border border-white/[0.12] px-7 py-3 text-sm font-medium text-white/70 hover:text-white hover:border-white/20 transition-all duration-200"
+              className="inline-flex items-center gap-2 rounded-full border border-white/[0.15] px-7 py-3 text-sm font-medium text-white/70 hover:text-white hover:border-white/25 transition-all duration-200"
             >
               Read the docs
               <span className="text-xs">→</span>
@@ -119,7 +119,7 @@ export function HeroSection() {
             variants={fadeUp}
             initial="hidden"
             animate="visible"
-            className="mt-5 text-xs text-white/25"
+            className="mt-5 text-xs text-white/30"
           >
             Chrome extension · MCP for your IDE · Free to start
           </motion.p>
@@ -140,7 +140,7 @@ export function HeroSection() {
           animate={{ y: [0, 6, 0] }}
           transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
         >
-          <ChevronDown size={18} className="text-white/20" />
+          <ChevronDown size={18} className="text-white/25" />
         </motion.div>
       </motion.div>
     </section>
