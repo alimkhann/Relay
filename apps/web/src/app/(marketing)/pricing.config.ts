@@ -1,0 +1,35 @@
+export const PRICING = {
+  free: {
+    name: "Free",
+    price: 0,
+    interval: null,
+    description: "Get started, no card needed",
+    cta: "Get Started",
+    ctaVariant: "outline" as const,
+    features: [
+      "Up to 2 active projects",
+      "Standard brief depth",
+      "MCP access (read)",
+      "7-day history retention",
+      "Browser capture",
+    ],
+  },
+  pro: {
+    name: "Pro",
+    price: 9,
+    interval: "month",
+    badge: "MOST POPULAR",
+    description: "For builders who live in AI tools",
+    cta: "Get Pro",
+    ctaVariant: "primary" as const,
+    features: [
+      "Unlimited active projects",
+      "Deep brief with full history",
+      "Full MCP access (read + write)",
+      "90-day history retention",
+      "All capture surfaces",
+      "Handoff packs (export/share briefs)",
+      "Referral program",
+    ],
+  },
+} as const
