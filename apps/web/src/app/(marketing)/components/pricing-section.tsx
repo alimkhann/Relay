@@ -106,7 +106,7 @@ export function PricingSection() {
           transition={{ duration: 0.5, ease }}
           className="text-center mb-10"
         >
-          <p className="text-[10px] tracking-[0.2em] font-medium text-white/30 uppercase mb-4">
+          <p className="text-[10px] tracking-[0.2em] font-medium text-white/45 uppercase mb-4">
             Pricing
           </p>
           <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-white">
@@ -141,11 +141,9 @@ export function PricingSection() {
           <span className={cn("text-sm transition-colors", yearly ? "text-white/80" : "text-white/35")}>
             Yearly
           </span>
-          {yearly && (
-            <span className="text-[11px] text-emerald-400/60 font-medium ml-1">
-              Save 17%
-            </span>
-          )}
+          <span className={cn("text-[11px] font-medium ml-1 transition-opacity", yearly ? "text-emerald-400/60 opacity-100" : "opacity-0")}>
+            Save 17%
+          </span>
         </motion.div>
 
         {/* Cards */}

@@ -51,7 +51,7 @@ export function FeaturesSection() {
           transition={{ duration: 0.5, ease }}
           className="mb-14"
         >
-          <p className="text-[10px] tracking-[0.2em] font-medium text-white/30 uppercase mb-4">
+          <p className="text-[10px] tracking-[0.2em] font-medium text-white/45 uppercase mb-4">
             What Relay does
           </p>
           <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-white">

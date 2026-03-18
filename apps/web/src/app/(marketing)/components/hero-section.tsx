@@ -43,7 +43,7 @@ export function HeroSection() {
 
       {/* Content */}
       <div className="relative flex-1 flex flex-col items-center justify-center px-5 pt-24 pb-16">
-        <div className="max-w-3xl mx-auto text-center">
+        <div className="max-w-4xl mx-auto text-center">
           {/* Badge */}
           <motion.div
             custom={0}
@@ -58,7 +58,7 @@ export function HeroSection() {
             </span>
           </motion.div>
 
-          {/* Headline */}
+          {/* Headline — 2 lines */}
           <motion.h1
             custom={0.1}
             variants={fadeUp}
@@ -66,25 +66,24 @@ export function HeroSection() {
             animate="visible"
             className="text-5xl md:text-7xl font-semibold tracking-tight leading-[1.08] text-white"
           >
-            Stop repeating yourself
-            <br />
-            to{" "}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-white via-white/80 to-white/50">
-              every AI.
+            Stop repeating yourself to{" "}
+            <span className="relative">
+              <span className="absolute inset-0 blur-xl bg-gradient-to-r from-white/30 via-white/20 to-transparent rounded-full" />
+              <span className="relative text-transparent bg-clip-text bg-gradient-to-r from-white via-[#d4d4d8] to-[#a1a1aa]">
+                every AI.
+              </span>
             </span>
           </motion.h1>
 
-          {/* Subheadline */}
+          {/* Subheadline — 2 lines */}
           <motion.p
             custom={0.2}
             variants={fadeUp}
             initial="hidden"
             animate="visible"
-            className="mt-6 text-base md:text-lg text-white/55 leading-relaxed max-w-xl mx-auto"
+            className="mt-6 text-base md:text-lg text-white/55 leading-relaxed max-w-2xl mx-auto"
           >
-            Relay captures what matters from your AI chats and keeps a living
-            project brief ready — so every fresh conversation starts exactly
-            where you left off.
+            Relay captures what matters from your AI chats and keeps a living project brief ready — so every fresh conversation starts where you left off.
           </motion.p>
 
           {/* CTAs */}

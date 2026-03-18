@@ -2,6 +2,7 @@
 
 import { motion, useInView } from "motion/react"
 import { useRef } from "react"
+import { Send } from "lucide-react"
 
 const ease = [0.25, 0.1, 0.25, 1] as const
 
@@ -41,12 +42,12 @@ export function HeroVisual() {
               </div>
             </motion.div>
 
-            {/* Chrome bar */}
+            {/* Chrome bar — colored dots */}
             <div className="flex items-center gap-2 px-4 py-3 border-b border-white/[0.06] bg-[#0d0d0d]">
               <div className="flex gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-white/[0.08]" />
-                <div className="w-2.5 h-2.5 rounded-full bg-white/[0.08]" />
-                <div className="w-2.5 h-2.5 rounded-full bg-white/[0.08]" />
+                <div className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]" />
+                <div className="w-2.5 h-2.5 rounded-full bg-[#febc2e]" />
+                <div className="w-2.5 h-2.5 rounded-full bg-[#28c840]" />
               </div>
               <div className="flex-1 mx-3">
                 <div className="bg-white/[0.04] rounded-md px-3 py-1 text-[11px] text-white/35 font-mono">
@@ -84,15 +85,13 @@ export function HeroVisual() {
                   </p>
                 </div>
               </div>
+            </div>
 
-              {/* Relay chip at bottom */}
-              <div className="flex items-center gap-2 pt-2 pb-1">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.1]">
-                  <span className="text-[11px]">📎</span>
-                  <span className="text-[11px] text-white/60 font-medium">
-                    Relay · My App Project
-                  </span>
-                </div>
+            {/* Chat input mock */}
+            <div className="px-5 pb-4">
+              <div className="flex items-center gap-2 bg-white/[0.03] border border-white/[0.08] rounded-xl px-4 py-2.5">
+                <span className="text-[13px] text-white/25 flex-1">Message ChatGPT...</span>
+                <Send size={14} className="text-white/20" />
               </div>
             </div>
           </motion.div>
@@ -109,12 +108,12 @@ export function HeroVisual() {
             transition={{ duration: 0.7, delay: 0.15, ease }}
             className="rounded-2xl border border-white/[0.08] bg-[#111] overflow-hidden"
           >
-            {/* Window chrome */}
+            {/* Window chrome — colored dots */}
             <div className="flex items-center gap-2 px-4 py-3 border-b border-white/[0.06] bg-[#0d0d0d]">
               <div className="flex gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-white/[0.08]" />
-                <div className="w-2.5 h-2.5 rounded-full bg-white/[0.08]" />
-                <div className="w-2.5 h-2.5 rounded-full bg-white/[0.08]" />
+                <div className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]" />
+                <div className="w-2.5 h-2.5 rounded-full bg-[#febc2e]" />
+                <div className="w-2.5 h-2.5 rounded-full bg-[#28c840]" />
               </div>
               <span className="text-[11px] text-white/35 font-mono ml-3">
                 Claude Code

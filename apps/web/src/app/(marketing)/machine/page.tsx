@@ -9,6 +9,7 @@ export const metadata: Metadata = {
 
 export default function MachinePage() {
   return (
+    <div style={{ backgroundColor: "#0a0a0a", minHeight: "100vh" }}>
     <div
       style={{
         fontFamily:
@@ -18,8 +19,6 @@ export default function MachinePage() {
         padding: "2.5rem 2rem",
         lineHeight: 1.75,
         color: "#b0b0b0",
-        backgroundColor: "#0a0a0a",
-        minHeight: "100vh",
       }}
     >
       {/* Top bar */}
@@ -293,6 +292,7 @@ export default function MachinePage() {
           </a>
         </p>
       </div>
+    </div>
     </div>
   )
 }

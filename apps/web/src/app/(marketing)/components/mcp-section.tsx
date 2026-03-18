@@ -61,7 +61,7 @@ export function McpSection() {
           transition={{ duration: 0.5, ease }}
           className="mb-6"
         >
-          <p className="text-[10px] tracking-[0.2em] font-medium text-white/30 uppercase mb-4">
+          <p className="text-[10px] tracking-[0.2em] font-medium text-white/45 uppercase mb-4">
             MCP Integration
           </p>
           <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-white leading-tight">
@@ -156,14 +156,6 @@ export function McpSection() {
               </div>
               {/* Fade mask */}
               <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-[#0a0a0a] to-transparent pointer-events-none" />
-              <a
-                href="/docs"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="relative mt-3 inline-flex text-xs text-white/40 hover:text-white/60 transition-colors"
-              >
-                See all supported agents →
-              </a>
             </div>
           </motion.div>
         </div>
