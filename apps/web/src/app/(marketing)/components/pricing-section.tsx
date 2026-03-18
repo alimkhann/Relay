@@ -141,7 +141,7 @@ export function PricingSection() {
           <span className={cn("text-sm transition-colors", yearly ? "text-white/80" : "text-white/35")}>
             Yearly
           </span>
-          <span className={cn("absolute left-[calc(50%+78px)] text-[11px] font-medium transition-opacity whitespace-nowrap", yearly ? "text-emerald-400/60 opacity-100" : "opacity-0")}>
+          <span className={cn("absolute left-[calc(50%+84px)] pl-2 text-[11px] font-medium transition-opacity whitespace-nowrap", yearly ? "text-emerald-400/60 opacity-100" : "opacity-0")}>
             Save 17%
           </span>
         </motion.div>

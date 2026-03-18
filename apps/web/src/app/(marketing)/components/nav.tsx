@@ -71,7 +71,7 @@ export function Nav() {
           <Link
             href="/get-started"
             className={cn(
-              "hidden md:inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold transition-all duration-300",
+              "hidden md:inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold whitespace-nowrap shrink-0 transition-all duration-300",
               "bg-white text-[#0a0a0a] shadow-[0_2px_12px_rgba(255,255,255,0.08)] hover:shadow-[0_4px_20px_rgba(255,255,255,0.12)] hover:-translate-y-px"
             )}
           >
