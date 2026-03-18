@@ -101,8 +101,8 @@ export function HowItWorks() {
           <div className="sm:hidden text-white/15 text-lg">↕</div>
 
           {/* Relay box */}
-          <div className="px-7 py-5 rounded-2xl border border-white/[0.12] bg-white/[0.04] text-center min-w-[180px]">
-            <p className="text-sm font-medium text-white/80">Relay</p>
+          <div className="px-7 py-5 rounded-2xl border border-white/[0.16] bg-white/[0.05] text-center min-w-[180px] shadow-[0_0_30px_rgba(255,255,255,0.04)]">
+            <p className="text-sm font-medium text-transparent bg-clip-text bg-gradient-to-r from-white via-[#ededf2] to-[#b9bac4]">Relay</p>
             <p className="text-[12px] text-white/30 mt-1">auto-captures & syncs</p>
           </div>
 

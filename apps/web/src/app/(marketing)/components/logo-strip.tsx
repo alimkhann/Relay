@@ -14,6 +14,8 @@ import Antigravity from "@lobehub/icons/es/Antigravity"
 import Windsurf from "@lobehub/icons/es/Windsurf"
 import GithubCopilot from "@lobehub/icons/es/GithubCopilot"
 import type { ReactNode } from "react"
+import { motion, useInView } from "motion/react"
+import { useRef } from "react"
 
 interface TickerItem {
   name: string
@@ -59,7 +61,7 @@ function LogoTicker({
         {label}
       </span>
       <div
-        className="relative w-full max-w-2xl overflow-hidden"
+        className="relative w-[calc(100vw-2.5rem)] sm:w-full max-w-2xl overflow-hidden"
         style={{
           maskImage:
             "linear-gradient(to right, transparent 0%, black 12%, black 88%, transparent 100%)",
@@ -76,12 +78,12 @@ function LogoTicker({
           {[...items, ...items, ...items].map((item, i) => (
             <div
               key={i}
-              className="flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] whitespace-nowrap"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] whitespace-nowrap"
             >
               <span className="text-white/50 w-[18px] h-[18px] flex-shrink-0 flex items-center justify-center">
                 {item.icon}
               </span>
-              <span className="text-[13px] text-white/55 font-medium">
+              <span className="text-[12px] sm:text-[13px] text-white/55 font-medium">
                 {item.name}
               </span>
             </div>
@@ -104,8 +106,17 @@ function LogoTicker({
 }
 
 export function LogoStrip() {
+  const ref = useRef<HTMLDivElement>(null)
+  const inView = useInView(ref, { once: true, margin: "-80px" })
+
   return (
-    <div className="mt-14 flex flex-col items-center gap-6 w-full">
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, y: 20 }}
+      animate={inView ? { opacity: 1, y: 0 } : undefined}
+      transition={{ duration: 0.55, delay: 0.18, ease: [0.25, 0.1, 0.25, 1] }}
+      className="mt-14 flex flex-col items-center gap-6 w-full"
+    >
       <LogoTicker
         items={BROWSER_AIS}
         direction="left"
@@ -118,6 +129,6 @@ export function LogoStrip() {
         speed="normal"
         label="Via MCP"
       />
-    </div>
+    </motion.div>
   )
 }

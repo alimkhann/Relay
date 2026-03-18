@@ -43,7 +43,7 @@ export function HeroSection() {
 
       {/* Content */}
       <div className="relative flex-1 flex flex-col items-center justify-center px-5 pt-24 pb-16">
-        <div className="max-w-4xl mx-auto text-center">
+        <div className="w-full max-w-4xl mx-auto text-center overflow-hidden">
           {/* Badge */}
           <motion.div
             custom={0}
@@ -64,14 +64,14 @@ export function HeroSection() {
             variants={fadeUp}
             initial="hidden"
             animate="visible"
-            className="text-5xl md:text-7xl font-semibold tracking-tight leading-[1.08] text-white"
+            className="text-[2.15rem] sm:text-5xl md:text-7xl font-semibold tracking-tight leading-[1.02] text-white text-balance max-w-[11ch] sm:max-w-none mx-auto"
           >
-            Stop repeating yourself to{" "}
-            <span className="relative">
-              <span className="absolute inset-0 blur-xl bg-gradient-to-r from-white/30 via-white/20 to-transparent rounded-full" />
-              <span className="relative text-transparent bg-clip-text bg-gradient-to-r from-white via-[#d4d4d8] to-[#a1a1aa]">
-                every AI.
-              </span>
+            Stop repeating yourself
+            <br className="hidden md:block" />
+            <span className="md:hidden"> </span>
+            to{" "}
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-white via-[#f1f1f5] to-[#bfc0ca] [text-shadow:0_0_18px_rgba(255,255,255,0.14)]">
+              every AI.
             </span>
           </motion.h1>
 
@@ -81,7 +81,7 @@ export function HeroSection() {
             variants={fadeUp}
             initial="hidden"
             animate="visible"
-            className="mt-6 text-base md:text-lg text-white/55 leading-relaxed max-w-2xl mx-auto"
+            className="mt-6 text-[14px] sm:text-base md:text-lg text-white/60 leading-relaxed max-w-[34rem] mx-auto text-balance px-2 sm:px-0"
           >
             Relay captures what matters from your AI chats and keeps a living project brief ready — so every fresh conversation starts where you left off.
           </motion.p>

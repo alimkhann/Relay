@@ -96,8 +96,8 @@ export function McpSection() {
                 {i < FLOW_STEPS.length - 1 && (
                   <div className="absolute left-[11px] top-7 bottom-0 w-px bg-white/[0.07]" />
                 )}
-                <div className="shrink-0 w-6 h-6 rounded-full bg-white/[0.06] border border-white/[0.1] flex items-center justify-center mt-0.5">
-                  <span className="text-[10px] text-white/45 font-mono font-medium">
+                <div className="shrink-0 w-6 h-6 rounded-full bg-white/[0.08] border border-white/[0.14] flex items-center justify-center mt-0.5 shadow-[0_0_20px_rgba(255,255,255,0.03)]">
+                  <span className="text-[10px] text-white/55 font-mono font-medium">
                     {step.num}
                   </span>
                 </div>

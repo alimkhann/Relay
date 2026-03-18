@@ -14,7 +14,7 @@ export function HeroVisual() {
     <section className="relative bg-[#0a0a0a] py-10 md:py-20 px-5" ref={ref}>
       {/* Ambient glow */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
-        <div className="w-[800px] h-[500px] rounded-full bg-white/[0.015] blur-[120px]" />
+        <div className="w-[900px] h-[560px] rounded-full bg-white/[0.035] blur-[130px]" />
       </div>
 
       <div className="relative mx-auto max-w-6xl">
@@ -24,7 +24,7 @@ export function HeroVisual() {
             initial={{ opacity: 0, y: 40 }}
             animate={inView ? { opacity: 1, y: 0 } : undefined}
             transition={{ duration: 0.7, ease }}
-            className="relative rounded-2xl border border-white/[0.08] bg-[#111] overflow-hidden"
+            className="relative rounded-2xl border border-white/[0.08] bg-[#111] overflow-hidden flex flex-col"
           >
             {/* Toast — top right corner */}
             <motion.div
@@ -64,7 +64,7 @@ export function HeroVisual() {
             </div>
 
             {/* Chat content */}
-            <div className="px-5 py-4 space-y-3.5">
+            <div className="px-5 py-4 space-y-3.5 flex-1">
               {/* User message */}
               <div className="flex justify-end">
                 <div className="bg-white/[0.06] rounded-2xl rounded-br-md px-4 py-3 max-w-[85%]">
@@ -88,7 +88,7 @@ export function HeroVisual() {
             </div>
 
             {/* Chat input mock */}
-            <div className="px-5 pb-4">
+            <div className="px-5 pb-4 mt-auto">
               <div className="flex items-center gap-2 bg-white/[0.03] border border-white/[0.08] rounded-xl px-4 py-2.5">
                 <span className="text-[13px] text-white/25 flex-1">Message ChatGPT...</span>
                 <Send size={14} className="text-white/20" />

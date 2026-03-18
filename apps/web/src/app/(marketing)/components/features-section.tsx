@@ -83,7 +83,7 @@ export function FeaturesSection() {
                   />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[10px] tracking-[0.2em] font-medium text-white/35 uppercase mb-1">
+                  <p className="text-[10px] tracking-[0.2em] font-medium text-transparent bg-clip-text bg-gradient-to-r from-white via-[#ededf2] to-[#b9bac4] uppercase mb-1">
                     {feature.label}
                   </p>
                   <h3 className="text-base font-medium text-white/90 leading-snug">
