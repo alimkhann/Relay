@@ -81,10 +81,10 @@ export function HeroSection() {
             variants={fadeUp}
             initial="hidden"
             animate="visible"
-            className="mt-6 text-[14px] sm:text-base md:text-lg text-white/60 leading-relaxed max-w-[38rem] mx-auto text-balance px-2 sm:px-0"
+            className="mt-6 text-[14px] sm:text-base md:text-lg text-white/60 leading-relaxed max-w-[46rem] mx-auto px-2 sm:px-0"
           >
-            Relay captures what matters from your AI chats and keeps a living project brief ready —
-            <br className="hidden md:block" /> so every fresh conversation starts where you left off.
+            Relay captures what matters from your AI chats and keeps a living project brief ready
+            <br className="hidden md:block" /> — so every fresh conversation starts where you left off.
           </motion.p>
 
           {/* CTAs */}
