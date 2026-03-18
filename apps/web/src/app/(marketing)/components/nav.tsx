@@ -30,9 +30,9 @@ export function Nav() {
       <header className="fixed top-0 left-0 right-0 z-50">
         <nav
           className={cn(
-            "mx-auto grid grid-cols-[1fr_auto] md:grid-cols-[120px_1fr_120px] items-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] px-6 py-4 md:py-5 max-w-6xl border border-transparent bg-transparent",
+            "mx-auto grid grid-cols-[1fr_auto] md:grid-cols-[120px_1fr_120px] items-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] px-6 py-3 md:py-5 max-w-6xl border border-transparent bg-transparent",
             mobileOpen &&
-              "max-md:bg-[#0a0a0a] max-md:border-b max-md:border-white/[0.06] max-md:backdrop-blur-xl",
+              "max-md:border-b max-md:border-white/[0.06]",
             shaped &&
               "lg:mt-3 lg:max-w-3xl lg:rounded-[20px] lg:border-white/[0.08] lg:bg-white/[0.04] lg:px-4 lg:py-2 lg:backdrop-blur-2xl lg:shadow-[0_2px_24px_rgba(0,0,0,0.3)]"
           )}
@@ -48,7 +48,7 @@ export function Nav() {
                 "transition-all duration-500",
                 shaped
                   ? "scale-[0.55] -ml-3"
-                  : "scale-[0.65] drop-shadow-[0_1px_4px_rgba(0,0,0,0.4)]"
+                  : "scale-[0.58] md:scale-[0.65] -ml-3 md:ml-0 drop-shadow-[0_1px_4px_rgba(0,0,0,0.4)]"
               )}
             />
           </Link>
@@ -84,7 +84,7 @@ export function Nav() {
           {/* Mobile hamburger */}
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
-            className="md:hidden p-2 text-white/70 hover:text-white transition-colors"
+            className="md:hidden p-1.5 text-white/70 hover:text-white transition-colors"
             aria-label="Toggle menu"
           >
             {mobileOpen ? <X size={20} /> : <Menu size={20} />}
@@ -100,9 +100,9 @@ export function Nav() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-x-0 top-[73px] bottom-0 z-40 bg-[#0a0a0a] backdrop-blur-xl border-b border-white/[0.06] md:hidden"
+            className="fixed inset-x-0 top-[60px] bottom-0 z-40 bg-[#0a0a0a] backdrop-blur-xl border-b border-white/[0.06] md:hidden"
           >
-            <div className="px-5 py-5 flex flex-col gap-5 min-h-full">
+            <div className="px-5 pt-6 pb-5 flex flex-col gap-5 min-h-full">
               {NAV_LINKS.map((link) => (
                 <a
                   key={link.label}
