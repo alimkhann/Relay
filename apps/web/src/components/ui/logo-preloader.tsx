@@ -26,17 +26,25 @@ export function LogoPreloader() {
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
-    // Read search params without useSearchParams (no Suspense needed)
     const params = new URLSearchParams(window.location.search);
-    if (params.get("auth_callback") !== "1") return;
+    const isAuthCallback = params.get("auth_callback") === "1";
+    const seenThisSession = sessionStorage.getItem("relay_preloader_shown") === "1";
+
+    // Show if: coming from OAuth, OR first dashboard visit this session
+    if (!isAuthCallback && seenThisSession) return;
+
+    // Mark as shown for this session so tab switches don't retrigger
+    sessionStorage.setItem("relay_preloader_shown", "1");
 
     // Detect theme from <html> classList (set synchronously by inline script)
     setIsDark(document.documentElement.classList.contains("dark"));
 
-    // Remove the param from URL immediately (no navigation)
-    const url = new URL(window.location.href);
-    url.searchParams.delete("auth_callback");
-    window.history.replaceState({}, "", url.toString());
+    // Clean up the auth_callback param if present
+    if (isAuthCallback) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("auth_callback");
+      window.history.replaceState({}, "", url.toString());
+    }
 
     // Kick off the animation sequence
     setPhase("enter");
