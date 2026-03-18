@@ -34,6 +34,9 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{
+  var path=location.pathname;
+  var isDashboardPath=path==="/dashboard"||path.startsWith("/dashboard/")||path.startsWith("/activity")||path.startsWith("/memory")||path.startsWith("/settings")||path.startsWith("/projects")||path.startsWith("/brief");
+  if(!isDashboardPath)return;
   var p=new URLSearchParams(location.search);
   var isAuth=p.get("auth_callback")==="1";
   var seen=sessionStorage.getItem("relay_preloader_shown")==="1";

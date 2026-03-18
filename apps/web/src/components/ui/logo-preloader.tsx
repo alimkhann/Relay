@@ -30,6 +30,18 @@ export function LogoPreloader() {
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
+    const path = window.location.pathname;
+    const isDashboardPath =
+      path === "/dashboard" ||
+      path.startsWith("/dashboard/") ||
+      path.startsWith("/activity") ||
+      path.startsWith("/memory") ||
+      path.startsWith("/settings") ||
+      path.startsWith("/projects") ||
+      path.startsWith("/brief");
+
+    if (!isDashboardPath) return;
+
     const overlay = document.getElementById("relay-preloader");
     if (!overlay) return;
 
