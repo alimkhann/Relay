@@ -31,6 +31,21 @@ export default function RootLayout({
             __html: `(function(){try{var t=localStorage.getItem("relay-theme");var d=document.documentElement;if(t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme:dark)").matches)){d.classList.add("dark")}else{d.classList.add("light")}}catch(e){}})();`,
           }}
         />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{
+  var p=new URLSearchParams(location.search);
+  var isAuth=p.get("auth_callback")==="1";
+  var seen=sessionStorage.getItem("relay_preloader_shown")==="1";
+  if(!isAuth&&seen)return;
+  var dark=document.documentElement.classList.contains("dark");
+  var el=document.createElement("div");
+  el.id="relay-preloader";
+  el.style.cssText="position:fixed;inset:0;z-index:9999;background:"+(dark?"#1a1a1c":"#fff");
+  document.documentElement.appendChild(el);
+}catch(e){}})();`,
+          }}
+        />
       </head>
       <body>
         <ThemeProvider>
