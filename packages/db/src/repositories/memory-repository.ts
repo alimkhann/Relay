@@ -38,8 +38,8 @@ export class MemoryRepository {
 
   async create(userId: string, input: CreateMemoryItemInput): Promise<MemoryItemRow> {
     const rows = await this.provider.query(
-      `insert into memory_items (project_id, source_turn_id, type, title, content, pinned, tags, metadata, created_by)
-       values ($1, $2, $3, $4, $5, $6, $7::text[], $8::jsonb, $9)
+      `insert into memory_items (project_id, source_turn_id, type, title, content, pinned, tags, metadata, created_by, source_surface, source_conversation_id, source_url, captured_at, derived_from)
+       values ($1, $2, $3, $4, $5, $6, $7::text[], $8::jsonb, $9, $10, $11, $12, coalesce($13::timestamptz, now()), $14::text[])
        returning *`,
       [
         input.projectId,
@@ -50,7 +50,12 @@ export class MemoryRepository {
         input.pinned ?? false,
         input.tags ?? [],
         JSON.stringify(input.metadata ?? {}),
-        userId
+        userId,
+        input.sourceSurface ?? null,
+        input.sourceConversationId ?? null,
+        input.sourceUrl ?? null,
+        input.capturedAt ?? null,
+        input.derivedFrom ?? null
       ]
     )
 
@@ -66,7 +71,7 @@ export class MemoryRepository {
 
     for (const item of items) {
       placeholders.push(
-        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}::text[], $${paramIndex + 7}::jsonb, $${paramIndex + 8})`
+        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}::text[], $${paramIndex + 7}::jsonb, $${paramIndex + 8}, $${paramIndex + 9}, $${paramIndex + 10}, $${paramIndex + 11}, coalesce($${paramIndex + 12}::timestamptz, now()), $${paramIndex + 13}::text[])`
       )
       params.push(
         item.projectId,
@@ -77,13 +82,18 @@ export class MemoryRepository {
         item.pinned ?? false,
         item.tags ?? [],
         JSON.stringify(item.metadata ?? {}),
-        userId
+        userId,
+        item.sourceSurface ?? null,
+        item.sourceConversationId ?? null,
+        item.sourceUrl ?? null,
+        item.capturedAt ?? null,
+        item.derivedFrom ?? null
       )
-      paramIndex += 9
+      paramIndex += 14
     }
 
     const rows = await this.provider.query(
-      `insert into memory_items (project_id, source_turn_id, type, title, content, pinned, tags, metadata, created_by)
+      `insert into memory_items (project_id, source_turn_id, type, title, content, pinned, tags, metadata, created_by, source_surface, source_conversation_id, source_url, captured_at, derived_from)
        values ${placeholders.join(", ")}
        returning *`,
       params

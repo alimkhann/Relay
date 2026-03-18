@@ -15,7 +15,13 @@ export function toMemoryRow(record: Record<string, unknown>): MemoryItemRow {
     metadata: (record.metadata as Record<string, unknown>) ?? {},
     createdBy: String(record.created_by),
     createdAt: String(record.created_at),
-    updatedAt: String(record.updated_at)
+    updatedAt: String(record.updated_at),
+    // Source provenance fields
+    sourceSurface: record.source_surface ? (String(record.source_surface) as MemoryItemRow["sourceSurface"]) : null,
+    sourceConversationId: record.source_conversation_id ? String(record.source_conversation_id) : null,
+    sourceUrl: record.source_url ? String(record.source_url) : null,
+    capturedAt: record.captured_at ? String(record.captured_at) : null,
+    derivedFrom: Array.isArray(record.derived_from) ? (record.derived_from as string[]) : null
   }
 }
 

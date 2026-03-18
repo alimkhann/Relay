@@ -2,6 +2,7 @@ import type { MemoryItemDto } from "@relay/shared"
 
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
+import { ProvenanceChip } from "@/components/memory/provenance-chip"
 
 export function MemoryList({ items }: { items: MemoryItemDto[] }) {
   if (items.length === 0) {
@@ -17,7 +18,14 @@ export function MemoryList({ items }: { items: MemoryItemDto[] }) {
       {items.map((item) => (
         <Card key={item.id} className="p-5">
           <div className="flex items-center justify-between gap-3">
-            <Badge className="bg-[var(--relay-accent)]">{item.type}</Badge>
+            <div className="flex items-center gap-2">
+              <Badge className="bg-[var(--relay-accent)]">{item.type}</Badge>
+              <ProvenanceChip
+                sourceSurface={item.sourceSurface}
+                sourceUrl={item.sourceUrl}
+                capturedAt={item.capturedAt}
+              />
+            </div>
             {item.pinned ? <span className="text-xs font-medium uppercase tracking-[0.2em] text-[var(--relay-muted)]">Pinned</span> : null}
           </div>
           <h3 className="mt-4 text-lg font-semibold text-[var(--relay-ink)]">{item.title ?? "Untitled memory"}</h3>

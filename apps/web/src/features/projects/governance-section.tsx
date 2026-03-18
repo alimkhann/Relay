@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { ProjectDashboardDto, MemoryItemType } from "@relay/shared";
+import type { ProjectDashboardDto, MemoryItemType, SourceSurface } from "@relay/shared";
 import {
   Pencil,
   Trash2,
@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { ProvenanceChip } from "@/components/memory/provenance-chip";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
 
 /* ─── Types ─── */
@@ -23,6 +24,8 @@ interface ContextItem {
   text: string;
   source: "manual" | "derived";
   memoryId?: string;
+  sourceSurface?: SourceSurface | null;
+  capturedAt?: string | null;
 }
 
 /* ─── Constants ─── */
@@ -89,6 +92,8 @@ function buildContextItems(
       text: item.content,
       source: "manual" as const,
       memoryId: item.id,
+      sourceSurface: item.sourceSurface,
+      capturedAt: item.capturedAt,
     }));
 
   return [...manualItems, ...derivedItems];
@@ -198,6 +203,7 @@ export function GovernanceSection({
               type: memoryTypeBySection[section],
               title: null,
               content: text,
+              sourceSurface: "web",
             }),
           },
         );
@@ -243,6 +249,7 @@ export function GovernanceSection({
               type: memoryTypeBySection[item.section],
               title: null,
               content: nextText,
+              sourceSurface: "web",
             }),
           },
         );
@@ -380,9 +387,20 @@ export function GovernanceSection({
                         </div>
                       ) : (
                         <div className="flex items-start justify-between gap-2">
-                          <p className="text-[12px] leading-relaxed text-[var(--relay-ink-secondary)] flex-1">
-                            {item.text}
-                          </p>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[12px] leading-relaxed text-[var(--relay-ink-secondary)]">
+                              {item.text}
+                            </p>
+                            {item.source === "manual" && item.sourceSurface && (
+                              <div className="mt-1">
+                                <ProvenanceChip
+                                  sourceSurface={item.sourceSurface}
+                                  capturedAt={item.capturedAt}
+                                  compact
+                                />
+                              </div>
+                            )}
+                          </div>
                           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                             <button
                               className="p-1 rounded text-[var(--relay-faint)] hover:text-[var(--relay-ink)] transition-colors"

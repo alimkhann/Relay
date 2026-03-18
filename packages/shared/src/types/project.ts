@@ -1,4 +1,4 @@
-import type { BootstrapPacketKind, MemoryItemType, SupportedPlatform } from "./database"
+import type { BootstrapPacketKind, MemoryItemType, SourceSurface, SupportedPlatform } from "./database"
 
 export type ProjectId = string
 
@@ -119,6 +119,12 @@ export interface MemoryItemDto {
   content: string
   pinned: boolean
   updatedAt: string
+  /** Origin surface: chatgpt, claude, gemini, grok, perplexity, deepseek, codex, mcp, web, api */
+  sourceSurface: SourceSurface | null
+  /** Full URL to source conversation for clickable provenance links */
+  sourceUrl: string | null
+  /** Actual capture timestamp for recency-based conflict resolution */
+  capturedAt: string | null
 }
 
 export interface ProjectStateDto {

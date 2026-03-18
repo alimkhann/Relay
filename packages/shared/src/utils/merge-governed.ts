@@ -104,6 +104,77 @@ export function hasCompletionSignal(value: string) {
   )
 }
 
+/**
+ * Represents a memory item with provenance for conflict resolution.
+ */
+export interface MemoryItemForConflictResolution {
+  id: string
+  content: string
+  capturedAt: string | null
+  type: string
+}
+
+/**
+ * Recency-based conflict resolution for memory items.
+ * When two items cover the same topic, the one with the more recent
+ * `capturedAt` timestamp wins. Items without `capturedAt` are treated
+ * as older than items with a timestamp.
+ *
+ * @returns The winning item between two conflicting items, or null if they don't conflict.
+ */
+export function resolveMemoryConflict(
+  existing: MemoryItemForConflictResolution,
+  incoming: MemoryItemForConflictResolution
+): MemoryItemForConflictResolution | null {
+  // Only resolve conflicts between same-type items covering the same topic
+  if (existing.type !== incoming.type) return null
+  if (!isSameTopic(existing.content, incoming.content)) return null
+
+  // Recency-based resolution: newest captured_at wins
+  const existingTime = existing.capturedAt ? new Date(existing.capturedAt).getTime() : 0
+  const incomingTime = incoming.capturedAt ? new Date(incoming.capturedAt).getTime() : 0
+
+  return incomingTime >= existingTime ? incoming : existing
+}
+
+/**
+ * Deduplicate memory items based on topic similarity and recency.
+ * Items covering the same topic are merged, with the most recently
+ * captured item winning.
+ *
+ * @returns Array of unique items after conflict resolution
+ */
+export function deduplicateMemoryItems<T extends MemoryItemForConflictResolution>(
+  items: T[]
+): T[] {
+  const result: T[] = []
+
+  for (const item of items) {
+    const conflictIndex = result.findIndex(
+      (existing) =>
+        existing.type === item.type && isSameTopic(existing.content, item.content)
+    )
+
+    if (conflictIndex >= 0) {
+      // Conflict found — resolve by recency
+      const existingItem = result[conflictIndex]
+      if (existingItem) {
+        const existingTime = existingItem.capturedAt ? new Date(existingItem.capturedAt).getTime() : 0
+        const itemTime = item.capturedAt ? new Date(item.capturedAt).getTime() : 0
+
+        if (itemTime >= existingTime) {
+          result[conflictIndex] = item
+        }
+        // If existing is newer, keep it (do nothing)
+      }
+    } else {
+      result.push(item)
+    }
+  }
+
+  return result
+}
+
 export function mergeGovernedList(
   existing: string[],
   incoming: string[],

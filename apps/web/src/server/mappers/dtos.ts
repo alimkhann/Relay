@@ -24,7 +24,10 @@ export function toMemoryItemDto(item: MemoryItemRow): MemoryItemDto {
     title: item.title,
     content: item.content,
     pinned: item.pinned,
-    updatedAt: item.updatedAt
+    updatedAt: item.updatedAt,
+    sourceSurface: item.sourceSurface,
+    sourceUrl: item.sourceUrl,
+    capturedAt: item.capturedAt,
   }
 }
 

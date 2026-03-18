@@ -123,7 +123,10 @@ export async function getProjectDashboard(repositories: RepositoryBundle, ownerI
       title: item.title,
       content: item.content,
       pinned: item.pinned,
-      updatedAt: item.updatedAt
+      updatedAt: item.updatedAt,
+      sourceSurface: item.sourceSurface,
+      sourceUrl: item.sourceUrl,
+      capturedAt: item.capturedAt,
     })),
     packets: packets.map((packet) => ({
       id: packet.id,

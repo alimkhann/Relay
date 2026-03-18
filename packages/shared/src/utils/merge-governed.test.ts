@@ -5,7 +5,6 @@ import {
   isSameTopic,
   isLikelySameTopic,
   mergeGovernedList,
-  topicOverlapScore,
   TOPIC_MATCH_THRESHOLD,
   TOPIC_GREY_ZONE_MIN,
 } from "./merge-governed"

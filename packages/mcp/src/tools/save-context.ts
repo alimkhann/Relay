@@ -20,41 +20,87 @@ export async function saveContext(
   args: z.infer<typeof saveContextSchema>,
   resolvedProjectId: string
 ) {
-  const items: Array<{ type: string; content: string; title?: string; metadata?: Record<string, unknown> }> = []
+  const capturedAt = new Date().toISOString()
+  const items: Array<{
+    type: string
+    content: string
+    title?: string
+    metadata?: Record<string, unknown>
+    sourceSurface: "mcp"
+    capturedAt: string
+  }> = []
 
   // Session summary
-  items.push({ type: "note", content: args.summary, title: "IDE Session Summary", metadata: { source: "mcp" } })
+  items.push({
+    type: "note",
+    content: args.summary,
+    title: "IDE Session Summary",
+    metadata: { source: "mcp" },
+    sourceSurface: "mcp",
+    capturedAt
+  })
 
   // Progress
   if (args.progress) {
-    items.push({ type: "note", content: args.progress, title: "Session Progress", metadata: { source: "mcp" } })
+    items.push({
+      type: "note",
+      content: args.progress,
+      title: "Session Progress",
+      metadata: { source: "mcp" },
+      sourceSurface: "mcp",
+      capturedAt
+    })
   }
 
   // Decisions
   if (args.decisions) {
     for (const decision of args.decisions) {
-      items.push({ type: "decision", content: decision, metadata: { source: "mcp" } })
+      items.push({
+        type: "decision",
+        content: decision,
+        metadata: { source: "mcp" },
+        sourceSurface: "mcp",
+        capturedAt
+      })
     }
   }
 
   // Constraints
   if (args.constraints) {
     for (const constraint of args.constraints) {
-      items.push({ type: "constraint", content: constraint, metadata: { source: "mcp" } })
+      items.push({
+        type: "constraint",
+        content: constraint,
+        metadata: { source: "mcp" },
+        sourceSurface: "mcp",
+        capturedAt
+      })
     }
   }
 
   // Next steps as tasks
   if (args.nextSteps) {
     for (const step of args.nextSteps) {
-      items.push({ type: "task", content: step, metadata: { source: "mcp" } })
+      items.push({
+        type: "task",
+        content: step,
+        metadata: { source: "mcp" },
+        sourceSurface: "mcp",
+        capturedAt
+      })
     }
   }
 
   // Notes
   if (args.notes) {
     for (const note of args.notes) {
-      items.push({ type: "note", content: note, metadata: { source: "mcp" } })
+      items.push({
+        type: "note",
+        content: note,
+        metadata: { source: "mcp" },
+        sourceSurface: "mcp",
+        capturedAt
+      })
     }
   }
 

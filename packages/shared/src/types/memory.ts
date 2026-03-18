@@ -1,4 +1,4 @@
-import type { MemoryItemType } from "./database"
+import type { MemoryItemType, SourceSurface } from "./database"
 
 export interface CreateMemoryItemInput {
   projectId: string
@@ -9,6 +9,16 @@ export interface CreateMemoryItemInput {
   pinned?: boolean
   tags?: string[]
   metadata?: Record<string, unknown>
+  /** Origin surface where this memory was captured */
+  sourceSurface?: SourceSurface | null
+  /** Normalized conversation ID for linking back to source */
+  sourceConversationId?: string | null
+  /** Full URL to source conversation */
+  sourceUrl?: string | null
+  /** Actual capture timestamp (defaults to now if not provided) */
+  capturedAt?: string | null
+  /** Array of memory item IDs this item was derived/merged from */
+  derivedFrom?: string[] | null
 }
 
 export interface UpdateMemoryItemInput {

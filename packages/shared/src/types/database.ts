@@ -82,6 +82,19 @@ export interface SourceTurnRow {
   createdAt: string
 }
 
+/** Source surface where a memory item was captured from */
+export type SourceSurface =
+  | "chatgpt"
+  | "claude"
+  | "gemini"
+  | "grok"
+  | "perplexity"
+  | "deepseek"
+  | "codex"
+  | "mcp"
+  | "web"
+  | "api"
+
 export interface MemoryItemRow {
   id: string
   projectId: string
@@ -97,6 +110,16 @@ export interface MemoryItemRow {
   createdBy: string
   createdAt: string
   updatedAt: string
+  /** Origin surface: chatgpt, claude, gemini, grok, perplexity, deepseek, codex, mcp, web, api */
+  sourceSurface: SourceSurface | null
+  /** Normalized conversation ID for linking (e.g., c/abc123 for ChatGPT) */
+  sourceConversationId: string | null
+  /** Full URL to source conversation for clickable provenance links */
+  sourceUrl: string | null
+  /** Actual capture timestamp for recency-based conflict resolution */
+  capturedAt: string | null
+  /** Array of memory item IDs this item was derived/merged from */
+  derivedFrom: string[] | null
 }
 
 export interface TargetProfileRow {

@@ -535,7 +535,10 @@ export async function generateBootstrapForProject(userId: string, projectId: str
     title: item.title,
     content: item.content,
     pinned: item.pinned,
-    updatedAt: item.updatedAt
+    updatedAt: item.updatedAt,
+    sourceSurface: item.sourceSurface,
+    sourceUrl: item.sourceUrl,
+    capturedAt: item.capturedAt,
   }))
   const effectiveStateDto = buildEffectiveProjectState(derivedStateDto, overrideDto, memoryDtos)
 
