@@ -52,6 +52,7 @@ function makeState(): ProjectStateRow {
     constraints: [],
     openTasks: [],
     relevantTools: [],
+    objectiveHistory: [],
     lastBootstrapAt: null,
     dirty: false,
     createdAt: now,

@@ -1,5 +1,7 @@
-import type { ProjectRow, ProjectStateRow, SessionDigestShape } from "@relay/shared"
+import type { ObjectiveHistoryEntry, ProjectRow, ProjectStateRow, SessionDigestShape } from "@relay/shared"
 import { mergeGovernedList, normalizeText, stripArrowNotation } from "@relay/shared"
+
+const MAX_OBJECTIVE_HISTORY = 5
 
 function normalizeLine(value: string | null | undefined) {
   const next = value ? normalizeText(value) : ""
@@ -37,6 +39,7 @@ export function buildInitialProjectState(project: ProjectRow, current: ProjectSt
     constraints: [],
     openTasks: [],
     relevantTools: [],
+    objectiveHistory: [],
     lastBootstrapAt: null,
     dirty: false,
     createdAt: new Date().toISOString(),
@@ -47,16 +50,33 @@ export function buildInitialProjectState(project: ProjectRow, current: ProjectSt
 export function mergeDigestIntoState(project: ProjectRow, current: ProjectStateRow | null, digest: SessionDigestShape): ProjectStateRow {
   const base = buildInitialProjectState(project, current)
 
+  const nextObjective = normalizeLine(digest.currentObjectiveDelta) ?? base.currentObjective
+
+  // Track objective history: push old objective when it actually changes
+  let objectiveHistory: ObjectiveHistoryEntry[] = [...base.objectiveHistory]
+  const objectiveChanged = nextObjective !== base.currentObjective && base.currentObjective !== null
+  if (objectiveChanged && base.currentObjective) {
+    objectiveHistory = [
+      {
+        objective: base.currentObjective,
+        replacedAt: new Date().toISOString(),
+        replacedBy: digest.summaryShort?.slice(0, 120) ?? null,
+      },
+      ...objectiveHistory,
+    ].slice(0, MAX_OBJECTIVE_HISTORY)
+  }
+
   const next: ProjectStateRow = {
     ...base,
     projectOverview: normalizeLine(digest.projectOverviewDelta) ?? base.projectOverview,
-    currentObjective: normalizeLine(digest.currentObjectiveDelta) ?? base.currentObjective,
+    currentObjective: nextObjective,
     stackDomain: base.stackDomain,
     recentProgress: normalizeLine(digest.recentProgressDelta) ?? base.recentProgress,
     decisions: mergeGovernedList(base.decisions, digest.newDecisions, "decision"),
     constraints: mergeGovernedList(base.constraints, digest.newConstraints, "constraint"),
     openTasks: mergeGovernedList(base.openTasks, digest.newTasks, "task"),
     relevantTools: mergeUnique(base.relevantTools, digest.relevantToolsDelta),
+    objectiveHistory,
     dirty: digest.shouldMerge || base.dirty,
     createdAt: base.createdAt,
     updatedAt: new Date().toISOString()

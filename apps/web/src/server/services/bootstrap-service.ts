@@ -554,6 +554,7 @@ export async function generateBootstrapForProject(userId: string, projectId: str
         constraints: effectiveStateDto.constraints,
         openTasks: effectiveStateDto.openTasks,
         relevantTools: effectiveStateDto.relevantTools,
+        objectiveHistory: rawState?.objectiveHistory ?? [],
         lastBootstrapAt: effectiveStateDto.lastBootstrapAt,
         dirty: effectiveStateDto.dirty,
         createdAt: rawState?.createdAt ?? new Date(0).toISOString(),

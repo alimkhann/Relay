@@ -157,6 +157,15 @@ export interface SessionDigestRow {
   createdAt: string
 }
 
+/** An entry in the objective history log (capped at 5) */
+export interface ObjectiveHistoryEntry {
+  objective: string
+  /** ISO timestamp when this objective was replaced */
+  replacedAt: string
+  /** Source that caused the replacement: digest session ID, 'manual', or null */
+  replacedBy: string | null
+}
+
 export interface ProjectStateRow {
   projectId: string
   projectOverview: string | null
@@ -167,6 +176,8 @@ export interface ProjectStateRow {
   constraints: string[]
   openTasks: string[]
   relevantTools: string[]
+  /** Last 5 previous objectives for rollback */
+  objectiveHistory: ObjectiveHistoryEntry[]
   lastBootstrapAt: string | null
   dirty: boolean
   createdAt: string

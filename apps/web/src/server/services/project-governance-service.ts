@@ -43,6 +43,7 @@ export async function rebuildProjectState(userId: string, projectId: string) {
       constraints: nextState.constraints,
       openTasks: nextState.openTasks,
       relevantTools: nextState.relevantTools,
+      objectiveHistory: nextState.objectiveHistory,
       dirty: true
     })
   } else {

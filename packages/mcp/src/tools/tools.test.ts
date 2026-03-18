@@ -187,15 +187,18 @@ describe("relay_add_memory", () => {
       "proj-1"
     )
 
-    expect(client.post).toHaveBeenCalledWith("/api/projects/proj-1/memory", {
-      projectId: "proj-1",
-      type: "decision",
-      content: "Use TypeScript everywhere",
-      title: "TypeScript adoption",
-      pinned: false,
-      tags: [],
-      metadata: { source: "mcp" }
-    })
+    expect(client.post).toHaveBeenCalledWith("/api/projects/proj-1/memory",
+      expect.objectContaining({
+        projectId: "proj-1",
+        type: "decision",
+        content: "Use TypeScript everywhere",
+        title: "TypeScript adoption",
+        pinned: false,
+        tags: [],
+        metadata: { source: "mcp" },
+        sourceSurface: "mcp",
+      })
+    )
   })
 })
 

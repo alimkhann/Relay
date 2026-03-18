@@ -29,6 +29,7 @@ export class ProjectStateRepository {
     constraints: string[]
     openTasks: string[]
     relevantTools: string[]
+    objectiveHistory?: ProjectStateRow["objectiveHistory"]
     dirty: boolean
     lastBootstrapAt?: string | null
   }): Promise<ProjectStateRow> {
@@ -43,10 +44,11 @@ export class ProjectStateRepository {
          constraints,
          open_tasks,
          relevant_tools,
+         objective_history,
          dirty,
          last_bootstrap_at
        )
-       values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11)
+       values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11, $12)
        on conflict (project_id) do update
          set project_overview = excluded.project_overview,
              current_objective = excluded.current_objective,
@@ -56,6 +58,7 @@ export class ProjectStateRepository {
              constraints = excluded.constraints,
              open_tasks = excluded.open_tasks,
              relevant_tools = excluded.relevant_tools,
+             objective_history = excluded.objective_history,
              dirty = excluded.dirty,
              last_bootstrap_at = coalesce(excluded.last_bootstrap_at, project_state.last_bootstrap_at),
              updated_at = now()
@@ -70,6 +73,7 @@ export class ProjectStateRepository {
         JSON.stringify(input.constraints),
         JSON.stringify(input.openTasks),
         JSON.stringify(input.relevantTools),
+        JSON.stringify(input.objectiveHistory ?? []),
         input.dirty,
         input.lastBootstrapAt ?? null
       ]

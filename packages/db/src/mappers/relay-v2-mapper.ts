@@ -47,6 +47,7 @@ export function toProjectStateRow(record: Record<string, unknown>): ProjectState
     constraints: toStringArray(record.constraints),
     openTasks: toStringArray(record.open_tasks),
     relevantTools: toStringArray(record.relevant_tools),
+    objectiveHistory: Array.isArray(record.objective_history) ? record.objective_history as ProjectStateRow["objectiveHistory"] : [],
     lastBootstrapAt: record.last_bootstrap_at ? String(record.last_bootstrap_at) : null,
     dirty: Boolean(record.dirty),
     createdAt: String(record.created_at),
