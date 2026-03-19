@@ -22,6 +22,9 @@ interface SidebarProps {
 
 export function Sidebar({ projects, currentProjectId, user }: SidebarProps) {
   const { collapsed, toggle } = useSidebar();
+  const overviewHref = currentProjectId
+    ? `/dashboard?project=${currentProjectId}`
+    : "/dashboard";
 
   return (
     <Tooltip.Provider delayDuration={300}>
@@ -41,7 +44,7 @@ export function Sidebar({ projects, currentProjectId, user }: SidebarProps) {
           {collapsed ? (
             <Tooltip.Root>
               <Tooltip.Trigger asChild>
-                <Link href="/" className="flex items-center justify-center">
+                <Link href={overviewHref} className="flex items-center justify-center">
                   <Image
                     src="/images/relay_logo_white.png"
                     alt="Relay"
@@ -63,7 +66,7 @@ export function Sidebar({ projects, currentProjectId, user }: SidebarProps) {
               </Tooltip.Portal>
             </Tooltip.Root>
           ) : (
-            <Link href="/" className="flex items-center">
+            <Link href={overviewHref} className="flex items-center">
               <Image
                 src="/images/relay_logo_white.png"
                 alt="Relay"

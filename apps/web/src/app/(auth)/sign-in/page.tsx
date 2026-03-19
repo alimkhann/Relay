@@ -56,28 +56,33 @@ export default async function SignInPage({
           className="object-cover"
           priority
         />
-        <div className="absolute inset-0 bg-black/50" />
-        <div className="relative z-10 flex flex-col justify-between p-12 w-full">
-          <Image
-            src="/images/relay_logo_white.png"
-            alt="Relay"
-            width={28}
-            height={28}
-          />
+        <div className="absolute inset-0 bg-black/46" />
+        <div className="relative z-10 flex h-full w-full flex-col p-12">
+          <Link href="/" className="self-start">
+            <Image
+              src="/images/relay_logo_white.png"
+              alt="Relay"
+              width={28}
+              height={28}
+            />
+          </Link>
 
-          <div className="max-w-md">
-            <h2 className="text-[28px] font-semibold tracking-tight leading-tight text-white">
-              Cross-AI memory
-              <br />
-              for your projects.
-            </h2>
-            <p className="mt-4 text-[15px] leading-relaxed text-white/70">
-              Relay keeps context synchronized between ChatGPT, Claude, Codex,
-              and Perplexity — so every AI tool knows what the others learned.
-            </p>
+          <div className="flex flex-1 items-center justify-center">
+            <div className="max-w-lg text-center">
+              <h2 className="text-[30px] font-semibold tracking-tight leading-[1.08] text-white">
+                Keep project context alive
+                <br />
+                across every AI tool.
+              </h2>
+              <p className="mt-5 text-[15px] leading-relaxed text-white/72">
+                Relay carries decisions, tasks, and constraints between chats,
+                your IDE, and fresh sessions — so you do not restart context
+                every time you switch tools.
+              </p>
+            </div>
           </div>
 
-          <p className="text-[12px] text-white/50">
+          <p className="self-end text-right text-[12px] text-white/55">
             Built for engineers who work across AI tools.
           </p>
         </div>
