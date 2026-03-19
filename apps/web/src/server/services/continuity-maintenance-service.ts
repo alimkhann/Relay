@@ -1,0 +1,216 @@
+import { createRepositoryBundle } from "@relay/db"
+import type { MemoryItemRow, WorkSessionRow } from "@relay/shared"
+import {
+  hasCompletionSignal,
+  hashContent,
+  isLikelySameTopic,
+  isSameTopic,
+} from "@relay/shared"
+
+const BROWSER_SURFACES: WorkSessionRow["surface"][] = [
+  "chatgpt",
+  "claude",
+  "gemini",
+  "grok",
+  "perplexity",
+  "deepseek",
+  "codex",
+]
+
+function mergeMetadata(
+  current: Record<string, unknown> | undefined,
+  patch: Record<string, unknown>,
+) {
+  return {
+    ...(current ?? {}),
+    ...patch,
+  }
+}
+
+function asMetadata(item: MemoryItemRow) {
+  return (item.metadata ?? {}) as Record<string, unknown>
+}
+
+function buildTopicKey(type: MemoryItemRow["type"], content: string) {
+  return `${type}:${hashContent(content).slice(0, 12)}`
+}
+
+function getRecentReaffirmationMatches(
+  item: MemoryItemRow,
+  checkpointTexts: string[],
+) {
+  return checkpointTexts.filter((value) => isSameTopic(item.content, value)).length
+}
+
+export interface ContinuityMaintenanceResult {
+  projectId: string
+  archivedTaskCount: number
+  reaffirmedCount: number
+  disputedCount: number
+  staleSessionsMarked: number
+}
+
+export async function runContinuityMaintenanceForProject(
+  userId: string,
+  projectId: string,
+): Promise<ContinuityMaintenanceResult> {
+  const repositories = createRepositoryBundle(userId)
+  const [memoryItems, checkpoints] = await Promise.all([
+    repositories.memory.listByProject(projectId),
+    repositories.workSessionCheckpoints.listRecentByProject(projectId, {
+      limit: 20,
+      surfaces: ["mcp", "cli", ...BROWSER_SURFACES],
+    }),
+  ])
+
+  const reaffirmationTexts = checkpoints.flatMap((checkpoint) => {
+    const state = checkpoint.structuredState ?? {}
+    return [
+      ...(Array.isArray(state.decisions) ? state.decisions.map(String) : []),
+      ...(Array.isArray(state.constraints) ? state.constraints.map(String) : []),
+      ...(Array.isArray(state.nextSteps) ? state.nextSteps.map(String) : []),
+      ...(Array.isArray(state.reaffirmedFacts) ? state.reaffirmedFacts.map(String) : []),
+    ]
+  })
+
+  let reaffirmedCount = 0
+  for (const item of memoryItems) {
+    const matches = getRecentReaffirmationMatches(item, reaffirmationTexts)
+    if (matches <= 0) continue
+
+    const metadata = asMetadata(item)
+    const currentCount = typeof metadata.reaffirmedCount === "number" ? metadata.reaffirmedCount : 0
+    await repositories.memory.update(item.id, {
+      metadata: mergeMetadata(metadata, {
+        reaffirmedCount: currentCount + matches,
+        lastValidatedAt: new Date().toISOString(),
+        validationState: metadata.validationState === "validated" ? "validated" : "confirmed",
+      }),
+    })
+    reaffirmedCount += 1
+  }
+
+  const reconcilable = memoryItems.filter((item) => ["decision", "constraint", "task"].includes(item.type))
+  const disputesByItemId = new Map<string, { topicKey: string; conflictingWith: Set<string> }>()
+
+  for (let i = 0; i < reconcilable.length; i += 1) {
+    const left = reconcilable[i]
+    if (!left) continue
+    for (let j = i + 1; j < reconcilable.length; j += 1) {
+      const right = reconcilable[j]
+      if (!right || left.type !== right.type) continue
+
+      const sameTopic = isSameTopic(left.content, right.content)
+      const likelySameTopic = isLikelySameTopic(left.content, right.content)
+      if (!sameTopic && !likelySameTopic) continue
+
+      const leftMetadata = asMetadata(left)
+      const rightMetadata = asMetadata(right)
+      const canonicalTopicKey = buildTopicKey(left.type, left.content.length >= right.content.length ? left.content : right.content)
+
+      const isConflict = likelySameTopic || left.content !== right.content
+      if (!isConflict) continue
+
+      const leftEntry = disputesByItemId.get(left.id) ?? {
+        topicKey: canonicalTopicKey,
+        conflictingWith: new Set<string>(),
+      }
+      leftEntry.conflictingWith.add(right.id)
+      disputesByItemId.set(left.id, leftEntry)
+
+      const rightEntry = disputesByItemId.get(right.id) ?? {
+        topicKey: canonicalTopicKey,
+        conflictingWith: new Set<string>(),
+      }
+      rightEntry.conflictingWith.add(left.id)
+      disputesByItemId.set(right.id, rightEntry)
+    }
+  }
+
+  for (const item of reconcilable) {
+    const dispute = disputesByItemId.get(item.id)
+    if (!dispute) continue
+    const metadata = asMetadata(item)
+    await repositories.memory.update(item.id, {
+      metadata: mergeMetadata(metadata, {
+        conflictStatus: "disputed",
+        canonicalTopicKey: dispute.topicKey,
+        conflictingWith: Array.from(dispute.conflictingWith),
+        validationState: metadata.validationState === "validated" ? "validated" : "contested",
+      }),
+    })
+  }
+
+  for (const item of reconcilable) {
+    if (disputesByItemId.has(item.id)) continue
+    const metadata = asMetadata(item)
+    if (!metadata.conflictStatus && !metadata.conflictingWith) continue
+    await repositories.memory.update(item.id, {
+      metadata: mergeMetadata(metadata, {
+        conflictStatus: null,
+        canonicalTopicKey: null,
+        conflictingWith: [],
+        validationState: metadata.validationState === "contested" ? "inferred" : metadata.validationState,
+      }),
+    })
+  }
+
+  const staleThreshold = Date.now() - 21 * 24 * 60 * 60 * 1000
+  let archivedTaskCount = 0
+  for (const item of memoryItems) {
+    if (item.type !== "task" || item.pinned) continue
+    const metadata = asMetadata(item)
+    const reaffirmedCountValue = typeof metadata.reaffirmedCount === "number" ? metadata.reaffirmedCount : 0
+    if (reaffirmedCountValue > 0) continue
+    if (new Date(item.updatedAt).getTime() >= staleThreshold) continue
+    if (hasCompletionSignal(item.content)) continue
+
+    await repositories.memory.update(item.id, {
+      isArchived: true,
+      metadata: mergeMetadata(metadata, {
+        archivedReason: "stale_unreaffirmed_task",
+      }),
+    })
+    archivedTaskCount += 1
+  }
+
+  const staleBefore = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString()
+  let staleSessionsMarked = 0
+  for (const surface of BROWSER_SURFACES) {
+    staleSessionsMarked += await repositories.workSessions.markStaleOlderThan({
+      projectId,
+      surface,
+      olderThan: staleBefore,
+      clientName: "relay-extension",
+    })
+  }
+
+  await repositories.bootstrapPackets.clearProject(projectId)
+
+  return {
+    projectId,
+    archivedTaskCount,
+    reaffirmedCount,
+    disputedCount: disputesByItemId.size,
+    staleSessionsMarked,
+  }
+}
+
+export async function runContinuityMaintenanceForUser(
+  userId: string,
+  input: { projectId?: string; limit?: number } = {},
+) {
+  const repositories = createRepositoryBundle(userId)
+  const project = input.projectId ? await repositories.projects.getById(input.projectId) : null
+  const projects = project
+    ? [project]
+    : (await repositories.projects.listByOwner(userId)).slice(0, input.limit ?? 8)
+
+  const results: ContinuityMaintenanceResult[] = []
+  for (const project of projects) {
+    if (!project) continue
+    results.push(await runContinuityMaintenanceForProject(userId, project.id))
+  }
+
+  return results
+}

@@ -3,6 +3,7 @@ import type { AiJobRunRow, ProjectStateRow, SessionDigestShape, SourceSessionRow
 import { buildCaptureSignature, normalizeText, truncateSentence } from "@relay/shared"
 
 import { reconcileAfterDigest } from "./context-reconciliation-service"
+import { runContinuityMaintenanceForProject } from "./continuity-maintenance-service"
 import { describeGeminiError, GEMINI_MODELS, runGeminiJsonWithFallback, type GeminiStage } from "./gemini-service"
 import { mergeDigestIntoState } from "./project-state-service"
 import { resolveProjectAiBudget } from "./ai-budget-service"
@@ -426,6 +427,15 @@ async function persistDigestResult(
 
   const browserSurface = input.session.platform as Parameters<typeof repositories.workSessions.create>[0]["surface"]
   const browserThreadId = input.session.sourceConversationId ?? input.session.url
+  if (input.session.sourceConversationId && input.session.url && input.session.sourceConversationId !== input.session.url) {
+    await repositories.workSessions.promoteThreadId({
+      projectId: input.projectId,
+      surface: browserSurface,
+      provisionalThreadId: input.session.url,
+      canonicalThreadId: input.session.sourceConversationId,
+      clientName: "relay-extension",
+    })
+  }
   const reusableWorkSession = await repositories.workSessions.findReusableActiveSession({
     projectId: input.projectId,
     surface: browserSurface,
@@ -508,6 +518,7 @@ async function persistDigestResult(
 
     // Auto-archive memory items superseded by the digest
     const reconciliation = await reconcileAfterDigest(repositories, input.projectId, input.digest)
+    await runContinuityMaintenanceForProject(userId, input.projectId)
     return { digest, reconciliation }
   }
 

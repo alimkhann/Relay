@@ -137,8 +137,8 @@ export class WorkSessionRepository {
     workspaceId?: string | null
     threadId?: string | null
     clientName?: string | null
-  }): Promise<void> {
-    await this.provider.query(
+  }): Promise<number> {
+    const rows = await this.provider.query(
       `update work_sessions
        set status = 'stale',
            ended_at = coalesce(ended_at, now()),
@@ -149,13 +149,42 @@ export class WorkSessionRepository {
          and updated_at < $3::timestamptz
          and ($4::text is null or workspace_id = $4)
          and ($5::text is null or thread_id = $5)
-         and ($6::text is null or client_name = $6)`,
+         and ($6::text is null or client_name = $6)
+       returning id`,
       [
         input.projectId,
         input.surface,
         input.olderThan,
         input.workspaceId ?? null,
         input.threadId ?? null,
+        input.clientName ?? null,
+      ],
+    )
+    return rows.length
+  }
+
+  async promoteThreadId(input: {
+    projectId: string
+    surface: WorkSessionRow["surface"]
+    provisionalThreadId: string
+    canonicalThreadId: string
+    clientName?: string | null
+  }): Promise<void> {
+    await this.provider.query(
+      `update work_sessions
+       set thread_id = $4,
+           association_method = 'promoted_thread',
+           association_confidence = greatest(coalesce(association_confidence, 0), 0.99),
+           updated_at = now()
+       where project_id = $1
+         and surface = $2
+         and thread_id = $3
+         and ($5::text is null or client_name = $5)`,
+      [
+        input.projectId,
+        input.surface,
+        input.provisionalThreadId,
+        input.canonicalThreadId,
         input.clientName ?? null,
       ],
     )

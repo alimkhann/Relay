@@ -28,4 +28,9 @@ export interface UpdateMemoryItemInput {
   pinned?: boolean
   tags?: string[]
   isArchived?: boolean
+  metadata?: Record<string, unknown>
+  sourceConversationId?: string | null
+  sourceUrl?: string | null
+  capturedAt?: string | null
+  derivedFrom?: string[] | null
 }

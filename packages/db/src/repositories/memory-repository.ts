@@ -106,15 +106,38 @@ export class MemoryRepository {
     const rows = await this.provider.query(
       `update memory_items
        set title = case when $2::boolean then null else coalesce($3, title) end,
-           content = coalesce($4, content),
-           type = coalesce($5, type),
-           pinned = coalesce($6, pinned),
-           tags = coalesce($7::text[], tags),
-           is_archived = coalesce($8, is_archived),
-           updated_at = now()
-       where id = $1
-       returning *`,
-      [id, patch.title === null, patch.title ?? null, patch.content ?? null, patch.type ?? null, patch.pinned ?? null, patch.tags ?? null, patch.isArchived ?? null]
+            content = coalesce($4, content),
+            type = coalesce($5, type),
+            pinned = coalesce($6, pinned),
+            tags = coalesce($7::text[], tags),
+            is_archived = coalesce($8, is_archived),
+            metadata = coalesce($9::jsonb, metadata),
+            source_conversation_id = case when $10::boolean then null else coalesce($11, source_conversation_id) end,
+            source_url = case when $12::boolean then null else coalesce($13, source_url) end,
+            captured_at = case when $14::boolean then null else coalesce($15::timestamptz, captured_at) end,
+            derived_from = case when $16::boolean then null else coalesce($17::text[], derived_from) end,
+            updated_at = now()
+        where id = $1
+        returning *`,
+      [
+        id,
+        patch.title === null,
+        patch.title ?? null,
+        patch.content ?? null,
+        patch.type ?? null,
+        patch.pinned ?? null,
+        patch.tags ?? null,
+        patch.isArchived ?? null,
+        patch.metadata ? JSON.stringify(patch.metadata) : null,
+        patch.sourceConversationId === null,
+        patch.sourceConversationId ?? null,
+        patch.sourceUrl === null,
+        patch.sourceUrl ?? null,
+        patch.capturedAt === null,
+        patch.capturedAt ?? null,
+        patch.derivedFrom === null,
+        patch.derivedFrom ?? null,
+      ]
     )
 
     const row = rows[0]

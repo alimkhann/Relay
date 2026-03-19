@@ -37,5 +37,10 @@ export const updateMemoryItemSchema = z.object({
   type: z.enum(["note", "decision", "constraint", "requirement", "task", "artifact"]).optional(),
   pinned: z.boolean().optional(),
   tags: z.array(z.string().max(50)).max(10).optional(),
-  isArchived: z.boolean().optional()
+  isArchived: z.boolean().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  sourceConversationId: z.string().nullable().optional(),
+  sourceUrl: z.string().url().nullable().optional(),
+  capturedAt: z.string().datetime().nullable().optional(),
+  derivedFrom: z.array(z.string()).nullable().optional()
 })
