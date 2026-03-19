@@ -32,7 +32,7 @@ export function Nav() {
           className={cn(
             "mx-auto grid grid-cols-[1fr_auto] md:grid-cols-[120px_1fr_120px] items-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] px-6 py-3 md:py-5 max-w-6xl border border-transparent bg-transparent",
             mobileOpen &&
-              "max-md:border-b max-md:border-white/[0.06]",
+              "max-md:bg-[#0a0a0a] max-md:border-b max-md:border-white/[0.06]",
             shaped &&
               "lg:mt-3 lg:max-w-3xl lg:rounded-[20px] lg:border-white/[0.08] lg:bg-white/[0.04] lg:px-4 lg:py-2 lg:backdrop-blur-2xl lg:shadow-[0_2px_24px_rgba(0,0,0,0.3)]"
           )}
@@ -100,9 +100,9 @@ export function Nav() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-x-0 top-[60px] bottom-0 z-40 bg-[#0a0a0a] backdrop-blur-xl border-b border-white/[0.06] md:hidden"
+            className="fixed inset-x-0 top-[68px] z-40 bg-[#0a0a0a]/98 backdrop-blur-xl border-y border-white/[0.06] shadow-[0_18px_50px_rgba(0,0,0,0.45)] md:hidden"
           >
-            <div className="px-5 pt-6 pb-5 flex flex-col gap-5 min-h-full">
+            <div className="px-5 pt-7 pb-6 flex flex-col gap-6">
               {NAV_LINKS.map((link) => (
                 <a
                   key={link.label}
@@ -111,7 +111,7 @@ export function Nav() {
                   {...(link.external
                     ? { target: "_blank", rel: "noopener noreferrer" }
                     : {})}
-                  className="text-base text-white/60 hover:text-white transition-colors py-1"
+                  className="text-base text-white/60 hover:text-white transition-colors py-0.5"
                 >
                   {link.label}
                 </a>
@@ -119,7 +119,7 @@ export function Nav() {
               <Link
                 href="/get-started"
                 onClick={() => setMobileOpen(false)}
-                className="mt-2 inline-flex items-center justify-center gap-1.5 rounded-full bg-white text-[#0a0a0a] px-5 py-2.5 text-sm font-medium"
+                className="mt-1 inline-flex items-center justify-center gap-1.5 rounded-full bg-white text-[#0a0a0a] px-5 py-2.5 text-sm font-medium"
               >
                 Get Started →
               </Link>
