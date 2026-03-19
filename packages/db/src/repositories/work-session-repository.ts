@@ -65,24 +65,27 @@ export class WorkSessionRepository {
     workspaceId?: string | null
     threadId?: string | null
     clientName?: string | null
+    updatedSince?: string | null
   }): Promise<WorkSessionRow | null> {
     const rows = await this.provider.query(
       `select *
        from work_sessions
-       where project_id = $1
-         and surface = $2
-         and status = 'active'
-         and ($3::text is null or workspace_id = $3)
-         and ($4::text is null or thread_id = $4)
-         and ($5::text is null or client_name = $5)
-       order by updated_at desc
-       limit 1`,
+        where project_id = $1
+          and surface = $2
+          and status = 'active'
+          and ($3::text is null or workspace_id = $3)
+          and ($4::text is null or thread_id = $4)
+          and ($5::text is null or client_name = $5)
+          and ($6::timestamptz is null or updated_at >= $6::timestamptz)
+        order by updated_at desc
+        limit 1`,
       [
         input.projectId,
         input.surface,
         input.workspaceId ?? null,
         input.threadId ?? null,
         input.clientName ?? null,
+        input.updatedSince ?? null,
       ],
     )
 
@@ -125,5 +128,36 @@ export class WorkSessionRepository {
     const row = rows[0]
     if (!row) throw new Error("Work session not found")
     return toWorkSessionRow(row as Record<string, unknown>)
+  }
+
+  async markStaleOlderThan(input: {
+    projectId: string
+    surface: WorkSessionRow["surface"]
+    olderThan: string
+    workspaceId?: string | null
+    threadId?: string | null
+    clientName?: string | null
+  }): Promise<void> {
+    await this.provider.query(
+      `update work_sessions
+       set status = 'stale',
+           ended_at = coalesce(ended_at, now()),
+           updated_at = now()
+       where project_id = $1
+         and surface = $2
+         and status = 'active'
+         and updated_at < $3::timestamptz
+         and ($4::text is null or workspace_id = $4)
+         and ($5::text is null or thread_id = $5)
+         and ($6::text is null or client_name = $6)`,
+      [
+        input.projectId,
+        input.surface,
+        input.olderThan,
+        input.workspaceId ?? null,
+        input.threadId ?? null,
+        input.clientName ?? null,
+      ],
+    )
   }
 }

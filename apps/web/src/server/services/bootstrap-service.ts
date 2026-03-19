@@ -481,6 +481,57 @@ function applyCheckpointSignalsToState(
   }
 }
 
+interface ContinuityDelta {
+  summaries: string[]
+  decisions: string[]
+  constraints: string[]
+  tasks: string[]
+  notes: string[]
+}
+
+function buildContinuityDelta(
+  digests: SessionDigestRow[],
+  memoryItems: MemoryItemRow[],
+): ContinuityDelta {
+  const summaries = Array.from(
+    new Set(
+      digests
+        .map((digest) => normalizeText(digest.summaryShort))
+        .filter(Boolean)
+        .slice(0, 4),
+    ),
+  )
+
+  const typed = (type: MemoryItemRow["type"]) =>
+    Array.from(
+      new Set(
+        memoryItems
+          .filter((item) => item.type === type)
+          .map((item) => normalizeText(item.content))
+          .filter(Boolean)
+          .slice(0, 6),
+      ),
+    )
+
+  const notes = Array.from(
+    new Set(
+      memoryItems
+        .filter((item) => ["note", "requirement", "artifact"].includes(item.type))
+        .map((item) => normalizeText(item.content))
+        .filter(Boolean)
+        .slice(0, 4),
+    ),
+  )
+
+  return {
+    summaries,
+    decisions: typed("decision"),
+    constraints: typed("constraint"),
+    tasks: typed("task"),
+    notes,
+  }
+}
+
 function renderFreshChatMarkdown(shape: BootstrapModelShape, profile: TargetProfileRow, memoryItems: MemoryItemRow[]) {
   // Collapse near-duplicates before rendering
   const dedupedDecisions = mergeGovernedList([], shape.decisions, "decision")
@@ -539,7 +590,11 @@ function renderFreshChatMarkdown(shape: BootstrapModelShape, profile: TargetProf
   return result
 }
 
-function renderContinuationMarkdown(shape: BootstrapModelShape, profile: TargetProfileRow) {
+function renderContinuationMarkdown(
+  shape: BootstrapModelShape,
+  profile: TargetProfileRow,
+  delta?: ContinuityDelta | null,
+) {
   const lines = [`Continue this project in ${profile.name}.`, ""]
 
   if (shape.currentObjective) {
@@ -555,14 +610,44 @@ function renderContinuationMarkdown(shape: BootstrapModelShape, profile: TargetP
   }
 
   lines.push("")
+
+  const hasDelta = Boolean(
+    delta &&
+      (delta.summaries.length ||
+        delta.decisions.length ||
+        delta.constraints.length ||
+        delta.tasks.length ||
+        delta.notes.length),
+  )
+
+  if (hasDelta && delta) {
+    lines.push("## Changes Since Last Sync")
+    if (delta.summaries.length) {
+      lines.push(...delta.summaries.map((item) => `- ${escapeMarkdownInline(item)}`))
+    }
+    lines.push("")
+    appendListSection(lines, "New Decisions", delta.decisions.slice(0, 4))
+    appendListSection(lines, "New Constraints", delta.constraints.slice(0, 4))
+    appendListSection(lines, "New Tasks", delta.tasks.slice(0, 5))
+    appendListSection(lines, "New Notes", delta.notes.slice(0, 3))
+  }
+
   appendListSection(lines, "Open Tasks", shape.openTasks.slice(0, 5))
   appendListSection(lines, "Constraints", shape.constraints.slice(0, 5))
 
   return lines.join("\n").trim()
 }
 
-export function renderBootstrapMarkdown(shape: BootstrapModelShape, profile: TargetProfileRow, kind: BootstrapRequest["kind"], memoryItems: MemoryItemRow[] = []) {
-  return kind === "quick_continuity" ? renderContinuationMarkdown(shape, profile) : renderFreshChatMarkdown(shape, profile, memoryItems)
+export function renderBootstrapMarkdown(
+  shape: BootstrapModelShape,
+  profile: TargetProfileRow,
+  kind: BootstrapRequest["kind"],
+  memoryItems: MemoryItemRow[] = [],
+  input: { delta?: ContinuityDelta | null } = {},
+) {
+  return kind === "quick_continuity"
+    ? renderContinuationMarkdown(shape, profile, input.delta)
+    : renderFreshChatMarkdown(shape, profile, memoryItems)
 }
 
 function describeJobStage(stage: string | null) {
@@ -784,6 +869,7 @@ export async function generateBootstrapForProject(userId: string, projectId: str
   const scopedMemoryItems = sinceTime
     ? [...activeMemoryItems, ...workSessionMemoryDtos].filter((item) => new Date(item.updatedAt).getTime() >= sinceTime)
     : [...activeMemoryItems, ...workSessionMemoryDtos]
+  const continuityDelta = sinceTime ? buildContinuityDelta(scopedDigests, scopedMemoryItems) : null
 
   const stateStatus = await getProjectStateStatus(repositories, projectId)
   if (shouldDeferBootstrapGeneration(state, scopedDigests)) {
@@ -858,7 +944,9 @@ export async function generateBootstrapForProject(userId: string, projectId: str
     projectId,
     targetProfileId: profile.id,
     kind: parsed.kind,
-    content: renderBootstrapMarkdown(shape, profile, parsed.kind, scopedMemoryItems),
+    content: renderBootstrapMarkdown(shape, profile, parsed.kind, scopedMemoryItems, {
+      delta: continuityDelta,
+    }),
     structuredSnapshot: { ...shape },
     renderer,
     generationMetadata: {

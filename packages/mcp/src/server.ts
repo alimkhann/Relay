@@ -75,7 +75,9 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
     getBriefSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
-      const since = await client.getDefaultSince(projectId, args.since)
+      const since = args.kind === "quick_continuity"
+        ? await client.getDefaultSince(projectId, args.since)
+        : args.since
       const result = await getBrief(client, { ...args, since }, projectId)
       await client.recordSessionEvent(projectId, "brief_read", {
         kind: args.kind,

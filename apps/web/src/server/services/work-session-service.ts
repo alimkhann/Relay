@@ -92,6 +92,24 @@ function isSyncSurface(surface: WorkSessionRow["surface"]): surface is SyncSurfa
   ].includes(surface)
 }
 
+function getWorkSessionReuseWindowMs(surface: WorkSessionRow["surface"]) {
+  switch (surface) {
+    case "mcp":
+    case "cli":
+      return 90 * 60 * 1000
+    case "chatgpt":
+    case "claude":
+    case "gemini":
+    case "grok":
+    case "perplexity":
+    case "deepseek":
+    case "codex":
+      return 8 * 60 * 60 * 1000
+    default:
+      return 2 * 60 * 60 * 1000
+  }
+}
+
 export async function openWorkSession(
   userId: string,
   projectId: string,
@@ -99,6 +117,16 @@ export async function openWorkSession(
 ) {
   const repositories = createRepositoryBundle(userId)
   const parsed = workSessionOpenSchema.parse(input) as WorkSessionOpenRequest
+  const staleBefore = new Date(Date.now() - getWorkSessionReuseWindowMs(parsed.surface)).toISOString()
+
+  await repositories.workSessions.markStaleOlderThan({
+    projectId,
+    surface: parsed.surface,
+    olderThan: staleBefore,
+    workspaceId: parsed.workspaceId ?? null,
+    threadId: parsed.threadId ?? null,
+    clientName: parsed.clientName ?? null,
+  })
 
   const existing = await repositories.workSessions.findReusableActiveSession({
     projectId,
@@ -106,6 +134,7 @@ export async function openWorkSession(
     workspaceId: parsed.workspaceId ?? null,
     threadId: parsed.threadId ?? null,
     clientName: parsed.clientName ?? null,
+    updatedSince: staleBefore,
   })
 
   if (existing) {
