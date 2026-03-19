@@ -7,6 +7,7 @@ import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 import { LocalSignInForm } from "@/components/auth/local-sign-in-form";
 import { getAuthProvider } from "@/lib/auth/provider";
 import { PageTelemetry } from "@/components/telemetry/page-telemetry";
+import { pickRandomLandingBackground } from "@/app/(marketing)/background-images";
 import {
   resolveAuthenticatedAppPath,
   resolveOptionalViewer,
@@ -35,6 +36,7 @@ export default async function SignInPage({
     authProvider === "local" ||
       (process.env.NEON_AUTH_BASE_URL && process.env.NEON_AUTH_COOKIE_SECRET),
   );
+  const authBackgroundSrc = pickRandomLandingBackground();
 
   return (
     <main className="flex min-h-screen bg-[var(--relay-bg)]">
@@ -48,7 +50,7 @@ export default async function SignInPage({
       {/* Left column — hero */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
         <Image
-          src="/images/hero-hills.jpg"
+          src={authBackgroundSrc}
           alt=""
           fill
           className="object-cover"

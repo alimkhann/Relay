@@ -9,12 +9,16 @@ import { PricingSection } from "./components/pricing-section"
 import { Faq } from "./components/faq"
 import { BottomCta } from "./components/bottom-cta"
 import { Footer } from "./components/footer"
-import { pickRandomLandingBackground } from "./background-images"
+import {
+  pickOppositeLandingBackground,
+  pickRandomLandingBackground,
+} from "./background-images"
 
 export default function LandingPage() {
   noStore()
 
   const backgroundSrc = pickRandomLandingBackground()
+  const bottomCtaBackgroundSrc = pickOppositeLandingBackground(backgroundSrc)
 
   return (
     <main className="bg-[#0a0a0a] text-[#f5f5f5] overflow-x-hidden">
@@ -26,7 +30,7 @@ export default function LandingPage() {
       <McpSection />
       <PricingSection />
       <Faq />
-      <BottomCta backgroundSrc={backgroundSrc} />
+      <BottomCta backgroundSrc={bottomCtaBackgroundSrc} />
       <Footer />
     </main>
   )
