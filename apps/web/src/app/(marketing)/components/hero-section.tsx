@@ -5,6 +5,7 @@ import Link from "next/link"
 import { motion } from "motion/react"
 import { LogoStrip } from "./logo-strip"
 import { ChevronDown } from "lucide-react"
+import { usePreloaderReady } from "./use-preloader-ready"
 
 const ease = [0.25, 0.1, 0.25, 1] as const
 
@@ -18,6 +19,8 @@ const fadeUp = {
 }
 
 export function HeroSection({ backgroundSrc }: { backgroundSrc: string }) {
+  const ready = usePreloaderReady()
+
   return (
     <section id="top" className="relative min-h-screen flex flex-col">
       {/* Background image */}
@@ -49,7 +52,7 @@ export function HeroSection({ backgroundSrc }: { backgroundSrc: string }) {
             custom={0}
             variants={fadeUp}
             initial="hidden"
-            animate="visible"
+            animate={ready ? "visible" : "hidden"}
             className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-white/[0.12] bg-white/[0.04] mb-8"
           >
             <span className="text-white/60 text-xs">✦</span>
@@ -63,7 +66,7 @@ export function HeroSection({ backgroundSrc }: { backgroundSrc: string }) {
             custom={0.1}
             variants={fadeUp}
             initial="hidden"
-            animate="visible"
+            animate={ready ? "visible" : "hidden"}
             className="text-[2.15rem] sm:text-5xl md:text-7xl font-semibold tracking-tight leading-[1.02] text-white text-balance max-w-[11ch] sm:max-w-none mx-auto"
           >
             Stop repeating yourself
@@ -80,7 +83,7 @@ export function HeroSection({ backgroundSrc }: { backgroundSrc: string }) {
             custom={0.2}
             variants={fadeUp}
             initial="hidden"
-            animate="visible"
+            animate={ready ? "visible" : "hidden"}
             className="mt-6 text-[14px] sm:text-base md:text-lg text-white/60 leading-relaxed max-w-[46rem] mx-auto px-2 sm:px-0"
           >
             Relay captures what matters from your AI chats and keeps a living project brief ready
@@ -92,7 +95,7 @@ export function HeroSection({ backgroundSrc }: { backgroundSrc: string }) {
             custom={0.3}
             variants={fadeUp}
             initial="hidden"
-            animate="visible"
+            animate={ready ? "visible" : "hidden"}
             className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3"
           >
             <Link
@@ -118,21 +121,21 @@ export function HeroSection({ backgroundSrc }: { backgroundSrc: string }) {
             custom={0.4}
             variants={fadeUp}
             initial="hidden"
-            animate="visible"
+            animate={ready ? "visible" : "hidden"}
             className="mt-5 text-xs text-white/30"
           >
             Chrome extension · MCP for your IDE · Free to start
           </motion.p>
 
           {/* Logo strip */}
-          <LogoStrip />
+          <LogoStrip ready={ready} />
         </div>
       </div>
 
       {/* Scroll indicator */}
       <motion.div
         initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
+        animate={ready ? { opacity: 1 } : { opacity: 0 }}
         transition={{ delay: 1.2, duration: 0.6 }}
         className="absolute bottom-6 left-1/2 -translate-x-1/2"
       >

@@ -30,12 +30,13 @@ export const GET = withApiRoute(async (request: Request) => {
       return NextResponse.json({
         status: "confirmed",
         token: session.apiToken,
-        apiBase: process.env["NEXT_PUBLIC_APP_URL"] ?? "https://relay-flow.vercel.app"
+        apiBase: process.env["NEXT_PUBLIC_APP_URL"] ?? "https://onrelay.app"
       })
     }
 
     const { token } = await createExtensionTokenForUser(session.userId, {
-      deviceName: session.deviceName
+      deviceName: session.deviceName,
+      purpose: "cli_mcp"
     })
 
     await repositories.cliAuthSessions.markTokenIssued(session.id, token)
@@ -43,7 +44,7 @@ export const GET = withApiRoute(async (request: Request) => {
     return NextResponse.json({
       status: "confirmed",
       token,
-      apiBase: process.env["NEXT_PUBLIC_APP_URL"] ?? "https://relay-flow.vercel.app"
+      apiBase: process.env["NEXT_PUBLIC_APP_URL"] ?? "https://onrelay.app"
     })
   }
 

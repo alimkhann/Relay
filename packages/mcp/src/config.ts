@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises"
+import { readFile, mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { homedir } from "node:os"
 
@@ -6,15 +6,22 @@ export interface RelayConfig {
   apiBase: string
   token: string
   projectId?: string
+  refreshToken?: string
+  accessTokenExpiresAt?: string
+  refreshTokenExpiresAt?: string
 }
 
 interface ConfigFile {
   apiBase?: string
   token?: string
   projectId?: string
+  accessToken?: string
+  refreshToken?: string
+  accessTokenExpiresAt?: string
+  refreshTokenExpiresAt?: string
 }
 
-const DEFAULT_API_BASE = "https://relay-flow.vercel.app"
+const DEFAULT_API_BASE = "https://onrelay.app"
 const CONFIG_PATH = join(homedir(), ".relay", "mcp.json")
 
 async function loadConfigFile(): Promise<ConfigFile> {
@@ -29,7 +36,7 @@ async function loadConfigFile(): Promise<ConfigFile> {
 export async function loadConfig(): Promise<RelayConfig> {
   const file = await loadConfigFile()
 
-  const token = process.env["RELAY_API_TOKEN"] ?? file.token
+  const token = process.env["RELAY_API_TOKEN"] ?? file.accessToken ?? file.token
   if (!token) {
     throw new Error(
       "Relay API token not configured. Set RELAY_API_TOKEN env var or add token to ~/.relay/mcp.json"
@@ -39,6 +46,31 @@ export async function loadConfig(): Promise<RelayConfig> {
   return {
     apiBase: process.env["RELAY_API_BASE"] ?? file.apiBase ?? DEFAULT_API_BASE,
     token,
-    projectId: process.env["RELAY_PROJECT_ID"] ?? file.projectId
+    projectId: process.env["RELAY_PROJECT_ID"] ?? file.projectId,
+    refreshToken: file.refreshToken,
+    accessTokenExpiresAt: file.accessTokenExpiresAt,
+    refreshTokenExpiresAt: file.refreshTokenExpiresAt
   }
+}
+
+export async function saveConfig(config: RelayConfig): Promise<void> {
+  const existing = await loadConfigFile()
+  await mkdir(join(homedir(), ".relay"), { recursive: true })
+  await writeFile(
+    CONFIG_PATH,
+    JSON.stringify(
+      {
+        apiBase: config.apiBase,
+        token: existing.token,
+        accessToken: config.token,
+        refreshToken: config.refreshToken,
+        accessTokenExpiresAt: config.accessTokenExpiresAt,
+        refreshTokenExpiresAt: config.refreshTokenExpiresAt,
+        projectId: config.projectId
+      },
+      null,
+      2
+    ) + "\n",
+    "utf-8"
+  )
 }

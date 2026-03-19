@@ -38,7 +38,7 @@ export default function McpDocsPage() {
             <li>
               Save your token to <code className="text-[13px] font-mono text-[var(--relay-ink)]">~/.relay/mcp.json</code>:
               <pre className="mt-2 rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] px-4 py-3 text-[13px] font-mono text-[var(--relay-ink)]">{`{
-  "apiBase": "https://relay-flow.vercel.app",
+  "apiBase": "https://onrelay.app",
   "token": "relay_your_token_here"
 }`}</pre>
             </li>

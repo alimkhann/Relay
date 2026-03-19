@@ -33,6 +33,7 @@ export function LogoPreloader() {
     const path = window.location.pathname;
     const isDashboardPath =
       path === "/dashboard" ||
+      path === "/" ||
       path.startsWith("/dashboard/") ||
       path.startsWith("/activity") ||
       path.startsWith("/memory") ||
@@ -59,9 +60,9 @@ export function LogoPreloader() {
     sessionStorage.setItem("relay_preloader_shown", "1");
 
     // Read theme
-    const dark = document.documentElement.classList.contains("dark");
+    const dark = path === "/" || document.documentElement.classList.contains("dark");
     setIsDark(dark);
-    overlay.style.backgroundColor = dark ? "#1a1a1c" : "#ffffff";
+    overlay.style.backgroundColor = dark ? "#0a0a0a" : "#ffffff";
 
     // Clean up auth_callback param
     if (isAuthCallback) {
@@ -82,6 +83,7 @@ export function LogoPreloader() {
         const t3 = setTimeout(() => setPhase("fade-out"), 2300);
         const t4 = setTimeout(() => {
           setPhase("done");
+          window.dispatchEvent(new Event("relay:preloader-done"));
           overlay.remove();
         }, 2750);
 

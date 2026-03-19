@@ -11,7 +11,7 @@ describe("extension theme bridge", () => {
 
     expect(
       rememberExtensionIdFromLocation(
-        "https://relay-flow.vercel.app/dashboard?project=abc&extensionId=ext_123",
+        "https://onrelay.app/dashboard?project=abc&extensionId=ext_123",
       ),
     ).toBe("ext_123");
     expect(readStoredExtensionId()).toBe("ext_123");

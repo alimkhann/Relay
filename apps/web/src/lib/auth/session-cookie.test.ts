@@ -105,7 +105,7 @@ describe("readSessionUserFromCookie", () => {
 
   it("falls back to the auth server when the cached cookie is missing", async () => {
     cookieState.set(SESSION_TOKEN_COOKIE_NAME, "session-token")
-    headerState.set("host", "relay-flow.vercel.app")
+    headerState.set("host", "onrelay.app")
     const fetchMock = vi.fn(async () =>
       Response.json({
         user: {

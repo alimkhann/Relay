@@ -105,7 +105,7 @@ function LogoTicker({
   )
 }
 
-export function LogoStrip() {
+export function LogoStrip({ ready = true }: { ready?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: "-80px" })
 
@@ -113,7 +113,7 @@ export function LogoStrip() {
     <motion.div
       ref={ref}
       initial={{ opacity: 0, y: 20 }}
-      animate={inView ? { opacity: 1, y: 0 } : undefined}
+      animate={ready && inView ? { opacity: 1, y: 0 } : undefined}
       transition={{ duration: 0.55, delay: 0.18, ease: [0.25, 0.1, 0.25, 1] }}
       className="mt-14 flex flex-col items-center gap-6 w-full"
     >

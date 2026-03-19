@@ -285,10 +285,10 @@ export default function MachinePage() {
         <p>
           Website:{" "}
           <a
-            href="https://relay-flow.vercel.app"
+            href="https://onrelay.app"
             style={{ color: "#888", textDecoration: "underline" }}
           >
-            relay-flow.vercel.app
+            onrelay.app
           </a>
         </p>
       </div>

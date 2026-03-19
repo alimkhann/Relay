@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://onrelay.app"),
   title: "Relay — Stop repeating yourself to every AI",
   description:
     "Relay captures decisions, tasks, and constraints from your AI chats and keeps a living project brief synced across ChatGPT, Claude, Gemini, Cursor, Claude Code, and 20+ other tools via MCP.",
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
       "Relay captures context from your AI chats and keeps a living project brief synced across ChatGPT, Claude, Cursor, Claude Code, and 20+ tools.",
     images: [{ url: "/images/hero-bg.jpg", width: 1920, height: 1080 }],
     type: "website",
-    url: "https://relay-flow.vercel.app",
+    url: "https://onrelay.app",
   },
   twitter: {
     card: "summary_large_image",
@@ -29,7 +30,7 @@ const jsonLd = {
   operatingSystem: "Chrome, Web",
   description:
     "Cross-AI context management. Relay captures decisions from your AI chats and keeps a living project brief synced across ChatGPT, Claude, Cursor, Claude Code, and 20+ tools via MCP.",
-  url: "https://relay-flow.vercel.app",
+  url: "https://onrelay.app",
   offers: [
     {
       "@type": "Offer",

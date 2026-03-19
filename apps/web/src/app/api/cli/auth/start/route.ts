@@ -34,7 +34,7 @@ export const POST = withApiRoute(async () => {
     expiresAt
   })
 
-  const appUrl = process.env["NEXT_PUBLIC_APP_URL"] ?? "https://relay-flow.vercel.app"
+  const appUrl = process.env["NEXT_PUBLIC_APP_URL"] ?? "https://onrelay.app"
 
   return NextResponse.json({
     pollingSecret,

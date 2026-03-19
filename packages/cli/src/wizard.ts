@@ -1,14 +1,16 @@
 import * as p from "@clack/prompts"
 import pc from "picocolors"
 
-import { startAuthFlow } from "./auth"
+import { startAuthFlow, startScopedMcpAuthFlow } from "./auth"
+import { RelayApiClient } from "./api-client"
 import { loadConfig, saveConfig, getConfigPath } from "./config"
 import { detectIDEs } from "./detect"
 import { installMcpConfig } from "./install-mcp"
 import { installSkillFile, installUniversalSkillFile } from "./install-skill"
+import { listProjects } from "./project-api"
 import { printBanner, success, info, step } from "./ui"
 
-const DEFAULT_API_BASE = "https://relay-flow.vercel.app"
+const DEFAULT_API_BASE = "https://onrelay.app"
 
 export async function runWizard(options: { apiBase?: string } = {}) {
   printBanner()
@@ -36,8 +38,51 @@ export async function runWizard(options: { apiBase?: string } = {}) {
   const auth = await startAuthFlow(apiBase)
   success("Authenticated successfully!")
 
+  let projectId = existing?.projectId
+  const projectClient = new RelayApiClient(auth.apiBase, auth.token)
+  const projects = await listProjects(projectClient)
+
+  if (projects.length > 0) {
+    const selectedProjectId = await p.select({
+      message: "Choose the active Relay project for MCP access:",
+      options: projects.map((project) => ({
+        value: project.id,
+        label: project.name,
+        hint: project.slug
+      })),
+      initialValue: projectId ?? projects[0]?.id
+    })
+
+    if (!p.isCancel(selectedProjectId)) {
+      projectId = selectedProjectId as string
+    }
+  }
+
+  let accessToken: string | undefined
+  let refreshToken: string | undefined
+  let accessTokenExpiresAt: string | undefined
+  let refreshTokenExpiresAt: string | undefined
+
+  if (projectId) {
+    step("Requesting scoped MCP token...")
+    const scopedAuth = await startScopedMcpAuthFlow(auth.apiBase, projectId)
+    accessToken = scopedAuth.accessToken
+    refreshToken = scopedAuth.refreshToken
+    accessTokenExpiresAt = scopedAuth.accessExpiresAt
+    refreshTokenExpiresAt = scopedAuth.refreshExpiresAt
+    success("Scoped MCP access approved!")
+  }
+
   // Save config
-  await saveConfig({ apiBase: auth.apiBase, token: auth.token })
+  await saveConfig({
+    apiBase: auth.apiBase,
+    token: auth.token,
+    projectId,
+    accessToken,
+    refreshToken,
+    accessTokenExpiresAt,
+    refreshTokenExpiresAt,
+  })
   success(`Config saved to ${pc.dim(getConfigPath())}`)
 
   // Detect IDEs

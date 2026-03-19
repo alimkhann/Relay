@@ -35,16 +35,16 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `(function(){try{
   var path=location.pathname;
-  var isDashboardPath=path==="/dashboard"||path.startsWith("/dashboard/")||path.startsWith("/activity")||path.startsWith("/memory")||path.startsWith("/settings")||path.startsWith("/projects")||path.startsWith("/brief");
+  var isDashboardPath=path==="/"||path==="/dashboard"||path.startsWith("/dashboard/")||path.startsWith("/activity")||path.startsWith("/memory")||path.startsWith("/settings")||path.startsWith("/projects")||path.startsWith("/brief");
   if(!isDashboardPath)return;
   var p=new URLSearchParams(location.search);
   var isAuth=p.get("auth_callback")==="1";
   var seen=sessionStorage.getItem("relay_preloader_shown")==="1";
   if(!isAuth&&seen)return;
-  var dark=document.documentElement.classList.contains("dark");
+  var dark=path==="/"||document.documentElement.classList.contains("dark");
   var el=document.createElement("div");
   el.id="relay-preloader";
-  el.style.cssText="position:fixed;inset:0;z-index:9999;background:"+(dark?"#1a1a1c":"#fff");
+  el.style.cssText="position:fixed;inset:0;z-index:9999;background:"+(dark?"#0a0a0a":"#fff");
   document.documentElement.appendChild(el);
 }catch(e){}})();`,
           }}
