@@ -4,7 +4,7 @@ import type {
   ExtensionConnectGrantRow,
   ProjectStateOverrideRow,
   ProjectStateRow,
-  SessionDigestRow
+  SessionDigestRow,
 } from "@relay/shared"
 
 function toStringArray(value: unknown): string[] {

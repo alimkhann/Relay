@@ -75,7 +75,15 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
     getBriefSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
-      return getBrief(client, args, projectId)
+      const since = await client.getDefaultSince(projectId, args.since)
+      const result = await getBrief(client, { ...args, since }, projectId)
+      await client.recordSessionEvent(projectId, "brief_read", {
+        kind: args.kind,
+        targetProfileKey: args.targetProfileKey,
+        since: since ?? null,
+        syncSurface: args.syncSurface,
+      })
+      return result
     }
   )
 
@@ -85,6 +93,7 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
     getProjectStateSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
+      await client.recordSessionEvent(projectId, "project_state_read", {})
       return getProjectState(client, projectId)
     }
   )
@@ -95,7 +104,13 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
     searchContextSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
-      return searchContext(client, args, projectId)
+      const result = await searchContext(client, args, projectId)
+      await client.recordSessionEvent(projectId, "context_search", {
+        query: args.query,
+        types: args.types ?? [],
+        tags: args.tags ?? [],
+      })
+      return result
     }
   )
 
@@ -105,7 +120,19 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
     addMemorySchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
-      return addMemory(client, args, projectId)
+      const result = await addMemory(client, args, projectId)
+      await client.recordSessionMutation(projectId, {
+        eventType: "memory_added",
+        eventPayload: {
+          type: args.type,
+          title: args.title ?? null,
+        },
+        decisions: args.type === "decision" ? [args.content] : undefined,
+        constraints: args.type === "constraint" ? [args.content] : undefined,
+        nextSteps: args.type === "task" ? [args.content] : undefined,
+        notes: args.type === "note" || args.type === "artifact" || args.type === "requirement" ? [args.content] : undefined,
+      })
+      return result
     }
   )
 
@@ -115,7 +142,21 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
     saveContextSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
-      return saveContext(client, args, projectId)
+      const result = await saveContext(client, args, projectId)
+      await client.recordSessionMutation(projectId, {
+        eventType: "session_context_saved",
+        eventPayload: {
+          savedVia: "relay_save_context",
+        },
+        summary: args.summary,
+        progress: args.progress,
+        decisions: args.decisions,
+        constraints: args.constraints,
+        nextSteps: args.nextSteps,
+        notes: args.notes,
+      })
+      await client.closeWorkSession()
+      return result
     }
   )
 
@@ -123,7 +164,16 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
     "relay_manage_memory",
     "Update, delete, or archive memory items. Supports bulk operations for cleaning up outdated or contradicting items. Use to keep project context lean and accurate.",
     manageMemorySchema.shape,
-    async (args) => manageMemory(client, args)
+    async (args) => {
+      const result = await manageMemory(client, args)
+      if (cachedProjectId) {
+        await client.recordSessionEvent(cachedProjectId, "memory_managed", {
+          action: args.action,
+          memoryId: args.memoryId,
+        }).catch(() => undefined)
+      }
+      return result
+    }
   )
 
   server.tool(
@@ -132,7 +182,16 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
     updateProjectSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
-      return updateProject(client, args, projectId)
+      const result = await updateProject(client, args, projectId)
+      await client.recordSessionMutation(projectId, {
+        eventType: "project_updated",
+        eventPayload: {
+          name: args.name ?? null,
+          descriptionChanged: typeof args.description === "string",
+        },
+        summary: args.description ?? undefined,
+      })
+      return result
     }
   )
 

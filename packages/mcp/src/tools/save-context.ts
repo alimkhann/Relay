@@ -15,6 +15,21 @@ interface BatchCreateResponse {
   items: Array<{ id: string; type: string; title: string | null }>
 }
 
+function buildMcpMetadata(kind: "summary" | "progress" | "decision" | "constraint" | "task" | "note") {
+  return {
+    source: "mcp",
+    authority: kind === "decision" || kind === "constraint" ? "work_session" : "validated_state",
+    durability:
+      kind === "decision" || kind === "constraint"
+        ? "durable"
+        : kind === "task"
+          ? "working"
+          : "durable",
+    validationState: kind === "summary" || kind === "progress" ? "validated" : "inferred",
+    workSessionFinalized: true
+  }
+}
+
 export async function saveContext(
   client: RelayClient,
   args: z.infer<typeof saveContextSchema>,
@@ -35,7 +50,7 @@ export async function saveContext(
     type: "note",
     content: args.summary,
     title: "IDE Session Summary",
-    metadata: { source: "mcp" },
+    metadata: buildMcpMetadata("summary"),
     sourceSurface: "mcp",
     capturedAt
   })
@@ -46,7 +61,7 @@ export async function saveContext(
       type: "note",
       content: args.progress,
       title: "Session Progress",
-      metadata: { source: "mcp" },
+      metadata: buildMcpMetadata("progress"),
       sourceSurface: "mcp",
       capturedAt
     })
@@ -58,7 +73,7 @@ export async function saveContext(
       items.push({
         type: "decision",
         content: decision,
-        metadata: { source: "mcp" },
+        metadata: buildMcpMetadata("decision"),
         sourceSurface: "mcp",
         capturedAt
       })
@@ -71,7 +86,7 @@ export async function saveContext(
       items.push({
         type: "constraint",
         content: constraint,
-        metadata: { source: "mcp" },
+        metadata: buildMcpMetadata("constraint"),
         sourceSurface: "mcp",
         capturedAt
       })
@@ -84,7 +99,7 @@ export async function saveContext(
       items.push({
         type: "task",
         content: step,
-        metadata: { source: "mcp" },
+        metadata: buildMcpMetadata("task"),
         sourceSurface: "mcp",
         capturedAt
       })
@@ -97,7 +112,7 @@ export async function saveContext(
       items.push({
         type: "note",
         content: note,
-        metadata: { source: "mcp" },
+        metadata: buildMcpMetadata("note"),
         sourceSurface: "mcp",
         capturedAt
       })

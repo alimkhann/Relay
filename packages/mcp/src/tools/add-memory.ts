@@ -37,7 +37,12 @@ export async function addMemory(
       title: args.title ?? null,
       pinned: args.pinned ?? false,
       tags: args.tags ?? [],
-      metadata: { source: "mcp" },
+      metadata: {
+        source: "mcp",
+        authority: "work_session",
+        durability: args.type === "decision" || args.type === "constraint" ? "durable" : "working",
+        validationState: "inferred"
+      },
       // Source provenance: mark as MCP-sourced
       sourceSurface: "mcp",
       capturedAt: new Date().toISOString()

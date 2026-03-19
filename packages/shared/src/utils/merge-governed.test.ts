@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  computeMemoryTruthScore,
+  deduplicateMemoryItems,
   hasCompletionSignal,
   isSameTopic,
   isLikelySameTopic,
@@ -136,5 +138,58 @@ describe("thresholds", () => {
 
   it("TOPIC_GREY_ZONE_MIN is 0.6", () => {
     expect(TOPIC_GREY_ZONE_MIN).toBe(0.6)
+  })
+})
+
+describe("truth-weighted memory conflict resolution", () => {
+  it("prefers a validated foundational item over a merely newer inferred item", () => {
+    const items = deduplicateMemoryItems([
+      {
+        id: "older-foundational",
+        type: "decision",
+        content: "Use Postgres for the primary database",
+        capturedAt: "2026-03-01T00:00:00.000Z",
+        metadata: {
+          authority: "validated_state",
+          durability: "foundational",
+          validationState: "validated",
+        },
+      },
+      {
+        id: "newer-inferred",
+        type: "decision",
+        content: "Use Postgres for the database",
+        capturedAt: "2026-03-10T00:00:00.000Z",
+        metadata: {
+          authority: "work_session",
+          durability: "working",
+          validationState: "inferred",
+        },
+      },
+    ])
+
+    expect(items).toHaveLength(1)
+    expect(items[0]?.id).toBe("older-foundational")
+  })
+
+  it("gives pinned items a strong truth score boost", () => {
+    const pinned = computeMemoryTruthScore({
+      id: "pinned",
+      type: "constraint",
+      content: "Do not introduce third-party auth providers",
+      capturedAt: "2026-03-01T00:00:00.000Z",
+      pinned: true,
+      metadata: {},
+    })
+
+    const plain = computeMemoryTruthScore({
+      id: "plain",
+      type: "constraint",
+      content: "Do not introduce third-party auth providers",
+      capturedAt: "2026-03-01T00:00:00.000Z",
+      metadata: {},
+    })
+
+    expect(pinned).toBeGreaterThan(plain)
   })
 })

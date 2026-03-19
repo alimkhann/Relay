@@ -112,6 +112,65 @@ export interface MemoryItemForConflictResolution {
   content: string
   capturedAt: string | null
   type: string
+  pinned?: boolean
+  sourceSurface?: string | null
+  metadata?: Record<string, unknown>
+}
+
+function getNumericMetadata(metadata: Record<string, unknown> | undefined, key: string) {
+  const value = metadata?.[key]
+  return typeof value === "number" && Number.isFinite(value) ? value : 0
+}
+
+function getStringMetadata(metadata: Record<string, unknown> | undefined, key: string) {
+  const value = metadata?.[key]
+  return typeof value === "string" ? value : null
+}
+
+export function computeMemoryTruthScore(item: MemoryItemForConflictResolution) {
+  let score = 0
+  const metadata = item.metadata ?? {}
+
+  if (item.pinned) score += 40
+
+  const authority = getStringMetadata(metadata, "authority")
+  if (authority === "human_explicit") score += 36
+  else if (authority === "artifact_verified") score += 30
+  else if (authority === "validated_state") score += 22
+  else if (authority === "work_session") score += 12
+
+  const durability = getStringMetadata(metadata, "durability")
+  if (durability === "foundational") score += 18
+  else if (durability === "durable") score += 12
+  else if (durability === "working") score += 6
+
+  const validationState = getStringMetadata(metadata, "validationState")
+  if (validationState === "confirmed") score += 20
+  else if (validationState === "validated") score += 14
+  else if (validationState === "contested") score -= 18
+
+  const evidenceKind = getStringMetadata(metadata, "evidenceKind")
+  if (evidenceKind === "artifact") score += 18
+  else if (evidenceKind === "source-backed") score += 10
+
+  score += Math.min(getNumericMetadata(metadata, "reaffirmedCount") * 4, 16)
+  score += Math.min(getNumericMetadata(metadata, "sessionImportance") / 10, 10)
+  if (metadata.workSessionFinalized === true) score += 8
+
+  if (item.sourceSurface === "mcp" || item.sourceSurface === "cli") score += 4
+  if (item.sourceSurface === "chatgpt" || item.sourceSurface === "claude" || item.sourceSurface === "gemini" || item.sourceSurface === "grok" || item.sourceSurface === "perplexity" || item.sourceSurface === "deepseek" || item.sourceSurface === "codex") {
+    score += 3
+  }
+
+  const capturedAtTime = item.capturedAt ? new Date(item.capturedAt).getTime() : 0
+  if (capturedAtTime > 0) {
+    const ageMs = Date.now() - capturedAtTime
+    if (ageMs <= 24 * 60 * 60 * 1000) score += 5
+    else if (ageMs <= 7 * 24 * 60 * 60 * 1000) score += 3
+    else if (ageMs <= 30 * 24 * 60 * 60 * 1000) score += 1
+  }
+
+  return score
 }
 
 /**
@@ -130,7 +189,14 @@ export function resolveMemoryConflict(
   if (existing.type !== incoming.type) return null
   if (!isSameTopic(existing.content, incoming.content)) return null
 
-  // Recency-based resolution: newest captured_at wins
+  // Truth-weighted resolution: authority/evidence/durability first, recency second.
+  const existingScore = computeMemoryTruthScore(existing)
+  const incomingScore = computeMemoryTruthScore(incoming)
+  if (incomingScore !== existingScore) {
+    return incomingScore > existingScore ? incoming : existing
+  }
+
+  // Tie-break by recency: newest captured_at wins
   const existingTime = existing.capturedAt ? new Date(existing.capturedAt).getTime() : 0
   const incomingTime = incoming.capturedAt ? new Date(incoming.capturedAt).getTime() : 0
 
@@ -159,10 +225,12 @@ export function deduplicateMemoryItems<T extends MemoryItemForConflictResolution
       // Conflict found — resolve by recency
       const existingItem = result[conflictIndex]
       if (existingItem) {
+        const existingScore = computeMemoryTruthScore(existingItem)
+        const itemScore = computeMemoryTruthScore(item)
         const existingTime = existingItem.capturedAt ? new Date(existingItem.capturedAt).getTime() : 0
         const itemTime = item.capturedAt ? new Date(item.capturedAt).getTime() : 0
 
-        if (itemTime >= existingTime) {
+        if (itemScore > existingScore || (itemScore === existingScore && itemTime >= existingTime)) {
           result[conflictIndex] = item
         }
         // If existing is newer, keep it (do nothing)

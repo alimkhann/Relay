@@ -11,11 +11,14 @@ export const targetProfileKeySchema = z.enum([
 ])
 
 export const composeContextSchema = z.object({
-  targetProfileKey: targetProfileKeySchema
+  targetProfileKey: targetProfileKeySchema,
+  since: z.string().datetime().optional()
 })
 
 export const bootstrapRequestSchema = z.object({
   targetProfileKey: targetProfileKeySchema,
   kind: z.enum(["quick_continuity", "fresh_chat_bootstrap"]).default("fresh_chat_bootstrap"),
-  deep: z.boolean().optional()
+  deep: z.boolean().optional(),
+  since: z.string().datetime().optional(),
+  syncSurface: z.enum(["mcp", "cli", "chatgpt", "claude", "codex", "opencode", "gemini", "cursor", "warp", "windsurf", "antigravity", "grok", "perplexity", "deepseek"]).optional()
 })

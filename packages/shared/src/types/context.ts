@@ -1,6 +1,9 @@
 import type {
   BootstrapPacketKind,
   BootstrapPacketRow,
+  SyncSurface,
+  WorkSessionRow,
+  WorkSessionCheckpointWithSessionRow,
   ProjectStateRow,
   ContextPacketRow,
   MemoryItemRow,
@@ -56,6 +59,57 @@ export interface BootstrapCompositionInput {
   recentSessions: SourceSessionRow[]
 }
 
+export interface WorkSessionStructuredState {
+  summary?: string | null
+  progress?: string | null
+  currentObjective?: string | null
+  decisions?: string[]
+  constraints?: string[]
+  nextSteps?: string[]
+  notes?: string[]
+  relevantTools?: string[]
+  touchedFiles?: string[]
+  reaffirmedFacts?: string[]
+}
+
+export interface WorkSessionOpenRequest {
+  surface: SyncSurface
+  workspaceId?: string
+  threadId?: string
+  agentName?: string
+  clientName?: string
+  associationMethod?: string
+  associationConfidence?: number
+}
+
+export interface WorkSessionOpenResponse {
+  session: WorkSessionRow
+}
+
+export interface WorkSessionCheckpointRequest {
+  sessionId: string
+  eventType?: string
+  eventPayload?: Record<string, unknown>
+  summaryShort?: string
+  structuredState: WorkSessionStructuredState
+  confidence?: number
+}
+
+export interface WorkSessionCloseRequest {
+  sessionId: string
+  summaryShort?: string
+  structuredState?: WorkSessionStructuredState
+  confidence?: number
+}
+
+export interface WorkSessionCloseResponse {
+  session: WorkSessionRow
+}
+
+export interface RecentWorkSessionContext {
+  checkpoints: WorkSessionCheckpointWithSessionRow[]
+}
+
 export interface BootstrapPacketResult extends Pick<BootstrapPacketRow, "content" | "structuredSnapshot" | "renderer" | "generationMetadata" | "kind"> {
   targetProfileKey: string
   targetPlatform: TargetPlatform
@@ -65,6 +119,8 @@ export interface BootstrapRequest {
   kind: BootstrapPacketKind
   targetProfileKey: string
   deep?: boolean
+  since?: string
+  syncSurface?: SyncSurface
 }
 
 export interface BootstrapGenerationResponse {

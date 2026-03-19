@@ -424,6 +424,72 @@ async function persistDigestResult(
     createdBy: userId
   })
 
+  const browserSurface = input.session.platform as Parameters<typeof repositories.workSessions.create>[0]["surface"]
+  const browserThreadId = input.session.sourceConversationId ?? input.session.url
+  const reusableWorkSession = await repositories.workSessions.findReusableActiveSession({
+    projectId: input.projectId,
+    surface: browserSurface,
+    threadId: browserThreadId,
+    clientName: "relay-extension",
+  })
+  const browserWorkSession =
+    reusableWorkSession ??
+    (await repositories.workSessions.create({
+      projectId: input.projectId,
+      userId,
+      surface: browserSurface,
+      threadId: browserThreadId,
+      clientName: "relay-extension",
+      associationMethod: "browser_capture",
+      associationConfidence: 0.96,
+    }))
+  const browserWorkSessionEvent = await repositories.workSessionEvents.create({
+    workSessionId: browserWorkSession.id,
+    projectId: input.projectId,
+    userId,
+    eventType: "browser_digest_persisted",
+    payload: {
+      sessionId: input.session.id,
+      digestId: digest.id,
+      platform: input.session.platform,
+      title: input.session.title,
+    },
+    sourceSurface: browserSurface,
+    sourceUrl: input.session.url,
+    sourceThreadId: browserThreadId,
+  })
+  await repositories.workSessionCheckpoints.create({
+    workSessionId: browserWorkSession.id,
+    projectId: input.projectId,
+    userId,
+    summaryShort: input.digest.summaryShort,
+    structuredState: {
+      summary: input.digest.summaryShort,
+      progress: input.digest.recentProgressDelta,
+      currentObjective: input.digest.currentObjectiveDelta,
+      decisions: input.digest.newDecisions,
+      constraints: input.digest.newConstraints,
+      nextSteps: input.digest.newTasks,
+      relevantTools: input.digest.relevantToolsDelta,
+      notes: input.session.title ? [`Captured from ${input.session.platform}: ${input.session.title}`] : [`Captured from ${input.session.platform}`],
+    },
+    sourceEventIds: [browserWorkSessionEvent.id],
+    confidence: input.digest.confidence ?? 0.65,
+  })
+  await repositories.workSessions.updateLatestState({
+    id: browserWorkSession.id,
+    latestSummary: input.digest.summaryShort,
+    latestStructuredState: {
+      summary: input.digest.summaryShort,
+      progress: input.digest.recentProgressDelta,
+      currentObjective: input.digest.currentObjectiveDelta,
+      decisions: input.digest.newDecisions,
+      constraints: input.digest.newConstraints,
+      nextSteps: input.digest.newTasks,
+      relevantTools: input.digest.relevantToolsDelta,
+    },
+  })
+
   if (input.digest.shouldMerge) {
     const nextState = mergeDigestIntoState(project, input.projectState, input.digest)
     await repositories.projectState.upsert({

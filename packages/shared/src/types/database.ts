@@ -21,6 +21,11 @@ export type MemoryItemType = (typeof memoryItemTypes)[number]
 export type BindingKind = (typeof bindingKinds)[number]
 export type RelayOnboardingStatus = "pending" | "completed"
 export type RelayOnboardingCompletionSurface = "web" | "extension"
+export type ExtensionApiTokenPurpose = "manual" | "cli_mcp"
+export type SyncSurface = "mcp" | "cli" | "chatgpt" | "claude" | "codex" | "opencode" | "gemini" | "cursor" | "warp" | "windsurf" | "antigravity" | "grok" | "perplexity" | "deepseek"
+export type McpTokenScope = "project:read" | "project:write" | "memory:read" | "memory:write" | "brief:read"
+export type WorkSessionSurface = SyncSurface | "web" | "api"
+export type WorkSessionStatus = "active" | "closed" | "stale"
 
 export interface ProfileRow {
   id: string
@@ -209,6 +214,63 @@ export interface BootstrapPacketRow {
   createdAt: string
 }
 
+export interface WorkSessionRow {
+  id: string
+  projectId: string
+  userId: string
+  workspaceId: string | null
+  surface: WorkSessionSurface
+  threadId: string | null
+  agentName: string | null
+  clientName: string | null
+  associationMethod: string | null
+  associationConfidence: number | null
+  baseSyncMarkAt: string | null
+  latestSummary: string | null
+  latestStructuredState: Record<string, unknown>
+  status: WorkSessionStatus
+  startedAt: string
+  endedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface WorkSessionEventRow {
+  id: string
+  workSessionId: string
+  projectId: string
+  userId: string
+  eventType: string
+  payload: Record<string, unknown>
+  sourceSurface: WorkSessionSurface
+  sourceUrl: string | null
+  sourceThreadId: string | null
+  createdAt: string
+}
+
+export interface WorkSessionCheckpointRow {
+  id: string
+  workSessionId: string
+  projectId: string
+  userId: string
+  summaryShort: string | null
+  structuredState: Record<string, unknown>
+  sourceEventIds: string[]
+  confidence: number | null
+  createdAt: string
+}
+
+export interface WorkSessionCheckpointWithSessionRow extends WorkSessionCheckpointRow {
+  surface: WorkSessionSurface
+  threadId: string | null
+  agentName: string | null
+  clientName: string | null
+  associationConfidence: number | null
+  sessionStatus: WorkSessionStatus
+  sessionStartedAt: string
+  sessionEndedAt: string | null
+}
+
 export interface AiJobRunRow {
   id: string
   projectId: string
@@ -310,12 +372,58 @@ export interface ExtensionApiTokenRow {
   id: string
   userId: string
   deviceName: string
+   purpose: ExtensionApiTokenPurpose
   tokenHash: string
   tokenPrefix: string
   lastUsedAt: string | null
   expiresAt: string | null
   createdAt: string
   revokedAt: string | null
+}
+
+export interface SurfaceSyncMarkRow {
+  id: string
+  projectId: string
+  userId: string
+  surface: SyncSurface
+  lastSyncAt: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface McpTokenRow {
+  id: string
+  userId: string
+  projectId: string
+  tokenHash: string
+  tokenPrefix: string
+  scopes: McpTokenScope[]
+  expiresAt: string
+  refreshTokenHash: string | null
+  refreshTokenPrefix: string | null
+  refreshExpiresAt: string | null
+  revokedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface McpAuthSessionRow {
+  id: string
+  sessionCode: string
+  sessionHash: string
+  sessionPrefix: string
+  codeChallenge: string
+  projectId: string
+  scopes: McpTokenScope[]
+  userId: string | null
+  status: "pending" | "approved" | "exchanging" | "exchanged" | "expired"
+  accessToken: string | null
+  refreshToken: string | null
+  accessExpiresAt: string | null
+  refreshExpiresAt: string | null
+  expiresAt: string
+  approvedAt: string | null
+  createdAt: string
 }
 
 export interface CliAuthSessionRow {

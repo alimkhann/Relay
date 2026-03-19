@@ -119,6 +119,7 @@ export interface MemoryItemDto {
   content: string
   pinned: boolean
   updatedAt: string
+  metadata?: Record<string, unknown>
   /** Origin surface: chatgpt, claude, gemini, grok, perplexity, deepseek, codex, mcp, web, api */
   sourceSurface: SourceSurface | null
   /** Full URL to source conversation for clickable provenance links */

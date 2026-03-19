@@ -1,5 +1,5 @@
 import { createRepositoryBundle } from "@relay/db"
-import type { BootstrapPacketDto, BootstrapRequest, BootstrapPacketRow, MemoryItemRow, ProjectRow, ProjectStateRow, ProjectStateStatusDto, SessionDigestRow, TargetProfileRow } from "@relay/shared"
+import type { BootstrapPacketDto, BootstrapRequest, BootstrapPacketRow, MemoryItemRow, ProjectRow, ProjectStateRow, ProjectStateStatusDto, SessionDigestRow, TargetProfileRow, WorkSessionCheckpointWithSessionRow } from "@relay/shared"
 import { bootstrapRequestSchema, buildEffectiveProjectState, hashContent, mergeGovernedList, normalizeText } from "@relay/shared"
 
 import { GEMINI_MODELS, runGeminiJsonWithFallback } from "./gemini-service"
@@ -170,12 +170,14 @@ export function computeBootstrapInputHash(input: {
   digests: SessionDigestRow[]
   profile: TargetProfileRow
   kind: BootstrapRequest["kind"]
+  since?: string
   memoryItemCount?: number
   memoryLatestUpdatedAt?: string | null
 }) {
   return hashContent(
     JSON.stringify({
       kind: input.kind,
+      since: input.since ?? null,
       profileKey: input.profile.key,
       projectDescription: input.project.description ?? null,
       state: input.state
@@ -272,6 +274,211 @@ function filterRelevantNotes(memoryItems: MemoryItemRow[]): MemoryItemRow[] {
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     })
     .slice(0, 5)
+}
+
+function normalizeCheckpointText(value: unknown) {
+  if (typeof value !== "string") return null
+  const normalized = normalizeText(value)
+  return normalized ? truncateSentence(normalized, 320) : null
+}
+
+function normalizeCheckpointList(value: unknown, limit = 8) {
+  return Array.isArray(value)
+    ? value.map((item) => normalizeText(String(item))).filter(Boolean).slice(0, limit)
+    : []
+}
+
+function workSessionCheckpointToMemoryDtos(checkpoints: WorkSessionCheckpointWithSessionRow[]): MemoryItemRow[] {
+  const items: MemoryItemRow[] = []
+
+  for (const checkpoint of checkpoints) {
+    const state = checkpoint.structuredState ?? {}
+    const confidence = checkpoint.confidence ?? 0.55
+    const sessionImportance =
+      normalizeCheckpointList(state.decisions).length * 12 +
+      normalizeCheckpointList(state.constraints).length * 10 +
+      normalizeCheckpointList(state.nextSteps).length * 8 +
+      (normalizeCheckpointText(state.progress) ? 10 : 0) +
+      (normalizeCheckpointText(state.summary) ? 8 : 0)
+    const metadata = {
+      authority: confidence >= 0.9 ? "validated_state" : "work_session",
+      durability: checkpoint.sessionStatus === "closed" ? "durable" : "working",
+      validationState: confidence >= 0.9 ? "validated" : "inferred",
+      workSessionFinalized: checkpoint.sessionStatus === "closed",
+      sessionImportance,
+      reaffirmedCount: normalizeCheckpointList(state.reaffirmedFacts).length,
+      agentName: checkpoint.agentName,
+      clientName: checkpoint.clientName,
+      workSessionId: checkpoint.workSessionId,
+      evidenceKind: "source-backed",
+    }
+
+    const progress = normalizeCheckpointText(state.progress) ?? normalizeCheckpointText(state.summary)
+    if (progress) {
+      items.push({
+        id: `${checkpoint.id}:progress`,
+        projectId: checkpoint.projectId,
+        sourceTurnId: null,
+        type: "note",
+        title: checkpoint.agentName ? `${checkpoint.agentName} session` : "IDE Session",
+        content: progress,
+        pinned: false,
+        isArchived: false,
+        sortOrder: null,
+        tags: [],
+        updatedAt: checkpoint.createdAt,
+        metadata,
+        createdBy: checkpoint.userId,
+        createdAt: checkpoint.createdAt,
+        sourceSurface: checkpoint.surface === "mcp" || checkpoint.surface === "cli" ? "mcp" : null,
+        sourceConversationId: checkpoint.threadId,
+        sourceUrl: null,
+        capturedAt: checkpoint.createdAt,
+        derivedFrom: checkpoint.sourceEventIds,
+      })
+    }
+
+    for (const decision of normalizeCheckpointList(state.decisions)) {
+      items.push({
+        id: `${checkpoint.id}:decision:${hashContent(decision).slice(0, 8)}`,
+        projectId: checkpoint.projectId,
+        sourceTurnId: null,
+        type: "decision",
+        title: null,
+        content: decision,
+        pinned: false,
+        isArchived: false,
+        sortOrder: null,
+        tags: [],
+        updatedAt: checkpoint.createdAt,
+        metadata,
+        createdBy: checkpoint.userId,
+        createdAt: checkpoint.createdAt,
+        sourceSurface: checkpoint.surface === "mcp" || checkpoint.surface === "cli" ? "mcp" : null,
+        sourceConversationId: checkpoint.threadId,
+        sourceUrl: null,
+        capturedAt: checkpoint.createdAt,
+        derivedFrom: checkpoint.sourceEventIds,
+      })
+    }
+
+    for (const constraint of normalizeCheckpointList(state.constraints)) {
+      items.push({
+        id: `${checkpoint.id}:constraint:${hashContent(constraint).slice(0, 8)}`,
+        projectId: checkpoint.projectId,
+        sourceTurnId: null,
+        type: "constraint",
+        title: null,
+        content: constraint,
+        pinned: false,
+        isArchived: false,
+        sortOrder: null,
+        tags: [],
+        updatedAt: checkpoint.createdAt,
+        metadata,
+        createdBy: checkpoint.userId,
+        createdAt: checkpoint.createdAt,
+        sourceSurface: checkpoint.surface === "mcp" || checkpoint.surface === "cli" ? "mcp" : null,
+        sourceConversationId: checkpoint.threadId,
+        sourceUrl: null,
+        capturedAt: checkpoint.createdAt,
+        derivedFrom: checkpoint.sourceEventIds,
+      })
+    }
+
+    for (const task of normalizeCheckpointList(state.nextSteps)) {
+      items.push({
+        id: `${checkpoint.id}:task:${hashContent(task).slice(0, 8)}`,
+        projectId: checkpoint.projectId,
+        sourceTurnId: null,
+        type: "task",
+        title: null,
+        content: task,
+        pinned: false,
+        isArchived: false,
+        sortOrder: null,
+        tags: [],
+        updatedAt: checkpoint.createdAt,
+        metadata,
+        createdBy: checkpoint.userId,
+        createdAt: checkpoint.createdAt,
+        sourceSurface: checkpoint.surface === "mcp" || checkpoint.surface === "cli" ? "mcp" : null,
+        sourceConversationId: checkpoint.threadId,
+        sourceUrl: null,
+        capturedAt: checkpoint.createdAt,
+        derivedFrom: checkpoint.sourceEventIds,
+      })
+    }
+
+    for (const note of normalizeCheckpointList(state.notes, 4)) {
+      items.push({
+        id: `${checkpoint.id}:note:${hashContent(note).slice(0, 8)}`,
+        projectId: checkpoint.projectId,
+        sourceTurnId: null,
+        type: "note",
+        title: checkpoint.agentName ? `${checkpoint.agentName} note` : "IDE Note",
+        content: note,
+        pinned: false,
+        isArchived: false,
+        sortOrder: null,
+        tags: [],
+        updatedAt: checkpoint.createdAt,
+        metadata,
+        createdBy: checkpoint.userId,
+        createdAt: checkpoint.createdAt,
+        sourceSurface: checkpoint.surface === "mcp" || checkpoint.surface === "cli" ? "mcp" : null,
+        sourceConversationId: checkpoint.threadId,
+        sourceUrl: null,
+        capturedAt: checkpoint.createdAt,
+        derivedFrom: checkpoint.sourceEventIds,
+      })
+    }
+  }
+
+  return items
+}
+
+function applyCheckpointSignalsToState(
+  state: ProjectStateRow | null,
+  checkpoints: WorkSessionCheckpointWithSessionRow[],
+): ProjectStateRow | null {
+  if (checkpoints.length === 0) return state
+
+  const latest = checkpoints[0]
+  if (!latest) return state
+
+  const progress = normalizeCheckpointText(latest.structuredState.progress) ?? normalizeCheckpointText(latest.structuredState.summary)
+  const currentObjective = normalizeCheckpointText(latest.structuredState.currentObjective)
+  const relevantTools = checkpoints.flatMap((checkpoint) => normalizeCheckpointList(checkpoint.structuredState.relevantTools, 6))
+
+  if (!state) {
+    return {
+      projectId: latest.projectId,
+      projectOverview: null,
+      currentObjective,
+      stackDomain: null,
+      recentProgress: progress,
+      decisions: [],
+      constraints: [],
+      openTasks: [],
+      relevantTools: Array.from(new Set(relevantTools)),
+      objectiveHistory: [],
+      lastBootstrapAt: null,
+      dirty: true,
+      createdAt: latest.createdAt,
+      updatedAt: latest.createdAt,
+    }
+  }
+
+  return {
+    ...state,
+    currentObjective: currentObjective ?? state.currentObjective,
+    recentProgress:
+      progress && (!state.recentProgress || new Date(latest.createdAt).getTime() >= new Date(state.updatedAt).getTime())
+        ? progress
+        : state.recentProgress,
+    relevantTools: Array.from(new Set([...state.relevantTools, ...relevantTools])).slice(0, 10),
+  }
 }
 
 function renderFreshChatMarkdown(shape: BootstrapModelShape, profile: TargetProfileRow, memoryItems: MemoryItemRow[]) {
@@ -463,13 +670,18 @@ export function shouldDeferBootstrapGeneration(state: ProjectStateRow | null, di
 export async function generateBootstrapForProject(userId: string, projectId: string, input: unknown): Promise<BootstrapGenerationResult> {
   const repositories = createRepositoryBundle(userId)
   const parsed = bootstrapRequestSchema.parse(input)
-  const [project, profile, rawState, digests, memoryItems, stateOverrides] = await Promise.all([
+  const [project, profile, rawState, digests, memoryItems, stateOverrides, workSessionContext] = await Promise.all([
     repositories.projects.getById(projectId),
     repositories.targetProfiles.getByKey(parsed.targetProfileKey),
     repositories.projectState.getByProject(projectId),
     repositories.sessionDigests.listByProject(projectId),
     repositories.memory.listByProject(projectId),
-    repositories.projectStateOverrides.getByProject(projectId)
+    repositories.projectStateOverrides.getByProject(projectId),
+    repositories.workSessionCheckpoints.listRecentByProject(projectId, {
+      since: parsed.since,
+      limit: 8,
+      surfaces: ["mcp", "cli", "chatgpt", "claude", "gemini", "grok", "perplexity", "deepseek", "codex"],
+    }),
   ])
 
   if (!project) {
@@ -529,13 +741,15 @@ export async function generateBootstrapForProject(userId: string, projectId: str
         updatedAt: stateOverrides.updatedAt
       }
     : null
-  const memoryDtos = activeMemoryItems.map((item) => ({
+  const workSessionMemoryDtos = workSessionCheckpointToMemoryDtos(workSessionContext)
+  const memoryDtos = [...activeMemoryItems, ...workSessionMemoryDtos].map((item) => ({
     id: item.id,
     type: item.type,
     title: item.title,
     content: item.content,
     pinned: item.pinned,
     updatedAt: item.updatedAt,
+    metadata: item.metadata,
     sourceSurface: item.sourceSurface,
     sourceUrl: item.sourceUrl,
     capturedAt: item.capturedAt,
@@ -543,7 +757,7 @@ export async function generateBootstrapForProject(userId: string, projectId: str
   const effectiveStateDto = buildEffectiveProjectState(derivedStateDto, overrideDto, memoryDtos)
 
   // Map effective state back to a ProjectStateRow-shaped object for bootstrap functions
-  const state: ProjectStateRow | null = effectiveStateDto
+  const baseState: ProjectStateRow | null = effectiveStateDto
     ? {
         projectId,
         projectOverview: effectiveStateDto.projectOverview,
@@ -561,9 +775,18 @@ export async function generateBootstrapForProject(userId: string, projectId: str
         updatedAt: effectiveStateDto.updatedAt
       }
     : null
+  const state = applyCheckpointSignalsToState(baseState, workSessionContext)
+
+  const sinceTime = parsed.since ? new Date(parsed.since).getTime() : null
+  const scopedDigests = sinceTime
+    ? digests.filter((digest) => new Date(digest.createdAt).getTime() >= sinceTime)
+    : digests
+  const scopedMemoryItems = sinceTime
+    ? [...activeMemoryItems, ...workSessionMemoryDtos].filter((item) => new Date(item.updatedAt).getTime() >= sinceTime)
+    : [...activeMemoryItems, ...workSessionMemoryDtos]
 
   const stateStatus = await getProjectStateStatus(repositories, projectId)
-  if (shouldDeferBootstrapGeneration(state, digests)) {
+  if (shouldDeferBootstrapGeneration(state, scopedDigests)) {
     return {
       status: "pending",
       packet: null,
@@ -574,20 +797,21 @@ export async function generateBootstrapForProject(userId: string, projectId: str
   }
 
   const briefInputHash = computeBootstrapInputHash({
-    project,
-    state,
-    digests,
-    profile,
-    kind: parsed.kind,
-    memoryItemCount: activeMemoryItems.length,
-    memoryLatestUpdatedAt: activeMemoryItems[0]?.updatedAt ?? null,
-  })
+      project,
+      state,
+      digests: scopedDigests,
+      profile,
+      kind: parsed.kind,
+      since: parsed.since,
+      memoryItemCount: scopedMemoryItems.length,
+      memoryLatestUpdatedAt: scopedMemoryItems[0]?.updatedAt ?? null,
+    })
   const latest = await repositories.bootstrapPackets.getLatest(projectId, profile.id, parsed.kind)
   if (
     latest &&
     shouldReuseLatestBootstrapPacket({
       latestCreatedAt: latest.createdAt,
-      latestDigestCreatedAt: digests[0]?.createdAt ?? null,
+       latestDigestCreatedAt: scopedDigests[0]?.createdAt ?? null,
       stateDirty: Boolean(state?.dirty),
       deep: Boolean(parsed.deep),
       latestInputHash:
@@ -607,7 +831,7 @@ export async function generateBootstrapForProject(userId: string, projectId: str
   }
 
   const preferredRenderer = inferRenderer(parsed, state)
-  const deterministic = deterministicBootstrap(state, digests, profile, parsed.kind)
+  const deterministic = deterministicBootstrap(state, scopedDigests, profile, parsed.kind)
 
   let shape = deterministic
   let renderer: BootstrapPacketRow["renderer"] = "deterministic"
@@ -618,7 +842,7 @@ export async function generateBootstrapForProject(userId: string, projectId: str
 
   if (preferredRenderer === "gemini") {
     try {
-      const generated = await generateGeminiBootstrap({ state, digests, profile, kind: parsed.kind })
+      const generated = await generateGeminiBootstrap({ state, digests: scopedDigests, profile, kind: parsed.kind })
       shape = generated.shape
       renderer = "gemini"
       actualModel = generated.actualModel
@@ -634,7 +858,7 @@ export async function generateBootstrapForProject(userId: string, projectId: str
     projectId,
     targetProfileId: profile.id,
     kind: parsed.kind,
-    content: renderBootstrapMarkdown(shape, profile, parsed.kind, activeMemoryItems),
+    content: renderBootstrapMarkdown(shape, profile, parsed.kind, scopedMemoryItems),
     structuredSnapshot: { ...shape },
     renderer,
     generationMetadata: {
