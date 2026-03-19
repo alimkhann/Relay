@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Activity, Brain, FileDown } from "lucide-react";
+import { LayoutDashboard, Activity, Brain, FileDown, BookOpen } from "lucide-react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { cn } from "@/lib/cn";
 
@@ -56,6 +56,11 @@ export function SidebarNav({
       label: "Activity",
       icon: <Activity className="h-4 w-4" />,
       requiresProject: true,
+    },
+    {
+      href: "/docs",
+      label: "Docs",
+      icon: <BookOpen className="h-4 w-4" />,
     },
   ];
 
