@@ -30,14 +30,15 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
 
   // Cache for resolved project ID
   let cachedProjectId: string | null = config.projectId ?? null
-  let projectDetectionAttempted = false
+  let projectDetectionAttemptedAt = 0
+  const PROJECT_DETECTION_CACHE_MS = 5 * 60 * 1000
 
   async function resolveProjectId(explicitId?: string): Promise<string> {
     if (explicitId) return explicitId
     if (cachedProjectId) return cachedProjectId
 
-    if (!projectDetectionAttempted) {
-      projectDetectionAttempted = true
+    if (Date.now() - projectDetectionAttemptedAt > PROJECT_DETECTION_CACHE_MS) {
+      projectDetectionAttemptedAt = Date.now()
       try {
         const data = await client.get<ListProjectsResponse>("/api/projects")
         const candidates = data.projects.map((p) => ({
@@ -75,15 +76,16 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
     getBriefSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
+      const syncSurface = args.syncSurface ?? client.getDefaultSyncSurface()
       const since = args.kind === "quick_continuity"
         ? await client.getDefaultSince(projectId, args.since)
         : args.since
-      const result = await getBrief(client, { ...args, since }, projectId)
+      const result = await getBrief(client, { ...args, since, syncSurface }, projectId)
       await client.recordSessionEvent(projectId, "brief_read", {
         kind: args.kind,
         targetProfileKey: args.targetProfileKey,
         since: since ?? null,
-        syncSurface: args.syncSurface,
+        syncSurface,
       })
       return result
     }

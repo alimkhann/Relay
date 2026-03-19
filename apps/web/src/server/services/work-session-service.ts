@@ -14,6 +14,15 @@ import {
   workSessionOpenSchema,
 } from "@relay/shared"
 
+function isUniqueViolation(error: unknown) {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: string }).code === "23505",
+  )
+}
+
 function normalizeTextValue(value: string | null | undefined) {
   const normalized = value?.trim()
   return normalized ? normalized : null
@@ -119,64 +128,89 @@ export async function openWorkSession(
   const parsed = workSessionOpenSchema.parse(input) as WorkSessionOpenRequest
   const staleBefore = new Date(Date.now() - getWorkSessionReuseWindowMs(parsed.surface)).toISOString()
 
-  await repositories.workSessions.markStaleOlderThan({
-    projectId,
-    surface: parsed.surface,
-    olderThan: staleBefore,
-    workspaceId: parsed.workspaceId ?? null,
-    threadId: parsed.threadId ?? null,
-    clientName: parsed.clientName ?? null,
-  })
+  return repositories.provider.transaction(async (provider) => {
+    const tx = createRepositoryBundle(userId, provider)
 
-  const existing = await repositories.workSessions.findReusableActiveSession({
-    projectId,
-    surface: parsed.surface,
-    workspaceId: parsed.workspaceId ?? null,
-    threadId: parsed.threadId ?? null,
-    clientName: parsed.clientName ?? null,
-    updatedSince: staleBefore,
-  })
-
-  if (existing) {
-    await repositories.workSessions.touch(existing.id)
-    return existing
-  }
-
-  const syncMark = isSyncSurface(parsed.surface)
-    ? await repositories.syncMarks.getBySurface(projectId, userId, parsed.surface)
-    : null
-
-  const session = await repositories.workSessions.create({
-    projectId,
-    userId,
-    workspaceId: parsed.workspaceId ?? null,
-    surface: parsed.surface,
-    threadId: parsed.threadId ?? null,
-    agentName: parsed.agentName ?? null,
-    clientName: parsed.clientName ?? null,
-    associationMethod: parsed.associationMethod ?? null,
-    associationConfidence: parsed.associationConfidence ?? null,
-    baseSyncMarkAt: syncMark?.lastSyncAt ?? null,
-  })
-
-  await repositories.workSessionEvents.create({
-    workSessionId: session.id,
-    projectId,
-    userId,
-    eventType: "session_opened",
-    payload: {
+    await tx.workSessions.markStaleOlderThan({
+      projectId,
+      surface: parsed.surface,
+      olderThan: staleBefore,
       workspaceId: parsed.workspaceId ?? null,
+      threadId: parsed.threadId ?? null,
       clientName: parsed.clientName ?? null,
-      agentName: parsed.agentName ?? null,
-      associationMethod: parsed.associationMethod ?? null,
-      associationConfidence: parsed.associationConfidence ?? null,
-      baseSyncMarkAt: syncMark?.lastSyncAt ?? null,
-    },
-    sourceSurface: parsed.surface,
-    sourceThreadId: parsed.threadId ?? null,
-  })
+    })
 
-  return session
+    const existing = await tx.workSessions.findReusableActiveSession({
+      projectId,
+      surface: parsed.surface,
+      workspaceId: parsed.workspaceId ?? null,
+      threadId: parsed.threadId ?? null,
+      clientName: parsed.clientName ?? null,
+      updatedSince: staleBefore,
+    })
+
+    if (existing) {
+      await tx.workSessions.touch(existing.id)
+      return existing
+    }
+
+    const syncMark = isSyncSurface(parsed.surface)
+      ? await tx.syncMarks.getBySurface(projectId, userId, parsed.surface)
+      : null
+
+    let session: WorkSessionRow
+    try {
+      session = await tx.workSessions.create({
+        projectId,
+        userId,
+        workspaceId: parsed.workspaceId ?? null,
+        surface: parsed.surface,
+        threadId: parsed.threadId ?? null,
+        agentName: parsed.agentName ?? null,
+        clientName: parsed.clientName ?? null,
+        associationMethod: parsed.associationMethod ?? null,
+        associationConfidence: parsed.associationConfidence ?? null,
+        baseSyncMarkAt: syncMark?.lastSyncAt ?? null,
+      })
+    } catch (error) {
+      if (!isUniqueViolation(error)) {
+        throw error
+      }
+
+      const reused = await tx.workSessions.findReusableActiveSession({
+        projectId,
+        surface: parsed.surface,
+        workspaceId: parsed.workspaceId ?? null,
+        threadId: parsed.threadId ?? null,
+        clientName: parsed.clientName ?? null,
+        updatedSince: staleBefore,
+      })
+      if (!reused) {
+        throw error
+      }
+      await tx.workSessions.touch(reused.id)
+      return reused
+    }
+
+    await tx.workSessionEvents.create({
+      workSessionId: session.id,
+      projectId,
+      userId,
+      eventType: "session_opened",
+      payload: {
+        workspaceId: parsed.workspaceId ?? null,
+        clientName: parsed.clientName ?? null,
+        agentName: parsed.agentName ?? null,
+        associationMethod: parsed.associationMethod ?? null,
+        associationConfidence: parsed.associationConfidence ?? null,
+        baseSyncMarkAt: syncMark?.lastSyncAt ?? null,
+      },
+      sourceSurface: parsed.surface,
+      sourceThreadId: parsed.threadId ?? null,
+    })
+
+    return session
+  })
 }
 
 export async function checkpointWorkSession(
@@ -186,48 +220,52 @@ export async function checkpointWorkSession(
 ) {
   const repositories = createRepositoryBundle(userId)
   const parsed = workSessionCheckpointSchema.parse(input) as WorkSessionCheckpointRequest
-  const session = await repositories.workSessions.getById(parsed.sessionId)
 
-  if (!session || session.projectId !== projectId || session.userId !== userId) {
-    throw new Error("Work session not found.")
-  }
+  return repositories.provider.transaction(async (provider) => {
+    const tx = createRepositoryBundle(userId, provider)
+    const session = await tx.workSessions.getById(parsed.sessionId)
 
-  const structuredState = normalizeStructuredState(parsed.structuredState)
-  const event = await repositories.workSessionEvents.create({
-    workSessionId: session.id,
-    projectId,
-    userId,
-    eventType: parsed.eventType ?? "session_checkpoint",
-    payload: parsed.eventPayload ?? {},
-    sourceSurface: session.surface,
-    sourceThreadId: session.threadId,
-  })
+    if (!session || session.projectId !== projectId || session.userId !== userId) {
+      throw new Error("Work session not found.")
+    }
 
-  if (!hasMeaningfulStructuredState(structuredState)) {
-    const touched = await repositories.workSessions.updateLatestState({
-      id: session.id,
+    const structuredState = normalizeStructuredState(parsed.structuredState)
+    const event = await tx.workSessionEvents.create({
+      workSessionId: session.id,
+      projectId,
+      userId,
+      eventType: parsed.eventType ?? "session_checkpoint",
+      payload: parsed.eventPayload ?? {},
+      sourceSurface: session.surface,
+      sourceThreadId: session.threadId,
     })
-    return { session: touched, checkpoint: null }
-  }
 
-  const checkpoint = await repositories.workSessionCheckpoints.create({
-    workSessionId: session.id,
-    projectId,
-    userId,
-    summaryShort: summaryFromStructuredState(parsed.summaryShort, structuredState),
-    structuredState: structuredState as Record<string, unknown>,
-    sourceEventIds: [event.id],
-    confidence: parsed.confidence ?? null,
+    if (!hasMeaningfulStructuredState(structuredState)) {
+      const touched = await tx.workSessions.updateLatestState({
+        id: session.id,
+      })
+      return { session: touched, checkpoint: null }
+    }
+
+    const checkpoint = await tx.workSessionCheckpoints.create({
+      workSessionId: session.id,
+      projectId,
+      userId,
+      summaryShort: summaryFromStructuredState(parsed.summaryShort, structuredState),
+      structuredState: structuredState as Record<string, unknown>,
+      sourceEventIds: [event.id],
+      confidence: parsed.confidence ?? null,
+    })
+
+    await tx.workSessions.updateLatestState({
+      id: session.id,
+      latestSummary: checkpoint.summaryShort,
+      latestStructuredState: structuredState as Record<string, unknown>,
+    })
+    await tx.bootstrapPackets.clearProject(projectId)
+
+    return { session: await tx.workSessions.getById(session.id), checkpoint }
   })
-
-  await repositories.workSessions.updateLatestState({
-    id: session.id,
-    latestSummary: checkpoint.summaryShort,
-    latestStructuredState: structuredState as Record<string, unknown>,
-  })
-  await repositories.bootstrapPackets.clearProject(projectId)
-
-  return { session: await repositories.workSessions.getById(session.id), checkpoint }
 }
 
 export async function closeWorkSession(
@@ -237,64 +275,72 @@ export async function closeWorkSession(
 ) {
   const repositories = createRepositoryBundle(userId)
   const parsed = workSessionCloseSchema.parse(input) as WorkSessionCloseRequest
-  const session = await repositories.workSessions.getById(parsed.sessionId)
 
-  if (!session || session.projectId !== projectId || session.userId !== userId) {
-    throw new Error("Work session not found.")
-  }
+  return repositories.provider.transaction(async (provider) => {
+    const tx = createRepositoryBundle(userId, provider)
+    const session = await tx.workSessions.getById(parsed.sessionId)
 
-  const structuredState = normalizeStructuredState(parsed.structuredState)
-  let finalSummary = normalizeTextValue(parsed.summaryShort) ?? null
+    if (!session || session.projectId !== projectId || session.userId !== userId) {
+      throw new Error("Work session not found.")
+    }
 
-  if (hasMeaningfulStructuredState(structuredState)) {
-    const event = await repositories.workSessionEvents.create({
+    if (session.status === "closed") {
+      return { session }
+    }
+
+    const structuredState = normalizeStructuredState(parsed.structuredState)
+    let finalSummary = normalizeTextValue(parsed.summaryShort) ?? null
+
+    if (hasMeaningfulStructuredState(structuredState)) {
+      const event = await tx.workSessionEvents.create({
+        workSessionId: session.id,
+        projectId,
+        userId,
+        eventType: "session_finalized",
+        payload: {
+          closed: true,
+        },
+        sourceSurface: session.surface,
+        sourceThreadId: session.threadId,
+      })
+
+      const checkpoint = await tx.workSessionCheckpoints.create({
+        workSessionId: session.id,
+        projectId,
+        userId,
+        summaryShort: summaryFromStructuredState(parsed.summaryShort, structuredState),
+        structuredState: structuredState as Record<string, unknown>,
+        sourceEventIds: [event.id],
+        confidence: parsed.confidence ?? null,
+      })
+      finalSummary = checkpoint.summaryShort
+    }
+
+    await tx.workSessionEvents.create({
       workSessionId: session.id,
       projectId,
       userId,
-      eventType: "session_finalized",
+      eventType: "session_closed",
       payload: {
-        closed: true,
+        summaryShort: finalSummary,
       },
       sourceSurface: session.surface,
       sourceThreadId: session.threadId,
     })
 
-    const checkpoint = await repositories.workSessionCheckpoints.create({
-      workSessionId: session.id,
-      projectId,
-      userId,
-      summaryShort: summaryFromStructuredState(parsed.summaryShort, structuredState),
-      structuredState: structuredState as Record<string, unknown>,
-      sourceEventIds: [event.id],
-      confidence: parsed.confidence ?? null,
+    const closed = await tx.workSessions.updateLatestState({
+      id: session.id,
+      latestSummary: finalSummary,
+      latestStructuredState: hasMeaningfulStructuredState(structuredState)
+        ? (structuredState as Record<string, unknown>)
+        : session.latestStructuredState,
+      status: "closed",
+      endedAt: new Date().toISOString(),
     })
-    finalSummary = checkpoint.summaryShort
-  }
+    await tx.bootstrapPackets.clearProject(projectId)
 
-  await repositories.workSessionEvents.create({
-    workSessionId: session.id,
-    projectId,
-    userId,
-    eventType: "session_closed",
-    payload: {
-      summaryShort: finalSummary,
-    },
-    sourceSurface: session.surface,
-    sourceThreadId: session.threadId,
+    return { session: closed }
   })
-
-  const closed = await repositories.workSessions.updateLatestState({
-    id: session.id,
-    latestSummary: finalSummary,
-    latestStructuredState: hasMeaningfulStructuredState(structuredState)
-      ? (structuredState as Record<string, unknown>)
-      : session.latestStructuredState,
-    status: "closed",
-    endedAt: new Date().toISOString(),
-  })
-  await repositories.bootstrapPackets.clearProject(projectId)
-
-  return { session: closed }
 }
 
 export async function getRecentWorkSessionContext(

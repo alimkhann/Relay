@@ -245,6 +245,7 @@ export interface RelayPageState {
   domain?: string;
   pathname?: string;
   pageFingerprint?: string | null;
+  sourceConversationId?: string | null;
   turns?: number;
   captureSignature?: string;
   recentUserTurnText?: string | null;

@@ -69,10 +69,6 @@ export function toMcpAuthSessionRow(record: Record<string, unknown>): McpAuthSes
     scopes: Array.isArray(record.scopes) ? record.scopes.map((scope) => String(scope)) as McpAuthSessionRow["scopes"] : [],
     userId: record.user_id ? String(record.user_id) : null,
     status: String(record.status) as McpAuthSessionRow["status"],
-    accessToken: record.access_token ? String(record.access_token) : null,
-    refreshToken: record.refresh_token ? String(record.refresh_token) : null,
-    accessExpiresAt: record.access_expires_at ? String(record.access_expires_at) : null,
-    refreshExpiresAt: record.refresh_expires_at ? String(record.refresh_expires_at) : null,
     expiresAt: String(record.expires_at),
     approvedAt: record.approved_at ? String(record.approved_at) : null,
     createdAt: String(record.created_at)

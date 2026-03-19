@@ -56,8 +56,8 @@ export class SessionRepository {
 
   async create(input: CapturePayload): Promise<SourceSessionRow> {
     const rows = await this.provider.query(
-      `insert into source_sessions (project_id, platform, url, title, tab_id, window_id, page_fingerprint, capture_signature, metadata)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+      `insert into source_sessions (project_id, platform, url, title, tab_id, window_id, page_fingerprint, capture_signature, source_conversation_id, metadata)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
        returning *`,
       [
         input.projectId,
@@ -68,6 +68,7 @@ export class SessionRepository {
         input.session.windowId ?? null,
         input.session.pageFingerprint ?? null,
         input.session.captureSignature ?? null,
+        input.session.sourceConversationId ?? input.session.url,
         JSON.stringify(input.session.metadata ?? {})
       ]
     )

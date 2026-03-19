@@ -17,6 +17,7 @@ describe("evaluateProjectRouting", () => {
         domain: "chatgpt.com",
         pathname: "/c/chat_123",
         pageFingerprint: "chat_123",
+        sourceConversationId: "chat_123",
         url: "https://chatgpt.com/c/chat_123",
         title: "Relay architecture sync",
         recentUserTurnText: "Let's finish the Relay extension routing fix.",
@@ -30,6 +31,7 @@ describe("evaluateProjectRouting", () => {
         {
           platform: "chatgpt",
           pageFingerprint: "chat_123",
+          sourceConversationId: "chat_123",
           pathname: "/c/chat_123",
           url: "https://chatgpt.com/c/chat_123"
         },
@@ -42,6 +44,7 @@ describe("evaluateProjectRouting", () => {
         supported: true,
         platform: "chatgpt",
         pageFingerprint: "chat_123",
+        sourceConversationId: "chat_123",
         pathname: "/c/chat_123",
         title: "Relay architecture sync",
         recentUserTurnText: "Let's finish the Relay extension routing fix."

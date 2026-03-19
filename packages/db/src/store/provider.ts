@@ -7,6 +7,7 @@ export type DatabaseRow = Record<string, unknown>
 export interface DatabaseProvider {
   mode: DatabaseMode
   query<T extends DatabaseRow = DatabaseRow>(text: string, values?: unknown[]): Promise<T[]>
+  transaction<T>(callback: (provider: DatabaseProvider) => Promise<T>): Promise<T>
 }
 
 export interface DatabaseConfig {
@@ -16,6 +17,56 @@ export interface DatabaseConfig {
 
 let neonPool: NeonPool | null = null
 let postgresPool: PostgresPool | null = null
+
+function buildProviderFromClient(input: {
+  mode: DatabaseMode
+  client: { query<T extends DatabaseRow = DatabaseRow>(text: string, values?: unknown[]): Promise<{ rows: T[] }> }
+  viewerUserId?: string
+  transactional?: boolean
+}) : DatabaseProvider {
+  let viewerContextApplied = false
+
+  async function ensureViewerContext() {
+    if (!input.viewerUserId || viewerContextApplied) {
+      return
+    }
+
+    await input.client.query("select set_config('relay.current_user_id', $1, true)", [input.viewerUserId])
+    viewerContextApplied = true
+  }
+
+  const provider: DatabaseProvider = {
+    mode: input.mode,
+    async query<T extends DatabaseRow = DatabaseRow>(text: string, values: unknown[] = []) {
+      await ensureViewerContext()
+      const result = await input.client.query<T>(text, values)
+      return result.rows
+    },
+    async transaction<T>(callback: (provider: DatabaseProvider) => Promise<T>) {
+      if (input.transactional) {
+        return callback(provider)
+      }
+
+      await input.client.query("begin")
+      try {
+        await ensureViewerContext()
+        const result = await callback(buildProviderFromClient({
+          mode: input.mode,
+          client: input.client,
+          viewerUserId: input.viewerUserId,
+          transactional: true,
+        }))
+        await input.client.query("commit")
+        return result
+      } catch (error) {
+        await input.client.query("rollback")
+        throw error
+      }
+    },
+  }
+
+  return provider
+}
 
 export function isLocalConnectionString(connectionString: string): boolean {
   try {
@@ -103,15 +154,36 @@ export function createRepositoryProvider(viewerUserId?: string): DatabaseProvide
       const client = await database.connect()
 
       try {
-        if (viewerUserId) {
-          await client.query("select set_config('relay.current_user_id', $1, true)", [viewerUserId])
-        }
-
-        const result = await client.query<T>(text, values)
-        return result.rows
+        const provider = buildProviderFromClient({
+          mode,
+          client,
+          viewerUserId,
+        })
+        return provider.query<T>(text, values)
       } finally {
         client.release()
       }
-    }
+    },
+    async transaction<T>(callback: (provider: DatabaseProvider) => Promise<T>) {
+      const client = await database.connect()
+
+      try {
+        await client.query("begin")
+        const provider = buildProviderFromClient({
+          mode,
+          client,
+          viewerUserId,
+          transactional: true,
+        })
+        const result = await callback(provider)
+        await client.query("commit")
+        return result
+      } catch (error) {
+        await client.query("rollback")
+        throw error
+      } finally {
+        client.release()
+      }
+    },
   }
 }

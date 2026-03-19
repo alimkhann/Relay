@@ -419,7 +419,6 @@ Files:
 Phase 13: Pricing & Billing
 Priority: Business critical | Effort: 5-7 days | Risk: Medium
 Tiers
-
 Active projects
 Brief depth
 MCP access
@@ -447,14 +446,14 @@ CREATE TABLE referrals (
 CREATE TABLE referral_balances (
   user_id uuid PRIMARY KEY REFERENCES users(id),
   total_earned_cents int DEFAULT 0,
-  lifetime_cap_cents int DEFAULT 10800,  -- $108 = 12 months × $9
+  lifetime_cap_cents int DEFAULT 10800,  -- $54 = 6 months × $9
   created_at timestamptz DEFAULT now()
 );
 Reward structure:
 - Monthly conversion: $9 credit (1 month free for referrer)
 - Yearly conversion: $27 credit (3 months free for referrer)
 - Referred user gets: 1 month Pro free
-- Lifetime cap: $108 (12 months of Pro)
+- Lifetime cap: $54 (6 months of Pro)
 - Dashboard page: Referral link, stats (referred/converted/earned/remaining), referral list
 Implementation: Paddle for checkout/billing/tax. Webhook → subscriptions table. withTierCheck() middleware.
 Files:

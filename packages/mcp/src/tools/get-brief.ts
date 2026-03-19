@@ -26,7 +26,7 @@ export const getBriefSchema = z.object({
     .describe("Only include context updated since this ISO timestamp."),
   syncSurface: z
     .enum(["mcp", "cli", "chatgpt", "claude", "codex", "opencode", "gemini", "cursor", "warp", "windsurf", "antigravity", "grok", "perplexity", "deepseek"])
-    .default("mcp")
+    .optional()
     .describe("Surface label used to update last-sync markers after a successful brief fetch.")
 })
 
@@ -91,6 +91,8 @@ export async function getBrief(
   args: z.infer<typeof getBriefSchema>,
   resolvedProjectId: string
 ) {
+  const syncSurface = args.syncSurface ?? client.getDefaultSyncSurface()
+
   if (args.generate) {
     const data = await client.post<BootstrapResponse>(
       `/api/projects/${resolvedProjectId}/bootstrap`,
@@ -98,7 +100,7 @@ export async function getBrief(
           targetProfileKey: args.targetProfileKey,
           kind: args.kind,
           since: args.since,
-          syncSurface: args.syncSurface
+          syncSurface
         }
       )
 
@@ -136,7 +138,7 @@ export async function getBrief(
 
   // Fetch latest cached brief
   const data = await client.get<LatestResponse>(
-    `/api/projects/${resolvedProjectId}/bootstrap/latest?targetProfileKey=${encodeURIComponent(args.targetProfileKey)}&kind=${encodeURIComponent(args.kind)}&syncSurface=${encodeURIComponent(args.syncSurface)}`
+    `/api/projects/${resolvedProjectId}/bootstrap/latest?targetProfileKey=${encodeURIComponent(args.targetProfileKey)}&kind=${encodeURIComponent(args.kind)}&syncSurface=${encodeURIComponent(syncSurface)}`
   )
 
   if (!data.packet) {

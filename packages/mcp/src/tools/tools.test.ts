@@ -91,14 +91,16 @@ describe("relay_get_brief", () => {
     const client = mockClient()
     const result = await getBrief(
       client,
-      { kind: "fresh_chat_bootstrap", targetProfileKey: "claude_code_build", generate: true },
+      { kind: "fresh_chat_bootstrap", targetProfileKey: "claude_code_build", generate: true, syncSurface: "mcp" },
       "proj-1"
     )
 
     expect(result.content[0]!.text).toBe("# Generated Brief")
     expect(client.post).toHaveBeenCalledWith("/api/projects/proj-1/bootstrap", {
       targetProfileKey: "claude_code_build",
-      kind: "fresh_chat_bootstrap"
+      kind: "fresh_chat_bootstrap",
+      since: undefined,
+      syncSurface: "mcp"
     })
   })
 
@@ -106,7 +108,7 @@ describe("relay_get_brief", () => {
     const client = mockClient()
     const result = await getBrief(
       client,
-      { kind: "fresh_chat_bootstrap", targetProfileKey: "claude_code_build", generate: false },
+      { kind: "fresh_chat_bootstrap", targetProfileKey: "claude_code_build", generate: false, syncSurface: "mcp" },
       "proj-1"
     )
 
@@ -120,7 +122,7 @@ describe("relay_get_brief", () => {
     })
     const result = await getBrief(
       client,
-      { kind: "fresh_chat_bootstrap", targetProfileKey: "claude_code_build", generate: true },
+      { kind: "fresh_chat_bootstrap", targetProfileKey: "claude_code_build", generate: true, syncSurface: "mcp" },
       "proj-1"
     )
 
@@ -195,7 +197,7 @@ describe("relay_add_memory", () => {
         title: "TypeScript adoption",
         pinned: false,
         tags: [],
-        metadata: { source: "mcp" },
+        metadata: expect.objectContaining({ source: "mcp" }),
         sourceSurface: "mcp",
       })
     )

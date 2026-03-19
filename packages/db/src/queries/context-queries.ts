@@ -5,7 +5,8 @@ import type { RepositoryBundle } from "./repository-bundle"
 export async function buildContextCompositionInput(
   repositories: RepositoryBundle,
   projectId: string,
-  targetProfileKey: string
+  targetProfileKey: string,
+  since?: string
 ): Promise<ContextCompositionInput> {
   const [project, targetProfile, sessions, memoryItems] = await Promise.all([
     repositories.projects.getById(projectId),
@@ -17,7 +18,14 @@ export async function buildContextCompositionInput(
   if (!project) throw new Error("Project not found")
   if (!targetProfile) throw new Error("Target profile not found")
 
-  const recentSessions = sessions.slice(0, 5)
+  const sinceTime = since ? new Date(since).getTime() : null
+  const filteredSessions = sinceTime
+    ? sessions.filter((session) => new Date(session.capturedAt).getTime() >= sinceTime)
+    : sessions
+  const filteredMemoryItems = sinceTime
+    ? memoryItems.filter((item) => new Date(item.updatedAt).getTime() >= sinceTime)
+    : memoryItems
+  const recentSessions = filteredSessions.slice(0, 5)
   const recentTurns = (
     await Promise.all(
       recentSessions.slice(0, 3).map(async (session) => {
@@ -38,6 +46,6 @@ export async function buildContextCompositionInput(
     targetProfile,
     recentSessions,
     recentTurns,
-    memoryItems
+    memoryItems: filteredMemoryItems
   }
 }

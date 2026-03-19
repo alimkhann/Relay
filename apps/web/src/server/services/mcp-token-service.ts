@@ -66,6 +66,7 @@ export async function approveMcpAuthorization(sessionCode: string, userId: strin
   const userRepositories = createRepositoryBundle(userId)
   const project = await userRepositories.projects.getById(session.projectId)
   if (!project) {
+    await repositories.mcpAuthSessions.expire(session.id)
     throw new Error("Project not found for this MCP authorization request.")
   }
 
@@ -88,11 +89,7 @@ export async function pollMcpAuthorization(sessionSecret: string, codeVerifier?:
   }
 
   if (!codeVerifier || sha256Base64Url(codeVerifier) !== session.codeChallenge || !session.userId) {
-    return { status: "pending" as const }
-  }
-
-  const claimed = await repositories.mcpAuthSessions.claimApproved(session.id)
-  if (!claimed) {
+    await repositories.mcpAuthSessions.expire(session.id)
     return { status: "invalid" as const }
   }
 
@@ -100,25 +97,33 @@ export async function pollMcpAuthorization(sessionSecret: string, codeVerifier?:
   const refreshToken = buildRefreshToken()
   const accessExpiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString()
   const refreshExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+  const userId = session.userId
 
-  await repositories.mcpTokens.create({
-    userId: session.userId,
-    projectId: session.projectId,
-    tokenHash: hashContent(accessToken),
-    tokenPrefix: accessToken.slice(0, 16),
-    scopes: session.scopes,
-    expiresAt: accessExpiresAt,
-    refreshTokenHash: hashContent(refreshToken),
-    refreshTokenPrefix: refreshToken.slice(0, 16),
-    refreshExpiresAt,
+  const claimed = await repositories.provider.transaction(async (provider) => {
+    const tx = createRepositoryBundle(undefined, provider)
+    const exchangeable = await tx.mcpAuthSessions.claimApproved(session.id)
+    if (!exchangeable) {
+      return false
+    }
+
+    await tx.mcpTokens.create({
+      userId,
+      projectId: session.projectId,
+      tokenHash: hashContent(accessToken),
+      tokenPrefix: accessToken.slice(0, 16),
+      scopes: session.scopes,
+      expiresAt: accessExpiresAt,
+      refreshTokenHash: hashContent(refreshToken),
+      refreshTokenPrefix: refreshToken.slice(0, 16),
+      refreshExpiresAt,
+    })
+    await tx.mcpAuthSessions.markExchanged(session.id)
+    return true
   })
-  await repositories.mcpAuthSessions.markExchanged({
-    id: session.id,
-    accessToken,
-    refreshToken,
-    accessExpiresAt,
-    refreshExpiresAt,
-  })
+
+  if (!claimed) {
+    return { status: "invalid" as const }
+  }
 
   return {
     status: "approved" as const,
@@ -139,22 +144,28 @@ export async function refreshMcpAccessToken(refreshToken: string) {
     throw new Error("Refresh token is invalid or expired.")
   }
 
-  await repositories.mcpTokens.touch(existing.id)
-
   const accessToken = buildAccessToken()
   const nextRefreshToken = buildRefreshToken()
   const accessExpiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString()
   const refreshExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
 
-  await repositories.mcpTokens.rotate({
-    id: existing.id,
-    tokenHash: hashContent(accessToken),
-    tokenPrefix: accessToken.slice(0, 16),
-    expiresAt: accessExpiresAt,
-    refreshTokenHash: hashContent(nextRefreshToken),
-    refreshTokenPrefix: nextRefreshToken.slice(0, 16),
-    refreshExpiresAt,
+  const rotated = await repositories.provider.transaction(async (provider) => {
+    const tx = createRepositoryBundle(undefined, provider)
+    return tx.mcpTokens.rotate({
+      id: existing.id,
+      tokenHash: hashContent(accessToken),
+      tokenPrefix: accessToken.slice(0, 16),
+      expiresAt: accessExpiresAt,
+      previousRefreshTokenHash: existing.refreshTokenHash,
+      refreshTokenHash: hashContent(nextRefreshToken),
+      refreshTokenPrefix: nextRefreshToken.slice(0, 16),
+      refreshExpiresAt,
+    })
   })
+
+  if (!rotated) {
+    throw new Error("Refresh token was already rotated. Re-authenticate your MCP client.")
+  }
 
   return {
     accessToken,

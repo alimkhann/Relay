@@ -1,4 +1,4 @@
-import { readFile, mkdir, writeFile } from "node:fs/promises"
+import { readFile, mkdir, rename, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { homedir } from "node:os"
 
@@ -56,21 +56,20 @@ export async function loadConfig(): Promise<RelayConfig> {
 export async function saveConfig(config: RelayConfig): Promise<void> {
   const existing = await loadConfigFile()
   await mkdir(join(homedir(), ".relay"), { recursive: true })
-  await writeFile(
-    CONFIG_PATH,
-    JSON.stringify(
-      {
-        apiBase: config.apiBase,
-        token: existing.token,
-        accessToken: config.token,
-        refreshToken: config.refreshToken,
-        accessTokenExpiresAt: config.accessTokenExpiresAt,
-        refreshTokenExpiresAt: config.refreshTokenExpiresAt,
-        projectId: config.projectId
-      },
-      null,
-      2
-    ) + "\n",
-    "utf-8"
-  )
+  const nextContent = JSON.stringify(
+    {
+      apiBase: config.apiBase,
+      token: existing.token,
+      accessToken: config.token,
+      refreshToken: config.refreshToken,
+      accessTokenExpiresAt: config.accessTokenExpiresAt,
+      refreshTokenExpiresAt: config.refreshTokenExpiresAt,
+      projectId: config.projectId
+    },
+    null,
+    2
+  ) + "\n"
+  const tempPath = `${CONFIG_PATH}.${process.pid}.tmp`
+  await writeFile(tempPath, nextContent, "utf-8")
+  await rename(tempPath, CONFIG_PATH)
 }

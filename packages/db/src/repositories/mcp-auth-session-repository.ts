@@ -46,8 +46,9 @@ export class McpAuthSessionRepository {
       `select *
        from mcp_auth_sessions
        where session_hash = $1
-         and expires_at > now()
-       limit 1`,
+          and status != 'expired'
+          and expires_at > now()
+        limit 1`,
       [sessionHash]
     )
     const row = rows[0]
@@ -72,7 +73,7 @@ export class McpAuthSessionRepository {
     await this.provider.query(
       `update mcp_auth_sessions
        set user_id = $2, status = 'approved', approved_at = now()
-       where id = $1`,
+       where id = $1 and status = 'pending' and expires_at > now()`,
       [id, userId]
     )
   }
@@ -89,22 +90,23 @@ export class McpAuthSessionRepository {
     return rows.length > 0
   }
 
-  async markExchanged(input: {
-    id: string
-    accessToken: string
-    refreshToken: string
-    accessExpiresAt: string
-    refreshExpiresAt: string
-  }): Promise<void> {
+  async markExchanged(id: string): Promise<void> {
     await this.provider.query(
       `update mcp_auth_sessions
        set status = 'exchanged',
-           access_token = $2,
-           refresh_token = $3,
-           access_expires_at = $4,
-           refresh_expires_at = $5
-       where id = $1 and status = 'exchanging'`,
-      [input.id, input.accessToken, input.refreshToken, input.accessExpiresAt, input.refreshExpiresAt]
+            expires_at = least(expires_at, now())
+        where id = $1 and status = 'exchanging'`,
+      [id]
+    )
+  }
+
+  async expire(id: string): Promise<void> {
+    await this.provider.query(
+      `update mcp_auth_sessions
+       set status = 'expired',
+           expires_at = least(expires_at, now())
+       where id = $1 and status != 'exchanged'`,
+      [id]
     )
   }
 }

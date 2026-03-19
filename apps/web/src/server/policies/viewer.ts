@@ -99,7 +99,7 @@ export async function resolveViewer(authorizationHeader?: string | null): Promis
     const mcpTokenRecord = await repositories.mcpTokens.getValidAccessTokenByHash(hashContent(token))
 
     if (mcpTokenRecord) {
-      await repositories.mcpTokens.touch(mcpTokenRecord.id)
+      await repositories.mcpTokens.touchIfStale(mcpTokenRecord.id)
       return {
         userId: mcpTokenRecord.userId,
         mode: "mcp",
@@ -114,7 +114,7 @@ export async function resolveViewer(authorizationHeader?: string | null): Promis
     const tokenRecord = await repositories.extensionTokens.getValidByHash(hashContent(token))
 
     if (tokenRecord) {
-      await repositories.extensionTokens.touch(tokenRecord.id)
+      await repositories.extensionTokens.touchIfStale(tokenRecord.id)
       return {
         userId: tokenRecord.userId,
         mode: "extension",

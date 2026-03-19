@@ -62,6 +62,7 @@ export class RelayClient {
   private workSessionState = createEmptyAggregateState()
   private hooksRegistered = false
   private workSessionDisabled = false
+  private refreshPromise: Promise<void> | null = null
 
   constructor(config: RelayConfig) {
     this.baseUrl = config.apiBase.replace(/\/+$/, "")
@@ -85,11 +86,17 @@ export class RelayClient {
   }
 
   async delete(path: string): Promise<void> {
+    await this.refreshIfNeeded()
+
     const url = `${this.baseUrl}${path}`
     const response = await fetch(url, {
       method: "DELETE",
       headers: { "Authorization": `Bearer ${this.token}` }
     })
+    if (response.status === 401 && this.refreshToken) {
+      await this.refreshAccessToken()
+      return this.delete(path)
+    }
     if (!response.ok) {
       const text = await response.text().catch(() => "")
       throw new Error(`Relay API error: ${response.status} ${response.statusText}${text ? ` — ${text}` : ""}`)
@@ -117,7 +124,7 @@ export class RelayClient {
           surface: "mcp",
           workspaceId: process.cwd(),
           agentName: this.detectAgentName(),
-          clientName: "relay-mcp",
+          clientName: this.detectClientName(),
           associationMethod: this.projectId ? "config_project" : "auto_detected",
           associationConfidence: this.projectId ? 1 : 0.72,
         },
@@ -247,9 +254,30 @@ export class RelayClient {
     if (process.env["RELAY_AGENT_NAME"]) return process.env["RELAY_AGENT_NAME"]
     if (process.env["CLAUDECODE"] || process.env["CLAUDE_CODE"]) return "claude-code"
     if (process.env["CURSOR_TRACE_ID"] || process.env["CURSOR_AGENT"]) return "cursor"
+    if (process.env["WINDSURF"] || process.env["WINDSURF_AGENT"]) return "windsurf"
     if (process.env["GEMINI_CLI"]) return "gemini-cli"
     if (process.env["OPENCODE"]) return "opencode"
     return "mcp-agent"
+  }
+
+  private detectClientName() {
+    return `relay-mcp:${this.detectAgentName()}`
+  }
+
+  private detectSyncSurface() {
+    const agent = this.detectAgentName()
+
+    if (agent === "claude-code") return "claude" as const
+    if (agent === "cursor") return "cursor" as const
+    if (agent === "windsurf") return "windsurf" as const
+    if (agent === "opencode") return "opencode" as const
+    if (agent === "gemini-cli") return "gemini" as const
+
+    return "mcp" as const
+  }
+
+  getDefaultSyncSurface() {
+    return this.detectSyncSurface()
   }
 
   private registerShutdownHooks() {
@@ -323,43 +351,56 @@ export class RelayClient {
   }
 
   private async refreshAccessToken() {
-    if (!this.refreshToken) {
-      throw new Error("Relay refresh token is missing.")
+    if (this.refreshPromise) {
+      await this.refreshPromise
+      return
     }
 
-    const response = await fetch(`${this.baseUrl}/api/mcp/refresh`, {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ refreshToken: this.refreshToken })
-    })
+    this.refreshPromise = (async () => {
+      if (!this.refreshToken) {
+        throw new Error("Relay refresh token is missing.")
+      }
 
-    if (!response.ok) {
-      const text = await response.text().catch(() => "")
-      throw new Error(`Relay refresh failed: ${response.status} ${response.statusText}${text ? ` — ${text}` : ""}`)
+      const response = await fetch(`${this.baseUrl}/api/mcp/refresh`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ refreshToken: this.refreshToken })
+      })
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => "")
+        throw new Error(`Relay refresh failed: ${response.status} ${response.statusText}${text ? ` — ${text}` : ""}`)
+      }
+
+      const data = await response.json() as {
+        accessToken: string
+        refreshToken: string
+        accessExpiresAt: string
+        refreshExpiresAt: string
+        apiBase: string
+      }
+
+      this.token = data.accessToken
+      this.refreshToken = data.refreshToken
+      this.accessTokenExpiresAt = data.accessExpiresAt
+
+      await saveConfig({
+        apiBase: data.apiBase,
+        token: data.accessToken,
+        refreshToken: data.refreshToken,
+        accessTokenExpiresAt: data.accessExpiresAt,
+        refreshTokenExpiresAt: data.refreshExpiresAt,
+        projectId: this.projectId
+      })
+    })()
+
+    try {
+      await this.refreshPromise
+    } finally {
+      this.refreshPromise = null
     }
-
-    const data = await response.json() as {
-      accessToken: string
-      refreshToken: string
-      accessExpiresAt: string
-      refreshExpiresAt: string
-      apiBase: string
-    }
-
-    this.token = data.accessToken
-    this.refreshToken = data.refreshToken
-    this.accessTokenExpiresAt = data.accessExpiresAt
-
-    await saveConfig({
-      apiBase: data.apiBase,
-      token: data.accessToken,
-      refreshToken: data.refreshToken,
-      accessTokenExpiresAt: data.accessExpiresAt,
-      refreshTokenExpiresAt: data.refreshExpiresAt,
-      projectId: this.projectId
-    })
   }
 }

@@ -193,12 +193,12 @@
     };
   }
 
-  function collectTurns(config) {
+  function collectTurns(config, metadata) {
     const runtime = getAdapterRuntime();
     const domTurns = runtime ? runtime.collectTurns(document, window.location.href) : [];
 
     // Try to merge with network-captured turns for completeness
-    const merged = mergeNetworkAndDomTurns(domTurns, config);
+    const merged = mergeNetworkAndDomTurns(domTurns, config, metadata);
     return merged;
   }
 
@@ -212,7 +212,7 @@
    *   but keep DOM rawHtml if present.
    * - If network data is stale or missing, fall back to DOM-only.
    */
-  function mergeNetworkAndDomTurns(domTurns, config) {
+  function mergeNetworkAndDomTurns(domTurns, config, metadata) {
     var cache = networkCaptureCache.latest;
     if (!cache) return tagTurnsWithSource(domTurns, "dom");
 
@@ -225,6 +225,28 @@
     // Check platform matches
     if (cache.platform !== config.platform) {
       return tagTurnsWithSource(domTurns, "dom");
+    }
+
+    var currentConversationId = getConversationIdentity(config.platform, metadata);
+    if (cache.conversationId && currentConversationId && cache.conversationId !== currentConversationId) {
+      return tagTurnsWithSource(domTurns, "dom");
+    }
+
+    if (cache.url && metadata && metadata.url) {
+      try {
+        var cacheUrl = new URL(cache.url);
+        var currentUrl = new URL(metadata.url);
+        if (
+          cacheUrl.hostname === currentUrl.hostname &&
+          cacheUrl.pathname !== currentUrl.pathname &&
+          !cache.conversationId &&
+          !currentConversationId
+        ) {
+          return tagTurnsWithSource(domTurns, "dom");
+        }
+      } catch (_error) {
+        // Fall through to the existing checks.
+      }
     }
 
     var networkTurns = cache.turns;
@@ -388,6 +410,56 @@
     };
   }
 
+  function getUrlConversationId(platform, metadata) {
+    if (!platform || !metadata || !metadata.url) {
+      return null;
+    }
+
+    var url = metadata.url;
+    var match = null;
+
+    if (platform === "chatgpt" && /\/[cg]\/([a-zA-Z0-9-]+)/.test(url)) {
+      match = url.match(/\/[cg]\/([a-zA-Z0-9-]+)/);
+      return match ? match[1] : null;
+    }
+
+    if (platform === "claude" && /\/chat\/([a-zA-Z0-9-]+)/.test(url)) {
+      match = url.match(/\/chat\/([a-zA-Z0-9-]+)/);
+      return match ? match[1] : null;
+    }
+
+    if (platform === "perplexity" && /\/search\/([a-zA-Z0-9-]+)/.test(url)) {
+      match = url.match(/\/search\/([a-zA-Z0-9-]+)/);
+      return match ? match[1] : null;
+    }
+
+    if (platform === "gemini" && /\/app\/([a-zA-Z0-9_-]+)/.test(url)) {
+      match = url.match(/\/app\/([a-zA-Z0-9_-]+)/);
+      return match ? match[1] : null;
+    }
+
+    if (platform === "grok" && /conversation=([a-zA-Z0-9_-]+)/.test(url)) {
+      match = url.match(/conversation=([a-zA-Z0-9_-]+)/);
+      return match ? match[1] : null;
+    }
+
+    if (platform === "deepseek" && /\/s\/([a-zA-Z0-9_-]+)/.test(url)) {
+      match = url.match(/\/s\/([a-zA-Z0-9_-]+)/);
+      return match ? match[1] : null;
+    }
+
+    return null;
+  }
+
+  function getConversationIdentity(platform, metadata) {
+    var fromNetwork =
+      networkCaptureCache.latest && networkCaptureCache.latest.platform === platform
+        ? networkCaptureCache.latest.conversationId
+        : null;
+
+    return fromNetwork || getUrlConversationId(platform, metadata) || metadata.pageFingerprint || null;
+  }
+
   const platformPromptSelectors = {
     chatgpt: ["#prompt-textarea", "div[contenteditable='true']", "textarea"],
     codex: ["#prompt-textarea", "div[contenteditable='true']", "textarea"],
@@ -485,8 +557,8 @@
       return { supported: false };
     }
 
-    const turns = collectTurns(config);
     const metadata = getPageMetadata();
+    const turns = collectTurns(config, metadata);
     const promptTarget = findPrompt(config);
     const routeKind = inferRouteKind(config, metadata);
     const isFreshRoute = routeKind === "fresh";
@@ -518,6 +590,7 @@
       domain: metadata.domain,
       pathname: metadata.pathname,
       pageFingerprint: metadata.pageFingerprint,
+      sourceConversationId: getConversationIdentity(config.platform, metadata),
       turns: turns.length,
       captureSignature: computeSignature(turns, metadata, config.platform),
       recentUserTurnText: getLatestMeaningfulUserTurnText(turns),
@@ -536,6 +609,7 @@
       supported: pageState.supported,
       routeKind: pageState.routeKind,
       url: pageState.url,
+      sourceConversationId: pageState.sourceConversationId,
       turns: pageState.turns,
       captureSignature: pageState.captureSignature,
       recentUserTurnText: pageState.recentUserTurnText,
@@ -2420,6 +2494,19 @@
       relayChipState.lastMeaningfulMutationAt = Date.now();
       queuePageObservation(true);
     });
+    ["pushState", "replaceState"].forEach(function (methodName) {
+      var original = window.history[methodName];
+      if (typeof original !== "function") {
+        return;
+      }
+
+      window.history[methodName] = function () {
+        var result = original.apply(this, arguments);
+        relayChipState.lastMeaningfulMutationAt = Date.now();
+        queuePageObservation(true);
+        return result;
+      };
+    });
     window.setInterval(() => {
       queuePageObservation(false);
     }, 1000);
@@ -2590,8 +2677,8 @@
         return true;
       }
 
-      const turns = collectTurns(config);
       const metadata = getPageMetadata();
+      const turns = collectTurns(config, metadata);
 
       sendResponse({
         ok: true,
@@ -2601,6 +2688,7 @@
             title: metadata.title,
             url: metadata.url,
             pageFingerprint: metadata.pageFingerprint,
+            sourceConversationId: getConversationIdentity(config.platform, metadata),
             captureSignature: computeSignature(
               turns,
               metadata,

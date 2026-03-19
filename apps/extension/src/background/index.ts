@@ -24,7 +24,9 @@ import type {
 import {
   clearIgnoredChatKey,
   isIgnoredChatKey,
+  readAssociationAdjudication,
   readApprovedAssociations,
+  rememberAssociationAdjudication,
   rememberApprovedAssociation,
   rememberIgnoredChatKey,
   removeApprovedAssociationBySession,
@@ -170,6 +172,8 @@ interface RelayTabState {
   retryDelayMs: number;
   retryTimer: ReturnType<typeof setTimeout> | null;
   syncInFlight: boolean;
+  syncQueued: boolean;
+  syncRequestKey: string | null;
   capturePending: boolean;
   captureTimer: ReturnType<typeof setTimeout> | null;
   pendingAssociation: PendingAssociationState | null;
@@ -225,8 +229,8 @@ let sessionDataCache: {
   fetchedAt: number;
 } | null = null;
 
-const SESSION_CACHE_TTL_MS = 15_000;
-const DASHBOARD_CACHE_TTL_MS = 6_000;
+const SESSION_CACHE_TTL_MS = 45_000;
+const DASHBOARD_CACHE_TTL_MS = 20_000;
 const REMOTE_RETRY_DELAY_MS = 300;
 const REMOTE_RETRY_BACKOFF_MS = [5_000, 15_000];
 
@@ -710,6 +714,8 @@ function createTabState(tabId: number): RelayTabState {
     retryDelayMs: 0,
     retryTimer: null,
     syncInFlight: false,
+    syncQueued: false,
+    syncRequestKey: null,
     capturePending: false,
     captureTimer: null,
     pendingAssociation: null,
@@ -1077,18 +1083,18 @@ async function loadSessionData() {
   }
 
   try {
-    const [projectsResponse, settingsResponse] = await retryRemote(() =>
-      Promise.all([relayFetch("/api/projects"), relayFetch("/api/settings")]),
+    const sessionResponse = await retryRemote(() =>
+      relayFetch("/api/extension/session"),
     );
 
-    if (!projectsResponse.ok) {
+    if (!sessionResponse.ok) {
       const message = await readErrorResponse(
-        projectsResponse,
-        "Failed to load projects.",
+        sessionResponse,
+        "Failed to load extension session.",
       );
       if (
-        projectsResponse.status === 401 ||
-        projectsResponse.status === 403 ||
+        sessionResponse.status === 401 ||
+        sessionResponse.status === 403 ||
         isAuthFailureMessage(message)
       ) {
         await resetStoredSession(message);
@@ -1103,29 +1109,7 @@ async function loadSessionData() {
       throw new Error(message);
     }
 
-    if (!settingsResponse.ok) {
-      const message = await readErrorResponse(
-        settingsResponse,
-        "Failed to load settings.",
-      );
-      if (
-        settingsResponse.status === 401 ||
-        settingsResponse.status === 403 ||
-        isAuthFailureMessage(message)
-      ) {
-        await resetStoredSession(message);
-        return {
-          connected: false,
-          projects: [] as RelayProjectOption[],
-          settings: null as RemoteSettingsPayload | null,
-          onboarding: createPendingOnboardingState(),
-        };
-      }
-
-      throw new Error(message);
-    }
-
-    const projectsPayload = (await projectsResponse.json()) as {
+    const sessionPayload = (await sessionResponse.json()) as {
       projects: Array<{
         id: string;
         name: string;
@@ -1138,12 +1122,16 @@ async function loadSessionData() {
           keywords: string[];
         } | null;
       }>;
+      settings: RemoteSettingsResponsePayload["settings"];
+      onboarding?: RelayOnboardingState | null;
     };
-    const settingsPayload =
-      (await settingsResponse.json()) as RemoteSettingsResponsePayload;
+    const settingsPayload = {
+      settings: sessionPayload.settings,
+      onboarding: sessionPayload.onboarding,
+    } as RemoteSettingsResponsePayload;
     const onboarding = settingsPayload.onboarding ?? createPendingOnboardingState();
 
-    const projects = projectsPayload.projects.map((project) => ({
+    const projects = sessionPayload.projects.map((project) => ({
       id: project.id,
       name: project.name,
       slug: project.slug ?? null,
@@ -1572,6 +1560,7 @@ async function syncTabRemoteState(
   const state = getOrCreateTabState(tabId);
   const session = await getRelaySession();
   hydrateTabStateFromSession(state, session);
+  const requestKey = `${state.page.url ?? ""}|${state.page.captureSignature ?? ""}|${state.page.turns ?? 0}`;
 
   if (!session.token) {
     state.remoteStatus = "unavailable";
@@ -1585,6 +1574,7 @@ async function syncTabRemoteState(
   }
 
   if (state.syncInFlight) {
+    state.syncQueued = true;
     return;
   }
 
@@ -1599,6 +1589,8 @@ async function syncTabRemoteState(
   }
 
   state.syncInFlight = true;
+  state.syncQueued = false;
+  state.syncRequestKey = requestKey;
   state.remoteStatus =
     state.lastSuccessfulSyncAt || session.projectOptions.length > 0 || session.assumedProjectId
       ? "stale"
@@ -1634,6 +1626,11 @@ async function syncTabRemoteState(
       activeProject,
       dashboard,
     );
+    const currentRequestKey = `${state.page.url ?? ""}|${state.page.captureSignature ?? ""}|${state.page.turns ?? 0}`;
+    if (currentRequestKey !== requestKey) {
+      state.syncQueued = true;
+      return;
+    }
     const nextChatAssociation =
       dashboardChatAssociation.status !== "none"
         ? dashboardChatAssociation
@@ -1699,7 +1696,12 @@ async function syncTabRemoteState(
     scheduleRetry(tabId);
   } finally {
     state.syncInFlight = false;
+    state.syncRequestKey = null;
     await broadcastActiveProjectState(tabId);
+    if (state.syncQueued) {
+      state.syncQueued = false;
+      void syncTabRemoteState(tabId, { force: true, reason: "queued_refresh" });
+    }
   }
 }
 
@@ -1876,6 +1878,112 @@ async function dismissCaptureReview(tabId: number) {
   await broadcastActiveProjectState(tabId);
 }
 
+function shouldRequestAssociationAdjudication(decision: RelayRoutingDecision) {
+  if (decision.confidence === "medium") {
+    return true;
+  }
+
+  if (decision.confidence === "low") {
+    const topScore = decision.topCandidates[0]?.score ?? 0;
+    const secondScore = decision.topCandidates[1]?.score ?? 0;
+    return topScore >= 16 || topScore - secondScore <= 10;
+  }
+
+  return false;
+}
+
+async function adjudicateAssociationRouting(
+  state: RelayTabState,
+  decision: RelayRoutingDecision,
+) {
+  const chatKey = buildAssociationKey(state.page);
+  const captureSignature = state.page.captureSignature ?? null;
+  const cached = await readAssociationAdjudication(chatKey, captureSignature);
+  if (cached) {
+    return {
+      mode: cached.decision,
+      confidence: cached.confidence,
+      candidateProjectId: cached.projectId,
+      candidateProjectName:
+        state.projectOptions.find((project) => project.id === cached.projectId)?.name ?? null,
+      score: decision.score,
+      reasons: cached.reasons,
+      topCandidates: decision.topCandidates,
+    } satisfies RelayRoutingDecision;
+  }
+
+  const response = await relayFetch("/api/extension/association", {
+    method: "POST",
+    body: JSON.stringify({
+      title: state.page.title ?? null,
+      recentUserTurnText: state.page.recentUserTurnText ?? null,
+      recentRoutingText: state.page.recentRoutingText ?? null,
+      fullVisibleRoutingText: state.page.fullVisibleRoutingText ?? null,
+      heuristicMode: decision.mode,
+      heuristicConfidence: decision.confidence,
+      candidates: decision.topCandidates.map((candidate) => {
+        const project = state.projectOptions.find((option) => option.id === candidate.projectId);
+        return {
+          projectId: candidate.projectId,
+          name: candidate.projectName,
+          description: project?.description ?? null,
+          keywords: project?.routingContext?.keywords ?? [],
+          heuristicScore: candidate.score,
+          heuristicReasons: candidate.reasons,
+        };
+      }),
+    }),
+  });
+
+  if (!response.ok) {
+    return decision;
+  }
+
+  const payload = (await response.json()) as {
+    result?: {
+      decision: "auto-save" | "hold" | "ignore";
+      candidateProjectId: string | null;
+      candidateProjectName: string | null;
+      confidence: "high" | "medium" | "low";
+      reasons: string[];
+    } | null;
+  };
+  const result = payload.result;
+  if (!result) {
+    return decision;
+  }
+
+  const topCandidateId = decision.topCandidates[0]?.projectId ?? null;
+  const allowAutoSave =
+    result.decision === "auto-save" &&
+    decision.confidence !== "low" &&
+    result.confidence === "high" &&
+    Boolean(result.candidateProjectId) &&
+    result.candidateProjectId === topCandidateId;
+
+  const normalized: RelayRoutingDecision = {
+    mode: allowAutoSave ? "auto-save" : result.decision === "ignore" ? "ignore" : "hold",
+    confidence: result.confidence,
+    candidateProjectId: allowAutoSave || result.decision === "hold" ? result.candidateProjectId : null,
+    candidateProjectName: allowAutoSave || result.decision === "hold" ? result.candidateProjectName : null,
+    score: decision.score,
+    reasons: result.reasons.length ? result.reasons : decision.reasons,
+    topCandidates: decision.topCandidates,
+  };
+
+  await rememberAssociationAdjudication({
+    key: chatKey,
+    captureSignature,
+    projectId: normalized.candidateProjectId,
+    decision: normalized.mode,
+    confidence: normalized.confidence,
+    reasons: normalized.reasons,
+    adjudicatedAt: new Date().toISOString(),
+  });
+
+  return normalized;
+}
+
 async function resolveAutoCaptureRouting(
   tabId: number,
   state: RelayTabState,
@@ -1889,13 +1997,14 @@ async function resolveAutoCaptureRouting(
       candidateProjectId: null,
       candidateProjectName: null,
       score: 0,
-      reasons: ["This chat was already dismissed from automatic capture."]
+      reasons: ["This chat was already dismissed from automatic capture."],
+      topCandidates: [],
     };
   }
 
   const approvedAssociations =
     approvedAssociationsInput ?? (await readApprovedAssociations());
-  return evaluateProjectRouting({
+  const heuristicDecision = evaluateProjectRouting({
     page: state.page,
     projects: state.projectOptions,
     selectedProjectId: state.projectId,
@@ -1903,6 +2012,16 @@ async function resolveAutoCaptureRouting(
     boundProject: state.boundProject,
     approvedAssociations
   });
+
+  if (!shouldRequestAssociationAdjudication(heuristicDecision)) {
+    return heuristicDecision;
+  }
+
+  try {
+    return await adjudicateAssociationRouting(state, heuristicDecision);
+  } catch {
+    return heuristicDecision;
+  }
 }
 
 async function schedulePendingAutoSaveAssociation(
@@ -2507,6 +2626,7 @@ async function captureObservedChange(
           domain: state.page.domain ?? null,
           pathname: state.page.pathname ?? null,
           pageFingerprint: state.page.pageFingerprint ?? null,
+          sourceConversationId: state.page.sourceConversationId ?? null,
           url: state.page.url ?? null,
           title: state.page.title ?? null,
           recentUserTurnText: state.page.recentUserTurnText ?? null,
@@ -2704,6 +2824,7 @@ async function insertProjectBrief(
       targetProfileKey,
       kind,
       deep: kind === "fresh_chat_bootstrap",
+      syncSurface: pageState.platform ?? undefined,
     }),
   });
 

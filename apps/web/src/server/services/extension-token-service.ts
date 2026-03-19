@@ -14,6 +14,7 @@ export async function createExtensionTokenForUser(userId: string, input: unknown
   const record = await repositories.extensionTokens.create({
     userId,
     deviceName: parsed.deviceName,
+    purpose: parsed.purpose ?? "manual",
     tokenHash: hashContent(token),
     tokenPrefix: token.slice(0, 12)
   })

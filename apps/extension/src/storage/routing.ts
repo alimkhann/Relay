@@ -6,11 +6,13 @@ const storage = typeof chrome !== "undefined" ? chrome.storage.local : null
 
 const keys = {
   approvedAssociations: "relay.routing.approvedAssociations",
-  ignoredChatKeys: "relay.routing.ignoredChatKeys"
+  ignoredChatKeys: "relay.routing.ignoredChatKeys",
+  adjudications: "relay.routing.adjudications"
 } as const
 
 const MAX_APPROVED_ASSOCIATIONS = 80
 const MAX_IGNORED_CHAT_KEYS = 40
+const MAX_ADJUDICATIONS = 120
 
 export interface RelayApprovedAssociation {
   key: string
@@ -21,6 +23,7 @@ export interface RelayApprovedAssociation {
   domain: string | null
   pathname: string | null
   pageFingerprint: string | null
+  sourceConversationId: string | null
   url: string | null
   title: string | null
   recentUserTurnText: string | null
@@ -31,6 +34,17 @@ export interface RelayApprovedAssociation {
 interface RelayRoutingMemory {
   approvedAssociations: RelayApprovedAssociation[]
   ignoredChatKeys: string[]
+  adjudications: RelayAssociationAdjudication[]
+}
+
+export interface RelayAssociationAdjudication {
+  key: string
+  captureSignature: string | null
+  projectId: string | null
+  decision: "auto-save" | "hold" | "ignore"
+  confidence: "high" | "medium" | "low"
+  reasons: string[]
+  adjudicatedAt: string
 }
 
 function normalizeApprovedAssociation(input: RelayApprovedAssociation): RelayApprovedAssociation {
@@ -41,6 +55,7 @@ function normalizeApprovedAssociation(input: RelayApprovedAssociation): RelayApp
     domain: input.domain ?? null,
     pathname: input.pathname ?? null,
     pageFingerprint: input.pageFingerprint ?? null,
+    sourceConversationId: input.sourceConversationId ?? null,
     url: input.url ?? null,
     title: input.title ?? null,
     recentUserTurnText: input.recentUserTurnText ?? null,
@@ -48,8 +63,12 @@ function normalizeApprovedAssociation(input: RelayApprovedAssociation): RelayApp
   }
 }
 
-export function buildChatLookupKey(page: Pick<RelayPageState, "platform" | "pageFingerprint" | "pathname" | "url">) {
+export function buildChatLookupKey(page: Pick<RelayPageState, "platform" | "pageFingerprint" | "pathname" | "url" | "sourceConversationId">) {
   const platform = page.platform ?? "unknown"
+  const sourceConversationId = page.sourceConversationId?.trim()
+  if (sourceConversationId) {
+    return `${platform}:conversation:${sourceConversationId}`
+  }
   const fingerprint = page.pageFingerprint?.trim()
   if (fingerprint) {
     return `${platform}:fingerprint:${fingerprint}`
@@ -67,7 +86,8 @@ async function getRoutingMemory(): Promise<RelayRoutingMemory> {
   if (!storage) {
     return {
       approvedAssociations: [],
-      ignoredChatKeys: []
+      ignoredChatKeys: [],
+      adjudications: []
     }
   }
 
@@ -78,6 +98,9 @@ async function getRoutingMemory(): Promise<RelayRoutingMemory> {
       : [],
     ignoredChatKeys: Array.isArray(values[keys.ignoredChatKeys])
       ? (values[keys.ignoredChatKeys] as string[])
+      : [],
+    adjudications: Array.isArray(values[keys.adjudications])
+      ? (values[keys.adjudications] as RelayAssociationAdjudication[])
       : []
   }
 }
@@ -91,6 +114,9 @@ async function setRoutingMemory(input: Partial<RelayRoutingMemory>) {
   }
   if (input.ignoredChatKeys !== undefined) {
     payload[keys.ignoredChatKeys] = input.ignoredChatKeys.slice(0, MAX_IGNORED_CHAT_KEYS)
+  }
+  if (input.adjudications !== undefined) {
+    payload[keys.adjudications] = input.adjudications.slice(0, MAX_ADJUDICATIONS)
   }
 
   if (Object.keys(payload).length > 0) {
@@ -136,6 +162,25 @@ export async function clearIgnoredChatKey(key: string) {
   const memory = await getRoutingMemory()
   await setRoutingMemory({
     ignoredChatKeys: memory.ignoredChatKeys.filter((candidate) => candidate !== key)
+  })
+}
+
+export async function readAssociationAdjudication(key: string, captureSignature: string | null) {
+  const memory = await getRoutingMemory()
+  return memory.adjudications.find(
+    (candidate) => candidate.key === key && candidate.captureSignature === captureSignature,
+  ) ?? null
+}
+
+export async function rememberAssociationAdjudication(input: RelayAssociationAdjudication) {
+  const memory = await getRoutingMemory()
+  await setRoutingMemory({
+    adjudications: [
+      input,
+      ...memory.adjudications.filter(
+        (candidate) => !(candidate.key === input.key && candidate.captureSignature === input.captureSignature),
+      ),
+    ],
   })
 }
 

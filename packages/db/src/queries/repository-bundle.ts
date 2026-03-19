@@ -68,8 +68,11 @@ export interface RepositoryBundle {
   workSessionCheckpoints: WorkSessionCheckpointRepository
 }
 
-export function createRepositoryBundle(viewerUserId?: string): RepositoryBundle {
-  const provider = createRepositoryProvider(viewerUserId)
+export function createRepositoryBundle(
+  viewerUserId?: string,
+  providerOverride?: DatabaseProvider,
+): RepositoryBundle {
+  const provider = providerOverride ?? createRepositoryProvider(viewerUserId)
 
   return {
     provider,

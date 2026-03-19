@@ -777,27 +777,7 @@ export async function generateBootstrapForProject(userId: string, projectId: str
     throw new Error("Target profile not found.")
   }
 
-  // Archive stale unpinned tasks (lazy cleanup at brief generation time)
-  const STALE_TASK_DAYS = 14
-  const staleThreshold = Date.now() - STALE_TASK_DAYS * 24 * 60 * 60 * 1000
-  const staleTasks = memoryItems.filter(
-    (item) =>
-      item.type === "task" &&
-      !item.pinned &&
-      new Date(item.updatedAt).getTime() < staleThreshold
-  )
-  if (staleTasks.length > 0) {
-    await Promise.all(
-      staleTasks.map((item) =>
-        repositories.memory.update(item.id, { isArchived: true })
-      )
-    )
-  }
-
-  // Filter out archived stale tasks from the working set
-  const activeMemoryItems = staleTasks.length > 0
-    ? memoryItems.filter((item) => !staleTasks.some((stale) => stale.id === item.id))
-    : memoryItems
+  const activeMemoryItems = memoryItems.filter((item) => !item.isArchived)
 
   // Build effective state by merging derived state + overrides + memory items
   const derivedStateDto = rawState

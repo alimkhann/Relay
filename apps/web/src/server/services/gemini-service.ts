@@ -3,18 +3,29 @@ import { normalizeText } from "@relay/shared"
 const GEMINI_API_BASE = process.env.GEMINI_API_BASE_URL ?? "https://generativelanguage.googleapis.com/v1beta"
 const MODEL_UNAVAILABLE_CACHE_MS = 15 * 60 * 1000
 
+function envModel(key: string, fallback: string) {
+  const value = process.env[key]?.trim()
+  return value || fallback
+}
+
 export const GEMINI_MODELS = {
   digest: {
-    primary: "gemini-3.1-flash-lite",
-    fallback: "gemini-2.5-flash-lite",
+    primary: envModel("GEMINI_MODEL_DIGEST_PRIMARY", "gemini-3.1-flash-lite"),
+    fallback: envModel("GEMINI_MODEL_DIGEST_FALLBACK", "gemini-2.5-flash-lite"),
     maxInputTokens: 6_000,
     maxOutputTokens: 1_200
   },
   bootstrap: {
-    primary: "gemini-3-flash",
-    fallback: "gemini-2.5-flash",
+    primary: envModel("GEMINI_MODEL_BOOTSTRAP_PRIMARY", "gemini-3-flash"),
+    fallback: envModel("GEMINI_MODEL_BOOTSTRAP_FALLBACK", "gemini-2.5-flash"),
     maxInputTokens: 14_000,
     maxOutputTokens: 2_000
+  },
+  adjudication: {
+    primary: envModel("GEMINI_MODEL_ADJUDICATION_PRIMARY", "gemini-3.1-flash-lite"),
+    fallback: envModel("GEMINI_MODEL_ADJUDICATION_FALLBACK", "gemini-2.5-flash-lite"),
+    maxInputTokens: 4_000,
+    maxOutputTokens: 500,
   }
 } as const
 

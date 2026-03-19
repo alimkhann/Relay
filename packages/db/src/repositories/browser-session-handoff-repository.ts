@@ -64,4 +64,25 @@ export class BrowserSessionHandoffRepository {
       [id]
     )
   }
+
+  async consumeValidByHash(handoffHash: string): Promise<BrowserSessionHandoffRow | null> {
+    const rows = await this.provider.query(
+      `update browser_session_handoffs
+       set consumed_at = now()
+       where id = (
+         select id
+         from browser_session_handoffs
+         where handoff_hash = $1
+           and consumed_at is null
+           and expires_at > now()
+         limit 1
+         for update
+       )
+       returning *`,
+      [handoffHash]
+    )
+
+    const row = rows[0]
+    return row ? toBrowserSessionHandoffRow(row as Record<string, unknown>) : null
+  }
 }

@@ -83,10 +83,11 @@ export class McpTokenRepository {
     tokenHash: string
     tokenPrefix: string
     expiresAt: string
+    previousRefreshTokenHash: string | null
     refreshTokenHash: string | null
     refreshTokenPrefix: string | null
     refreshExpiresAt: string | null
-  }): Promise<McpTokenRow> {
+  }): Promise<McpTokenRow | null> {
     const rows = await this.provider.query(
       `update mcp_tokens
        set token_hash = $2,
@@ -94,11 +95,15 @@ export class McpTokenRepository {
            expires_at = $4,
            refresh_token_hash = $5,
            refresh_token_prefix = $6,
-           refresh_expires_at = $7,
-           rotation_count = rotation_count + 1,
-           updated_at = now()
+            refresh_expires_at = $7,
+            rotation_count = rotation_count + 1,
+            updated_at = now()
        where id = $1
-       returning *`,
+         and (
+           ($8::text is null and refresh_token_hash is null)
+           or refresh_token_hash = $8
+         )
+        returning *`,
       [
         input.id,
         input.tokenHash,
@@ -106,11 +111,13 @@ export class McpTokenRepository {
         input.expiresAt,
         input.refreshTokenHash,
         input.refreshTokenPrefix,
-        input.refreshExpiresAt
+        input.refreshExpiresAt,
+        input.previousRefreshTokenHash,
       ]
     )
 
-    return toMcpTokenRow(rows[0] as Record<string, unknown>)
+    const row = rows[0]
+    return row ? toMcpTokenRow(row as Record<string, unknown>) : null
   }
 
   async revoke(id: string): Promise<void> {
@@ -129,6 +136,17 @@ export class McpTokenRepository {
            updated_at = now()
        where id = $1`,
       [id]
+    )
+  }
+
+  async touchIfStale(id: string, staleBeforeMinutes = 15): Promise<void> {
+    await this.provider.query(
+      `update mcp_tokens
+       set last_used_at = now(),
+           updated_at = now()
+       where id = $1
+         and (last_used_at is null or last_used_at < now() - make_interval(mins => $2))`,
+      [id, staleBeforeMinutes]
     )
   }
 }

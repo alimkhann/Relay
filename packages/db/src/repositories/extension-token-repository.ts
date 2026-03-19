@@ -59,6 +59,16 @@ export class ExtensionTokenRepository {
     )
   }
 
+  async touchIfStale(id: string, staleBeforeMinutes = 15): Promise<void> {
+    await this.provider.query(
+      `update extension_api_tokens
+       set last_used_at = now()
+       where id = $1
+         and (last_used_at is null or last_used_at < now() - make_interval(mins => $2))`,
+      [id, staleBeforeMinutes]
+    )
+  }
+
   async revoke(userId: string, id: string): Promise<void> {
     await this.provider.query(
       `update extension_api_tokens

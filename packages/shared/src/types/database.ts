@@ -419,10 +419,6 @@ export interface McpAuthSessionRow {
   scopes: McpTokenScope[]
   userId: string | null
   status: "pending" | "approved" | "exchanging" | "exchanged" | "expired"
-  accessToken: string | null
-  refreshToken: string | null
-  accessExpiresAt: string | null
-  refreshExpiresAt: string | null
   expiresAt: string
   approvedAt: string | null
   createdAt: string

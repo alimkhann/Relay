@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { withApiAuth } from "@/server/http/api-route"
-import { resolveViewer } from "@/server/policies/viewer"
+import { rejectMcpViewer, resolveViewer } from "@/server/policies/viewer"
 import { listGroupedActivityForProject } from "@/server/services/activity-service"
 
 /**
@@ -15,6 +15,7 @@ import { listGroupedActivityForProject } from "@/server/services/activity-servic
 export const GET = withApiAuth(
   async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
     const viewer = await resolveViewer(request.headers.get("authorization"))
+    rejectMcpViewer(viewer)
     const { id: projectId } = await params
     const url = new URL(request.url)
 

@@ -27,18 +27,24 @@ export async function searchMemoryItems(userId: string, projectId: string, query
   return repositories.memory.search(projectId, query, options)
 }
 
-export async function updateMemoryItem(userId: string, memoryId: string, input: unknown) {
+export async function updateMemoryItem(userId: string, memoryId: string, input: unknown, projectId?: string) {
   const repositories = createRepositoryBundle(userId)
   const parsed = updateMemoryItemSchema.parse(input)
   const existing = await repositories.memory.getById(memoryId)
+  if (projectId && existing?.projectId && existing.projectId !== projectId) {
+    throw new Error("This MCP token cannot update memory from another project.")
+  }
   const item = await repositories.memory.update(memoryId, parsed)
   await repositories.bootstrapPackets.clearProject(existing?.projectId ?? item.projectId)
   return item
 }
 
-export async function deleteMemoryItem(userId: string, memoryId: string) {
+export async function deleteMemoryItem(userId: string, memoryId: string, projectId?: string) {
   const repositories = createRepositoryBundle(userId)
   const existing = await repositories.memory.getById(memoryId)
+  if (projectId && existing?.projectId && existing.projectId !== projectId) {
+    throw new Error("This MCP token cannot delete memory from another project.")
+  }
   await repositories.memory.remove(memoryId)
   if (existing?.projectId) {
     await repositories.bootstrapPackets.clearProject(existing.projectId)

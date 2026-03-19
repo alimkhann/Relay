@@ -15,6 +15,7 @@ function createProvider(rows: Array<Record<string, unknown>> = []): DatabaseProv
   return {
     mode: "local",
     query: vi.fn(query) as DatabaseProvider["query"],
+    transaction: async (callback) => callback(createProvider(rows)),
   }
 }
 

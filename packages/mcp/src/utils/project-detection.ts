@@ -7,6 +7,10 @@ interface ProjectCandidate {
   keywords: string[]
 }
 
+function normalizeSignal(value: string | null | undefined) {
+  return value?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") ?? null
+}
+
 function getDirectoryName(): string {
   return basename(process.cwd()).toLowerCase()
 }
@@ -31,31 +35,48 @@ function extractRepoName(remoteUrl: string): string | null {
 }
 
 export async function detectProjectId(projects: ProjectCandidate[]): Promise<string | null> {
-  const dirName = getDirectoryName()
+  const dirName = normalizeSignal(getDirectoryName())
   const remoteUrl = await getGitRemoteUrl()
-  const repoName = remoteUrl ? extractRepoName(remoteUrl) : null
+  const repoName = normalizeSignal(remoteUrl ? extractRepoName(remoteUrl) : null)
 
   const signals = [dirName, repoName].filter((s): s is string => s !== null)
 
-  for (const project of projects) {
-    const projectNameLower = project.name.toLowerCase()
+  const ranked = projects
+    .map((project) => {
+      const normalizedName = normalizeSignal(project.name) ?? ""
+      const normalizedKeywords = project.keywords.map((keyword) => normalizeSignal(keyword)).filter((keyword): keyword is string => Boolean(keyword))
+      let score = 0
 
-    // Exact name match
-    for (const signal of signals) {
-      if (signal === projectNameLower) {
-        return project.id
-      }
-    }
+      for (const signal of signals) {
+        if (!signal) continue
+        if (signal === normalizedName) {
+          score += 100
+        } else if (normalizedName.includes(signal) || signal.includes(normalizedName)) {
+          score += 60
+        }
 
-    // Keyword match
-    for (const signal of signals) {
-      for (const keyword of project.keywords) {
-        if (signal === keyword.toLowerCase() || signal.includes(keyword.toLowerCase())) {
-          return project.id
+        for (const keyword of normalizedKeywords) {
+          if (signal === keyword) {
+            score += 90
+          } else if (signal.includes(keyword) || keyword.includes(signal)) {
+            score += 45
+          }
         }
       }
-    }
+
+      return { projectId: project.id, score }
+    })
+    .sort((left, right) => right.score - left.score)
+
+  const top = ranked[0]
+  const runnerUp = ranked[1]
+  if (!top || top.score < 60) {
+    return null
   }
 
-  return null
+  if (runnerUp && top.score - runnerUp.score < 18) {
+    return null
+  }
+
+  return top.projectId
 }

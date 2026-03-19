@@ -90,13 +90,11 @@ export async function startBrowserSessionHandoff(
 
 export async function consumeBrowserSessionHandoff(token: string) {
   const repositories = createRepositoryBundle()
-  const record = await repositories.browserSessionHandoffs.getValidByHash(hashContent(token))
+  const record = await repositories.browserSessionHandoffs.consumeValidByHash(hashContent(token))
 
   if (!record) {
     throw new Error("Browser session handoff is invalid or expired.")
   }
-
-  await repositories.browserSessionHandoffs.consume(record.id)
 
   return {
     userId: record.userId,

@@ -15,6 +15,12 @@ export interface RelayRoutingDecision {
   candidateProjectName: string | null
   score: number
   reasons: string[]
+  topCandidates: Array<{
+    projectId: string
+    projectName: string
+    score: number
+    reasons: string[]
+  }>
 }
 
 interface CandidateScore {
@@ -137,8 +143,11 @@ function pushReason(candidate: CandidateScore, reason: string) {
   }
 }
 
-function buildAssociationComparisonKey(page: Pick<RelayPageState, "platform" | "pageFingerprint" | "pathname" | "url">) {
+function buildAssociationComparisonKey(page: Pick<RelayPageState, "platform" | "pageFingerprint" | "pathname" | "url" | "sourceConversationId">) {
   const platform = page.platform ?? "unknown"
+  if (page.sourceConversationId) {
+    return `${platform}:conversation:${page.sourceConversationId}`
+  }
   if (page.pageFingerprint) {
     return `${platform}:fingerprint:${page.pageFingerprint}`
   }
@@ -150,18 +159,22 @@ function buildAssociationComparisonKey(page: Pick<RelayPageState, "platform" | "
   return `${platform}:url:${page.url ?? ""}`
 }
 
-export function buildAssociationKey(page: Pick<RelayPageState, "platform" | "pageFingerprint" | "pathname" | "url">) {
+export function buildAssociationKey(page: Pick<RelayPageState, "platform" | "pageFingerprint" | "pathname" | "url" | "sourceConversationId">) {
   return buildAssociationComparisonKey(page)
 }
 
 export function findApprovedAssociationMatch(
-  page: Pick<RelayPageState, "platform" | "pageFingerprint" | "pathname" | "url">,
+  page: Pick<RelayPageState, "platform" | "pageFingerprint" | "pathname" | "url" | "sourceConversationId">,
   approvedAssociations: RelayApprovedAssociation[]
 ) {
   const exactKey = buildAssociationComparisonKey(page)
 
   return (
     approvedAssociations.find((association) => association.key === exactKey) ??
+    approvedAssociations.find(
+      (association) =>
+        Boolean(page.sourceConversationId) && association.sourceConversationId === page.sourceConversationId
+    ) ??
     approvedAssociations.find(
       (association) =>
         Boolean(page.pageFingerprint) && association.pageFingerprint === page.pageFingerprint
@@ -199,6 +212,13 @@ function scoreApprovedAssociation(
     candidate.score += 100
     candidate.highConfidenceEligible = true
     pushReason(candidate, "Matched an approved chat fingerprint on this platform.")
+    return
+  }
+
+  if (page.sourceConversationId && association.sourceConversationId === page.sourceConversationId) {
+    candidate.score += 104
+    candidate.highConfidenceEligible = true
+    pushReason(candidate, "Matched a previously approved conversation identity.")
     return
   }
 
@@ -480,7 +500,8 @@ export function evaluateProjectRouting(input: EvaluateProjectRoutingInput): Rela
       candidateProjectId: null,
       candidateProjectName: null,
       score: 0,
-      reasons: ["No supported project routing signal was available."]
+      reasons: ["No supported project routing signal was available."],
+      topCandidates: [],
     }
   }
 
@@ -497,7 +518,8 @@ export function evaluateProjectRouting(input: EvaluateProjectRoutingInput): Rela
       candidateProjectId: null,
       candidateProjectName: null,
       score: 0,
-      reasons: ["No project candidates were available."]
+      reasons: ["No project candidates were available."],
+      topCandidates: [],
     }
   }
 
@@ -509,6 +531,12 @@ export function evaluateProjectRouting(input: EvaluateProjectRoutingInput): Rela
     candidateProjectId: confidence === "low" ? null : top.projectId,
     candidateProjectName: confidence === "low" ? null : top.projectName,
     score: top.score,
-    reasons: top.reasons.slice(0, 4)
+    reasons: top.reasons.slice(0, 4),
+    topCandidates: candidates.slice(0, 3).map((candidate) => ({
+      projectId: candidate.projectId,
+      projectName: candidate.projectName,
+      score: candidate.score,
+      reasons: candidate.reasons.slice(0, 4),
+    })),
   }
 }

@@ -1,20 +1,35 @@
-import { createRepositoryBundle } from "@relay/db"
+import { buildContextCompositionInput, createRepositoryBundle } from "@relay/db"
 import { composeContextSchema } from "@relay/shared"
-
-import { generateBootstrapForProject } from "./bootstrap-service"
+import { getFormatter } from "@relay/formatters"
 
 export async function composeContextForProject(userId: string, projectId: string, input: unknown) {
   const parsed = composeContextSchema.parse(input)
-  const result = await generateBootstrapForProject(userId, projectId, {
-    targetProfileKey: parsed.targetProfileKey,
-    kind: "fresh_chat_bootstrap"
-  })
-
-  if (result.status !== "ready" || !result.packet) {
-    throw new Error(result.reason ?? "Project state is not ready for bootstrap generation yet.")
+  const repositories = createRepositoryBundle(userId)
+  const targetProfile = await repositories.targetProfiles.getByKey(parsed.targetProfileKey)
+  if (!targetProfile) {
+    throw new Error("Target profile not found.")
   }
 
-  return { packet: result.packet, targetProfileKey: parsed.targetProfileKey }
+  const compositionInput = await buildContextCompositionInput(
+    repositories,
+    projectId,
+    parsed.targetProfileKey,
+    parsed.since
+  )
+  const formatter = getFormatter(parsed.targetProfileKey)
+  const content = formatter.format(compositionInput)
+  const packet = await repositories.contextPackets.create(userId, projectId, targetProfile.id, {
+    content,
+    sourceSnapshot: {
+      targetProfileKey: parsed.targetProfileKey,
+      since: parsed.since ?? null,
+      generatedAt: new Date().toISOString()
+    },
+    targetProfileKey: parsed.targetProfileKey,
+    targetPlatform: targetProfile.platform
+  })
+
+  return { packet, targetProfileKey: parsed.targetProfileKey }
 }
 
 export async function listContextHistory(userId: string, projectId: string) {

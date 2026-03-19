@@ -1,4 +1,4 @@
-import { createRepositoryBundle } from "@relay/db"
+import { createRepositoryBundle, type RepositoryBundle } from "@relay/db"
 import type { MemoryItemRow, WorkSessionRow } from "@relay/shared"
 import {
   hasCompletionSignal,
@@ -6,6 +6,8 @@ import {
   isLikelySameTopic,
   isSameTopic,
 } from "@relay/shared"
+
+import { adjudicateGreyZoneConflict } from "./conflict-adjudication-service"
 
 const BROWSER_SURFACES: WorkSessionRow["surface"][] = [
   "chatgpt",
@@ -50,11 +52,10 @@ export interface ContinuityMaintenanceResult {
   staleSessionsMarked: number
 }
 
-export async function runContinuityMaintenanceForProject(
-  userId: string,
+async function runContinuityMaintenanceForProjectWithRepositories(
+  repositories: RepositoryBundle,
   projectId: string,
 ): Promise<ContinuityMaintenanceResult> {
-  const repositories = createRepositoryBundle(userId)
   const [memoryItems, checkpoints] = await Promise.all([
     repositories.memory.listByProject(projectId),
     repositories.workSessionCheckpoints.listRecentByProject(projectId, {
@@ -92,6 +93,7 @@ export async function runContinuityMaintenanceForProject(
 
   const reconcilable = memoryItems.filter((item) => ["decision", "constraint", "task"].includes(item.type))
   const disputesByItemId = new Map<string, { topicKey: string; conflictingWith: Set<string> }>()
+  let adjudicationsUsed = 0
 
   for (let i = 0; i < reconcilable.length; i += 1) {
     const left = reconcilable[i]
@@ -101,11 +103,50 @@ export async function runContinuityMaintenanceForProject(
       if (!right || left.type !== right.type) continue
 
       const sameTopic = isSameTopic(left.content, right.content)
-      const likelySameTopic = isLikelySameTopic(left.content, right.content)
+      let likelySameTopic = isLikelySameTopic(left.content, right.content)
       if (!sameTopic && !likelySameTopic) continue
 
-      const leftMetadata = asMetadata(left)
-      const rightMetadata = asMetadata(right)
+      if (!sameTopic && likelySameTopic && adjudicationsUsed < 6) {
+        adjudicationsUsed += 1
+        const adjudication = await adjudicateGreyZoneConflict({
+          left: {
+            id: left.id,
+            type: left.type as "decision" | "constraint" | "task",
+            content: left.content,
+            sourceSurface: left.sourceSurface,
+            metadata: left.metadata,
+          },
+          right: {
+            id: right.id,
+            type: right.type as "decision" | "constraint" | "task",
+            content: right.content,
+            sourceSurface: right.sourceSurface,
+            metadata: right.metadata,
+          },
+        }).catch(() => null)
+
+        if (adjudication?.verdict === "distinct") {
+          continue
+        }
+
+        if (adjudication?.reason) {
+          await repositories.memory.update(left.id, {
+            metadata: mergeMetadata(asMetadata(left), {
+              aiGreyZoneReviewedAt: new Date().toISOString(),
+              aiGreyZoneReason: adjudication.reason,
+            }),
+          })
+          await repositories.memory.update(right.id, {
+            metadata: mergeMetadata(asMetadata(right), {
+              aiGreyZoneReviewedAt: new Date().toISOString(),
+              aiGreyZoneReason: adjudication.reason,
+            }),
+          })
+        }
+
+        likelySameTopic = adjudication?.verdict === "same" || adjudication?.verdict === "conflicting"
+      }
+
       const canonicalTopicKey = buildTopicKey(left.type, left.content.length >= right.content.length ? left.content : right.content)
 
       const isConflict = likelySameTopic || left.content !== right.content
@@ -196,6 +237,14 @@ export async function runContinuityMaintenanceForProject(
   }
 }
 
+export async function runContinuityMaintenanceForProject(
+  userId: string,
+  projectId: string,
+): Promise<ContinuityMaintenanceResult> {
+  const repositories = createRepositoryBundle(userId)
+  return runContinuityMaintenanceForProjectWithRepositories(repositories, projectId)
+}
+
 export async function runContinuityMaintenanceForUser(
   userId: string,
   input: { projectId?: string; limit?: number } = {},
@@ -209,8 +258,10 @@ export async function runContinuityMaintenanceForUser(
   const results: ContinuityMaintenanceResult[] = []
   for (const project of projects) {
     if (!project) continue
-    results.push(await runContinuityMaintenanceForProject(userId, project.id))
+    results.push(await runContinuityMaintenanceForProjectWithRepositories(repositories, project.id))
   }
 
   return results
 }
+
+export { runContinuityMaintenanceForProjectWithRepositories }
