@@ -1,3 +1,7 @@
+import { Suspense } from "react"
+
+import { DocsFooterNav } from "@/components/docs/docs-footer-nav"
+
 export default function ExtensionDocsPage() {
   return (
     <div className="max-w-2xl space-y-8">
@@ -34,7 +38,7 @@ export default function ExtensionDocsPage() {
         <ol className="list-decimal list-inside space-y-2 text-[15px] text-[var(--relay-muted)]">
           <li>Install the extension from the Chrome Web Store (coming soon during beta).</li>
           <li>Click the Relay icon in your browser toolbar to open the side panel.</li>
-          <li>Sign in with the same account you use on onrelay.app.</li>
+          <li>Sign in inside the Relay sidebar with the same account you use on onrelay.app.</li>
           <li>The extension will start capturing context from supported AI chats automatically.</li>
         </ol>
       </section>
@@ -67,6 +71,10 @@ export default function ExtensionDocsPage() {
           <li><strong className="text-[var(--relay-ink)]">Inline chip</strong> — Show a brief-insert chip when you start a new chat.</li>
         </ul>
       </section>
+
+      <Suspense fallback={null}>
+        <DocsFooterNav previous={{ href: "/docs/mcp", label: "MCP Integration" }} next={{ href: "/docs/plans", label: "Plans & limits" }} />
+      </Suspense>
     </div>
   )
 }

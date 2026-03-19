@@ -1,7 +1,10 @@
+import { Suspense } from "react"
+
+import { DocsFooterNav } from "@/components/docs/docs-footer-nav"
+
 export default function McpDocsPage() {
   return (
-    <div className="min-h-screen bg-[var(--relay-bg)] px-4 py-16">
-      <div className="mx-auto max-w-2xl space-y-8">
+    <div className="max-w-2xl space-y-8">
         <div>
           <h1 className="text-2xl font-bold text-[var(--relay-ink)]">Relay MCP</h1>
           <p className="mt-2 text-[15px] leading-relaxed text-[var(--relay-muted)]">
@@ -76,7 +79,10 @@ export default function McpDocsPage() {
             ))}
           </div>
         </section>
-      </div>
+
+      <Suspense fallback={null}>
+        <DocsFooterNav previous={{ href: "/docs/getting-started", label: "Getting Started" }} next={{ href: "/docs/extension", label: "Chrome Extension" }} />
+      </Suspense>
     </div>
   )
 }

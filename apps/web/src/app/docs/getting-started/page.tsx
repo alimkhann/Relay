@@ -1,4 +1,7 @@
 import Link from "next/link"
+import { Suspense } from "react"
+
+import { DocsFooterNav } from "@/components/docs/docs-footer-nav"
 
 export default function GettingStartedPage() {
   return (
@@ -37,10 +40,7 @@ export default function GettingStartedPage() {
           <code className="text-[13px] font-mono text-[var(--relay-ink)]">apps/extension</code>.
         </p>
         <p className="text-[15px] text-[var(--relay-muted)]">
-          After installing, open the Relay side panel in Chrome and connect it to your account in{" "}
-          <Link href="/settings" className="text-[var(--relay-accent)] underline underline-offset-2">
-            Settings
-          </Link>.
+          After installing, open the Relay side panel in Chrome and sign in directly inside the extension sidebar.
         </p>
       </section>
 
@@ -89,8 +89,18 @@ export default function GettingStartedPage() {
             </Link>{" "}
             — how Relay organizes and scores context
           </li>
+          <li>
+            <Link href="/docs/plans" className="text-[var(--relay-accent)] underline underline-offset-2">
+              Plans & limits
+            </Link>{" "}
+            — compare Free and Pro before upgrading
+          </li>
         </ul>
       </div>
+
+      <Suspense fallback={null}>
+        <DocsFooterNav next={{ href: "/docs/mcp", label: "MCP Integration" }} />
+      </Suspense>
     </div>
   )
 }

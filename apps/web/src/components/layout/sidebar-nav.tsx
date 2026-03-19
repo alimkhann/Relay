@@ -32,6 +32,9 @@ export function SidebarNav({
   const briefHref = currentProjectId
     ? `/brief?project=${currentProjectId}`
     : "/brief";
+  const docsHref = currentProjectId
+    ? `/docs?project=${currentProjectId}`
+    : "/docs";
 
   const navItems: NavItem[] = [
     {
@@ -58,7 +61,7 @@ export function SidebarNav({
       requiresProject: true,
     },
     {
-      href: "/docs",
+      href: docsHref,
       label: "Docs",
       icon: <BookOpen className="h-4 w-4" />,
     },

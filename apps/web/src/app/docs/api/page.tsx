@@ -1,3 +1,7 @@
+import { Suspense } from "react"
+
+import { DocsFooterNav } from "@/components/docs/docs-footer-nav"
+
 export default function ApiDocsPage() {
   const endpoints = [
     {
@@ -40,18 +44,8 @@ export default function ApiDocsPage() {
       ],
     },
     {
-      group: "Billing",
+      group: "Auth",
       routes: [
-        { method: "GET", path: "/api/billing/status", desc: "Get billing status, entitlements, and usage" },
-        { method: "POST", path: "/api/billing/checkout", desc: "Create a checkout session for Pro upgrade" },
-        { method: "POST", path: "/api/billing/portal", desc: "Open the subscription management portal" },
-      ],
-    },
-    {
-      group: "Settings & Auth",
-      routes: [
-        { method: "GET", path: "/api/settings", desc: "Get user settings, onboarding state, and billing" },
-        { method: "PATCH", path: "/api/settings", desc: "Update user settings" },
         { method: "POST", path: "/api/extension/tokens", desc: "Create an API token for MCP/extension" },
         { method: "DELETE", path: "/api/extension/tokens/:id", desc: "Revoke an API token" },
       ],
@@ -118,6 +112,10 @@ export default function ApiDocsPage() {
           </div>
         </section>
       ))}
+
+      <Suspense fallback={null}>
+        <DocsFooterNav previous={{ href: "/docs/plans", label: "Plans & limits" }} next={{ href: "/docs/concepts", label: "Concepts" }} />
+      </Suspense>
     </div>
   )
 }

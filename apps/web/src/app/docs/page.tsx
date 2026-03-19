@@ -17,9 +17,14 @@ const cards = [
     desc: "Install the browser extension to automatically capture context from AI chats.",
   },
   {
+    href: "/docs/plans",
+    title: "Plans & Limits",
+    desc: "Compare Free and Pro limits before you upgrade.",
+  },
+  {
     href: "/docs/api",
     title: "API Reference",
-    desc: "REST API endpoints for projects, memory, context, and billing.",
+    desc: "REST API endpoints for projects, memory, context, and auth tokens.",
   },
   {
     href: "/docs/concepts",

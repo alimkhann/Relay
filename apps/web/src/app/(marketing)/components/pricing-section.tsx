@@ -160,6 +160,16 @@ export function PricingSection() {
         >
           * Pricing subject to change during beta. Early users keep their rate.
         </motion.p>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={inView ? { opacity: 1 } : undefined}
+          transition={{ duration: 0.5, delay: 0.45, ease }}
+          className="mt-3 text-center"
+        >
+          <Link href="/docs/plans" className="text-xs font-medium text-white/50 transition hover:text-white/75">
+            Compare all limits
+          </Link>
+        </motion.div>
       </div>
     </section>
   )
