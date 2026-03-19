@@ -110,7 +110,7 @@ export function PricingSection() {
             Pricing
           </p>
           <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-white">
-            Simple, honest pricing.
+            Simple, honest pricing
           </h2>
         </motion.div>
 

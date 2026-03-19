@@ -55,7 +55,7 @@ export function FeaturesSection() {
             What Relay does
           </p>
           <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-white">
-            Context that moves with you.
+            Context that moves with you
           </h2>
         </motion.div>
 

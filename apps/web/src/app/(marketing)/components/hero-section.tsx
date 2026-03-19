@@ -17,13 +17,13 @@ const fadeUp = {
   }),
 }
 
-export function HeroSection() {
+export function HeroSection({ backgroundSrc }: { backgroundSrc: string }) {
   return (
     <section id="top" className="relative min-h-screen flex flex-col">
       {/* Background image */}
       <div className="absolute inset-0 overflow-hidden">
         <Image
-          src="/images/hero-bg.jpg"
+          src={backgroundSrc}
           alt=""
           fill
           priority

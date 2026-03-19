@@ -45,7 +45,7 @@ export function HowItWorks() {
           </p>
           <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-white">
             A calmer loop than copy-pasting
-            <br className="hidden sm:block" /> transcripts.
+            <br className="hidden sm:block" /> transcripts
           </h2>
         </motion.div>
 

@@ -7,7 +7,7 @@ import { useRef } from "react"
 
 const ease = [0.25, 0.1, 0.25, 1] as const
 
-export function BottomCta() {
+export function BottomCta({ backgroundSrc }: { backgroundSrc: string }) {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: "-80px" })
 
@@ -16,7 +16,7 @@ export function BottomCta() {
       {/* Background image */}
       <div className="absolute inset-0 overflow-hidden">
         <Image
-          src="/images/hero-bg.jpg"
+          src={backgroundSrc}
           alt=""
           fill
           quality={80}
