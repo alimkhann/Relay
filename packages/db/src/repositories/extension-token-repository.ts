@@ -1,4 +1,4 @@
-import type { ExtensionApiTokenRow } from "@relay/shared"
+import type { ExtensionApiTokenPurpose, ExtensionApiTokenRow } from "@relay/shared"
 
 import { toExtensionApiTokenRow } from "../mappers/auth-mapper"
 import type { DatabaseProvider } from "../store/provider"
@@ -33,12 +33,18 @@ export class ExtensionTokenRepository {
     return row ? toExtensionApiTokenRow(row as Record<string, unknown>) : null
   }
 
-  async create(input: { userId: string; deviceName: string; tokenHash: string; tokenPrefix: string }): Promise<ExtensionApiTokenRow> {
+  async create(input: {
+    userId: string
+    deviceName: string
+    purpose: ExtensionApiTokenPurpose
+    tokenHash: string
+    tokenPrefix: string
+  }): Promise<ExtensionApiTokenRow> {
     const rows = await this.provider.query(
-      `insert into extension_api_tokens (user_id, device_name, token_hash, token_prefix)
-       values ($1, $2, $3, $4)
+      `insert into extension_api_tokens (user_id, device_name, purpose, token_hash, token_prefix)
+       values ($1, $2, $3, $4, $5)
        returning *`,
-      [input.userId, input.deviceName, input.tokenHash, input.tokenPrefix]
+      [input.userId, input.deviceName, input.purpose, input.tokenHash, input.tokenPrefix]
     )
 
     return toExtensionApiTokenRow(rows[0] as Record<string, unknown>)

@@ -163,7 +163,7 @@ export interface SessionDigestDto {
 }
 
 export interface ProjectAiBudgetDto {
-  plan: "free"
+  plan: "free" | "pro"
   aiEligible: boolean
   reason: string | null
   dailyProjectAiUsed: number

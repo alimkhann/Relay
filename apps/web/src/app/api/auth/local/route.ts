@@ -6,6 +6,7 @@ import { applyLocalSessionCookie } from "@/lib/auth/local-session"
 import { getAuthProvider } from "@/lib/auth/provider"
 import { logServerEvent } from "@/server/logging/logger"
 import { getRequestContext, withRequestContext } from "@/server/logging/request-context"
+import { assertIpRateLimit } from "@/server/services/rate-limit-service"
 import { resolveOrCreateLocalAuthUser } from "@/server/services/local-auth-service"
 
 function withRequestId(response: NextResponse) {
@@ -25,6 +26,7 @@ export async function POST(request: Request) {
     const flowId = request.headers.get("x-relay-flow-id") ?? createFlowId("local-auth")
 
     try {
+      await assertIpRateLimit(request, "local_auth_ip", 5)
       const body = (await request.json()) as {
         email?: string
         name?: string | null

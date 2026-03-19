@@ -45,6 +45,70 @@ export class ProjectRepository {
     return toProjectRow(rows[0] as Record<string, unknown>)
   }
 
+  async createIfUnderActiveLimit(input: {
+    ownerId: string
+    name: string
+    slug: string
+    description?: string | null
+    activeProjectLimit: number
+  }): Promise<ProjectRow | null> {
+    const payload = fromProjectInput(input)
+    const rows = await this.provider.query(
+      `with project_lock as (
+         select pg_advisory_xact_lock(hashtext($1))
+       ), active_projects as (
+         select count(*)::int as count
+         from projects
+         where owner_id = $1
+           and is_archived = false
+       ), inserted as (
+         insert into projects (owner_id, name, slug, description)
+         select $1, $2, $3, $4
+         from active_projects
+         where count < $5
+         returning *
+       )
+       select * from inserted`,
+      [payload.owner_id, payload.name, payload.slug, payload.description, input.activeProjectLimit],
+    )
+
+    const row = rows[0]
+    return row ? toProjectRow(row as Record<string, unknown>) : null
+  }
+
+  async updateArchiveStateWithLimit(input: {
+    id: string
+    isArchived: boolean
+    activeProjectLimit: number
+  }): Promise<ProjectRow | null> {
+    const rows = await this.provider.query(
+      `with target as (
+         select id, owner_id, is_archived
+         from projects
+         where id = $1
+       ), project_lock as (
+         select pg_advisory_xact_lock(hashtext(owner_id))
+         from target
+       ), active_projects as (
+         select count(*)::int as count
+         from projects
+         where owner_id = (select owner_id from target)
+           and is_archived = false
+           and id <> $1
+       )
+       update projects
+       set is_archived = $2,
+           updated_at = now()
+       where id = $1
+         and ($2::boolean = true or (select count from active_projects) < $3)
+       returning *`,
+      [input.id, input.isArchived, input.activeProjectLimit],
+    )
+
+    const row = rows[0]
+    return row ? toProjectRow(row as Record<string, unknown>) : null
+  }
+
   async update(id: string, patch: Partial<Pick<ProjectRow, "name" | "slug" | "description" | "isArchived">>): Promise<ProjectRow> {
     const rows = await this.provider.query(
       `update projects

@@ -441,3 +441,77 @@ export interface CliAuthSessionRow {
   confirmedAt: string | null
   createdAt: string
 }
+
+export interface BillingCustomerRow {
+  userId: string
+  provider: "polar"
+  providerCustomerId: string | null
+  externalCustomerId: string
+  email: string | null
+  name: string | null
+  trialClaimedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SubscriptionRow {
+  id: string
+  userId: string
+  provider: "polar"
+  providerSubscriptionId: string
+  providerCustomerId: string | null
+  productId: string | null
+  planKey: "free" | "pro"
+  status: "inactive" | "trialing" | "active" | "past_due" | "canceled"
+  interval: "month" | "year" | null
+  cancelAtPeriodEnd: boolean
+  currentPeriodStart: string | null
+  currentPeriodEnd: string | null
+  trialStartsAt: string | null
+  trialEndsAt: string | null
+  raw: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
+export interface EntitlementRow {
+  userId: string
+  planKey: "free" | "pro"
+  status: "inactive" | "trialing" | "active" | "past_due" | "canceled"
+  providerCustomerId: string | null
+  providerSubscriptionId: string | null
+  interval: "month" | "year" | null
+  activeProjectsLimit: number
+  historyRetentionDays: number
+  captureLimitMonthly: number
+  mcpReadLimitDaily: number
+  mcpWriteLimitDaily: number
+  handoffEnabled: boolean
+  trialEndsAt: string | null
+  currentPeriodEnd: string | null
+  updatedAt: string
+}
+
+export interface UsageCounterRow {
+  id: string
+  scopeKey: string
+  featureKey: string
+  windowKey: string
+  windowStart: string
+  windowEnd: string
+  count: number
+  updatedAt: string
+}
+
+export interface BillingWebhookEventRow {
+  id: string
+  provider: "polar"
+  providerEventId: string
+  eventType: string
+  payload: Record<string, unknown>
+  status: "pending" | "processed" | "failed"
+  errorMessage: string | null
+  processedAt: string | null
+  createdAt: string
+  updatedAt: string
+}

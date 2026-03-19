@@ -3,6 +3,7 @@ import { projectInputSchema, slugify, updateProjectSchema } from "@relay/shared"
 
 import { BadRequestError } from "@/server/http/errors"
 import { logServerEvent } from "@/server/logging/logger"
+import { resolveViewerEntitlements } from "./entitlement-service"
 import { completeOnboardingForUser } from "./onboarding-service"
 import { resolveProjectAiBudget } from "./ai-budget-service"
 
@@ -46,6 +47,7 @@ export async function createProjectForUser(
   options: { onboardingVia?: "web" | "extension" } = {}
 ) {
   const repositories = createRepositoryBundle(userId)
+  const entitlements = await resolveViewerEntitlements(userId)
   const parsed = projectInputSchema.parse(input)
   const baseSlug = slugify(parsed.slug ?? parsed.name)
 
@@ -68,29 +70,34 @@ export async function createProjectForUser(
     const candidateSlug = buildProjectSlugCandidate(baseSlug, attempt)
 
     try {
-      const project = await repositories.projects.create({
+      const guardedProject = await repositories.projects.createIfUnderActiveLimit({
         ownerId: userId,
         name: parsed.name,
         slug: candidateSlug,
-        description: parsed.description ?? null
+        description: parsed.description ?? null,
+        activeProjectLimit: entitlements.limits.activeProjects,
       })
 
-      await repositories.members.ensureOwner(project.id, userId)
-      await completeOnboardingForUser(userId, project.id, options.onboardingVia ?? "web")
+      if (!guardedProject) {
+        throw new BadRequestError("Project limit reached for your current plan.")
+      }
+
+      await repositories.members.ensureOwner(guardedProject.id, userId)
+      await completeOnboardingForUser(userId, guardedProject.id, options.onboardingVia ?? "web")
       await logServerEvent({
         level: "info",
         surface: "web-api",
         area: "projects",
         event: "project.create.succeeded",
-        message: `Created project ${project.id}.`,
+        message: `Created project ${guardedProject.id}.`,
         userId,
-        projectId: project.id,
+        projectId: guardedProject.id,
         context: {
-          slug: project.slug,
+          slug: guardedProject.slug,
           attempt
         }
       })
-      return project
+      return guardedProject
     } catch (error) {
       if (isUniqueViolation(error)) {
         continue
@@ -129,6 +136,7 @@ export async function createProjectForUser(
 
 export async function updateProjectForUser(userId: string, projectId: string, input: unknown) {
   const repositories = createRepositoryBundle(userId)
+  const entitlements = await resolveViewerEntitlements(userId)
   const parsed = updateProjectSchema.parse(input)
   const slug = parsed.slug ? slugify(parsed.slug) : undefined
 
@@ -136,10 +144,21 @@ export async function updateProjectForUser(userId: string, projectId: string, in
     throw new BadRequestError("Project slug needs at least two letters or numbers.")
   }
 
+  if (parsed.isArchived === false) {
+    const unarchived = await repositories.projects.updateArchiveStateWithLimit({
+      id: projectId,
+      isArchived: false,
+      activeProjectLimit: entitlements.limits.activeProjects,
+    })
+    if (!unarchived) {
+      throw new BadRequestError("Project limit reached for your current plan.")
+    }
+  }
+
   return repositories.projects.update(projectId, {
     name: parsed.name,
     slug,
     description: parsed.description,
-    isArchived: parsed.isArchived
+    isArchived: parsed.isArchived === false ? undefined : parsed.isArchived
   })
 }

@@ -6,6 +6,7 @@ import { getAuthProvider } from "@/lib/auth/provider"
 import { applyExtensionCorsHeaders, buildExtensionPreflightResponse } from "@/server/http/extension-cors"
 import { logServerEvent } from "@/server/logging/logger"
 import { getRequestContext, withRequestContext } from "@/server/logging/request-context"
+import { assertIpRateLimit } from "@/server/services/rate-limit-service"
 import { resolveGoogleAuthUser } from "@/server/services/google-auth-service"
 import { getResolvedOnboardingStateForUser } from "@/server/services/onboarding-service"
 import { listProjectsForUser } from "@/server/services/project-service"
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
       createFlowId("ext-auth")
 
     try {
+      await assertIpRateLimit(request, "extension_google_auth_ip", 5)
       const body = (await request.json()) as {
         googleAccessToken?: string
         googleIdToken?: string
