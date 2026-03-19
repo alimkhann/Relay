@@ -71,7 +71,7 @@ export function HeroSection() {
             <span className="md:hidden"> </span>
             to{" "}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-white via-[#f1f1f5] to-[#bfc0ca] [text-shadow:0_0_18px_rgba(255,255,255,0.14)]">
-              every AI.
+              every AI
             </span>
           </motion.h1>
 

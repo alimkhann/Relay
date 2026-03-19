@@ -3,6 +3,8 @@
 import { motion, useInView } from "motion/react"
 import { useRef } from "react"
 import { Send } from "lucide-react"
+import OpenAI from "@lobehub/icons/es/OpenAI"
+import ClaudeCode from "@lobehub/icons/es/ClaudeCode"
 
 const ease = [0.25, 0.1, 0.25, 1] as const
 
@@ -50,8 +52,9 @@ export function HeroVisual() {
                 <div className="w-2.5 h-2.5 rounded-full bg-[#28c840]" />
               </div>
               <div className="flex-1 mx-3">
-                <div className="bg-white/[0.04] rounded-md px-3 py-1 text-[11px] text-white/35 font-mono">
-                  chatgpt.com
+                <div className="bg-white/[0.04] rounded-md px-3 py-1 text-[11px] text-white/35 font-mono flex items-center gap-1.5">
+                  <OpenAI size={12} />
+                  <span>chatgpt.com</span>
                 </div>
               </div>
             </div>
@@ -115,8 +118,9 @@ export function HeroVisual() {
                 <div className="w-2.5 h-2.5 rounded-full bg-[#febc2e]" />
                 <div className="w-2.5 h-2.5 rounded-full bg-[#28c840]" />
               </div>
-              <span className="text-[11px] text-white/35 font-mono ml-3">
-                Claude Code
+              <span className="text-[11px] text-white/35 font-mono ml-3 flex items-center gap-1.5">
+                <ClaudeCode size={12} />
+                <span>Claude Code</span>
               </span>
             </div>
 
