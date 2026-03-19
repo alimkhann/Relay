@@ -77,7 +77,7 @@ function PricingCard({
       </ul>
 
       <Link
-        href="/get-started"
+        href={isPro ? "/get-started?upgrade=true" : "/get-started"}
         className={cn(
           "mt-8 inline-flex items-center justify-center gap-1.5 rounded-full px-6 py-3 text-sm font-medium transition-colors duration-200",
           isPro

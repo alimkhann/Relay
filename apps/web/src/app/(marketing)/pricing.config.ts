@@ -9,8 +9,8 @@ export const PRICING = {
     features: [
       "Up to 2 active projects",
       "Standard brief depth",
-      "MCP access (read)",
-      "7-day history retention",
+      "MCP access (read + limited write)",
+      "30-day history retention",
       "Browser capture",
     ],
   },
@@ -23,13 +23,13 @@ export const PRICING = {
     cta: "Get Pro",
     ctaVariant: "primary" as const,
     features: [
-      "Unlimited active projects",
+      "Up to 10 active projects",
       "Deep brief with full history",
       "Full MCP access (read + write)",
-      "90-day history retention",
+      "365-day history retention",
       "All capture surfaces",
       "Handoff packs (export/share briefs)",
-      "Referral program",
+      "Priority support",
     ],
   },
 } as const

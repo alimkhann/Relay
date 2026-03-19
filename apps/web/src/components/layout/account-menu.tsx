@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as Popover from "@radix-ui/react-popover";
 import * as Tooltip from "@radix-ui/react-tooltip";
-import { Settings, LogOut } from "lucide-react";
+import { Settings, LogOut, CreditCard } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 import { signOutAction } from "@/components/auth/sign-out-action";
@@ -111,6 +111,17 @@ export function AccountMenu({ name, email, collapsed = false }: AccountMenuProps
                 >
                   <Settings className="h-3.5 w-3.5 text-[var(--relay-faint)]" />
                   Settings
+                </Link>
+                <Link
+                  href="/settings?section=billing"
+                  onMouseEnter={() => router.prefetch("/settings?section=billing")}
+                  onClick={() => {
+                    setOpen(false);
+                  }}
+                  className="flex items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-2.5 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition-colors hover:bg-[var(--relay-soft)]"
+                >
+                  <CreditCard className="h-3.5 w-3.5 text-[var(--relay-faint)]" />
+                  Billing
                 </Link>
                 <div className="mx-2.5 my-1 border-t border-[var(--relay-line)]" />
                 <form action={signOutAction}>

@@ -14,7 +14,8 @@ function getPolarClient() {
     throw new Error("POLAR_ACCESS_TOKEN is not configured.")
   }
 
-  return new Polar({ accessToken })
+  const server = process.env["POLAR_SANDBOX"] === "true" ? "sandbox" : "production"
+  return new Polar({ accessToken, server })
 }
 
 function resolveProductId(interval: "month" | "year") {

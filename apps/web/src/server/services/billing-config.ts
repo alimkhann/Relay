@@ -3,7 +3,7 @@ import type { BillingPlanKey, EntitlementLimitsDto, UserEntitlementsDto } from "
 export const FREE_LIMITS: EntitlementLimitsDto = {
   activeProjects: 2,
   historyRetentionDays: 30,
-  captureMonthly: 500,
+  captureMonthly: 200,
   mcpReadDaily: 20,
   mcpWriteDaily: 5,
 }
@@ -11,9 +11,9 @@ export const FREE_LIMITS: EntitlementLimitsDto = {
 export const PRO_LIMITS: EntitlementLimitsDto = {
   activeProjects: 10,
   historyRetentionDays: 365,
-  captureMonthly: 1000,
+  captureMonthly: 2000,
   mcpReadDaily: 200,
-  mcpWriteDaily: 40,
+  mcpWriteDaily: 50,
 }
 
 export const PLAN_PRODUCT_IDS = {
@@ -46,5 +46,6 @@ export function getDefaultEntitlements(): UserEntitlementsDto {
   }
 }
 
-export const BILLING_SUCCESS_URL = "https://www.onrelay.app/settings?section=billing&checkout=success"
-export const BILLING_RETURN_URL = "https://www.onrelay.app/settings?section=billing"
+const appUrl = process.env["NEXT_PUBLIC_RELAY_APP_URL"] ?? "https://www.onrelay.app"
+export const BILLING_SUCCESS_URL = `${appUrl}/settings?section=billing&checkout=success`
+export const BILLING_RETURN_URL = `${appUrl}/settings?section=billing`
