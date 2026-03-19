@@ -402,6 +402,8 @@ export interface McpTokenRow {
   refreshTokenHash: string | null
   refreshTokenPrefix: string | null
   refreshExpiresAt: string | null
+  lastUsedAt: string | null
+  rotationCount: number
   revokedAt: string | null
   createdAt: string
   updatedAt: string

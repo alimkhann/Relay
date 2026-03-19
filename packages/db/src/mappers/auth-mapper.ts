@@ -1,4 +1,4 @@
-import type { BrowserSessionHandoffRow, ExtensionApiTokenRow, ProfileRow, UserOnboardingRow } from "@relay/shared"
+import type { BrowserSessionHandoffRow, ExtensionApiTokenRow, McpAuthSessionRow, McpTokenRow, ProfileRow, UserOnboardingRow } from "@relay/shared"
 
 export function toProfileRow(record: Record<string, unknown>): ProfileRow {
   return {
@@ -16,6 +16,7 @@ export function toExtensionApiTokenRow(record: Record<string, unknown>): Extensi
     id: String(record.id),
     userId: String(record.user_id),
     deviceName: String(record.device_name),
+    purpose: record.purpose === "cli_mcp" ? "cli_mcp" : "manual",
     tokenHash: String(record.token_hash),
     tokenPrefix: String(record.token_prefix),
     lastUsedAt: record.last_used_at ? String(record.last_used_at) : null,
@@ -34,6 +35,47 @@ export function toUserOnboardingRow(record: Record<string, unknown>): UserOnboar
     completedAt: record.completed_at ? String(record.completed_at) : null,
     createdAt: String(record.created_at),
     updatedAt: String(record.updated_at)
+  }
+}
+
+export function toMcpTokenRow(record: Record<string, unknown>): McpTokenRow {
+  return {
+    id: String(record.id),
+    userId: String(record.user_id),
+    projectId: String(record.project_id),
+    tokenHash: String(record.token_hash),
+    tokenPrefix: String(record.token_prefix),
+    scopes: Array.isArray(record.scopes) ? record.scopes.map((scope) => String(scope)) as McpTokenRow["scopes"] : [],
+    expiresAt: String(record.expires_at),
+    refreshTokenHash: record.refresh_token_hash ? String(record.refresh_token_hash) : null,
+    refreshTokenPrefix: record.refresh_token_prefix ? String(record.refresh_token_prefix) : null,
+    refreshExpiresAt: record.refresh_expires_at ? String(record.refresh_expires_at) : null,
+    lastUsedAt: record.last_used_at ? String(record.last_used_at) : null,
+    rotationCount: Number(record.rotation_count ?? 0),
+    revokedAt: record.revoked_at ? String(record.revoked_at) : null,
+    createdAt: String(record.created_at),
+    updatedAt: String(record.updated_at)
+  }
+}
+
+export function toMcpAuthSessionRow(record: Record<string, unknown>): McpAuthSessionRow {
+  return {
+    id: String(record.id),
+    sessionCode: String(record.session_code),
+    sessionHash: String(record.session_hash),
+    sessionPrefix: String(record.session_prefix),
+    codeChallenge: String(record.code_challenge),
+    projectId: String(record.project_id),
+    scopes: Array.isArray(record.scopes) ? record.scopes.map((scope) => String(scope)) as McpAuthSessionRow["scopes"] : [],
+    userId: record.user_id ? String(record.user_id) : null,
+    status: String(record.status) as McpAuthSessionRow["status"],
+    accessToken: record.access_token ? String(record.access_token) : null,
+    refreshToken: record.refresh_token ? String(record.refresh_token) : null,
+    accessExpiresAt: record.access_expires_at ? String(record.access_expires_at) : null,
+    refreshExpiresAt: record.refresh_expires_at ? String(record.refresh_expires_at) : null,
+    expiresAt: String(record.expires_at),
+    approvedAt: record.approved_at ? String(record.approved_at) : null,
+    createdAt: String(record.created_at)
   }
 }
 

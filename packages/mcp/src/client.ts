@@ -61,6 +61,7 @@ export class RelayClient {
   private workSession: WorkSessionResponse["session"] | null = null
   private workSessionState = createEmptyAggregateState()
   private hooksRegistered = false
+  private workSessionDisabled = false
 
   constructor(config: RelayConfig) {
     this.baseUrl = config.apiBase.replace(/\/+$/, "")
@@ -96,6 +97,10 @@ export class RelayClient {
   }
 
   async ensureWorkSession(projectId: string) {
+    if (this.workSessionDisabled) {
+      return null
+    }
+
     if (this.workSession?.projectId === projectId) {
       return this.workSession
     }
@@ -104,17 +109,26 @@ export class RelayClient {
       await this.closeWorkSession()
     }
 
-    const response = await this.post<WorkSessionResponse>(
-      `/api/projects/${projectId}/work-sessions/open`,
-      {
-        surface: "mcp",
-        workspaceId: process.cwd(),
-        agentName: this.detectAgentName(),
-        clientName: "relay-mcp",
-        associationMethod: this.projectId ? "config_project" : "auto_detected",
-        associationConfidence: this.projectId ? 1 : 0.72,
-      },
-    )
+    let response: WorkSessionResponse
+    try {
+      response = await this.post<WorkSessionResponse>(
+        `/api/projects/${projectId}/work-sessions/open`,
+        {
+          surface: "mcp",
+          workspaceId: process.cwd(),
+          agentName: this.detectAgentName(),
+          clientName: "relay-mcp",
+          associationMethod: this.projectId ? "config_project" : "auto_detected",
+          associationConfidence: this.projectId ? 1 : 0.72,
+        },
+      )
+    } catch (error) {
+      if (error instanceof Error && /Missing required MCP scope|401|403/i.test(error.message)) {
+        this.workSessionDisabled = true
+        return null
+      }
+      throw error
+    }
 
     this.workSession = response.session
     this.workSessionState = createEmptyAggregateState()
@@ -124,7 +138,7 @@ export class RelayClient {
   async getDefaultSince(projectId: string, explicitSince?: string) {
     if (explicitSince) return explicitSince
     const session = await this.ensureWorkSession(projectId)
-    return session.baseSyncMarkAt ?? undefined
+    return session?.baseSyncMarkAt ?? undefined
   }
 
   async recordSessionEvent(
@@ -133,6 +147,7 @@ export class RelayClient {
     eventPayload?: Record<string, unknown>,
   ) {
     const session = await this.ensureWorkSession(projectId)
+    if (!session) return
     await this.post(`/api/projects/${projectId}/work-sessions/checkpoint`, {
       sessionId: session.id,
       eventType,
@@ -159,6 +174,7 @@ export class RelayClient {
     },
   ) {
     const session = await this.ensureWorkSession(projectId)
+    if (!session) return
 
     if (input.summary !== undefined) this.workSessionState.summary = input.summary
     if (input.progress !== undefined) this.workSessionState.progress = input.progress

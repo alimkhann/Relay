@@ -1,4 +1,5 @@
 import { createRepositoryBundle } from "@relay/db"
+import type { McpTokenScope } from "@relay/shared"
 import { hashContent } from "@relay/shared"
 import { redirect } from "next/navigation"
 
@@ -17,10 +18,12 @@ export class AuthRequiredError extends Error {
 
 export interface Viewer {
   userId: string
-  mode: "session" | "extension"
+  mode: "session" | "extension" | "mcp"
   email?: string | null
   name?: string | null
   image?: string | null
+  projectId?: string | null
+  scopes?: McpTokenScope[]
 }
 
 export type WebAuthIntent = "sign-in" | "sign-up"
@@ -93,6 +96,21 @@ export async function resolveViewer(authorizationHeader?: string | null): Promis
 
   if (token) {
     const repositories = createRepositoryBundle()
+    const mcpTokenRecord = await repositories.mcpTokens.getValidAccessTokenByHash(hashContent(token))
+
+    if (mcpTokenRecord) {
+      await repositories.mcpTokens.touch(mcpTokenRecord.id)
+      return {
+        userId: mcpTokenRecord.userId,
+        mode: "mcp",
+        email: null,
+        name: null,
+        image: null,
+        projectId: mcpTokenRecord.projectId,
+        scopes: mcpTokenRecord.scopes
+      }
+    }
+
     const tokenRecord = await repositories.extensionTokens.getValidByHash(hashContent(token))
 
     if (tokenRecord) {
@@ -102,7 +120,9 @@ export async function resolveViewer(authorizationHeader?: string | null): Promis
         mode: "extension",
         email: null,
         name: null,
-        image: null
+        image: null,
+        projectId: null,
+        scopes: undefined
       }
     }
   }
@@ -156,6 +176,32 @@ export function resolveSafeNextPath(value: string | null | undefined, fallback =
   }
 
   return value
+}
+
+export function requireViewerScope(viewer: Viewer, scope: McpTokenScope) {
+  if (viewer.mode === "mcp" && !(viewer.scopes ?? []).includes(scope)) {
+    throw new AuthRequiredError(`Missing required MCP scope: ${scope}`)
+  }
+}
+
+export function requireViewerProject(viewer: Viewer, projectId: string, scope?: McpTokenScope) {
+  if (viewer.mode !== "mcp") {
+    return
+  }
+
+  if (viewer.projectId !== projectId) {
+    throw new AuthRequiredError("This MCP token is scoped to a different project.")
+  }
+
+  if (scope) {
+    requireViewerScope(viewer, scope)
+  }
+}
+
+export function rejectMcpViewer(viewer: Viewer, message = "This endpoint is not available to scoped MCP tokens.") {
+  if (viewer.mode === "mcp") {
+    throw new AuthRequiredError(message)
+  }
 }
 
 export function resolveAuthenticatedAppPath(value: string | null | undefined = "/dashboard") {
