@@ -39,7 +39,7 @@ export default async function MemoryPage({
       <PageTelemetry
         surface="web-dashboard"
         area="page"
-        event="memory.viewed"
+        event="memory_viewed"
         message="Rendered the memory page."
         context={{ projectId: currentProject.id }}
       />

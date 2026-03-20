@@ -3,6 +3,8 @@
 import type { TelemetryEventInput, TelemetrySurface } from "@relay/shared/types/telemetry"
 import { createFlowId, sanitizeTelemetryEvent } from "@relay/shared/utils/telemetry"
 
+import { capturePosthogTelemetry } from "./posthog"
+
 function resolveWebSurface(pathname: string): TelemetrySurface {
   if (pathname === "/") return "web-landing"
   if (pathname.startsWith("/sign-in")) return "web-auth"
@@ -39,13 +41,14 @@ export function logClientEvent(
 ) {
   if (typeof window === "undefined") return
 
-  writeConsoleEvent(
-    sanitizeTelemetryEvent({
-      ...input,
-      surface: input.surface ?? resolveWebSurface(window.location.pathname),
-      url: input.url ?? window.location.pathname
-    })
-  )
+  const event = sanitizeTelemetryEvent({
+    ...input,
+    surface: input.surface ?? resolveWebSurface(window.location.pathname),
+    url: input.url ?? window.location.pathname
+  })
+
+  writeConsoleEvent(event)
+  capturePosthogTelemetry(event)
 }
 
 export function createClientFlowId(prefix = "web") {

@@ -14,7 +14,7 @@ export default async function ActivityPage() {
       <PageTelemetry
         surface="web-dashboard"
         area="page"
-        event="activity.viewed"
+        event="activity_viewed"
         message="Rendered the activity page."
       />
       <div className="space-y-5">

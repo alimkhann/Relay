@@ -6,6 +6,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 
 import { ThemeProvider } from "@/components/theme-provider";
 import { GlobalTelemetryBootstrap } from "@/components/telemetry/global-telemetry-bootstrap";
+import { PostHogProvider } from "@/components/telemetry/posthog-provider";
 import { LogoPreloader } from "@/components/ui/logo-preloader";
 
 import "./globals.css";
@@ -51,11 +52,13 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <ThemeProvider>
-          <GlobalTelemetryBootstrap />
-          <LogoPreloader />
-          {children}
-        </ThemeProvider>
+        <PostHogProvider>
+          <ThemeProvider>
+            <GlobalTelemetryBootstrap />
+            <LogoPreloader />
+            {children}
+          </ThemeProvider>
+        </PostHogProvider>
         <Analytics />
         <SpeedInsights />
       </body>

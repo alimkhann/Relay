@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 import { LocalSignInForm } from "@/components/auth/local-sign-in-form";
+import { PostHogIdentity } from "@/components/telemetry/posthog-identity";
 import { SignInAnimatedItem } from "@/components/auth/sign-in-animated";
 import { getAuthProvider } from "@/lib/auth/provider";
 import { PageTelemetry } from "@/components/telemetry/page-telemetry";
@@ -41,10 +42,11 @@ export default async function SignInPage({
 
   return (
     <main className="flex min-h-screen bg-[var(--relay-bg)]">
+      <PostHogIdentity userId={null} />
       <PageTelemetry
         surface="web-auth"
         area="page"
-        event="auth_page.viewed"
+        event="auth_page_viewed"
         message="Rendered the sign-in page."
       />
 

@@ -16,7 +16,7 @@ import { DashboardBriefCard } from "@/features/projects/dashboard-brief-card";
 import { DashboardActivityCard } from "@/features/projects/dashboard-activity-card";
 import { DashboardGovernanceSummary } from "@/features/projects/dashboard-governance-summary";
 import { cn } from "@/lib/cn";
-import { createClientFlowId } from "@/lib/telemetry/client";
+import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
 import {
   buildProjectMemoryOverridePatch,
@@ -179,6 +179,17 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
 
   const groupedSessions = groupSessionsByConversation(dashboard.sessionHistory);
 
+  useEffect(() => {
+    logClientEvent({
+      level: "info",
+      surface: "web-dashboard",
+      area: "projects",
+      event: "project_opened",
+      message: "Opened a project in the dashboard.",
+      projectId: project.id,
+    });
+  }, [project.id]);
+
   /* ─── Mutations ─── */
 
   function runMutation(
@@ -231,7 +242,7 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
             telemetry: {
               surface: "web-dashboard",
               area: "briefs",
-              event: "brief_regenerate.submit",
+              event: "brief_generated",
               flowId,
               logSuccess: true,
             },

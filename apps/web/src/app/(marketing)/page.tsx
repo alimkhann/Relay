@@ -9,6 +9,8 @@ import { PricingSection } from "./components/pricing-section"
 import { Faq } from "./components/faq"
 import { BottomCta } from "./components/bottom-cta"
 import { Footer } from "./components/footer"
+import { PageTelemetry } from "@/components/telemetry/page-telemetry"
+import { PostHogIdentity } from "@/components/telemetry/posthog-identity"
 import {
   pickOppositeLandingBackground,
   pickRandomLandingBackground,
@@ -22,6 +24,13 @@ export default function LandingPage() {
 
   return (
     <main className="bg-[#0a0a0a] text-[#f5f5f5] overflow-x-hidden">
+      <PostHogIdentity userId={null} />
+      <PageTelemetry
+        surface="web-landing"
+        area="page"
+        event="landing_page_viewed"
+        message="Rendered the landing page."
+      />
       <Nav />
       <HeroSection backgroundSrc={backgroundSrc} />
       <HeroVisual />

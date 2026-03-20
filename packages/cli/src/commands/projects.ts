@@ -1,5 +1,6 @@
 import pc from "picocolors"
 
+import type { RelayCliAnalytics } from "../analytics"
 import { RelayApiClient } from "../api-client"
 import { requireConfig, saveConfig } from "../config"
 import { listProjects } from "../project-api"
@@ -23,8 +24,9 @@ function printProjects(projects: Awaited<ReturnType<typeof listProjects>>, activ
   }
 }
 
-export async function runProjectsCommand(subcommand: string | null, args: string[]) {
+export async function runProjectsCommand(subcommand: string | null, args: string[], analytics?: RelayCliAnalytics) {
   const config = await requireConfig()
+  await analytics?.identify(config.apiBase, config.token)
   const client = new RelayApiClient(config.apiBase, config.token)
 
   switch (subcommand ?? "list") {
@@ -52,6 +54,10 @@ export async function runProjectsCommand(subcommand: string | null, args: string
         refreshToken: undefined,
         accessTokenExpiresAt: undefined,
         refreshTokenExpiresAt: undefined,
+      })
+      analytics?.capture("cli_project_selected", {
+        action: "switch",
+        project_id: match.id,
       })
       success(`Active project set to ${match.name} ${pc.dim(`(${match.id})`)}`)
       console.log("Run `relay install` to approve a new scoped MCP token for this project.")

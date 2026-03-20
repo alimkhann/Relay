@@ -21,9 +21,9 @@ export function CliOnboardingConfirm({ sessionCode }: CliOnboardingConfirmProps)
         method: "POST",
         headers: { "content-type": "application/json" },
         telemetry: {
-          surface: "web-dashboard",
+          surface: "web-auth",
           area: "cli-onboarding",
-          event: "cli.auth.confirm",
+          event: "cli_auth_completed",
           flowId,
           logSuccess: true
         },

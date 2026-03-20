@@ -8,6 +8,7 @@ const storage = typeof chrome !== "undefined" ? chrome.storage.local : null
 const keys = {
   apiBase: "relay.apiBase",
   token: "relay.authToken",
+  userId: "relay.userId",
   projectId: "relay.projectId",
   targetMode: "relay.targetMode",
   targetProfileKey: "relay.targetProfileKey",
@@ -58,6 +59,7 @@ function createPendingOnboardingState(): RelayOnboardingState {
 export interface RelaySessionState {
   apiBase: string
   token: string
+  userId: string
   projectId: string
   targetMode: RelayTargetMode
   targetProfileKey: string
@@ -84,6 +86,7 @@ export function normalizeRelaySession(values: Record<string, unknown>): RelaySes
       storedApiBase: values[keys.apiBase] as string | undefined
     }),
     token: (values[keys.token] as string | undefined) ?? "",
+    userId: (values[keys.userId] as string | undefined) ?? "",
     projectId: (values[keys.projectId] as string | undefined) ?? "",
     targetMode,
     targetProfileKey: manualTargetProfileKey,
@@ -115,6 +118,7 @@ export async function getRelaySession() {
     return {
       apiBase: resolveRelayApiBase(),
       token: "",
+      userId: "",
       projectId: "",
       targetMode: "auto" as const,
       targetProfileKey: "",
@@ -148,6 +152,7 @@ export async function setRelaySession(input: Partial<RelaySessionState>) {
 
   if (input.apiBase !== undefined) payload[keys.apiBase] = input.apiBase
   if (input.token !== undefined) payload[keys.token] = input.token
+  if (input.userId !== undefined) payload[keys.userId] = input.userId
   if (input.projectId !== undefined) payload[keys.projectId] = input.projectId
   if (input.targetMode !== undefined) payload[keys.targetMode] = input.targetMode
   if (input.targetProfileKey !== undefined) payload[keys.targetProfileKey] = input.targetProfileKey

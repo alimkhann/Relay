@@ -4,6 +4,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { motion } from "motion/react"
 import { LogoStrip } from "./logo-strip"
+import { trackMarketingEvent } from "./analytics"
 import { ChevronDown } from "lucide-react"
 import { usePreloaderReady } from "./use-preloader-ready"
 
@@ -100,6 +101,9 @@ export function HeroSection({ backgroundSrc }: { backgroundSrc: string }) {
           >
             <Link
               href="/get-started"
+              onClick={() => {
+                trackMarketingEvent("get_started_clicked", { source: "hero_primary" })
+              }}
               className="inline-flex items-center gap-2 rounded-full bg-white text-[#0a0a0a] px-7 py-3 text-sm font-medium hover:bg-white/90 transition-colors duration-200"
             >
               Get Started
@@ -109,6 +113,9 @@ export function HeroSection({ backgroundSrc }: { backgroundSrc: string }) {
               href="/docs"
               target="_blank"
               rel="noopener noreferrer"
+              onClick={() => {
+                trackMarketingEvent("docs_clicked", { source: "hero_secondary" })
+              }}
               className="inline-flex items-center gap-2 rounded-full border border-white/[0.15] px-7 py-3 text-sm font-medium text-white/70 hover:text-white hover:border-white/25 transition-all duration-200"
             >
               Read the docs

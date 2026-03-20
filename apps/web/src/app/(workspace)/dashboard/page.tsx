@@ -43,7 +43,7 @@ export default async function DashboardPage({
         <PageTelemetry
           surface="web-dashboard"
           area="page"
-          event="dashboard.viewed"
+          event="dashboard_viewed"
           message="Rendered the dashboard."
           context={{
             hasProject: false,
@@ -88,7 +88,7 @@ export default async function DashboardPage({
       <PageTelemetry
         surface="web-dashboard"
         area="page"
-        event="dashboard.viewed"
+        event="dashboard_viewed"
         message="Rendered the dashboard."
         context={{
           hasProject: Boolean(currentProject),

@@ -1,11 +1,13 @@
 import pc from "picocolors"
 
+import type { RelayCliAnalytics } from "../analytics"
 import { RelayApiClient } from "../api-client"
 import { requireConfig } from "../config"
 import { getProjectDashboard } from "../project-api"
 
-export async function runStatusCommand(args: string[], options: { projectId?: string } = {}) {
+export async function runStatusCommand(args: string[], options: { analytics?: RelayCliAnalytics; projectId?: string } = {}) {
   const config = await requireConfig()
+  await options.analytics?.identify(config.apiBase, config.token)
   const projectId = options.projectId ?? args[0] ?? config.projectId
   if (!projectId) {
     throw new Error("No project selected. Run `relay projects switch <project>` or pass a project ID.")
@@ -13,6 +15,10 @@ export async function runStatusCommand(args: string[], options: { projectId?: st
 
   const client = new RelayApiClient(config.apiBase, config.token)
   const data = await getProjectDashboard(client, projectId)
+  options.analytics?.capture("cli_status_checked", {
+    project_id: projectId,
+    success: true,
+  })
   const state = data.dashboard.derivedProjectState ?? data.dashboard.projectState
 
   console.log(`${data.project.name} ${pc.dim(`(${data.project.slug})`)}`)

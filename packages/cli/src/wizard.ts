@@ -1,6 +1,7 @@
 import * as p from "@clack/prompts"
 import pc from "picocolors"
 
+import type { RelayCliAnalytics } from "./analytics"
 import { startAuthFlow, startScopedMcpAuthFlow } from "./auth"
 import { RelayApiClient } from "./api-client"
 import { loadConfig, saveConfig, getConfigPath } from "./config"
@@ -12,7 +13,7 @@ import { printBanner, success, info, step } from "./ui"
 
 const DEFAULT_API_BASE = "https://onrelay.app"
 
-export async function runWizard(options: { apiBase?: string } = {}) {
+export async function runWizard(options: { apiBase?: string; analytics?: RelayCliAnalytics } = {}) {
   printBanner()
 
   const apiBase = options.apiBase ?? process.env["RELAY_API_BASE"] ?? DEFAULT_API_BASE
@@ -36,6 +37,7 @@ export async function runWizard(options: { apiBase?: string } = {}) {
 
   step("Starting browser authorization...")
   const auth = await startAuthFlow(apiBase)
+  await options.analytics?.identify(auth.apiBase, auth.token)
   success("Authenticated successfully!")
 
   let projectId = existing?.projectId
@@ -82,6 +84,10 @@ export async function runWizard(options: { apiBase?: string } = {}) {
     refreshToken,
     accessTokenExpiresAt,
     refreshTokenExpiresAt,
+  })
+  options.analytics?.capture("cli_install_completed", {
+    success: true,
+    project_id: projectId ?? null,
   })
   success(`Config saved to ${pc.dim(getConfigPath())}`)
 

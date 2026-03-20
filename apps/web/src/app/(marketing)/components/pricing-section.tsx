@@ -1,11 +1,12 @@
 "use client"
 
 import { motion, useInView } from "motion/react"
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { Check } from "lucide-react"
 import { PRICING } from "../pricing.config"
 import { cn } from "@/lib/cn"
+import { trackMarketingEvent } from "./analytics"
 
 const ease = [0.25, 0.1, 0.25, 1] as const
 
@@ -78,6 +79,13 @@ function PricingCard({
 
       <Link
         href={isPro ? "/get-started?upgrade=true" : "/get-started"}
+        onClick={() => {
+          trackMarketingEvent(isPro ? "billing_upgrade_clicked" : "get_started_clicked", {
+            source: isPro ? "pricing_pro" : "pricing_free",
+            plan: plan.name.toLowerCase(),
+            interval: yearly ? "year" : "month",
+          })
+        }}
         className={cn(
           "mt-8 inline-flex items-center justify-center gap-1.5 rounded-full px-6 py-3 text-sm font-medium transition-colors duration-200",
           isPro
@@ -95,6 +103,14 @@ export function PricingSection() {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: "-80px" })
   const [yearly, setYearly] = useState(false)
+
+  useEffect(() => {
+    if (!inView) return
+
+    trackMarketingEvent("pricing_viewed", {
+      source: "pricing_section",
+    })
+  }, [inView])
 
   return (
     <section id="pricing" className="bg-[#0a0a0a] py-24 md:py-32 px-5" ref={ref}>
@@ -125,7 +141,13 @@ export function PricingSection() {
             Monthly
           </span>
           <button
-            onClick={() => setYearly(!yearly)}
+            onClick={() => {
+              trackMarketingEvent("pricing_interval_toggled", {
+                source: "pricing_section",
+                interval: yearly ? "month" : "year",
+              })
+              setYearly(!yearly)
+            }}
             className={cn(
               "relative w-11 h-6 rounded-full transition-colors duration-200",
               yearly ? "bg-white/20" : "bg-white/10"
@@ -166,7 +188,13 @@ export function PricingSection() {
           transition={{ duration: 0.5, delay: 0.45, ease }}
           className="mt-3 text-center"
         >
-          <Link href="/docs/plans" className="text-xs font-medium text-white/50 transition hover:text-white/75">
+          <Link
+            href="/docs/plans"
+            onClick={() => {
+              trackMarketingEvent("docs_clicked", { source: "pricing_compare_limits" })
+            }}
+            className="text-xs font-medium text-white/50 transition hover:text-white/75"
+          >
             Compare all limits
           </Link>
         </motion.div>

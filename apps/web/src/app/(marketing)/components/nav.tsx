@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { cn } from "@/lib/cn"
+import { trackMarketingEvent } from "./analytics"
 import { motion, AnimatePresence } from "motion/react"
 import { ArrowRight, Menu, X } from "lucide-react"
 
@@ -59,6 +60,11 @@ export function Nav() {
               <a
                 key={link.label}
                 href={link.href}
+                onClick={() => {
+                  if (link.label === "Docs") {
+                    trackMarketingEvent("docs_clicked", { source: "nav_desktop" })
+                  }
+                }}
                 {...(link.external
                   ? { target: "_blank", rel: "noopener noreferrer" }
                   : {})}
@@ -72,6 +78,9 @@ export function Nav() {
           {/* Desktop CTA */}
           <Link
             href="/get-started"
+            onClick={() => {
+              trackMarketingEvent("get_started_clicked", { source: "nav_desktop" })
+            }}
             className={cn(
               "hidden md:inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold whitespace-nowrap shrink-0 transition-all duration-300",
               "bg-white text-[#0a0a0a] shadow-[0_2px_12px_rgba(255,255,255,0.08)] hover:shadow-[0_4px_20px_rgba(255,255,255,0.12)] hover:-translate-y-px"
@@ -107,7 +116,12 @@ export function Nav() {
                 <a
                   key={link.label}
                   href={link.href}
-                  onClick={() => setMobileOpen(false)}
+                  onClick={() => {
+                    if (link.label === "Docs") {
+                      trackMarketingEvent("docs_clicked", { source: "nav_mobile" })
+                    }
+                    setMobileOpen(false)
+                  }}
                   {...(link.external
                     ? { target: "_blank", rel: "noopener noreferrer" }
                     : {})}
@@ -118,7 +132,10 @@ export function Nav() {
               ))}
               <Link
                 href="/get-started"
-                onClick={() => setMobileOpen(false)}
+                onClick={() => {
+                  trackMarketingEvent("get_started_clicked", { source: "nav_mobile" })
+                  setMobileOpen(false)
+                }}
                 className="mt-1 inline-flex items-center justify-center gap-1.5 rounded-full bg-white text-[#0a0a0a] px-5 py-2.5 text-sm font-medium"
               >
                 Get Started →

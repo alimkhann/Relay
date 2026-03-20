@@ -1,17 +1,19 @@
 import pc from "picocolors"
 
+import type { RelayCliAnalytics } from "../analytics"
 import { startAuthFlow, startScopedMcpAuthFlow } from "../auth"
 import { clearConfig, getConfigPath, loadConfig, saveConfig } from "../config"
 import { info, success } from "../ui"
 
 const DEFAULT_API_BASE = "https://onrelay.app"
 
-export async function runAuthCommand(subcommand: string | null, options: { apiBase?: string }) {
+export async function runAuthCommand(subcommand: string | null, options: { apiBase?: string; analytics?: RelayCliAnalytics }) {
   switch (subcommand ?? "login") {
     case "login": {
       const apiBase = options.apiBase ?? process.env["RELAY_API_BASE"] ?? DEFAULT_API_BASE
       const existing = await loadConfig()
       const auth = await startAuthFlow(apiBase)
+      await options.analytics?.identify(auth.apiBase, auth.token)
       const scopedAuth = existing?.projectId
         ? await startScopedMcpAuthFlow(auth.apiBase, existing.projectId)
         : null
@@ -24,10 +26,15 @@ export async function runAuthCommand(subcommand: string | null, options: { apiBa
         accessTokenExpiresAt: scopedAuth?.accessExpiresAt,
         refreshTokenExpiresAt: scopedAuth?.refreshExpiresAt
       })
+      options.analytics?.capture("cli_auth_completed", {
+        success: true,
+        project_id: existing?.projectId ?? null,
+      })
       success(`Authenticated successfully. Config saved to ${pc.dim(getConfigPath())}`)
       return
     }
     case "logout": {
+      options.analytics?.capture("cli_auth_logged_out", { success: true })
       await clearConfig()
       success(`Cleared Relay credentials from ${pc.dim(getConfigPath())}`)
       return

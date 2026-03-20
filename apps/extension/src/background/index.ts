@@ -1110,6 +1110,7 @@ async function loadSessionData() {
     }
 
     const sessionPayload = (await sessionResponse.json()) as {
+      userId: string;
       projects: Array<{
         id: string;
         name: string;
@@ -1162,6 +1163,7 @@ async function loadSessionData() {
 
     await setRelaySession({
       connected: true,
+      userId: sessionPayload.userId,
       projectId: nextProjectId,
       autoCapture: settingsPayload.settings.settings.autoCapture,
       targetMode: session.targetMode ?? "auto",

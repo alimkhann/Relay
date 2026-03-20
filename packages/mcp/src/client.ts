@@ -1,3 +1,4 @@
+import type { RelayMcpAnalytics } from "./analytics.js"
 import { saveConfig, type RelayConfig } from "./config.js"
 
 interface WorkSessionResponse {
@@ -63,13 +64,15 @@ export class RelayClient {
   private hooksRegistered = false
   private workSessionDisabled = false
   private refreshPromise: Promise<void> | null = null
+  private readonly analytics?: RelayMcpAnalytics
 
-  constructor(config: RelayConfig) {
+  constructor(config: RelayConfig, analytics?: RelayMcpAnalytics) {
     this.baseUrl = config.apiBase.replace(/\/+$/, "")
     this.token = config.token
     this.refreshToken = config.refreshToken
     this.accessTokenExpiresAt = config.accessTokenExpiresAt
     this.projectId = config.projectId
+    this.analytics = analytics
     this.registerShutdownHooks()
   }
 
@@ -139,6 +142,10 @@ export class RelayClient {
 
     this.workSession = response.session
     this.workSessionState = createEmptyAggregateState()
+    this.analytics?.capture("mcp_session_opened", {
+      project_id: projectId,
+      agent_name: this.detectAgentName(),
+    })
     return response.session
   }
 
@@ -155,6 +162,10 @@ export class RelayClient {
   ) {
     const session = await this.ensureWorkSession(projectId)
     if (!session) return
+    this.analytics?.capture(`mcp_${eventType}`, {
+      project_id: projectId,
+      success: true,
+    })
     await this.post(`/api/projects/${projectId}/work-sessions/checkpoint`, {
       sessionId: session.id,
       eventType,
@@ -182,6 +193,11 @@ export class RelayClient {
   ) {
     const session = await this.ensureWorkSession(projectId)
     if (!session) return
+    this.analytics?.capture(`mcp_${input.eventType}`, {
+      project_id: projectId,
+      success: true,
+      saved_via: input.eventPayload?.["savedVia"] === "relay_save_context" ? "relay_save_context" : null,
+    })
 
     if (input.summary !== undefined) this.workSessionState.summary = input.summary
     if (input.progress !== undefined) this.workSessionState.progress = input.progress
@@ -284,14 +300,22 @@ export class RelayClient {
     if (this.hooksRegistered) return
     this.hooksRegistered = true
 
+    const shutdown = async (exitCode?: number) => {
+      await this.closeWorkSession()
+      await this.analytics?.shutdown()
+      if (typeof exitCode === "number") {
+        process.exit(exitCode)
+      }
+    }
+
     process.once("SIGINT", () => {
-      void this.closeWorkSession().finally(() => process.exit(0))
+      void shutdown(0)
     })
     process.once("SIGTERM", () => {
-      void this.closeWorkSession().finally(() => process.exit(0))
+      void shutdown(0)
     })
     process.on("beforeExit", () => {
-      void this.closeWorkSession()
+      void shutdown()
     })
   }
 

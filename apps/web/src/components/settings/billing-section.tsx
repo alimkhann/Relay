@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { AlertCircle, Check } from "lucide-react"
 
 import type { BillingStatusDto } from "@relay/shared"
@@ -9,7 +9,7 @@ import type { BillingStatusDto } from "@relay/shared"
 import { PRICING } from "../../app/(marketing)/pricing.config"
 import { FadeIn } from "@/components/ui/fade-in"
 import { cn } from "@/lib/cn"
-import { createClientFlowId } from "@/lib/telemetry/client"
+import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
 
 interface BillingSectionProps {
@@ -206,6 +206,38 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
     return `You're approaching your ${topUsagePressure.label.toLowerCase()} limit. Upgrade to ${topUsagePressure.upgradeCopy}.`
   }, [entitlements.isPro, topUsagePressure])
 
+  useEffect(() => {
+    if (!anyLimitReached || entitlements.isPro) return
+
+    logClientEvent({
+      level: "warn",
+      surface: "web-settings",
+      area: "billing",
+      event: "usage_limit_block_shown",
+      message: "Rendered a blocking usage limit notice.",
+      context: {
+        limitName: topUsagePressure?.label ?? null,
+        usageState: "blocked",
+      },
+    })
+  }, [anyLimitReached, entitlements.isPro, topUsagePressure?.label])
+
+  useEffect(() => {
+    if (!dynamicNotice || entitlements.isPro || anyLimitReached) return
+
+    logClientEvent({
+      level: "info",
+      surface: "web-settings",
+      area: "billing",
+      event: "usage_limit_warning_shown",
+      message: "Rendered a usage limit warning notice.",
+      context: {
+        limitName: topUsagePressure?.label ?? null,
+        usageState: topUsagePressure && topUsagePressure.ratio >= 0.85 ? "warning" : "notice",
+      },
+    })
+  }, [anyLimitReached, dynamicNotice, entitlements.isPro, topUsagePressure])
+
   async function handleCheckout(interval: "month" | "year") {
     setLoading(interval)
     setError(null)
@@ -217,10 +249,11 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ interval }),
         telemetry: {
-          surface: "web-dashboard",
+          surface: "web-settings",
           area: "settings-billing",
-          event: "billing.checkout",
+          event: "upgrade_cta_clicked",
           flowId,
+          context: { interval },
           logSuccess: true,
         },
       })
@@ -247,9 +280,9 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
       const res = await relayClientFetch("/api/billing/portal", {
         method: "POST",
         telemetry: {
-          surface: "web-dashboard",
+          surface: "web-settings",
           area: "settings-billing",
-          event: "billing.portal",
+          event: "billing_portal_opened",
           flowId,
           logSuccess: true,
         },

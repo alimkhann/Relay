@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 
+import { createClientFlowId } from "@/lib/telemetry/client"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
 
 export function McpAuthorizationConfirm({
@@ -21,9 +22,18 @@ export function McpAuthorizationConfirm({
     setError(null)
 
     try {
+      const flowId = createClientFlowId("mcp-authorize")
       const response = await relayClientFetch("/api/mcp/token", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
+        telemetry: {
+          surface: "web-auth",
+          area: "mcp-authorization",
+          event: "mcp_access_approved",
+          flowId,
+          context: { success: true },
+          logSuccess: true,
+        },
         body: JSON.stringify({ sessionCode })
       })
 

@@ -17,7 +17,8 @@
   "dependencies": {
     "@clack/prompts": "^0.9.1",
     "open": "^10.2.0",
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "posthog-node": "^5.28.4"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",

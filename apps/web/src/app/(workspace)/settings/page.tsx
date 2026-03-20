@@ -1,6 +1,7 @@
 import { SettingsPreferences } from "@/components/settings/settings-preferences"
 import { SettingsContent } from "@/components/settings/settings-content"
 import { BillingSection } from "@/components/settings/billing-section"
+import { PageTelemetry } from "@/components/telemetry/page-telemetry"
 import Link from "next/link"
 import { requirePageViewer } from "@/server/policies/viewer"
 import { listExtensionTokensForUser } from "@/server/services/extension-token-service"
@@ -39,6 +40,13 @@ export default async function SettingsPage({
 
   return (
     <div className="mx-auto max-w-4xl flex gap-8">
+      <PageTelemetry
+        surface="web-settings"
+        area="page"
+        event="settings_viewed"
+        message="Rendered the settings page."
+        context={{ section }}
+      />
       <nav className="sticky top-0 w-44 shrink-0 pt-6">
         <div className="flex flex-col gap-1">
           {navItems.map((item) => {

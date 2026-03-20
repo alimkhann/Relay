@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 
 import { SidebarProvider } from "@/components/layout/sidebar-context"
 import { SidebarMainArea } from "@/components/layout/sidebar-main-area"
+import { PostHogIdentity } from "@/components/telemetry/posthog-identity"
 import { WorkspaceSidebarShell } from "@/components/layout/workspace-sidebar-shell"
 import { requirePageViewer, syncViewerProfile } from "@/server/policies/viewer"
 import { listProjectsForUser } from "@/server/services/project-service"
@@ -22,6 +23,7 @@ export default async function WorkspaceLayout({
 
   return (
     <SidebarProvider>
+      <PostHogIdentity userId={viewer.userId} />
       <div className="flex min-h-screen bg-[var(--relay-bg)] text-[var(--relay-ink)]">
         <WorkspaceSidebarShell
           projects={projects.map((p) => ({ id: p.id, name: p.name }))}

@@ -2,11 +2,14 @@ export const telemetryLevels = ["debug", "info", "warn", "error"] as const
 export const telemetrySurfaces = [
   "web-landing",
   "web-dashboard",
+  "web-settings",
   "web-auth",
   "web-api",
   "extension-background",
   "extension-sidebar",
-  "extension-inline-chip"
+  "extension-inline-chip",
+  "cli",
+  "mcp"
 ] as const
 
 export type TelemetryLevel = (typeof telemetryLevels)[number]
