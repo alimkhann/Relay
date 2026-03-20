@@ -31,13 +31,13 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@relay/cli-core": "workspace:*",
     "@clack/prompts": "^0.9.1",
     "open": "^10.2.0",
     "picocolors": "^1.1.1",
     "posthog-node": "^5.28.4"
   },
   "devDependencies": {
+    "@relay/cli-core": "workspace:*",
     "@types/node": "^24.5.2",
     "tsup": "^8.5.0",
     "typescript": "^5.9.2"

@@ -6,6 +6,7 @@ export default defineConfig({
   target: "node20",
   outDir: "dist",
   clean: true,
+  noExternal: [/@relay\/cli-core/],
   banner: {
     js: "#!/usr/bin/env node"
   }
