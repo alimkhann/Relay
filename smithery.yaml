@@ -1,0 +1,14 @@
+startCommand:
+  type: http
+  configSchema:
+    type: object
+    required:
+      - token
+    properties:
+      token:
+        type: string
+        title: Relay API Token
+        description: Your Relay MCP token. Get one by running npx @onrelay/wizard
+  url: https://onrelay.app/api/mcp/stream
+  headers:
+    Authorization: "Bearer {{token}}"

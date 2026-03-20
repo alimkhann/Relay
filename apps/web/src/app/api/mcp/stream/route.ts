@@ -7,6 +7,7 @@ import { RelayHttpMcpClient } from "./relay-http-mcp-client"
 
 async function resolveViewerFromRequest(request: Request): Promise<Viewer> {
   const authHeader = request.headers.get("authorization")
+    ?? (request.headers.get("token") ? `Bearer ${request.headers.get("token")}` : null)
   return resolveViewer(authHeader)
 }
 
