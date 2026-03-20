@@ -5,7 +5,7 @@ Relay CLI installs and authenticates Relay MCP for local coding tools.
 ## Install
 
 ```bash
-npm install -g @relay/cli
+npm install -g @onrelay/cli
 relay install
 ```
 
@@ -20,6 +20,7 @@ relay brief [projectId] [--profile KEY] [--kind fresh_chat_bootstrap|quick_conti
 relay status [projectId]
 relay projects list
 relay projects switch <project-id-or-slug>
+relay uninstall
 ```
 
 ## Browserless auth
@@ -38,6 +39,14 @@ Relay prints the approval URL and session code so you can open it manually on an
 - Writes Relay MCP config into local tooling config files
 - Installs the Relay skill file for supported agents
 - Saves Relay auth in `~/.relay/mcp.json`
+
+## Uninstall
+
+```bash
+relay uninstall
+```
+
+This removes the `relay` MCP entry from detected tool config files, removes Relay skill files where installed, and clears local CLI credentials.
 
 ## Troubleshooting
 
@@ -60,4 +69,4 @@ Publish:
 pnpm release:cli
 ```
 
-GitHub Actions also includes a manual CLI publish workflow at `.github/workflows/publish-cli.yml`.
+If you publish manually, run the release commands locally after bumping the package version.

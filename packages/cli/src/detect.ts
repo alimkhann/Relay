@@ -184,6 +184,6 @@ export function getMcpCommand(): { command: string; args: string[] } {
 
   return {
     command: "npx",
-    args: ["-y", "@relay/mcp"]
+    args: ["-y", "@onrelay/mcp"]
   }
 }

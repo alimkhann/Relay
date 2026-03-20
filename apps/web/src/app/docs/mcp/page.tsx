@@ -19,7 +19,7 @@ export default function McpDocsPage() {
             Run the CLI wizard to authenticate, install MCP config, and set up skill files:
           </p>
           <pre className="rounded-md bg-[var(--relay-soft)] border border-[var(--relay-line)] px-4 py-3 font-mono text-[13px] text-[var(--relay-ink)]">
-            npx @relay/cli
+            npx @onrelay/cli
           </pre>
           <p className="text-[13px] text-[var(--relay-muted)]">
             The wizard will open your browser to authenticate, then configure your IDE automatically.
@@ -51,7 +51,7 @@ export default function McpDocsPage() {
   "mcpServers": {
     "relay": {
       "command": "npx",
-      "args": ["-y", "@relay/mcp"]
+       "args": ["-y", "@onrelay/mcp"]
     }
   }
 }`}</pre>

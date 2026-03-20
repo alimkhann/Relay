@@ -10,6 +10,7 @@ Usage:
   relay status [projectId]
   relay projects list
   relay projects switch <project-id-or-slug>
+  relay uninstall
 
 Flags:
   --api-base URL    Use a custom Relay host

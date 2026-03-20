@@ -53,4 +53,13 @@ describe("resolveRelayApiBase", () => {
       })
     ).toBe("https://www.onrelay.app")
   })
+
+  it("canonicalizes stale vercel preview bases in neon mode", () => {
+    expect(
+      resolveRelayApiBase({
+        authProvider: "neon",
+        configuredApiBase: "https://relay-flow.vercel.app"
+      })
+    ).toBe("https://www.onrelay.app")
+  })
 })

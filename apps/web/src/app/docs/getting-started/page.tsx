@@ -55,7 +55,7 @@ export default function GettingStartedPage() {
           guide.
         </p>
         <pre className="rounded-md bg-[var(--relay-soft)] border border-[var(--relay-line)] px-4 py-3 font-mono text-[13px] text-[var(--relay-ink)]">
-          npx @relay/cli
+          npx @onrelay/cli
         </pre>
       </section>
 

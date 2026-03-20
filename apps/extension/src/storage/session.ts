@@ -43,26 +43,48 @@ export function resolveRelayApiBase(options?: {
     process.env.PLASMO_PUBLIC_RELAY_AUTH_PROVIDER ??
     "neon"
 
-  if (authProvider === "local") {
-    return configuredApiBase
+  const canonicalProductionBase = "https://www.onrelay.app"
+
+  function canonicalizeApiBase(value: string) {
+    const normalized = value.trim()
+    if (!normalized) {
+      return normalized
+    }
+
+    try {
+      const url = new URL(normalized)
+      if (authProvider !== "local" && (url.hostname.endsWith(".vercel.app") || url.hostname === "onrelay.app")) {
+        return canonicalProductionBase
+      }
+      return url.origin
+    } catch {
+      return normalized
+    }
   }
 
-  if (!storedApiBase) {
-    return configuredApiBase
+  const normalizedConfiguredApiBase = canonicalizeApiBase(configuredApiBase)
+  const normalizedStoredApiBase = canonicalizeApiBase(storedApiBase)
+
+  if (authProvider === "local") {
+    return normalizedConfiguredApiBase
+  }
+
+  if (!normalizedStoredApiBase) {
+    return normalizedConfiguredApiBase
   }
 
   try {
-    const configuredUrl = new URL(configuredApiBase)
-    const storedUrl = new URL(storedApiBase)
+    const configuredUrl = new URL(normalizedConfiguredApiBase)
+    const storedUrl = new URL(normalizedStoredApiBase)
 
     if (storedUrl.origin !== configuredUrl.origin) {
-      return configuredApiBase
+      return normalizedConfiguredApiBase
     }
   } catch {
-    return configuredApiBase
+    return normalizedConfiguredApiBase
   }
 
-  return storedApiBase
+  return normalizedStoredApiBase
 }
 
 function createPendingOnboardingState(): RelayOnboardingState {

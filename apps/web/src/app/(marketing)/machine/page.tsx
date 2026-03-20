@@ -181,7 +181,7 @@ export default function MachinePage() {
         }}
       >
         <code style={{ fontSize: "0.85rem", color: "#ccc" }}>
-          $ npx @anthropic-ai/relay install
+          $ npx @onrelay/cli install
         </code>
       </div>
 

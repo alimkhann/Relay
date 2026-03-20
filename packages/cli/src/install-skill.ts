@@ -1,4 +1,4 @@
-import { writeFile, mkdir } from "node:fs/promises"
+import { unlink, writeFile, mkdir } from "node:fs/promises"
 import { join, dirname } from "node:path"
 import { homedir } from "node:os"
 
@@ -20,4 +20,26 @@ export async function installUniversalSkillFile(): Promise<string> {
   await mkdir(skillDir, { recursive: true })
   await writeFile(skillPath, SKILL_CONTENT, "utf-8")
   return skillPath
+}
+
+export async function uninstallSkillFile(ide: DetectedIDE): Promise<boolean> {
+  if (!ide.skillDir) return false
+
+  const skillPath = join(ide.skillDir, SKILL_FILE_NAME)
+  try {
+    await unlink(skillPath)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function uninstallUniversalSkillFile(): Promise<boolean> {
+  const skillPath = join(homedir(), ".agents", "skills", "relay", SKILL_FILE_NAME)
+  try {
+    await unlink(skillPath)
+    return true
+  } catch {
+    return false
+  }
 }

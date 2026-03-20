@@ -42,11 +42,15 @@
       "https://grok.com/*",
       "https://x.com/*",
       "https://chat.deepseek.com/*",
+      "https://www.onrelay.app/*",
+      "https://onrelay.app/*",
       "$PLASMO_PUBLIC_POSTHOG_HOST/*",
       "$PLASMO_PUBLIC_RELAY_API_BASE/*"
     ],
     "externally_connectable": {
       "matches": [
+        "https://www.onrelay.app/*",
+        "https://onrelay.app/*",
         "$PLASMO_PUBLIC_RELAY_API_BASE/*",
         "http://localhost:3000/*",
         "http://localhost:3001/*"

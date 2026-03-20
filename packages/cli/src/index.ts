@@ -5,6 +5,7 @@ import { runBriefCommand } from "./commands/brief"
 import { runInstallCommand } from "./commands/install"
 import { runProjectsCommand } from "./commands/projects"
 import { runStatusCommand } from "./commands/status"
+import { runUninstallCommand } from "./commands/uninstall"
 import { printHelp } from "./help"
 
 async function main() {
@@ -56,6 +57,10 @@ async function main() {
       return
     case "projects":
       await runProjectsCommand(parsed.subcommand, parsed.positionals, analytics)
+      await analytics.shutdown()
+      return
+    case "uninstall":
+      await runUninstallCommand({ analytics })
       await analytics.shutdown()
       return
     default:

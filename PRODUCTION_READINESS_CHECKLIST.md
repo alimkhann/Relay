@@ -19,7 +19,7 @@ Last updated: 2026-03-20
 
 ## MCP On Vercel
 
-- [ ] Keep `@relay/mcp` as the local stdio package.
+- [ ] Keep `@onrelay/mcp` as the local stdio package.
 - [ ] Build a remote HTTP MCP endpoint in the web app (for example `/api/mcp`) using streamable HTTP transport.
 - [ ] Protect the remote MCP surface with scoped bearer auth and project scoping.
 - [ ] Add remote MCP docs for Claude Code, Cursor, Windsurf, Codex, and Gemini.

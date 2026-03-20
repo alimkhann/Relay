@@ -26,6 +26,23 @@ export async function installMcpConfig(ide: DetectedIDE): Promise<void> {
   await writeFile(ide.mcpConfigPath, JSON.stringify(existing, null, 2) + "\n", "utf-8")
 }
 
+export async function uninstallMcpConfig(ide: DetectedIDE): Promise<boolean> {
+  const existing = await loadMcpConfig(ide.mcpConfigPath)
+  if (!existing.mcpServers?.relay) {
+    return false
+  }
+
+  delete existing.mcpServers.relay
+
+  if (Object.keys(existing.mcpServers).length === 0) {
+    delete existing.mcpServers
+  }
+
+  await mkdir(dirname(ide.mcpConfigPath), { recursive: true })
+  await writeFile(ide.mcpConfigPath, JSON.stringify(existing, null, 2) + "\n", "utf-8")
+  return true
+}
+
 async function loadMcpConfig(path: string): Promise<McpConfig> {
   try {
     const raw = await readFile(path, "utf-8")
