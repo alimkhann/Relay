@@ -15,7 +15,7 @@ const navItems = [
   { key: "account", label: "Account", icon: User },
   { key: "app", label: "App", icon: Sliders },
   { key: "integrations", label: "Integrations", icon: Puzzle },
-  { key: "billing", label: "Billing", icon: CreditCard },
+  { key: "billing", label: "Billing & Usage", icon: CreditCard },
 ] as const
 
 export default async function SettingsPage({
@@ -39,7 +39,7 @@ export default async function SettingsPage({
     : "account"
 
   return (
-    <div className="mx-auto max-w-4xl flex gap-8">
+    <div className="flex gap-8">
       <PageTelemetry
         surface="web-settings"
         area="page"
@@ -74,7 +74,7 @@ export default async function SettingsPage({
         </div>
       </nav>
 
-      <div className="flex flex-1 justify-center pt-6"><div className="w-full max-w-2xl">
+      <div className="flex-1 min-w-0 pt-6">
         <SettingsContent section={section}>
           {section === "billing" ? (
             <BillingSection billing={billing} checkoutSuccess={checkoutSuccess} />
@@ -88,7 +88,8 @@ export default async function SettingsPage({
             />
           )}
         </SettingsContent>
-      </div></div>
+      </div>
+      <div className="w-44 shrink-0" aria-hidden="true" />
     </div>
   )
 }
