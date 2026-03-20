@@ -1,5 +1,6 @@
 import { createRepositoryBundle } from "@relay/db";
 
+import { sendWelcomeEmail } from "./email-service";
 import { initializeUserSettings } from "./settings-service";
 
 export interface SyncAuthUserInput {
@@ -159,6 +160,10 @@ export async function reconcileProfileForAuthUser(input: SyncAuthUserInput) {
     displayName: input.name ?? null,
     avatarUrl: input.image ?? null,
   });
+
+  if (!existingProfile) {
+    void sendWelcomeEmail(input.email, input.name ?? null);
+  }
 
   await initializeUserSettings(input.id, {
     newUser: !existingProfile,

@@ -4,10 +4,13 @@ import { createRepositoryBundle } from "@relay/db"
 import { hashContent } from "@relay/shared"
 
 import { withApiRoute } from "@/server/http/api-route"
+import { assertIpRateLimit } from "@/server/services/rate-limit-service"
 import { decryptSecret, encryptSecret } from "@/server/lib/secret-crypto"
 import { createExtensionTokenForUser } from "@/server/services/extension-token-service"
 
 export const GET = withApiRoute(async (request: Request) => {
+  await assertIpRateLimit(request, "cli_auth_poll_ip", 15)
+
   const url = new URL(request.url)
   const secret = url.searchParams.get("secret")
 

@@ -6,6 +6,7 @@ import { createRepositoryBundle } from "@relay/db"
 import { hashContent } from "@relay/shared"
 
 import { withApiRoute } from "@/server/http/api-route"
+import { assertIpRateLimit } from "@/server/services/rate-limit-service"
 
 function generateSessionCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -17,7 +18,9 @@ function generateSessionCode(): string {
   return code
 }
 
-export const POST = withApiRoute(async () => {
+export const POST = withApiRoute(async (request: Request) => {
+  await assertIpRateLimit(request, "cli_auth_start_ip", 5)
+
   const repositories = createRepositoryBundle()
   const sessionCode = generateSessionCode()
   const pollingSecret = `relay_cli_${randomBytes(16).toString("hex")}`

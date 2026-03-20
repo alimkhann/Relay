@@ -1,7 +1,7 @@
 import { resolveAdapter } from "@relay/adapters"
 
 import type { RelayPageState } from "../messaging/contracts"
-import { relayFetch } from "../utils/api"
+import { readRateLimitError, relayFetch } from "../utils/api"
 
 async function readErrorResponse(response: Response, fallback: string) {
   try {
@@ -57,9 +57,10 @@ export async function captureVisibleTurns(projectId: string) {
   })
 
   if (!response.ok) {
+    const rateLimitError = await readRateLimitError(response)
     return {
       ok: false,
-      reason: await readErrorResponse(response, "Capture request failed.")
+      reason: rateLimitError?.message ?? await readErrorResponse(response, "Capture request failed.")
     }
   }
 
