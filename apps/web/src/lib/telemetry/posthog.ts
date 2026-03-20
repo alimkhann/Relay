@@ -15,7 +15,7 @@ function getPosthogConfig() {
 
   return {
     key,
-    host: process.env.NEXT_PUBLIC_POSTHOG_HOST?.trim() || "https://eu.i.posthog.com",
+    host: process.env.NEXT_PUBLIC_POSTHOG_HOST?.trim() || "/relay",
   }
 }
 
@@ -35,6 +35,7 @@ export function ensurePosthog() {
 
   posthog.init(config.key, {
     api_host: config.host,
+    ui_host: "https://eu.posthog.com",
     capture_pageview: false,
     autocapture: false,
     disable_session_recording: true,
