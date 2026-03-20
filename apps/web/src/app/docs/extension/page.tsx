@@ -14,7 +14,7 @@ export default function ExtensionDocsPage() {
       </div>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)]">Supported platforms</h2>
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Supported platforms</h2>
         <div className="divide-y divide-[var(--relay-line)] rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
           {[
             { name: "ChatGPT", domain: "chatgpt.com" },
@@ -34,7 +34,7 @@ export default function ExtensionDocsPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)]">Installation</h2>
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Installation</h2>
         <ol className="list-decimal list-inside space-y-2 text-[15px] text-[var(--relay-muted)]">
           <li>Install the extension from the Chrome Web Store (coming soon during beta).</li>
           <li>Click the Relay icon in your browser toolbar to open the side panel.</li>
@@ -44,7 +44,7 @@ export default function ExtensionDocsPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)]">How capture works</h2>
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">How capture works</h2>
         <p className="text-[15px] text-[var(--relay-muted)]">
           When you chat on a supported platform, the extension observes the conversation DOM and
           extracts structured information: decisions, tasks, constraints, and important context.
@@ -58,7 +58,7 @@ export default function ExtensionDocsPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)]">Settings</h2>
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Settings</h2>
         <p className="text-[15px] text-[var(--relay-muted)]">
           You can customize extension behavior in your{" "}
           <a href="/settings" className="text-[var(--relay-accent)] underline underline-offset-2">

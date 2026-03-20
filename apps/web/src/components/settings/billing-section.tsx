@@ -2,9 +2,11 @@
 
 import Link from "next/link"
 import { useMemo, useState } from "react"
+import { AlertCircle, Check } from "lucide-react"
 
 import type { BillingStatusDto } from "@relay/shared"
 
+import { PRICING } from "../../app/(marketing)/pricing.config"
 import { cn } from "@/lib/cn"
 import { createClientFlowId } from "@/lib/telemetry/client"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
@@ -30,17 +32,16 @@ function getUsageTone(ratio: number) {
 }
 
 function getUsageColor(ratio: number) {
-  const tone = getUsageTone(ratio)
-  if (tone === "danger") return "var(--relay-danger)"
-  if (tone === "warning" || tone === "notice") return "var(--relay-warning, #f59e0b)"
-  return "var(--relay-accent)"
+  if (ratio >= 0.95) return "bg-red-500"
+  if (ratio >= 0.8) return "bg-amber-500"
+  return "bg-emerald-500"
 }
 
 function UsageMeter({ item }: { item: UsageItem }) {
   const ratio = item.limit > 0 ? item.used / item.limit : 0
   const pct = Math.min(ratio * 100, 100)
   const tone = getUsageTone(ratio)
-  const color = getUsageColor(ratio)
+  const colorClass = getUsageColor(ratio)
 
   return (
     <div className="space-y-1.5">
@@ -51,24 +52,24 @@ function UsageMeter({ item }: { item: UsageItem }) {
           {item.periodLabel ? <span className="ml-1 text-[11px] text-[var(--relay-faint)]">{item.periodLabel}</span> : null}
         </span>
       </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--relay-line)]">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--relay-line)]">
         <div
-          className="h-full rounded-full transition-all duration-300"
-          style={{ width: `${pct}%`, backgroundColor: color }}
+          className={cn("h-full rounded-full transition-all duration-300", colorClass)}
+          style={{ width: `${pct}%` }}
         />
       </div>
       {tone === "danger" ? (
-        <p className="text-[11px] font-medium" style={{ color }}>
-          Limit reached
-        </p>
+        <div className="flex items-center gap-2 mt-2 text-red-500 bg-red-500/5 border border-red-500/20 rounded-md px-3 py-2 text-xs">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" /> Limit reached — upgrade to continue.
+        </div>
       ) : null}
       {tone === "warning" ? (
-        <p className="text-[11px] font-medium" style={{ color }}>
+        <p className="text-[11px] font-medium text-amber-500">
           Nearly full
         </p>
       ) : null}
       {tone === "notice" ? (
-        <p className="text-[11px] font-medium" style={{ color }}>
+        <p className="text-[11px] font-medium text-amber-500">
           Approaching limit
         </p>
       ) : null}
@@ -98,12 +99,19 @@ function PlanCard({
       className={cn(
         "relative rounded-[var(--relay-radius)] border p-4",
         tone === "accent"
-          ? "border-[var(--relay-accent)]/30 bg-[var(--relay-accent)]/[0.03]"
+          ? "border-[var(--relay-accent)]/30 bg-[var(--relay-accent)]/[0.03] ring-1 ring-[var(--relay-accent)]/20"
           : "border-[var(--relay-line)] bg-[var(--relay-bg)]",
       )}
     >
       {badge ? (
-        <span className="absolute right-4 top-4 rounded-full border border-[var(--relay-line)] bg-[var(--relay-surface)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--relay-muted)]">
+        <span
+          className={cn(
+            "absolute right-4 top-4 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-widest uppercase",
+            tone === "accent"
+              ? "border border-[var(--relay-accent)]/20 bg-[var(--relay-accent)]/10 text-[var(--relay-accent)]"
+              : "border border-[var(--relay-line)] bg-[var(--relay-surface)] text-[var(--relay-muted)]",
+          )}
+        >
           {badge}
         </span>
       ) : null}
@@ -114,7 +122,8 @@ function PlanCard({
       <p className="mt-4 text-[24px] font-semibold tracking-tight text-[var(--relay-ink)]">{price}</p>
       <ul className="mt-4 space-y-2">
         {features.map((feature) => (
-          <li key={feature} className="text-[13px] text-[var(--relay-muted)]">
+          <li key={feature} className="flex items-start gap-2 text-[13px] text-[var(--relay-muted)]">
+            <Check className="h-3.5 w-3.5 shrink-0 text-emerald-500 mt-0.5" />
             {feature}
           </li>
         ))}
@@ -168,6 +177,10 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
     return usageItems
       .map((item) => ({ ...item, ratio: item.limit > 0 ? item.used / item.limit : 0 }))
       .sort((a, b) => b.ratio - a.ratio)[0]
+  }, [usageItems])
+
+  const anyLimitReached = useMemo(() => {
+    return usageItems.some((item) => item.limit > 0 && item.used / item.limit >= 1)
   }, [usageItems])
 
   const dynamicNotice = useMemo(() => {
@@ -271,6 +284,27 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
         </section>
       ) : null}
 
+      {anyLimitReached && !entitlements.isPro ? (
+        <section className="border border-[var(--relay-accent)]/20 rounded-lg px-4 py-3">
+          <div className="flex items-center gap-3 justify-between">
+            <div className="flex items-center gap-2.5">
+              <AlertCircle className="h-4 w-4 shrink-0 text-[var(--relay-accent)]" />
+              <p className="text-[13px] text-[var(--relay-ink)]">
+                You&apos;ve hit a plan limit. Upgrade to Pro to unlock higher quotas.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleCheckout("month")}
+              disabled={loading !== null}
+              className="shrink-0 rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
+            >
+              {loading === "month" ? "Starting..." : "Upgrade to Pro"}
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       <section className="overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
         <div className="px-5 py-4">
           <div className="flex items-center justify-between gap-3">
@@ -293,15 +327,10 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
             <PlanCard
               title="Free"
-              subtitle="No card required"
+              subtitle={PRICING.free.description}
               price="$0"
               badge={entitlements.plan === "free" ? "Current plan" : undefined}
-              features={[
-                "2 active projects",
-                "30-day history retention",
-                "Browser capture",
-                "MCP read + limited write",
-              ]}
+              features={[...PRICING.free.features]}
               actions={
                 entitlements.plan === "free" ? (
                   <p className="text-[12px] text-[var(--relay-muted)]">You&apos;re on Free right now.</p>
@@ -323,17 +352,11 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
 
             <PlanCard
               title="Pro"
-              subtitle={entitlements.isTrialing ? "Trialing now" : "For daily AI workflows"}
+              subtitle={entitlements.isTrialing ? "Trialing now" : PRICING.pro.description}
               price="$9/mo or $90/yr"
-              badge={entitlements.plan === "pro" ? "Current plan" : "7-day trial"}
+              badge={entitlements.plan === "pro" ? "Current plan" : "RECOMMENDED"}
               tone="accent"
-              features={[
-                "10 active projects",
-                "365-day history retention",
-                "2,000 captures per month",
-                "200 MCP reads and 50 writes per day",
-                "Handoff packs",
-              ]}
+              features={[...PRICING.pro.features]}
               actions={
                 entitlements.plan === "pro" ? (
                   <div className="space-y-2">

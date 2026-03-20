@@ -63,7 +63,7 @@ export default function ApiDocsPage() {
       </div>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)]">Authentication</h2>
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Authentication</h2>
         <p className="text-[15px] text-[var(--relay-muted)]">
           For API/MCP access, create a token in{" "}
           <a href="/settings" className="text-[var(--relay-accent)] underline underline-offset-2">
@@ -71,13 +71,13 @@ export default function ApiDocsPage() {
           </a>{" "}
           and pass it as a Bearer token:
         </p>
-        <pre className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] px-4 py-3 text-[13px] font-mono text-[var(--relay-ink)]">
+        <pre className="rounded-md bg-[var(--relay-soft)] border border-[var(--relay-line)] px-4 py-3 font-mono text-[13px] text-[var(--relay-ink)]">
           Authorization: Bearer relay_your_token_here
         </pre>
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)]">Rate limits</h2>
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Rate limits</h2>
         <p className="text-[15px] text-[var(--relay-muted)]">
           API rate limits depend on your plan. The Free plan allows 20 MCP reads and 5 MCP writes
           per day. Pro allows 200 reads and 50 writes per day. Rate limit info is returned in response headers.
@@ -86,7 +86,7 @@ export default function ApiDocsPage() {
 
       {endpoints.map((group) => (
         <section key={group.group} className="space-y-3">
-          <h2 className="text-lg font-semibold text-[var(--relay-ink)]">{group.group}</h2>
+          <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">{group.group}</h2>
           <div className="divide-y divide-[var(--relay-line)] rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
             {group.routes.map((route) => (
               <div key={`${route.method}-${route.path}`} className="px-4 py-3">

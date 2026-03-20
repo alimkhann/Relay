@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ProjectDashboardDto } from "@relay/shared";
-import { FileDown, RefreshCw } from "lucide-react";
+import { FileDown, RefreshCw, Copy, CheckCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { FadeIn } from "@/components/ui/fade-in";
@@ -23,6 +23,30 @@ function targetLabel(key: string): string {
 
 function kindLabel(kind: string): string {
   return kind === "fresh_chat_bootstrap" ? "Full brief" : "Continuity";
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="h-6 text-[11px] px-2 gap-1"
+      onClick={() => {
+        void navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }}
+    >
+      {copied ? (
+        <CheckCheck className="h-3 w-3 text-emerald-500" />
+      ) : (
+        <Copy className="h-3 w-3" />
+      )}
+      {copied ? "Copied" : "Copy"}
+    </Button>
+  );
 }
 
 interface BriefPageContentProps {
@@ -115,21 +139,24 @@ export function BriefPageContent({
                       {kindLabel(packet.kind)}
                     </span>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={pending}
-                    onClick={() =>
-                      regenerateBrief(packet.targetProfileKey, packet.kind)
-                    }
-                    className="h-6 text-[11px] px-2 gap-1"
-                  >
-                    <RefreshCw className="h-3 w-3" />
-                    Regenerate
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <CopyButton text={packet.content} />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={pending}
+                      onClick={() =>
+                        regenerateBrief(packet.targetProfileKey, packet.kind)
+                      }
+                      className="h-6 text-[11px] px-2 gap-1"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      Regenerate
+                    </Button>
+                  </div>
                 </div>
-                <div className="px-4 py-4">
-                  <p className="text-[13px] leading-relaxed text-[var(--relay-ink-secondary)] whitespace-pre-wrap">
+                <div className="max-h-[520px] overflow-y-auto px-4 py-4">
+                  <p className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-[var(--relay-ink-secondary)]">
                     {packet.content}
                   </p>
                 </div>

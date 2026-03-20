@@ -14,7 +14,7 @@ export default function ConceptsDocsPage() {
       </div>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)]">Projects</h2>
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Projects</h2>
         <p className="text-[15px] text-[var(--relay-muted)]">
           A <strong className="text-[var(--relay-ink)]">project</strong> is the top-level container in Relay. Each project has its own memory,
           briefs, and work sessions. Think of it as one codebase, one initiative, or one product.
@@ -23,7 +23,7 @@ export default function ConceptsDocsPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)]">Memory items</h2>
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Memory items</h2>
         <p className="text-[15px] text-[var(--relay-muted)]">
           Memory items are the atomic units of project context. Each item has a type:
         </p>
@@ -48,7 +48,7 @@ export default function ConceptsDocsPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)]">Briefs</h2>
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Briefs</h2>
         <p className="text-[15px] text-[var(--relay-muted)]">
           A <strong className="text-[var(--relay-ink)]">brief</strong> is a compiled snapshot of your project state, formatted for a specific
           AI tool. Relay generates briefs in two modes:
@@ -64,7 +64,7 @@ export default function ConceptsDocsPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)]">Work sessions</h2>
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Work sessions</h2>
         <p className="text-[15px] text-[var(--relay-muted)]">
           A <strong className="text-[var(--relay-ink)]">work session</strong> represents a continuous period of interaction with
           one tool. When you open a new coding session or chat, Relay tracks it as a work session
@@ -74,7 +74,7 @@ export default function ConceptsDocsPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)]">Truth scoring</h2>
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Truth scoring</h2>
         <p className="text-[15px] text-[var(--relay-muted)]">
           Not all context is equal. Relay uses a multi-dimensional truth score that considers:
         </p>

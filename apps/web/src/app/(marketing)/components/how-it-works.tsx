@@ -2,6 +2,11 @@
 
 import { motion, useInView } from "motion/react"
 import { useRef } from "react"
+import OpenAI from "@lobehub/icons/es/OpenAI"
+import Claude from "@lobehub/icons/es/Claude"
+import Gemini from "@lobehub/icons/es/Gemini"
+import ClaudeCode from "@lobehub/icons/es/ClaudeCode"
+import Cursor from "@lobehub/icons/es/Cursor"
 
 const ease = [0.25, 0.1, 0.25, 1] as const
 
@@ -24,6 +29,17 @@ const STEPS = [
     description:
       "Open a fresh conversation. Insert your project brief. Keep building exactly where you left off.",
   },
+]
+
+const browserApps = [
+  { Icon: OpenAI, label: "ChatGPT" },
+  { Icon: Claude, label: "Claude" },
+  { Icon: Gemini, label: "Gemini" },
+]
+
+const ideApps = [
+  { Icon: ClaudeCode, label: "Claude Code" },
+  { Icon: Cursor, label: "Cursor" },
 ]
 
 export function HowItWorks() {
@@ -49,7 +65,7 @@ export function HowItWorks() {
           </h2>
         </motion.div>
 
-        {/* Steps — no connecting lines */}
+        {/* Steps */}
         <div className="grid md:grid-cols-3 gap-8 md:gap-6">
           {STEPS.map((step, i) => (
             <motion.div
@@ -71,43 +87,37 @@ export function HowItWorks() {
           ))}
         </div>
 
-        {/* Flow diagram — bigger boxes, bidirectional arrow */}
+        {/* Flow diagram with app icon circles */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={inView ? { opacity: 1, y: 0 } : undefined}
           transition={{ duration: 0.8, delay: 0.5, ease }}
           className="mt-20 flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-0"
         >
-          {/* Browser Chat box */}
-          <div className="px-7 py-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] text-center min-w-[180px]">
-            <p className="text-sm font-medium text-white/70">Browser Chat</p>
-            <p className="text-[12px] text-white/30 mt-1">ChatGPT, Claude, Gemini</p>
+          {/* Browser Chat — with app icon circles */}
+          <div className="flex flex-col items-center gap-3">
+            <div className="flex -space-x-2">
+              {browserApps.map((app, i) => (
+                <motion.div
+                  key={app.label}
+                  initial={{ opacity: 0, scale: 0 }}
+                  animate={inView ? { opacity: 1, scale: 1 } : undefined}
+                  transition={{ delay: 0.7 + i * 0.1, duration: 0.3, type: "spring" }}
+                  className="w-8 h-8 rounded-full bg-white/[0.06] border border-white/[0.12] flex items-center justify-center"
+                  title={app.label}
+                >
+                  <app.Icon size={14} />
+                </motion.div>
+              ))}
+            </div>
+            <div className="px-7 py-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] text-center min-w-[180px]">
+              <p className="text-sm font-medium text-white/70">Browser Chat</p>
+              <p className="text-[12px] text-white/30 mt-1">ChatGPT, Claude, Gemini</p>
+            </div>
           </div>
 
           {/* Bidirectional arrow */}
-          <div className="hidden sm:flex items-center w-20 md:w-28">
-            <svg className="w-full h-6" viewBox="0 0 120 24" fill="none">
-              {/* Left arrow head */}
-              <polygon points="4,12 12,6 12,18" fill="currentColor" className="text-white/15" />
-              {/* Line */}
-              <line x1="12" y1="12" x2="108" y2="12" stroke="currentColor" className="text-white/10" strokeWidth="1" strokeDasharray="4 4">
-                <animate attributeName="stroke-dashoffset" from="8" to="0" dur="1.5s" repeatCount="indefinite" />
-              </line>
-              {/* Right arrow head */}
-              <polygon points="116,12 108,6 108,18" fill="currentColor" className="text-white/15" />
-            </svg>
-          </div>
-          {/* Mobile vertical arrow */}
-          <div className="sm:hidden text-white/15 text-lg">↕</div>
-
-          {/* Relay box */}
-          <div className="px-7 py-5 rounded-2xl border border-white/[0.16] bg-white/[0.05] text-center min-w-[180px] shadow-[0_0_30px_rgba(255,255,255,0.04)]">
-            <p className="text-sm font-medium text-transparent bg-clip-text bg-gradient-to-r from-white via-[#ededf2] to-[#b9bac4]">Relay</p>
-            <p className="text-[12px] text-white/30 mt-1">auto-captures & syncs</p>
-          </div>
-
-          {/* Bidirectional arrow */}
-          <div className="hidden sm:flex items-center w-20 md:w-28">
+          <div className="hidden sm:flex items-center w-20 md:w-28 mt-8">
             <svg className="w-full h-6" viewBox="0 0 120 24" fill="none">
               <polygon points="4,12 12,6 12,18" fill="currentColor" className="text-white/15" />
               <line x1="12" y1="12" x2="108" y2="12" stroke="currentColor" className="text-white/10" strokeWidth="1" strokeDasharray="4 4">
@@ -118,10 +128,54 @@ export function HowItWorks() {
           </div>
           <div className="sm:hidden text-white/15 text-lg">↕</div>
 
-          {/* IDE Agent box */}
-          <div className="px-7 py-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] text-center min-w-[180px]">
-            <p className="text-sm font-medium text-white/70">IDE Agent / New Chat</p>
-            <p className="text-[12px] text-white/30 mt-1">reads & writes brief</p>
+          {/* Relay — elevated */}
+          <div className="flex flex-col items-center gap-3">
+            <motion.div
+              initial={{ opacity: 0, scale: 0 }}
+              animate={inView ? { opacity: 1, scale: 1 } : undefined}
+              transition={{ delay: 1.0, duration: 0.4, type: "spring" }}
+              className="w-10 h-10 rounded-full bg-white/[0.08] border border-white/[0.16] flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.06)]"
+            >
+              <span className="text-[11px] font-bold text-white/70 tracking-tight">R</span>
+            </motion.div>
+            <div className="px-7 py-5 rounded-2xl border border-white/[0.16] bg-white/[0.05] text-center min-w-[180px] shadow-[0_0_30px_rgba(255,255,255,0.04)]">
+              <p className="text-sm font-medium text-transparent bg-clip-text bg-gradient-to-r from-white via-[#ededf2] to-[#b9bac4]">Relay</p>
+              <p className="text-[12px] text-white/30 mt-1">auto-captures & syncs</p>
+            </div>
+          </div>
+
+          {/* Bidirectional arrow */}
+          <div className="hidden sm:flex items-center w-20 md:w-28 mt-8">
+            <svg className="w-full h-6" viewBox="0 0 120 24" fill="none">
+              <polygon points="4,12 12,6 12,18" fill="currentColor" className="text-white/15" />
+              <line x1="12" y1="12" x2="108" y2="12" stroke="currentColor" className="text-white/10" strokeWidth="1" strokeDasharray="4 4">
+                <animate attributeName="stroke-dashoffset" from="8" to="0" dur="1.5s" repeatCount="indefinite" />
+              </line>
+              <polygon points="116,12 108,6 108,18" fill="currentColor" className="text-white/15" />
+            </svg>
+          </div>
+          <div className="sm:hidden text-white/15 text-lg">↕</div>
+
+          {/* IDE Agent — with app icon circles */}
+          <div className="flex flex-col items-center gap-3">
+            <div className="flex -space-x-2">
+              {ideApps.map((app, i) => (
+                <motion.div
+                  key={app.label}
+                  initial={{ opacity: 0, scale: 0 }}
+                  animate={inView ? { opacity: 1, scale: 1 } : undefined}
+                  transition={{ delay: 1.1 + i * 0.1, duration: 0.3, type: "spring" }}
+                  className="w-8 h-8 rounded-full bg-white/[0.06] border border-white/[0.12] flex items-center justify-center"
+                  title={app.label}
+                >
+                  <app.Icon size={14} />
+                </motion.div>
+              ))}
+            </div>
+            <div className="px-7 py-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] text-center min-w-[180px]">
+              <p className="text-sm font-medium text-white/70">IDE Agent / New Chat</p>
+              <p className="text-[12px] text-white/30 mt-1">reads & writes brief</p>
+            </div>
           </div>
         </motion.div>
       </div>

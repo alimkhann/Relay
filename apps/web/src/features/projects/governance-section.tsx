@@ -12,6 +12,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { ProvenanceChip } from "@/components/memory/provenance-chip";
+import { cn } from "@/lib/cn";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
 
 /* ─── Types ─── */
@@ -30,7 +31,7 @@ interface ContextItem {
 
 /* ─── Constants ─── */
 
-const ITEMS_PER_PAGE = 5;
+const ITEMS_PER_PAGE = 10;
 
 const memoryTypeBySection: Record<ContextSection, MemoryItemType> = {
   decision: "decision",
@@ -104,9 +105,11 @@ function buildContextItems(
 export function GovernanceSection({
   projectId,
   dashboard,
+  visibleSections: visibleSectionsProp,
 }: {
   projectId: string;
   dashboard: ProjectDashboardDto;
+  visibleSections?: readonly ContextSection[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -126,7 +129,9 @@ export function GovernanceSection({
     task: "",
   });
 
-  const sections: ContextSection[] = ["decision", "task", "constraint"];
+  const sections: ContextSection[] = visibleSectionsProp
+    ? [...visibleSectionsProp]
+    : ["decision", "task", "constraint"];
 
   /* ─── Mutations ─── */
 
@@ -279,7 +284,7 @@ export function GovernanceSection({
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      <div className={cn("grid gap-3", sections.length === 1 ? "grid-cols-1" : "grid-cols-1 lg:grid-cols-3")}>
         {sections.map((section) => {
           const items = buildContextItems(dashboard, section);
           const page = contextPages[section];

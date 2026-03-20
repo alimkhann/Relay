@@ -16,8 +16,10 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
           <DocsSidebar />
         </Suspense>
 
-        <main className="min-w-0 flex-1 px-6 py-16 md:px-12">
-          {children}
+        <main className="min-w-0 flex-1 px-6 py-10 md:px-12">
+          <div className="max-w-2xl">
+            {children}
+          </div>
         </main>
       </div>
     </div>

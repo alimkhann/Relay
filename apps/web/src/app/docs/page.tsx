@@ -1,4 +1,7 @@
 import Link from "next/link"
+import { Suspense } from "react"
+
+import { DocsFooterNav } from "@/components/docs/docs-footer-nav"
 
 const cards = [
   {
@@ -59,6 +62,10 @@ export default function DocsIndexPage() {
           </Link>
         ))}
       </div>
+
+      <Suspense fallback={null}>
+        <DocsFooterNav next={{ href: "/docs/getting-started", label: "Getting Started" }} />
+      </Suspense>
     </div>
   )
 }

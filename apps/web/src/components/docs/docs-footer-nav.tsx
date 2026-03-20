@@ -23,21 +23,23 @@ export function DocsFooterNav({ previous, next }: DocsFooterNavProps) {
   }
 
   return (
-    <div className="flex flex-col gap-3 border-t border-[var(--relay-line)] pt-6 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-3 border-t border-[var(--relay-line)] pt-6 sm:flex-row sm:items-stretch sm:justify-between">
       {previous ? (
         <Link
           href={withProject(previous.href, project)}
-          className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-4 py-3 text-[13px] font-medium text-[var(--relay-ink)] transition hover:bg-[var(--relay-soft)]"
+          className="flex-1 rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-5 py-4 transition hover:border-[var(--relay-accent)]/30 hover:bg-[var(--relay-soft)]"
         >
-          &larr; {previous.label}
+          <span className="block text-[11px] text-[var(--relay-muted)]">Previous</span>
+          <span className="block text-[13px] font-medium text-[var(--relay-ink)]">&larr; {previous.label}</span>
         </Link>
       ) : <span />}
       {next ? (
         <Link
           href={withProject(next.href, project)}
-          className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-4 py-3 text-[13px] font-medium text-[var(--relay-ink)] transition hover:bg-[var(--relay-soft)] sm:text-right"
+          className="flex-1 rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-5 py-4 text-right transition hover:border-[var(--relay-accent)]/30 hover:bg-[var(--relay-soft)] ml-auto"
         >
-          {next.label} &rarr;
+          <span className="block text-[11px] text-[var(--relay-muted)]">Next</span>
+          <span className="block text-[13px] font-medium text-[var(--relay-ink)]">{next.label} &rarr;</span>
         </Link>
       ) : null}
     </div>

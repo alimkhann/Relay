@@ -14,7 +14,7 @@ export default function GettingStartedPage() {
       </div>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)]">1. Create an account</h2>
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">1. Create an account</h2>
         <p className="text-[15px] text-[var(--relay-muted)]">
           Head to{" "}
           <Link href="/get-started" className="text-[var(--relay-accent)] underline underline-offset-2">
@@ -25,7 +25,7 @@ export default function GettingStartedPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)]">2. Create your first project</h2>
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">2. Create your first project</h2>
         <p className="text-[15px] text-[var(--relay-muted)]">
           After signing in, you&apos;ll be prompted to create your first project. Give it a name that matches
           your codebase or initiative — Relay organizes all context per-project.
@@ -33,10 +33,10 @@ export default function GettingStartedPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)]">3. Install the Chrome extension</h2>
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">3. Install the Chrome extension</h2>
         <p className="text-[15px] text-[var(--relay-muted)]">
           The Relay extension watches your AI chats and automatically captures decisions, tasks, and context.
-          Install it from the Chrome Web Store (coming soon) or load the dev build from{" "}
+          The extension is currently in beta and available on the Chrome Web Store. You can also load the dev build from{" "}
           <code className="text-[13px] font-mono text-[var(--relay-ink)]">apps/extension</code>.
         </p>
         <p className="text-[15px] text-[var(--relay-muted)]">
@@ -45,7 +45,7 @@ export default function GettingStartedPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)]">4. Connect MCP (optional)</h2>
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">4. Connect MCP (optional)</h2>
         <p className="text-[15px] text-[var(--relay-muted)]">
           If you use Claude Code, Cursor, Windsurf, or another MCP-compatible tool, connect Relay via MCP
           for full two-way sync. See the{" "}
@@ -54,13 +54,13 @@ export default function GettingStartedPage() {
           </Link>{" "}
           guide.
         </p>
-        <pre className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] px-4 py-3 text-[13px] font-mono text-[var(--relay-ink)]">
+        <pre className="rounded-md bg-[var(--relay-soft)] border border-[var(--relay-line)] px-4 py-3 font-mono text-[13px] text-[var(--relay-ink)]">
           npx @relay/cli
         </pre>
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)]">5. Start chatting</h2>
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">5. Start chatting</h2>
         <p className="text-[15px] text-[var(--relay-muted)]">
           Open ChatGPT, Claude, or any supported AI tool. The extension captures context automatically.
           When you start a new chat or coding session, Relay provides your project brief so the AI

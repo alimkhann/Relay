@@ -14,11 +14,11 @@ export default function McpDocsPage() {
         </div>
 
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold text-[var(--relay-ink)]">Quick install</h2>
+          <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Quick install</h2>
           <p className="text-[15px] text-[var(--relay-muted)]">
             Run the CLI wizard to authenticate, install MCP config, and set up skill files:
           </p>
-          <pre className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] px-4 py-3 text-[13px] font-mono text-[var(--relay-ink)]">
+          <pre className="rounded-md bg-[var(--relay-soft)] border border-[var(--relay-line)] px-4 py-3 font-mono text-[13px] text-[var(--relay-ink)]">
             npx @relay/cli
           </pre>
           <p className="text-[13px] text-[var(--relay-muted)]">
@@ -27,7 +27,7 @@ export default function McpDocsPage() {
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold text-[var(--relay-ink)]">Manual setup</h2>
+          <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Manual setup</h2>
           <p className="text-[15px] text-[var(--relay-muted)]">
             If you prefer manual configuration:
           </p>
@@ -40,14 +40,14 @@ export default function McpDocsPage() {
             </li>
             <li>
               Save your token to <code className="text-[13px] font-mono text-[var(--relay-ink)]">~/.relay/mcp.json</code>:
-              <pre className="mt-2 rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] px-4 py-3 text-[13px] font-mono text-[var(--relay-ink)]">{`{
+              <pre className="mt-2 rounded-md bg-[var(--relay-soft)] border border-[var(--relay-line)] px-4 py-3 font-mono text-[13px] text-[var(--relay-ink)]">{`{
   "apiBase": "https://onrelay.app",
   "token": "relay_your_token_here"
 }`}</pre>
             </li>
             <li>
               Add the MCP server to your IDE config (e.g. <code className="text-[13px] font-mono text-[var(--relay-ink)]">~/.claude/mcp.json</code>):
-              <pre className="mt-2 rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] px-4 py-3 text-[13px] font-mono text-[var(--relay-ink)]">{`{
+              <pre className="mt-2 rounded-md bg-[var(--relay-soft)] border border-[var(--relay-line)] px-4 py-3 font-mono text-[13px] text-[var(--relay-ink)]">{`{
   "mcpServers": {
     "relay": {
       "command": "npx",
@@ -60,7 +60,7 @@ export default function McpDocsPage() {
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold text-[var(--relay-ink)]">Available tools</h2>
+          <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Available tools</h2>
           <div className="divide-y divide-[var(--relay-line)] rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
             {[
               { name: "relay_get_brief", desc: "Load current project context and recent decisions" },

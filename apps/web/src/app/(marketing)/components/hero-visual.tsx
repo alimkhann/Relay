@@ -8,6 +8,27 @@ import ClaudeCode from "@lobehub/icons/es/ClaudeCode"
 
 const ease = [0.25, 0.1, 0.25, 1] as const
 
+/* ─── Typing animation characters ─── */
+const USER_TEXT = "Let's continue building the auth flow. We decided to use Supabase and the user table needs..."
+const AI_TEXT = "I'll help with the auth flow. Based on the Supabase setup, we should first define the user table schema with RLS\u00a0policies..."
+
+function TypingText({ text, delayMs, className }: { text: string; delayMs: number; className?: string }) {
+  return (
+    <span className={className}>
+      {text.split("").map((char, i) => (
+        <motion.span
+          key={i}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: delayMs / 1000 + i * 0.018, duration: 0.01 }}
+        >
+          {char}
+        </motion.span>
+      ))}
+    </span>
+  )
+}
+
 export function HeroVisual() {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: "-80px" })
@@ -28,16 +49,21 @@ export function HeroVisual() {
             transition={{ duration: 0.7, ease }}
             className="relative rounded-2xl border border-white/[0.08] bg-[#111] overflow-hidden flex flex-col"
           >
-            {/* Toast — top right corner */}
+            {/* Toast — appears after typing completes */}
             <motion.div
-              initial={{ opacity: 0, y: -10, x: 10 }}
-              animate={inView ? { opacity: 1, y: 0, x: 0 } : undefined}
-              transition={{ duration: 0.4, delay: 1.0, ease }}
+              initial={{ opacity: 0, y: -10, x: 10, scale: 0.95 }}
+              animate={inView ? { opacity: 1, y: 0, x: 0, scale: 1 } : undefined}
+              transition={{ duration: 0.4, delay: 3.2, ease }}
               className="absolute top-3 right-3 z-20 flex items-center gap-2 px-3 py-2 rounded-lg bg-[#1a1a1a]/95 border border-white/[0.08] shadow-lg backdrop-blur-sm"
             >
-              <div className="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center">
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={inView ? { scale: 1 } : undefined}
+                transition={{ delay: 3.4, duration: 0.3, type: "spring" }}
+                className="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center"
+              >
                 <span className="text-emerald-400 text-[9px]">✓</span>
-              </div>
+              </motion.div>
               <div>
                 <p className="text-[10px] font-medium text-white/70">Saving to Relay</p>
                 <p className="text-[9px] text-white/35">My App Project</p>
@@ -66,35 +92,54 @@ export function HeroVisual() {
               </span>
             </div>
 
-            {/* Chat content */}
+            {/* Chat content with typing animation */}
             <div className="px-5 py-4 space-y-3.5 flex-1">
-              {/* User message */}
-              <div className="flex justify-end">
+              {/* User message — types in */}
+              <motion.div
+                className="flex justify-end"
+                initial={{ opacity: 0 }}
+                animate={inView ? { opacity: 1 } : undefined}
+                transition={{ delay: 0.8, duration: 0.2 }}
+              >
                 <div className="bg-white/[0.06] rounded-2xl rounded-br-md px-4 py-3 max-w-[85%]">
                   <p className="text-[13px] text-white/70 leading-relaxed">
-                    Let&apos;s continue building the auth flow. We decided to
-                    use Supabase and the user table needs...
+                    {inView ? (
+                      <TypingText text={USER_TEXT} delayMs={900} className="text-white/70" />
+                    ) : USER_TEXT}
                   </p>
                 </div>
-              </div>
+              </motion.div>
 
-              {/* AI response (partial) */}
-              <div className="flex justify-start">
+              {/* AI response — streams in after user message */}
+              <motion.div
+                className="flex justify-start"
+                initial={{ opacity: 0 }}
+                animate={inView ? { opacity: 1 } : undefined}
+                transition={{ delay: 2.6, duration: 0.2 }}
+              >
                 <div className="bg-white/[0.03] rounded-2xl rounded-bl-md px-4 py-3 max-w-[85%]">
                   <p className="text-[13px] text-white/55 leading-relaxed">
-                    I&apos;ll help with the auth flow. Based on the Supabase
-                    setup, we should first define the user table schema with
-                    RLS&nbsp;policies...
+                    {inView ? (
+                      <TypingText text={AI_TEXT} delayMs={2700} className="text-white/55" />
+                    ) : AI_TEXT}
                   </p>
                 </div>
-              </div>
+              </motion.div>
             </div>
 
-            {/* Chat input mock */}
+            {/* Chat input mock with animated send button */}
             <div className="px-5 pb-4 mt-auto">
               <div className="flex items-center gap-2 bg-white/[0.03] border border-white/[0.08] rounded-xl px-4 py-2.5">
                 <span className="text-[13px] text-white/25 flex-1">Message ChatGPT...</span>
-                <Send size={14} className="text-white/20" />
+                <motion.div
+                  animate={inView ? {
+                    scale: [1, 1.15, 1],
+                    opacity: [0.2, 0.5, 0.2],
+                  } : undefined}
+                  transition={{ delay: 0.6, duration: 0.4 }}
+                >
+                  <Send size={14} className="text-white/20" />
+                </motion.div>
               </div>
             </div>
           </motion.div>
@@ -131,10 +176,14 @@ export function HeroVisual() {
               </span>
             </div>
 
-            {/* Terminal content */}
+            {/* Terminal content — appears after toast */}
             <div className="px-5 py-4 font-mono text-[12.5px] leading-relaxed space-y-3.5">
               {/* MCP call */}
-              <div>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={inView ? { opacity: 1 } : undefined}
+                transition={{ delay: 3.6, duration: 0.3 }}
+              >
                 <p className="text-white/40">
                   <span className="text-white/50">→</span>{" "}
                   relay_get_brief(
@@ -143,35 +192,65 @@ export function HeroVisual() {
                   </span>
                   )
                 </p>
-                <p className="text-emerald-400/60 mt-1">
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={inView ? { opacity: 1 } : undefined}
+                  transition={{ delay: 4.0, duration: 0.3 }}
+                  className="text-emerald-400/60 mt-1"
+                >
                   ✓ Loaded project brief
-                </p>
-              </div>
+                </motion.p>
+              </motion.div>
 
-              {/* Brief content */}
-              <div className="rounded-lg bg-white/[0.02] border border-white/[0.06] px-3.5 py-3 space-y-1.5">
-                <p className="text-white/50">
+              {/* Brief content — cascades in */}
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={inView ? { opacity: 1, y: 0 } : undefined}
+                transition={{ delay: 4.3, duration: 0.4, ease }}
+                className="rounded-lg bg-white/[0.02] border border-white/[0.06] px-3.5 py-3 space-y-1.5"
+              >
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={inView ? { opacity: 1 } : undefined}
+                  transition={{ delay: 4.5, duration: 0.2 }}
+                  className="text-white/50"
+                >
                   <span className="text-blue-400/60 font-medium">
                     Decisions:
                   </span>{" "}
                   Supabase for auth, PostgreSQL...
-                </p>
-                <p className="text-white/50">
+                </motion.p>
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={inView ? { opacity: 1 } : undefined}
+                  transition={{ delay: 4.7, duration: 0.2 }}
+                  className="text-white/50"
+                >
                   <span className="text-emerald-400/60 font-medium">
                     Tasks:
                   </span>{" "}
                   Implement auth flow, add RLS policies...
-                </p>
-                <p className="text-white/50">
+                </motion.p>
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={inView ? { opacity: 1 } : undefined}
+                  transition={{ delay: 4.9, duration: 0.2 }}
+                  className="text-white/50"
+                >
                   <span className="text-amber-400/60 font-medium">
                     Constraints:
                   </span>{" "}
                   No third-party auth providers
-                </p>
-              </div>
+                </motion.p>
+              </motion.div>
 
               {/* Code suggestion */}
-              <div className="mt-2">
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={inView ? { opacity: 1, y: 0 } : undefined}
+                transition={{ delay: 5.2, duration: 0.4, ease }}
+                className="mt-2"
+              >
                 <p className="text-white/35 mb-1.5">
                   Based on the brief, implementing RLS:
                 </p>
@@ -192,7 +271,7 @@ export function HeroVisual() {
                     = id);
                   </p>
                 </div>
-              </div>
+              </motion.div>
             </div>
           </motion.div>
         </div>

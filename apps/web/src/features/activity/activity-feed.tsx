@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { RotateCcw, Trash2 } from "lucide-react";
 
@@ -35,10 +35,49 @@ function platformLabel(platform: string): string {
   return map[platform] ?? platform;
 }
 
+type FilterTab = "all" | "captures" | "digests";
+
+function dayLabel(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 86400000);
+  const entryDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  if (entryDate.getTime() === today.getTime()) return "TODAY";
+  if (entryDate.getTime() === yesterday.getTime()) return "YESTERDAY";
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" }).toUpperCase();
+}
+
+function groupByDay<T extends { timestamp: string }>(items: T[]): Array<{ label: string; items: T[] }> {
+  const groups: Array<{ label: string; items: T[] }> = [];
+  let currentLabel = "";
+
+  for (const item of items) {
+    const label = dayLabel(item.timestamp);
+    if (label !== currentLabel) {
+      currentLabel = label;
+      groups.push({ label, items: [] });
+    }
+    groups[groups.length - 1]!.items.push(item);
+  }
+
+  return groups;
+}
+
 export function ActivityFeed({ feed }: { feed: ActivityEntry[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
+  const [filter, setFilter] = useState<FilterTab>("all");
+
+  const filteredFeed = useMemo(() => {
+    if (filter === "all") return feed;
+    if (filter === "captures") return feed.filter((e) => e.kind === "capture");
+    return feed.filter((e) => e.kind === "digest");
+  }, [feed, filter]);
+
+  const dayGroups = useMemo(() => groupByDay(filteredFeed), [filteredFeed]);
 
   function toggleSessionArchive(
     projectId: string,
@@ -80,70 +119,108 @@ export function ActivityFeed({ feed }: { feed: ActivityEntry[] }) {
     );
   }
 
+  const filterTabs: { key: FilterTab; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "captures", label: "Captures" },
+    { key: "digests", label: "Digests" },
+  ];
+
   return (
     <>
-      <div className="overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
-        <div className="divide-y divide-[var(--relay-line)]">
-          {feed.map((entry, index) => (
-            <div
-              key={`${entry.timestamp}-${index}`}
-              className={cn(
-                "group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-[var(--relay-soft)]/50",
-                entry.isArchived && "opacity-50",
-              )}
-            >
-              <div
-                className="h-2 w-2 shrink-0 rounded-full"
-                style={{
-                  background:
-                    entry.kind === "capture"
-                      ? "var(--relay-section-decision)"
-                      : "var(--relay-section-task)",
-                }}
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--relay-muted)]">
-                    {entry.projectName}
-                  </span>
-                  <span className="text-[10px] text-[var(--relay-faint)]">
-                    {entry.kind === "capture" ? "Capture" : "Digest"}
-                  </span>
-                </div>
-                <p className="truncate text-[13px] text-[var(--relay-ink)]">
-                  {entry.title}
-                </p>
-                <p className="text-[11px] text-[var(--relay-muted)]">
-                  {entry.detail}
-                </p>
-              </div>
-              <div className="relative flex items-center shrink-0">
-                <span className="tabular-nums text-[11px] text-[var(--relay-faint)] transition-transform duration-150 group-hover:-translate-x-6">
-                  {formatRelativeTime(entry.timestamp)}
-                </span>
-                {entry.kind === "capture" && entry.sessionId && (
-                  <button
-                    className="absolute right-0 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                    disabled={pending}
-                    onClick={() =>
-                      toggleSessionArchive(
-                        entry.projectId,
-                        entry.sessionId!,
-                        !entry.isArchived,
-                      )
-                    }
-                  >
-                    {entry.isArchived ? (
-                      <RotateCcw className="h-3.5 w-3.5 text-[var(--relay-faint)] hover:text-[var(--relay-ink)]" />
-                    ) : (
-                      <Trash2 className="h-3.5 w-3.5 text-[var(--relay-faint)] hover:text-[var(--relay-danger)]" />
+      <div className="flex items-center gap-2 mb-4">
+        {filterTabs.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setFilter(tab.key)}
+            className={cn(
+              "rounded-full px-3 py-1 text-[12px] font-medium transition-colors",
+              filter === tab.key
+                ? "bg-[var(--relay-ink)] text-[var(--relay-bg)]"
+                : "text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]",
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-4">
+        {dayGroups.map((group) => (
+          <div key={group.label}>
+            <div className="sticky top-0 z-10 bg-[var(--relay-bg)] py-1.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--relay-muted)]">
+                {group.label}
+              </span>
+            </div>
+            <div className="overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
+              <div className="divide-y divide-[var(--relay-line)]">
+                {group.items.map((entry, index) => (
+                  <div
+                    key={`${entry.timestamp}-${index}`}
+                    className={cn(
+                      "group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-[var(--relay-soft)]/50",
+                      entry.isArchived && "opacity-50",
                     )}
-                  </button>
-                )}
+                  >
+                    <div
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{
+                        background:
+                          entry.kind === "capture"
+                            ? "#3b82f6"
+                            : "#8b5cf6",
+                      }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--relay-muted)]">
+                          {entry.projectName}
+                        </span>
+                        <span className="text-[10px] text-[var(--relay-faint)]">
+                          {entry.kind === "capture" ? "Capture" : "Digest"}
+                        </span>
+                      </div>
+                      <p className="truncate text-[13px] text-[var(--relay-ink)]">
+                        {entry.title}
+                      </p>
+                      <p className="text-[11px] text-[var(--relay-muted)]">
+                        {entry.detail}
+                      </p>
+                    </div>
+                    <div className="relative flex items-center shrink-0">
+                      <span className={cn(
+                        "tabular-nums text-[11px] text-[var(--relay-faint)]",
+                        entry.kind === "capture" && entry.sessionId && "transition-transform duration-150 group-hover:-translate-x-6",
+                      )}>
+                        {formatRelativeTime(entry.timestamp)}
+                      </span>
+                      {entry.kind === "capture" && entry.sessionId && (
+                        <button
+                          className="absolute right-0 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                          disabled={pending}
+                          onClick={() =>
+                            toggleSessionArchive(
+                              entry.projectId,
+                              entry.sessionId!,
+                              !entry.isArchived,
+                            )
+                          }
+                        >
+                          {entry.isArchived ? (
+                            <RotateCcw className="h-3.5 w-3.5 text-[var(--relay-faint)] hover:text-[var(--relay-ink)]" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5 text-[var(--relay-faint)] hover:text-[var(--relay-danger)]" />
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
 
       {status && (
@@ -249,7 +326,10 @@ export function GroupedActivityFeed({ feed }: { feed: GroupedActivityEntry[] }) 
                 </p>
               </div>
               <div className="relative flex items-center shrink-0">
-                <span className="tabular-nums text-[11px] text-[var(--relay-faint)] transition-transform duration-150 group-hover:-translate-x-6">
+                <span className={cn(
+                  "tabular-nums text-[11px] text-[var(--relay-faint)]",
+                  entry.kind === "capture-group" && entry.sessionIds[0] && "transition-transform duration-150 group-hover:-translate-x-6",
+                )}>
                   {formatRelativeTime(entry.timestamp)}
                 </span>
                 {entry.kind === "capture-group" && entry.sessionIds[0] && (

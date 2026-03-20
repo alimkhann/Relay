@@ -1,7 +1,9 @@
+import { Check } from "lucide-react"
 import Link from "next/link"
 import { Suspense } from "react"
 
 import { DocsFooterNav } from "@/components/docs/docs-footer-nav"
+import { PRICING } from "@/app/(marketing)/pricing.config"
 
 export default function PlansDocsPage() {
   return (
@@ -14,7 +16,7 @@ export default function PlansDocsPage() {
       </div>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)]">Included on every plan</h2>
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Included on every plan</h2>
         <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] px-4 py-4">
           <ul className="space-y-2 text-[14px] text-[var(--relay-muted)]">
             <li>Browser capture across supported AI tools</li>
@@ -25,7 +27,7 @@ export default function PlansDocsPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)]">Plan comparison</h2>
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Plan comparison</h2>
         <div className="overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
           <table className="w-full text-[13px]">
             <thead>
@@ -52,6 +54,39 @@ export default function PlansDocsPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Features</h2>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-4">
+            <h3 className="text-[14px] font-semibold text-[var(--relay-ink)]">{PRICING.free.name}</h3>
+            <p className="mt-1 text-[12px] text-[var(--relay-muted)]">{PRICING.free.description}</p>
+            <ul className="mt-3 space-y-2">
+              {PRICING.free.features.map((f) => (
+                <li key={f} className="flex items-start gap-2 text-[13px] text-[var(--relay-muted)]">
+                  <Check className="h-3.5 w-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                  {f}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] ring-1 ring-[var(--relay-accent)]/20 bg-[var(--relay-surface)] p-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-[14px] font-semibold text-[var(--relay-ink)]">{PRICING.pro.name}</h3>
+              <span className="text-[10px] font-semibold tracking-widest uppercase text-[var(--relay-accent)]">{PRICING.pro.badge}</span>
+            </div>
+            <p className="mt-1 text-[12px] text-[var(--relay-muted)]">{PRICING.pro.description}</p>
+            <ul className="mt-3 space-y-2">
+              {PRICING.pro.features.map((f) => (
+                <li key={f} className="flex items-start gap-2 text-[13px] text-[var(--relay-muted)]">
+                  <Check className="h-3.5 w-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                  {f}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </section>
 

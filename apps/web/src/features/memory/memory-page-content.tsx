@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { ProjectDashboardDto } from "@relay/shared";
 import { Pencil } from "lucide-react";
 
@@ -12,11 +12,29 @@ import {
   buildProjectMemoryOverridePatch,
   deriveProjectMemoryDrafts,
 } from "@/features/projects/project-memory-state";
+import { cn } from "@/lib/cn";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
+
+type MemoryTab = "all" | "decisions" | "tasks" | "constraints";
 
 interface MemoryPageContentProps {
   project: { id: string; name: string; description?: string | null };
   dashboard: ProjectDashboardDto;
+}
+
+function countSectionItems(dashboard: ProjectDashboardDto, section: "decision" | "task" | "constraint"): number {
+  const hiddenKey = section === "decision" ? "hiddenDecisions" : section === "constraint" ? "hiddenConstraints" : "hiddenOpenTasks";
+  const hidden = dashboard.stateOverrides?.[hiddenKey] ?? [];
+  const hiddenKeys = new Set(hidden.map((i) => i.toLowerCase()));
+  const derived = (
+    section === "decision"
+      ? (dashboard.derivedProjectState?.decisions ?? [])
+      : section === "constraint"
+        ? (dashboard.derivedProjectState?.constraints ?? [])
+        : (dashboard.derivedProjectState?.openTasks ?? [])
+  ).filter((i) => !hiddenKeys.has(i.toLowerCase()));
+  const manual = dashboard.memory.filter((i) => i.type === section);
+  return derived.length + manual.length;
 }
 
 export function MemoryPageContent({
@@ -24,9 +42,27 @@ export function MemoryPageContent({
   dashboard,
 }: MemoryPageContentProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
   const [editingMemory, setEditingMemory] = useState(false);
+
+  const tabParam = searchParams.get("tab") as MemoryTab | null;
+  const activeTab: MemoryTab = tabParam && ["all", "decisions", "tasks", "constraints"].includes(tabParam) ? tabParam : "all";
+
+  const tabCounts = useMemo(() => {
+    const decisions = countSectionItems(dashboard, "decision");
+    const tasks = countSectionItems(dashboard, "task");
+    const constraints = countSectionItems(dashboard, "constraint");
+    return { all: decisions + tasks + constraints, decisions, tasks, constraints };
+  }, [dashboard]);
+
+  const visibleSections = useMemo(() => {
+    if (activeTab === "decisions") return ["decision"] as const;
+    if (activeTab === "tasks") return ["task"] as const;
+    if (activeTab === "constraints") return ["constraint"] as const;
+    return ["decision", "task", "constraint"] as const;
+  }, [activeTab]);
 
   const initialDrafts = deriveProjectMemoryDrafts({
     dashboard,
@@ -201,9 +237,47 @@ export function MemoryPageContent({
         </div>
       </FadeIn>
 
-      {/* Governance (decisions, tasks, constraints) */}
+      {/* Tab pills */}
       <FadeIn delay={0.1}>
-        <GovernanceSection projectId={project.id} dashboard={dashboard} />
+        <div className="flex items-center gap-2">
+          {([
+            { key: "all" as const, label: "All", count: tabCounts.all },
+            { key: "decisions" as const, label: "Decisions", count: tabCounts.decisions },
+            { key: "tasks" as const, label: "Tasks", count: tabCounts.tasks },
+            { key: "constraints" as const, label: "Constraints", count: tabCounts.constraints },
+          ]).map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => {
+                const params = new URLSearchParams(searchParams.toString());
+                if (tab.key === "all") {
+                  params.delete("tab");
+                } else {
+                  params.set("tab", tab.key);
+                }
+                router.push(`?${params.toString()}`, { scroll: false });
+              }}
+              className={cn(
+                "rounded-full px-3 py-1 text-[12px] font-medium transition-colors",
+                activeTab === tab.key
+                  ? "bg-[var(--relay-ink)] text-[var(--relay-bg)]"
+                  : "text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]",
+              )}
+            >
+              {tab.label} ({tab.count})
+            </button>
+          ))}
+        </div>
+      </FadeIn>
+
+      {/* Governance (decisions, tasks, constraints) */}
+      <FadeIn delay={0.15}>
+        <GovernanceSection
+          projectId={project.id}
+          dashboard={dashboard}
+          visibleSections={visibleSections}
+        />
       </FadeIn>
 
       {status && (

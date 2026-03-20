@@ -125,12 +125,12 @@ export function McpSection() {
                 <span className="text-[11px] text-white/35 font-mono">
                   Quick install
                 </span>
-                <CopyButton text="npx @anthropic-ai/relay install" />
+                <CopyButton text="npx @relay/cli" />
               </div>
               <div className="px-4 py-4">
                 <code className="text-[13px] font-mono text-white/65">
                   <span className="text-white/30">$</span>{" "}
-                  npx @anthropic-ai/relay install
+                  npx @relay/cli
                 </code>
               </div>
             </div>

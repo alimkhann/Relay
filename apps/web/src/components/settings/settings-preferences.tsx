@@ -1,8 +1,6 @@
 "use client"
 
 import { useMemo, useState, useTransition } from "react"
-import Link from "next/link"
-
 import type { ExtensionApiTokenRow, UserSettingsRow } from "@relay/shared"
 
 import ClaudeIcon from "@lobehub/icons/es/Claude"
@@ -25,6 +23,7 @@ interface SettingsPreferencesProps {
   hasConnectedExtension: boolean
   initialTokens: ExtensionApiTokenRow[]
   section: "app" | "integrations" | "account"
+  viewer?: { displayName: string | null; email: string | null }
 }
 
 const EXTENSION_VERSION = "0.1.0"
@@ -100,11 +99,19 @@ function SettingsSection({
   )
 }
 
+function inferTokenType(label: string): { type: string; className: string } {
+  const lower = label.toLowerCase()
+  if (lower.includes("cli")) return { type: "CLI", className: "text-blue-500 bg-blue-500/10" }
+  if (lower.includes("mac") || lower.includes("mcp")) return { type: "MCP", className: "text-violet-500 bg-violet-500/10" }
+  return { type: "API", className: "text-[var(--relay-muted)] bg-[var(--relay-soft)]" }
+}
+
 export function SettingsPreferences({
   initialSettings,
   hasConnectedExtension,
   initialTokens,
   section,
+  viewer,
 }: SettingsPreferencesProps) {
   const [settings, setSettings] = useState(initialSettings)
   const [toast, setToast] = useState<string | null>(null)
@@ -352,30 +359,14 @@ export function SettingsPreferences({
                   </p>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <a
-                    href={CHROME_WEB_STORE_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-4 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition hover:bg-[var(--relay-soft)]"
-                  >
-                    Chrome Web Store
-                  </a>
-                  <Link
-                    href="/docs/extension"
-                    className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90"
-                  >
-                    {hasConnectedExtension ? "Reconnect guide" : "Install guide"}
-                  </Link>
-                  {hasConnectedExtension ? (
-                    <a
-                      href="#settings-api-tokens"
-                      className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-4 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition hover:bg-[var(--relay-soft)]"
-                    >
-                      Manage tokens
-                    </a>
-                  ) : null}
-                </div>
+                <a
+                  href={CHROME_WEB_STORE_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="shrink-0 rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-white px-4 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition hover:bg-gray-50 dark:bg-[var(--relay-surface)] dark:hover:bg-[var(--relay-soft)]"
+                >
+                  Chrome Web Store
+                </a>
               </div>
             </div>
           </SettingsSection>
@@ -441,7 +432,17 @@ export function SettingsPreferences({
                   {tokens.map((token) => (
                     <div key={token.id} className="flex items-center justify-between gap-4 px-4 py-3">
                       <div className="min-w-0">
-                        <p className="truncate text-[13px] font-medium text-[var(--relay-ink)]">{token.deviceName}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="truncate text-[13px] font-medium text-[var(--relay-ink)]">{token.deviceName}</p>
+                          {(() => {
+                            const badge = inferTokenType(token.deviceName)
+                            return (
+                              <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", badge.className)}>
+                                {badge.type}
+                              </span>
+                            )
+                          })()}
+                        </div>
                         <p className="text-[12px] text-[var(--relay-muted)]">
                           <span className="font-mono">{token.tokenPrefix}...</span>
                           {" · "}
@@ -475,6 +476,24 @@ export function SettingsPreferences({
 
       {section === "account" ? (
         <>
+          {viewer ? (
+            <SettingsSection title="Profile">
+              <div className="flex items-center gap-4 px-5 py-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--relay-accent)] text-[var(--relay-bg)] text-sm font-semibold shrink-0">
+                  {(viewer.displayName ?? viewer.email ?? "?").charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  {viewer.displayName ? (
+                    <p className="text-[15px] font-medium text-[var(--relay-ink)]">{viewer.displayName}</p>
+                  ) : null}
+                  {viewer.email ? (
+                    <p className="text-[13px] text-[var(--relay-muted)] truncate">{viewer.email}</p>
+                  ) : null}
+                </div>
+              </div>
+            </SettingsSection>
+          ) : null}
+
           <SettingsSection title="Account">
             <div className="flex items-center justify-between gap-4 px-5 py-4">
               <div>
