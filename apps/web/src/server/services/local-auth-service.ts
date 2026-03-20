@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto"
 
 import { createRepositoryBundle } from "@relay/db"
 
+import { initializeUserSettings } from "./settings-service"
+
 function fallbackDisplayName(email: string) {
   return email.split("@")[0] || "Relay Local User"
 }
@@ -51,6 +53,8 @@ export async function resolveOrCreateLocalAuthUser(input: unknown): Promise<Loca
       avatarUrl: existing.avatarUrl,
     })
 
+    await initializeUserSettings(existing.id)
+
     return {
       id: existing.id,
       email: parsed.email,
@@ -65,6 +69,8 @@ export async function resolveOrCreateLocalAuthUser(input: unknown): Promise<Loca
     displayName,
     avatarUrl: null,
   })
+
+  await initializeUserSettings(created.id, { newUser: true })
 
   return {
     id: created.id,

@@ -70,7 +70,12 @@ export function toSettingsRow(record: Record<string, unknown>): UserSettingsRow 
       enabledPlatforms: ["chatgpt", "perplexity", "claude", "codex"],
       defaultTargetProfileKey: "claude_code_build",
       autoCapture: true,
-      showSidepanelOnSupportedSites: true
+      showSidepanelOnSupportedSites: true,
+      autoCapturePrompt: {
+        eligible: false,
+        dismissedAt: null,
+        activatedAt: null
+      }
     },
     createdAt: String(record.created_at),
     updatedAt: String(record.updated_at)

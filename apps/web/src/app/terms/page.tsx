@@ -67,9 +67,10 @@ export default function TermsPage() {
               4. Data You Provide
             </h2>
             <p>
-              Relay captures and stores the full text content of AI chat
-              sessions you conduct while the extension is active and connected.
-              This includes your messages to AI tools and the AI's responses.
+               Relay captures and stores the full text content of AI chat
+               sessions you conduct while the extension is active, connected,
+               and capture is enabled by you.
+               This includes your messages to AI tools and the AI's responses.
               Relay also generates and stores derived content such as project
               summaries, decisions, tasks, and constraints extracted from your
               chats.

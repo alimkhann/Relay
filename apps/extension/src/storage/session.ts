@@ -1,4 +1,5 @@
 import type { ProjectStateStatusDto, RelayOnboardingState } from "@relay/shared"
+import type { UserSettingsRow } from "@relay/shared"
 
 import type { RelayTargetMode } from "../utils/target-profile"
 import type { RelayProjectOption, RelayTrustMetadata } from "../messaging/contracts"
@@ -15,6 +16,7 @@ const keys = {
   resolvedTargetProfileKey: "relay.resolvedTargetProfileKey",
   connected: "relay.connected",
   autoCapture: "relay.autoCapture",
+  autoCapturePrompt: "relay.autoCapturePrompt",
   limitedMode: "relay.limitedMode",
   lastStatus: "relay.lastStatus",
   stateStatus: "relay.stateStatus",
@@ -66,6 +68,7 @@ export interface RelaySessionState {
   resolvedTargetProfileKey: string
   connected: boolean
   autoCapture: boolean
+  autoCapturePrompt: UserSettingsRow["settings"]["autoCapturePrompt"]
   limitedMode: boolean
   lastStatus: string
   stateStatus: ProjectStateStatusDto | null
@@ -93,6 +96,12 @@ export function normalizeRelaySession(values: Record<string, unknown>): RelaySes
     resolvedTargetProfileKey: (values[keys.resolvedTargetProfileKey] as string | undefined) ?? "",
     connected: Boolean(values[keys.connected]),
     autoCapture: (values[keys.autoCapture] as boolean | undefined) ?? true,
+    autoCapturePrompt:
+      (values[keys.autoCapturePrompt] as RelaySessionState["autoCapturePrompt"] | undefined) ?? {
+        eligible: false,
+        dismissedAt: null,
+        activatedAt: null,
+      },
     limitedMode: Boolean(values[keys.limitedMode]),
     lastStatus: (values[keys.lastStatus] as string | undefined) ?? "",
     stateStatus: (values[keys.stateStatus] as ProjectStateStatusDto | undefined) ?? null,
@@ -125,6 +134,11 @@ export async function getRelaySession() {
       resolvedTargetProfileKey: "",
       connected: false,
       autoCapture: true,
+      autoCapturePrompt: {
+        eligible: false,
+        dismissedAt: null,
+        activatedAt: null,
+      },
       limitedMode: false,
       lastStatus: "",
       stateStatus: null,
@@ -159,6 +173,7 @@ export async function setRelaySession(input: Partial<RelaySessionState>) {
   if (input.resolvedTargetProfileKey !== undefined) payload[keys.resolvedTargetProfileKey] = input.resolvedTargetProfileKey
   if (input.connected !== undefined) payload[keys.connected] = input.connected
   if (input.autoCapture !== undefined) payload[keys.autoCapture] = input.autoCapture
+  if (input.autoCapturePrompt !== undefined) payload[keys.autoCapturePrompt] = input.autoCapturePrompt
   if (input.limitedMode !== undefined) payload[keys.limitedMode] = input.limitedMode
   if (input.lastStatus !== undefined) payload[keys.lastStatus] = input.lastStatus
   if (input.stateStatus !== undefined) payload[keys.stateStatus] = input.stateStatus

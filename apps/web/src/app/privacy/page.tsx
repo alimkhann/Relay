@@ -49,8 +49,8 @@ export default function PrivacyPage() {
               </p>
               <p>
                 <strong className="text-gray-900">Chat content:</strong> When
-                the Relay Chrome extension is active and connected, we capture
-                and store the <em>full text content</em> of your AI chat
+                the Relay Chrome extension is active, connected, and capture is
+                enabled by you, we capture and store the <em>full text content</em> of your AI chat
                 sessions. This includes your messages to AI tools (ChatGPT,
                 Claude, Codex, Perplexity) and the AI's responses, including any
                 raw HTML content from the chat interface.
@@ -155,9 +155,9 @@ export default function PrivacyPage() {
                 </li>
                 <li>Export your project data</li>
                 <li>
-                  Disconnect the Chrome extension at any time, which stops all
-                  data capture
-                </li>
+              Disconnect the Chrome extension at any time, which stops all
+              data capture
+              </li>
               </ul>
             </div>
           </section>

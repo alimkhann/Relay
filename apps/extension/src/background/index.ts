@@ -88,6 +88,11 @@ interface RemoteSettingsPayload {
     autoCapture: boolean;
     defaultTargetProfileKey: string;
     showSidepanelOnSupportedSites?: boolean;
+    autoCapturePrompt?: {
+      eligible: boolean;
+      dismissedAt: string | null;
+      activatedAt: string | null;
+    };
   };
 }
 
@@ -102,7 +107,7 @@ interface ExtensionAuthSessionPayload {
   projectId: string;
   projects?: RelayProjectOption[];
   onboarding?: RelayOnboardingState;
-  settings?: { settings?: { autoCapture?: boolean } };
+  settings?: { settings?: Partial<RemoteSettingsPayload["settings"]> };
 }
 
 interface ProjectDashboardPayload {
@@ -360,6 +365,11 @@ async function storeAuthenticatedExtensionSession(
     resolvedTargetProfileKey: "",
     connected: true,
     autoCapture: payload.settings?.settings?.autoCapture ?? true,
+    autoCapturePrompt: payload.settings?.settings?.autoCapturePrompt ?? {
+      eligible: false,
+      dismissedAt: null,
+      activatedAt: null,
+    },
     limitedMode: false,
     lastStatus,
     stateStatus: null,
@@ -1166,6 +1176,11 @@ async function loadSessionData() {
       userId: sessionPayload.userId,
       projectId: nextProjectId,
       autoCapture: settingsPayload.settings.settings.autoCapture,
+      autoCapturePrompt: settingsPayload.settings.settings.autoCapturePrompt ?? {
+        eligible: false,
+        dismissedAt: null,
+        activatedAt: null,
+      },
       targetMode: session.targetMode ?? "auto",
       targetProfileKey:
         session.targetMode === "manual" ? session.targetProfileKey : "",

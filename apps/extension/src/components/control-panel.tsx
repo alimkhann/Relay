@@ -213,7 +213,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [newProjectDescription, setNewProjectDescription] = useState("");
   const [localAuthEmail, setLocalAuthEmail] = useState("");
   const [localAuthName, setLocalAuthName] = useState("");
-  const [showDashboardPrompt, setShowDashboardPrompt] = useState(false);
   const [activeContextTab, setActiveContextTab] = useState<ContextTab>("all");
   const [expandedSections, setExpandedSections] = useState<
     Record<ContextSection, boolean>
@@ -262,6 +261,13 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     media.addEventListener("change", handleChange);
     return () => media.removeEventListener("change", handleChange);
   }, [themeMode]);
+
+  const shouldShowAutoCapturePrompt =
+    session?.onboarding.status === "completed" &&
+    session.autoCapturePrompt.eligible &&
+    !session.autoCapturePrompt.dismissedAt &&
+    !session.autoCapturePrompt.activatedAt &&
+    !session.autoCapture;
 
   useEffect(() => {
     const handleTabActivated = () => {
@@ -436,6 +442,54 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
   }
 
+  async function updateAutoCapturePrompt(action: "activate" | "dismiss") {
+    if (!session) {
+      return;
+    }
+
+    setBusy(true);
+    setStatus(action === "activate" ? "Turning on auto-capture..." : "Saving your preference...");
+
+    const timestamp = new Date().toISOString();
+    const nextPrompt = {
+      ...session.autoCapturePrompt,
+      activatedAt: action === "activate" ? timestamp : session.autoCapturePrompt.activatedAt,
+      dismissedAt: action === "dismiss" ? timestamp : session.autoCapturePrompt.dismissedAt,
+    };
+
+    try {
+      const response = await relayFetch("/api/settings", {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          autoCapture: action === "activate" ? true : session.autoCapture,
+          autoCapturePrompt: nextPrompt,
+        }),
+      });
+
+      if (!response.ok) {
+        setStatus(await readErrorMessage(response, "Could not update auto-capture."));
+        return;
+      }
+
+      await setRelaySession({
+        autoCapture: action === "activate" ? true : session.autoCapture,
+        autoCapturePrompt: nextPrompt,
+      });
+      await refreshLocalSession();
+      await refreshActiveProjectState();
+      setStatus(action === "activate" ? "Auto-capture is on." : "Auto-capture stays off until you turn it on.");
+    } catch (cause) {
+      setStatus(
+        cause instanceof Error ? cause.message : "Could not update auto-capture.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function refreshActiveProjectState() {
     if (activeStateRequestInFlight.current) return;
 
@@ -497,7 +551,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       }
 
       setStatus("Opened the Relay dashboard in a new tab.");
-      setShowDashboardPrompt(false);
     } catch (cause) {
       setStatus(
         cause instanceof Error ? cause.message : "Failed to open the Relay dashboard.",
@@ -555,7 +608,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         message: "Google sign-in completed in the extension UI.",
       });
       setStatus("Signed in with Google.");
-      setShowDashboardPrompt(false);
       await refreshLocalSession();
       await refreshActiveProjectState();
     } catch (cause) {
@@ -598,7 +650,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       }
 
       setStatus("Signed in locally.");
-      setShowDashboardPrompt(false);
       await refreshLocalSession();
       await refreshActiveProjectState();
     } catch (cause) {
@@ -673,7 +724,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       });
       setNewProjectName("");
       setNewProjectDescription("");
-      setShowDashboardPrompt(true);
       setStatus(`Created project "${result.project?.name}".`);
       await refreshLocalSession();
       await refreshActiveProjectState();
@@ -1453,19 +1503,31 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         </section>
       ) : (
         <>
-          {showDashboardPrompt ? (
-            <section className={styles.panel}>
-              <h2 className={styles.sectionTitle}>Open the dashboard</h2>
-              <p className={styles.copy}>
-                Your project is ready. Open the dashboard to finish the browser session and continue there.
-              </p>
-              <button
-                className={styles.primaryButton}
-                disabled={busy}
-                onClick={() => void openDashboard(dashboardPath)}
-              >
-                Open dashboard
-              </button>
+          {shouldShowAutoCapturePrompt ? (
+            <section className={styles.warningBanner}>
+              <div>
+                <p className={styles.warningEyebrow}>Capture stays manual first</p>
+                <h2 className={styles.warningTitle}>Auto-capture is off by default.</h2>
+                <p className={styles.warningCopy}>
+                  Turn it on when you are ready for Relay to save supported chats automatically.
+                </p>
+              </div>
+              <div className={styles.warningActions}>
+                <button
+                  className={styles.warningPrimaryButton}
+                  disabled={busy}
+                  onClick={() => void updateAutoCapturePrompt("activate")}
+                >
+                  {busy ? "Working..." : "Turn on"}
+                </button>
+                <button
+                  className={styles.warningSecondaryButton}
+                  disabled={busy}
+                  onClick={() => void updateAutoCapturePrompt("dismiss")}
+                >
+                  Dismiss
+                </button>
+              </div>
             </section>
           ) : null}
 

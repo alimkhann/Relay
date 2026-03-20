@@ -63,8 +63,6 @@ export async function verifyGoogleIdentity(googleAccessToken: string) {
 async function ensureGoogleAccountLink(input: {
   userId: string
   googleAccountId: string
-  googleAccessToken: string
-  googleIdToken: string
 }) {
   const repositories = createRepositoryBundle()
   const existingAccountRows = await repositories.provider.query<{ id: string }>(
@@ -82,11 +80,9 @@ async function ensureGoogleAccountLink(input: {
     await repositories.provider.query(
       `update neon_auth.account
        set "userId" = $2::uuid,
-           "accessToken" = $3,
-           "idToken" = $4,
            "updatedAt" = now()
-       where id = $1::uuid`,
-      [existingAccountId, input.userId, input.googleAccessToken, input.googleIdToken]
+        where id = $1::uuid`,
+      [existingAccountId, input.userId]
     )
     return
   }
@@ -96,20 +92,16 @@ async function ensureGoogleAccountLink(input: {
        "accountId",
        "providerId",
        "userId",
-       "accessToken",
-       "idToken",
        "createdAt",
        "updatedAt"
      )
-     values ($1, 'google', $2::uuid, $3, $4, now(), now())`,
-    [input.googleAccountId, input.userId, input.googleAccessToken, input.googleIdToken]
+     values ($1, 'google', $2::uuid, now(), now())`,
+    [input.googleAccountId, input.userId]
   )
 }
 
 export async function resolveOrProvisionAuthUser(input: {
   googleUser: GoogleUserInfo
-  googleAccessToken: string
-  googleIdToken: string
 }) {
   const repositories = createRepositoryBundle()
 
@@ -196,9 +188,7 @@ export async function resolveOrProvisionAuthUser(input: {
 
   await ensureGoogleAccountLink({
     userId,
-    googleAccountId: input.googleUser.sub,
-    googleAccessToken: input.googleAccessToken,
-    googleIdToken: input.googleIdToken
+    googleAccountId: input.googleUser.sub
   })
 
   return {
@@ -263,9 +253,7 @@ export async function resolveGoogleAuthUser(input: {
 
   if (!authUser && input.allowProvisionFallback) {
     authUser = await resolveOrProvisionAuthUser({
-      googleUser,
-      googleAccessToken: input.googleAccessToken,
-      googleIdToken: input.googleIdToken
+      googleUser
     })
   }
 

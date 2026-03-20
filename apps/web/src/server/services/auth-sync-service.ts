@@ -1,5 +1,7 @@
 import { createRepositoryBundle } from "@relay/db";
 
+import { initializeUserSettings } from "./settings-service";
+
 export interface SyncAuthUserInput {
   id: string;
   email: string;
@@ -9,6 +11,7 @@ export interface SyncAuthUserInput {
 
 export async function reconcileProfileForAuthUser(input: SyncAuthUserInput) {
   const repositories = createRepositoryBundle();
+  const existingProfile = await repositories.profiles.getById(input.id);
   const existingProfileRows = await repositories.provider.query<{ id: string }>(
     `select id
      from profiles
@@ -146,6 +149,7 @@ export async function reconcileProfileForAuthUser(input: SyncAuthUserInput) {
       ],
     );
 
+    await initializeUserSettings(input.id);
     return;
   }
 
@@ -154,5 +158,9 @@ export async function reconcileProfileForAuthUser(input: SyncAuthUserInput) {
     email: input.email,
     displayName: input.name ?? null,
     avatarUrl: input.image ?? null,
+  });
+
+  await initializeUserSettings(input.id, {
+    newUser: !existingProfile,
   });
 }

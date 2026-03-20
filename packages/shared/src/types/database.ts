@@ -363,6 +363,11 @@ export interface UserSettingsRow {
     defaultTargetProfileKey: string
     autoCapture: boolean
     showSidepanelOnSupportedSites: boolean
+    autoCapturePrompt: {
+      eligible: boolean
+      dismissedAt: string | null
+      activatedAt: string | null
+    }
   }
   createdAt: string
   updatedAt: string

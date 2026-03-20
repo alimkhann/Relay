@@ -36,23 +36,23 @@ export default function ExtensionDocsPage() {
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Installation</h2>
         <ol className="list-decimal list-inside space-y-2 text-[15px] text-[var(--relay-muted)]">
-          <li>Install the extension from the Chrome Web Store (coming soon during beta).</li>
+          <li>Install the extension from the Chrome Web Store.</li>
           <li>Click the Relay icon in your browser toolbar to open the side panel.</li>
           <li>Sign in inside the Relay sidebar with the same account you use on onrelay.app.</li>
-          <li>The extension will start capturing context from supported AI chats automatically.</li>
+          <li>Create your first project, then decide whether to turn on auto-capture.</li>
         </ol>
       </section>
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">How capture works</h2>
         <p className="text-[15px] text-[var(--relay-muted)]">
-          When you chat on a supported platform, the extension observes the conversation DOM and
+          When you chat on a supported platform, the extension can observe the conversation DOM and
           extracts structured information: decisions, tasks, constraints, and important context.
           This data is sent to Relay&apos;s backend where it&apos;s merged with your project memory using
           truth-scored governance.
         </p>
         <p className="text-[15px] text-[var(--relay-muted)]">
-          Capture is per-project — the extension uses your active project selection to route
+          Auto-capture is off by default for new workspaces. Capture is per-project — the extension uses your active project selection to route
           context to the correct project.
         </p>
       </section>
