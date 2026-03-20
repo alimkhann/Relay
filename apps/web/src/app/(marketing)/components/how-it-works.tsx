@@ -128,20 +128,11 @@ export function HowItWorks() {
           </div>
           <div className="sm:hidden text-white/15 text-lg">↕</div>
 
-          {/* Relay — elevated */}
-          <div className="flex flex-col items-center gap-3">
-            <motion.div
-              initial={{ opacity: 0, scale: 0 }}
-              animate={inView ? { opacity: 1, scale: 1 } : undefined}
-              transition={{ delay: 1.0, duration: 0.4, type: "spring" }}
-              className="w-10 h-10 rounded-full bg-white/[0.08] border border-white/[0.16] flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.06)]"
-            >
-              <span className="text-[11px] font-bold text-white/70 tracking-tight">R</span>
-            </motion.div>
-            <div className="px-7 py-5 rounded-2xl border border-white/[0.16] bg-white/[0.05] text-center min-w-[180px] shadow-[0_0_30px_rgba(255,255,255,0.04)]">
-              <p className="text-sm font-medium text-transparent bg-clip-text bg-gradient-to-r from-white via-[#ededf2] to-[#b9bac4]">Relay</p>
-              <p className="text-[12px] text-white/30 mt-1">auto-captures & syncs</p>
-            </div>
+          {/* Relay */}
+          <div className="px-7 py-5 rounded-2xl border border-white/[0.16] bg-white/[0.05] text-center min-w-[180px] shadow-[0_0_30px_rgba(255,255,255,0.04)]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/images/relay_logo_white.png" alt="Relay" className="h-5 mx-auto" />
+            <p className="text-[12px] text-white/30 mt-2">auto-captures & syncs</p>
           </div>
 
           {/* Bidirectional arrow */}
