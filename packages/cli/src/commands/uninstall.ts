@@ -1,9 +1,13 @@
 import type { RelayCliAnalytics } from "../analytics"
-import { detectIDEs } from "../detect"
-import { uninstallMcpConfig } from "../install-mcp"
-import { uninstallSkillFile, uninstallUniversalSkillFile } from "../install-skill"
-import { clearConfig } from "../config"
-import { info, success } from "../ui"
+import {
+  detectIDEs,
+  uninstallMcpConfig,
+  uninstallSkillFile,
+  uninstallUniversalSkillFile,
+  clearConfig,
+  info,
+  success
+} from "@relay/cli-core"
 
 export async function runUninstallCommand(options: { analytics?: RelayCliAnalytics }) {
   const ides = await detectIDEs()

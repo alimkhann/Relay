@@ -145,9 +145,22 @@ export function withApiRoute<TArgs extends [Request, ...unknown[]]>(
         }
 
         if (error instanceof TooManyRequestsError) {
+          const rateLimitHeaders: Record<string, string> = {}
+          if (error.retryAfterSeconds) rateLimitHeaders["Retry-After"] = String(error.retryAfterSeconds)
+          if (error.limit) rateLimitHeaders["X-RateLimit-Limit"] = String(error.limit)
+          rateLimitHeaders["X-RateLimit-Remaining"] = "0"
+
           return finalizeResponse(
             request,
-            NextResponse.json({ error: error.message }, { status: 429 })
+            NextResponse.json(
+              {
+                error: error.message,
+                plan: error.plan,
+                upgradeUrl: error.upgradeUrl,
+                retryAfterSeconds: error.retryAfterSeconds
+              },
+              { status: 429, headers: rateLimitHeaders }
+            )
           )
         }
 

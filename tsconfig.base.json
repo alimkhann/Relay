@@ -21,7 +21,9 @@
       "@relay/adapters": ["packages/adapters/src/index.ts"],
       "@relay/adapters/*": ["packages/adapters/src/*"],
       "@relay/db": ["packages/db/src/index.ts"],
-      "@relay/db/*": ["packages/db/src/*"]
+      "@relay/db/*": ["packages/db/src/*"],
+      "@relay/cli-core": ["packages/cli-core/src/index.ts"],
+      "@relay/cli-core/*": ["packages/cli-core/src/*"]
     }
   }
 }

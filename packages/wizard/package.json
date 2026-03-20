@@ -1,0 +1,44 @@
+{
+  "name": "@onrelay/wizard",
+  "version": "0.1.0",
+  "description": "One-command installer for Relay MCP — cross-AI memory sync for coding tools",
+  "license": "UNLICENSED",
+  "type": "module",
+  "homepage": "https://www.onrelay.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alimkhann/Relay.git",
+    "directory": "packages/wizard"
+  },
+  "bugs": {
+    "url": "https://github.com/alimkhann/Relay/issues"
+  },
+  "bin": {
+    "relay-wizard": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src --ext .ts",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@relay/cli-core": "workspace:*",
+    "@clack/prompts": "^0.9.1",
+    "open": "^10.2.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2"
+  }
+}

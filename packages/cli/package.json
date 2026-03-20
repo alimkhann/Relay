@@ -31,6 +31,7 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
+    "@relay/cli-core": "workspace:*",
     "@clack/prompts": "^0.9.1",
     "open": "^10.2.0",
     "picocolors": "^1.1.1",

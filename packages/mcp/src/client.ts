@@ -345,6 +345,23 @@ export class RelayClient {
         return this.request(method, path, body)
       }
 
+      if (response.status === 429) {
+        const data = await response.json().catch(() => ({})) as {
+          error?: string
+          plan?: string
+          upgradeUrl?: string
+          retryAfterSeconds?: number
+        }
+        const retryAfter = response.headers.get("Retry-After")
+        let message = data.error ?? "Rate limit exceeded."
+        if (data.plan !== "pro" && data.upgradeUrl) {
+          message += `\n\nUpgrade to Relay Pro: ${data.upgradeUrl}`
+        } else if (retryAfter) {
+          message += `\nTry again in ${retryAfter} seconds.`
+        }
+        throw new Error(message)
+      }
+
       const text = await response.text().catch(() => "")
       let message = `Relay API error: ${response.status} ${response.statusText}`
       if (text) {

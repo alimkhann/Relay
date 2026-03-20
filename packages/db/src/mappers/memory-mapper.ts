@@ -9,7 +9,7 @@ export function toMemoryRow(record: Record<string, unknown>): MemoryItemRow {
     sourceTurnId: record.source_turn_id ? String(record.source_turn_id) : null,
     type: record.type as MemoryItemRow["type"],
     title: record.title ? String(record.title) : null,
-    content: String(record.content),
+    content: decryptTextIfNeeded(String(record.content)),
     pinned: Boolean(record.pinned),
     isArchived: Boolean(record.is_archived),
     sortOrder: record.sort_order === null || record.sort_order === undefined ? null : Number(record.sort_order),

@@ -1,6 +1,5 @@
 import type { RelayCliAnalytics } from "../analytics"
-import { RelayApiClient } from "../api-client"
-import { requireConfig } from "../config"
+import { RelayApiClient, requireConfig } from "@relay/cli-core"
 
 interface BootstrapResponse {
   status: "ready" | "pending"

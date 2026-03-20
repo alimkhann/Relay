@@ -37,4 +37,4 @@ jobs:
         run: pnpm test
 
       - name: Build
-        run: pnpm build && pnpm build:cli && pnpm build:mcp
+        run: pnpm build && pnpm build:cli && pnpm build:mcp && pnpm build:wizard

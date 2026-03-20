@@ -7,7 +7,7 @@ import type {
   SessionDigestRow,
 } from "@relay/shared"
 
-import { decryptTextIfNeeded } from "../utils/encrypted-text"
+import { decryptTextIfNeeded, decryptJsonbIfNeeded } from "../utils/encrypted-text"
 
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
@@ -28,7 +28,7 @@ export function toSessionDigestRow(record: Record<string, unknown>): SessionDige
     sourceSessionId: String(record.source_session_id),
     sourceSignature: String(record.source_signature),
     summaryShort: decryptTextIfNeeded(String(record.summary_short)),
-    structuredDigest: (record.structured_digest as Record<string, unknown>) ?? {},
+    structuredDigest: (decryptJsonbIfNeeded(record.structured_digest) as Record<string, unknown>) ?? {},
     confidence: Number(record.confidence ?? 0),
     importanceScore: Number(record.importance_score ?? 0),
     needsProjectStateMerge: Boolean(record.needs_project_state_merge),
@@ -41,15 +41,15 @@ export function toSessionDigestRow(record: Record<string, unknown>): SessionDige
 export function toProjectStateRow(record: Record<string, unknown>): ProjectStateRow {
   return {
     projectId: String(record.project_id),
-    projectOverview: record.project_overview ? String(record.project_overview) : null,
-    currentObjective: record.current_objective ? String(record.current_objective) : null,
-    stackDomain: record.stack_domain ? String(record.stack_domain) : null,
-    recentProgress: record.recent_progress ? String(record.recent_progress) : null,
-    decisions: toStringArray(record.decisions),
-    constraints: toStringArray(record.constraints),
-    openTasks: toStringArray(record.open_tasks),
-    relevantTools: toStringArray(record.relevant_tools),
-    objectiveHistory: Array.isArray(record.objective_history) ? record.objective_history as ProjectStateRow["objectiveHistory"] : [],
+    projectOverview: record.project_overview ? decryptTextIfNeeded(String(record.project_overview)) : null,
+    currentObjective: record.current_objective ? decryptTextIfNeeded(String(record.current_objective)) : null,
+    stackDomain: record.stack_domain ? decryptTextIfNeeded(String(record.stack_domain)) : null,
+    recentProgress: record.recent_progress ? decryptTextIfNeeded(String(record.recent_progress)) : null,
+    decisions: toStringArray(decryptJsonbIfNeeded(record.decisions)),
+    constraints: toStringArray(decryptJsonbIfNeeded(record.constraints)),
+    openTasks: toStringArray(decryptJsonbIfNeeded(record.open_tasks)),
+    relevantTools: toStringArray(decryptJsonbIfNeeded(record.relevant_tools)),
+    objectiveHistory: Array.isArray(decryptJsonbIfNeeded(record.objective_history)) ? decryptJsonbIfNeeded(record.objective_history) as ProjectStateRow["objectiveHistory"] : [],
     lastBootstrapAt: record.last_bootstrap_at ? String(record.last_bootstrap_at) : null,
     dirty: Boolean(record.dirty),
     createdAt: String(record.created_at),

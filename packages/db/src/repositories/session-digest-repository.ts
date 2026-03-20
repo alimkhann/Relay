@@ -85,7 +85,7 @@ export class SessionDigestRepository {
         input.sourceSessionId,
         input.sourceSignature,
          encryptTextIfConfigured(input.summaryShort),
-        JSON.stringify(input.structuredDigest),
+        encryptTextIfConfigured(JSON.stringify(input.structuredDigest)),
         input.confidence,
         input.importanceScore,
         input.needsProjectStateMerge,

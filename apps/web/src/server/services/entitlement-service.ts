@@ -90,14 +90,25 @@ async function getUsageCount(userId: string, featureKey: string, windowKey: Wind
   return counter?.count ?? 0
 }
 
-export async function consumeQuota(userId: string, featureKey: string, windowKey: WindowKey, limit: number, amount = 1) {
+export async function consumeQuota(userId: string, featureKey: string, windowKey: WindowKey, limit: number, amount = 1, plan?: string) {
   const repositories = createRepositoryBundle(userId)
   const { start, end } = getWindowBounds(windowKey)
   const counter = await repositories.usageCounters.incrementWithinLimit(`user:${userId}`, featureKey, windowKey, start, end, limit, amount)
   if (!counter) {
-    throw new TooManyRequestsError("You have reached the current plan limit for this feature.")
+    const windowEnd = new Date(end)
+    const retryAfterSeconds = Math.ceil((windowEnd.getTime() - Date.now()) / 1000)
+    throw new TooManyRequestsError(
+      "You have reached the current plan limit for this feature.",
+      {
+        retryAfterSeconds,
+        limit,
+        remaining: 0,
+        plan: plan ?? "free",
+        upgradeUrl: "https://onrelay.app/settings?section=billing"
+      }
+    )
   }
-  return counter
+  return { ...counter, limit, remaining: limit - counter.count }
 }
 
 export async function assertProjectCreationAllowed(userId: string) {
@@ -122,24 +133,24 @@ export async function assertHandoffEnabled(userId: string) {
 
 export async function consumeCaptureQuota(userId: string) {
   const entitlements = await resolveViewerEntitlements(userId)
-  return consumeQuota(userId, "capture_monthly", "month", entitlements.limits.captureMonthly)
+  return consumeQuota(userId, "capture_monthly", "month", entitlements.limits.captureMonthly, 1, entitlements.plan)
 }
 
 export async function consumeMcpReadQuota(userId: string) {
   const entitlements = await resolveViewerEntitlements(userId)
-  return consumeQuota(userId, "mcp_read_daily", "day", entitlements.limits.mcpReadDaily)
+  return consumeQuota(userId, "mcp_read_daily", "day", entitlements.limits.mcpReadDaily, 1, entitlements.plan)
 }
 
 export async function consumeMcpWriteQuota(userId: string, amount = 1) {
   const entitlements = await resolveViewerEntitlements(userId)
-  return consumeQuota(userId, "mcp_write_daily", "day", entitlements.limits.mcpWriteDaily, amount)
+  return consumeQuota(userId, "mcp_write_daily", "day", entitlements.limits.mcpWriteDaily, amount, entitlements.plan)
 }
 
 export async function consumeHandoffQuota(userId: string) {
   await assertHandoffEnabled(userId)
   const entitlements = await resolveViewerEntitlements(userId)
   const limit = entitlements.plan === "pro" ? 200 : 0
-  return consumeQuota(userId, "handoff_monthly", "month", limit)
+  return consumeQuota(userId, "handoff_monthly", "month", limit, 1, entitlements.plan)
 }
 
 export async function consumeIpRateLimit(scopeKey: string, featureKey: string, perMinuteLimit: number) {

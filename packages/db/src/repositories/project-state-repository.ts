@@ -2,6 +2,7 @@ import type { ProjectStateRow } from "@relay/shared"
 
 import { toProjectStateRow } from "../mappers/relay-v2-mapper"
 import type { DatabaseProvider } from "../store/provider"
+import { encryptTextIfConfigured } from "../utils/encrypted-text"
 
 export class ProjectStateRepository {
   constructor(private readonly provider: DatabaseProvider) {}
@@ -65,15 +66,15 @@ export class ProjectStateRepository {
        returning *`,
       [
         input.projectId,
-        input.projectOverview,
-        input.currentObjective,
-        input.stackDomain,
-        input.recentProgress,
-        JSON.stringify(input.decisions),
-        JSON.stringify(input.constraints),
-        JSON.stringify(input.openTasks),
-        JSON.stringify(input.relevantTools),
-        JSON.stringify(input.objectiveHistory ?? []),
+        input.projectOverview ? encryptTextIfConfigured(input.projectOverview) : null,
+        input.currentObjective ? encryptTextIfConfigured(input.currentObjective) : null,
+        input.stackDomain ? encryptTextIfConfigured(input.stackDomain) : null,
+        input.recentProgress ? encryptTextIfConfigured(input.recentProgress) : null,
+        encryptTextIfConfigured(JSON.stringify(input.decisions)),
+        encryptTextIfConfigured(JSON.stringify(input.constraints)),
+        encryptTextIfConfigured(JSON.stringify(input.openTasks)),
+        encryptTextIfConfigured(JSON.stringify(input.relevantTools)),
+        encryptTextIfConfigured(JSON.stringify(input.objectiveHistory ?? [])),
         input.dirty,
         input.lastBootstrapAt ?? null
       ]

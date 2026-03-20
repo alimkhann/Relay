@@ -1,10 +1,13 @@
 import pc from "picocolors"
 
 import type { RelayCliAnalytics } from "../analytics"
-import { RelayApiClient } from "../api-client"
-import { requireConfig, saveConfig } from "../config"
-import { listProjects } from "../project-api"
-import { success } from "../ui"
+import {
+  RelayApiClient,
+  requireConfig,
+  saveConfig,
+  listProjects,
+  success
+} from "@relay/cli-core"
 
 function printProjects(projects: Awaited<ReturnType<typeof listProjects>>, activeProjectId?: string) {
   if (projects.length === 0) {

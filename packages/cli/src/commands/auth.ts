@@ -1,9 +1,16 @@
 import pc from "picocolors"
 
 import type { RelayCliAnalytics } from "../analytics"
-import { startAuthFlow, startScopedMcpAuthFlow } from "../auth"
-import { clearConfig, getConfigPath, loadConfig, saveConfig } from "../config"
-import { info, success } from "../ui"
+import {
+  startAuthFlow,
+  startScopedMcpAuthFlow,
+  clearConfig,
+  getConfigPath,
+  loadConfig,
+  saveConfig,
+  info,
+  success
+} from "@relay/cli-core"
 
 const DEFAULT_API_BASE = "https://onrelay.app"
 

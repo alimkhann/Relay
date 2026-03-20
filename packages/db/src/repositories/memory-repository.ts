@@ -2,6 +2,7 @@ import type { CreateMemoryItemInput, MemoryItemRow, UpdateMemoryItemInput } from
 
 import { toMemoryRow } from "../mappers/memory-mapper"
 import type { DatabaseProvider } from "../store/provider"
+import { encryptTextIfConfigured } from "../utils/encrypted-text"
 
 export interface MemorySearchResult extends MemoryItemRow {
   rank: number
@@ -37,16 +38,19 @@ export class MemoryRepository {
   }
 
   async create(userId: string, input: CreateMemoryItemInput): Promise<MemoryItemRow> {
+    const plaintextContent = input.content
+    const encryptedContent = encryptTextIfConfigured(plaintextContent)
+
     const rows = await this.provider.query(
-      `insert into memory_items (project_id, source_turn_id, type, title, content, pinned, tags, metadata, created_by, source_surface, source_conversation_id, source_url, captured_at, derived_from)
-       values ($1, $2, $3, $4, $5, $6, $7::text[], $8::jsonb, $9, $10, $11, $12, coalesce($13::timestamptz, now()), $14::text[])
+      `insert into memory_items (project_id, source_turn_id, type, title, content, pinned, tags, metadata, created_by, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector)
+       values ($1, $2, $3, $4, $5, $6, $7::text[], $8::jsonb, $9, $10, $11, $12, coalesce($13::timestamptz, now()), $14::text[], to_tsvector('english', coalesce($4, '') || ' ' || $15))
        returning *`,
       [
         input.projectId,
         input.sourceTurnId ?? null,
         input.type,
         input.title ?? null,
-        input.content,
+        encryptedContent,
         input.pinned ?? false,
         input.tags ?? [],
         JSON.stringify(input.metadata ?? {}),
@@ -55,7 +59,8 @@ export class MemoryRepository {
         input.sourceConversationId ?? null,
         input.sourceUrl ?? null,
         input.capturedAt ?? null,
-        input.derivedFrom ?? null
+        input.derivedFrom ?? null,
+        plaintextContent
       ]
     )
 
@@ -70,15 +75,18 @@ export class MemoryRepository {
     let paramIndex = 1
 
     for (const item of items) {
+      const plaintextContent = item.content
+      const encryptedContent = encryptTextIfConfigured(plaintextContent)
+
       placeholders.push(
-        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}::text[], $${paramIndex + 7}::jsonb, $${paramIndex + 8}, $${paramIndex + 9}, $${paramIndex + 10}, $${paramIndex + 11}, coalesce($${paramIndex + 12}::timestamptz, now()), $${paramIndex + 13}::text[])`
+        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}::text[], $${paramIndex + 7}::jsonb, $${paramIndex + 8}, $${paramIndex + 9}, $${paramIndex + 10}, $${paramIndex + 11}, coalesce($${paramIndex + 12}::timestamptz, now()), $${paramIndex + 13}::text[], to_tsvector('english', coalesce($${paramIndex + 3}, '') || ' ' || $${paramIndex + 14}))`
       )
       params.push(
         item.projectId,
         item.sourceTurnId ?? null,
         item.type,
         item.title ?? null,
-        item.content,
+        encryptedContent,
         item.pinned ?? false,
         item.tags ?? [],
         JSON.stringify(item.metadata ?? {}),
@@ -87,13 +95,14 @@ export class MemoryRepository {
         item.sourceConversationId ?? null,
         item.sourceUrl ?? null,
         item.capturedAt ?? null,
-        item.derivedFrom ?? null
+        item.derivedFrom ?? null,
+        plaintextContent
       )
-      paramIndex += 14
+      paramIndex += 15
     }
 
     const rows = await this.provider.query(
-      `insert into memory_items (project_id, source_turn_id, type, title, content, pinned, tags, metadata, created_by, source_surface, source_conversation_id, source_url, captured_at, derived_from)
+      `insert into memory_items (project_id, source_turn_id, type, title, content, pinned, tags, metadata, created_by, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector)
        values ${placeholders.join(", ")}
        returning *`,
       params
@@ -103,6 +112,9 @@ export class MemoryRepository {
   }
 
   async update(id: string, patch: UpdateMemoryItemInput): Promise<MemoryItemRow> {
+    const plaintextContent = patch.content ?? null
+    const encryptedContent = plaintextContent ? encryptTextIfConfigured(plaintextContent) : null
+
     const rows = await this.provider.query(
       `update memory_items
        set title = case when $2::boolean then null else coalesce($3, title) end,
@@ -116,6 +128,7 @@ export class MemoryRepository {
             source_url = case when $12::boolean then null else coalesce($13, source_url) end,
             captured_at = case when $14::boolean then null else coalesce($15::timestamptz, captured_at) end,
             derived_from = case when $16::boolean then null else coalesce($17::text[], derived_from) end,
+            search_vector = case when $18::text is not null then to_tsvector('english', coalesce(case when $2::boolean then null else coalesce($3, title) end, '') || ' ' || $18) else search_vector end,
             updated_at = now()
         where id = $1
         returning *`,
@@ -123,7 +136,7 @@ export class MemoryRepository {
         id,
         patch.title === null,
         patch.title ?? null,
-        patch.content ?? null,
+        encryptedContent,
         patch.type ?? null,
         patch.pinned ?? null,
         patch.tags ?? null,
@@ -137,6 +150,7 @@ export class MemoryRepository {
         patch.capturedAt ?? null,
         patch.derivedFrom === null,
         patch.derivedFrom ?? null,
+        plaintextContent,
       ]
     )
 

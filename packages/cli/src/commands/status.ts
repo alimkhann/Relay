@@ -1,9 +1,7 @@
 import pc from "picocolors"
 
 import type { RelayCliAnalytics } from "../analytics"
-import { RelayApiClient } from "../api-client"
-import { requireConfig } from "../config"
-import { getProjectDashboard } from "../project-api"
+import { RelayApiClient, requireConfig, getProjectDashboard } from "@relay/cli-core"
 
 export async function runStatusCommand(args: string[], options: { analytics?: RelayCliAnalytics; projectId?: string } = {}) {
   const config = await requireConfig()

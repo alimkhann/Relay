@@ -1,5 +1,7 @@
 import type { SourceSessionRow, SourceTurnRow } from "@relay/shared"
 
+import { decryptTextIfNeeded } from "../utils/encrypted-text"
+
 export function toSessionRow(record: Record<string, unknown>): SourceSessionRow {
   return {
     id: String(record.id),
@@ -27,9 +29,9 @@ export function toTurnRow(record: Record<string, unknown>): SourceTurnRow {
     sessionId: String(record.session_id),
     role: record.role as SourceTurnRow["role"],
     turnIndex: Number(record.turn_index),
-    content: String(record.content),
+    content: decryptTextIfNeeded(String(record.content)),
     contentHash: String(record.content_hash),
-    rawHtml: record.raw_html ? String(record.raw_html) : null,
+    rawHtml: record.raw_html ? decryptTextIfNeeded(String(record.raw_html)) : null,
     metadata: (record.metadata as Record<string, unknown>) ?? {},
     createdAt: String(record.created_at)
   }

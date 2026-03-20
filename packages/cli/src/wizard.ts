@@ -2,14 +2,23 @@ import * as p from "@clack/prompts"
 import pc from "picocolors"
 
 import type { RelayCliAnalytics } from "./analytics"
-import { startAuthFlow, startScopedMcpAuthFlow } from "./auth"
-import { RelayApiClient } from "./api-client"
-import { loadConfig, saveConfig, getConfigPath } from "./config"
-import { detectIDEs } from "./detect"
-import { installMcpConfig } from "./install-mcp"
-import { installSkillFile, installUniversalSkillFile } from "./install-skill"
-import { listProjects } from "./project-api"
-import { printBanner, success, info, step } from "./ui"
+import {
+  startAuthFlow,
+  startScopedMcpAuthFlow,
+  RelayApiClient,
+  loadConfig,
+  saveConfig,
+  getConfigPath,
+  detectIDEs,
+  installMcpConfig,
+  installSkillFile,
+  installUniversalSkillFile,
+  listProjects,
+  printBanner,
+  success,
+  info,
+  step
+} from "@relay/cli-core"
 
 const DEFAULT_API_BASE = "https://onrelay.app"
 

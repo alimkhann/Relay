@@ -50,3 +50,15 @@ export function decryptTextIfNeeded(value: string) {
 
   return decrypted.toString("utf8")
 }
+
+/**
+ * Decrypts a JSONB value that might have been stored as an encrypted string.
+ * If the value is already a parsed object/array (normal JSONB), returns as-is.
+ * If it's a string starting with "enc::", decrypts and parses as JSON.
+ */
+export function decryptJsonbIfNeeded(value: unknown): unknown {
+  if (typeof value === "string" && value.startsWith(ENCRYPTED_PREFIX)) {
+    return JSON.parse(decryptTextIfNeeded(value))
+  }
+  return value
+}
