@@ -1,8 +1,8 @@
 import { createRepositoryBundle } from "@relay/db"
-import type { UserSettingsRow } from "@relay/shared"
+import type { SupportedPlatform, UserSettingsRow } from "@relay/shared"
 
 const defaultSettings = {
-  enabledPlatforms: ["chatgpt", "perplexity", "claude", "codex"] as ("chatgpt" | "perplexity" | "claude" | "codex")[],
+  enabledPlatforms: ["chatgpt", "perplexity", "claude", "codex"] as SupportedPlatform[],
   defaultTargetProfileKey: "claude_code_build",
   autoCapture: true,
   showSidepanelOnSupportedSites: true,
@@ -16,6 +16,7 @@ const defaultSettings = {
 function buildNewUserSettings(): UserSettingsRow["settings"] {
   return {
     ...defaultSettings,
+    enabledPlatforms: ["chatgpt", "perplexity", "claude", "codex", "gemini", "grok", "deepseek"],
     autoCapture: false,
     autoCapturePrompt: {
       eligible: true,

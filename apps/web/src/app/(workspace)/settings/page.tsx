@@ -74,7 +74,7 @@ export default async function SettingsPage({
         </div>
       </nav>
 
-      <div className="flex-1 max-w-2xl pt-6">
+      <div className="flex flex-1 justify-center pt-6"><div className="w-full max-w-2xl">
         <SettingsContent section={section}>
           {section === "billing" ? (
             <BillingSection billing={billing} checkoutSuccess={checkoutSuccess} />
@@ -88,7 +88,7 @@ export default async function SettingsPage({
             />
           )}
         </SettingsContent>
-      </div>
+      </div></div>
     </div>
   )
 }
