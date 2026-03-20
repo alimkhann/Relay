@@ -1,5 +1,5 @@
 {
-  "name": "@relay/cli",
+  "name": "@onrelay/cli",
   "version": "0.1.0",
   "description": "CLI installer and auth flow for Relay MCP and project memory",
   "license": "UNLICENSED",
