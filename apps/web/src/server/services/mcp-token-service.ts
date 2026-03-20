@@ -46,7 +46,7 @@ export async function startMcpAuthorization(input: {
     expiresAt,
   })
 
-  const appUrl = process.env["NEXT_PUBLIC_APP_URL"] ?? "https://onrelay.app"
+  const appUrl = process.env["NEXT_PUBLIC_RELAY_APP_URL"] ?? "https://www.onrelay.app"
 
   return {
     sessionCode,
@@ -133,7 +133,7 @@ export async function pollMcpAuthorization(sessionSecret: string, codeVerifier?:
     refreshExpiresAt,
     projectId: session.projectId,
     scopes: session.scopes,
-    apiBase: process.env["NEXT_PUBLIC_APP_URL"] ?? "https://onrelay.app"
+    apiBase: process.env["NEXT_PUBLIC_RELAY_APP_URL"] ?? "https://www.onrelay.app"
   }
 }
 
@@ -174,7 +174,7 @@ export async function refreshMcpAccessToken(refreshToken: string) {
     refreshExpiresAt,
     projectId: existing.projectId,
     scopes: existing.scopes,
-    apiBase: process.env["NEXT_PUBLIC_APP_URL"] ?? "https://onrelay.app"
+    apiBase: process.env["NEXT_PUBLIC_RELAY_APP_URL"] ?? "https://www.onrelay.app"
   }
 }
 

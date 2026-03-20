@@ -78,7 +78,7 @@ export function CliOnboardingConfirm({ sessionCode }: CliOnboardingConfirmProps)
           type="button"
           onClick={handleConfirm}
           disabled={state === "confirming"}
-          className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-accent)] px-6 py-2.5 text-[13px] font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+          className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-accent)] px-6 py-2.5 text-[13px] font-medium text-[var(--relay-accent-text)] transition hover:bg-[var(--relay-accent-hover)] disabled:opacity-50"
         >
           {state === "confirming" ? "Authorizing..." : "Authorize"}
         </button>

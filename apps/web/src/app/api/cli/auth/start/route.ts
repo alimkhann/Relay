@@ -34,7 +34,7 @@ export const POST = withApiRoute(async () => {
     expiresAt
   })
 
-  const appUrl = process.env["NEXT_PUBLIC_APP_URL"] ?? "https://onrelay.app"
+  const appUrl = process.env["NEXT_PUBLIC_RELAY_APP_URL"] ?? "https://www.onrelay.app"
 
   return NextResponse.json({
     pollingSecret,

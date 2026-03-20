@@ -31,7 +31,7 @@ export const GET = withApiRoute(async (request: Request) => {
       return NextResponse.json({
         status: "confirmed",
         token: decryptSecret(session.apiToken),
-        apiBase: process.env["NEXT_PUBLIC_APP_URL"] ?? "https://onrelay.app"
+        apiBase: process.env["NEXT_PUBLIC_RELAY_APP_URL"] ?? "https://www.onrelay.app"
       })
     }
 
@@ -45,7 +45,7 @@ export const GET = withApiRoute(async (request: Request) => {
     return NextResponse.json({
       status: "confirmed",
       token,
-      apiBase: process.env["NEXT_PUBLIC_APP_URL"] ?? "https://onrelay.app"
+      apiBase: process.env["NEXT_PUBLIC_RELAY_APP_URL"] ?? "https://www.onrelay.app"
     })
   }
 
