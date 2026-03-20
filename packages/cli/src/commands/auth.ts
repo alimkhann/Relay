@@ -12,7 +12,7 @@ import {
   success
 } from "@relay/cli-core"
 
-const DEFAULT_API_BASE = "https://onrelay.app"
+const DEFAULT_API_BASE = "https://www.onrelay.app"
 
 export async function runAuthCommand(subcommand: string | null, options: { apiBase?: string; analytics?: RelayCliAnalytics; openBrowser?: boolean }) {
   const openBrowser = options.openBrowser ?? (process.env["RELAY_NO_BROWSER"] !== "1" && process.env["BROWSER"] !== "none")

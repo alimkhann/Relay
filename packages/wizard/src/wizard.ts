@@ -22,7 +22,7 @@ import {
 import { startUnifiedAuthFlow } from "./auth"
 import { runUninstall } from "./uninstall"
 
-const DEFAULT_API_BASE = "https://onrelay.app"
+const DEFAULT_API_BASE = "https://www.onrelay.app"
 
 interface McpConfig {
   mcpServers?: Record<string, {

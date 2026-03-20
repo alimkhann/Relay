@@ -104,7 +104,7 @@ export async function consumeQuota(userId: string, featureKey: string, windowKey
         limit,
         remaining: 0,
         plan: plan ?? "free",
-        upgradeUrl: "https://onrelay.app/settings?section=billing"
+        upgradeUrl: "https://www.onrelay.app/settings?section=billing"
       }
     )
   }

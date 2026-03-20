@@ -20,7 +20,7 @@ import {
   step
 } from "@relay/cli-core"
 
-const DEFAULT_API_BASE = "https://onrelay.app"
+const DEFAULT_API_BASE = "https://www.onrelay.app"
 
 export async function runWizard(options: { apiBase?: string; analytics?: RelayCliAnalytics; openBrowser?: boolean } = {}) {
   printBanner()
