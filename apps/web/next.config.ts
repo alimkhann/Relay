@@ -7,18 +7,6 @@ const nextConfig: NextConfig = {
   transpilePackages: ["@relay/shared", "@relay/db", "@relay/formatters", "@relay/adapters"],
   images: {
     formats: ["image/avif", "image/webp"]
-  },
-  async rewrites() {
-    return [
-      {
-        source: "/relay/static/:path*",
-        destination: "https://eu-assets.i.posthog.com/static/:path*"
-      },
-      {
-        source: "/relay/:path*",
-        destination: "https://eu.i.posthog.com/:path*"
-      }
-    ]
   }
 }
 

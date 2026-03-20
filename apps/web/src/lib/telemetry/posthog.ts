@@ -15,7 +15,7 @@ function getPosthogConfig() {
 
   return {
     key,
-    host: process.env.NEXT_PUBLIC_POSTHOG_HOST?.trim() || "/relay",
+    host: process.env.NEXT_PUBLIC_POSTHOG_HOST?.trim() || "https://eu.i.posthog.com",
   }
 }
 
