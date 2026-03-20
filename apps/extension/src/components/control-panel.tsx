@@ -263,7 +263,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   }, [themeMode]);
 
   const shouldShowAutoCapturePrompt =
-    session?.onboarding.status === "completed" &&
+    !!session?.connected &&
+    session.onboarding.status === "completed" &&
     session.autoCapturePrompt.eligible &&
     !session.autoCapturePrompt.dismissedAt &&
     !session.autoCapturePrompt.activatedAt &&

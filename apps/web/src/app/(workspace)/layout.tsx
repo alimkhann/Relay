@@ -31,20 +31,18 @@ export default async function WorkspaceLayout({
   return (
     <SidebarProvider>
       <PostHogIdentity userId={viewer.userId} />
-      <div className="flex min-h-screen flex-col bg-[var(--relay-bg)] text-[var(--relay-ink)]">
-        {onboarding.status === "completed" ? <AutoCaptureOnboardingBanner settings={settings.settings} /> : null}
-        <div className="flex flex-1">
-          <WorkspaceSidebarShell
-            projects={projects.map((p) => ({ id: p.id, name: p.name }))}
-            user={sidebarUser}
-          />
+      <div className="flex min-h-screen bg-[var(--relay-bg)] text-[var(--relay-ink)]">
+        <WorkspaceSidebarShell
+          projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+          user={sidebarUser}
+        />
 
-          <SidebarMainArea>
-            <div className="mx-auto max-w-4xl p-8 lg:p-12">
-              {children}
-            </div>
-          </SidebarMainArea>
-        </div>
+        <SidebarMainArea>
+          {onboarding.status === "completed" ? <AutoCaptureOnboardingBanner settings={settings.settings} /> : null}
+          <div className="mx-auto max-w-4xl p-8 lg:p-12">
+            {children}
+          </div>
+        </SidebarMainArea>
       </div>
     </SidebarProvider>
   )
