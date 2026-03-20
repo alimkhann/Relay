@@ -7,15 +7,17 @@ import { info, success } from "../ui"
 
 const DEFAULT_API_BASE = "https://onrelay.app"
 
-export async function runAuthCommand(subcommand: string | null, options: { apiBase?: string; analytics?: RelayCliAnalytics }) {
+export async function runAuthCommand(subcommand: string | null, options: { apiBase?: string; analytics?: RelayCliAnalytics; openBrowser?: boolean }) {
+  const openBrowser = options.openBrowser ?? (process.env["RELAY_NO_BROWSER"] !== "1" && process.env["BROWSER"] !== "none")
+
   switch (subcommand ?? "login") {
     case "login": {
       const apiBase = options.apiBase ?? process.env["RELAY_API_BASE"] ?? DEFAULT_API_BASE
       const existing = await loadConfig()
-      const auth = await startAuthFlow(apiBase)
+      const auth = await startAuthFlow(apiBase, { openBrowser })
       await options.analytics?.identify(auth.apiBase, auth.token)
       const scopedAuth = existing?.projectId
-        ? await startScopedMcpAuthFlow(auth.apiBase, existing.projectId)
+        ? await startScopedMcpAuthFlow(auth.apiBase, existing.projectId, { openBrowser })
         : null
       await saveConfig({
         apiBase: auth.apiBase,

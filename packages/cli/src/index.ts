@@ -10,6 +10,7 @@ import { printHelp } from "./help"
 async function main() {
   const analytics = new RelayCliAnalytics()
   const parsed = parseArgs(process.argv.slice(2))
+  const openBrowser = !hasFlag(parsed.flags, "no-browser")
 
   if (!parsed.command || hasFlag(parsed.flags, "help", "h")) {
     printHelp()
@@ -26,11 +27,11 @@ async function main() {
 
   switch (parsed.command) {
     case "install":
-      await runInstallCommand({ apiBase, analytics })
+      await runInstallCommand({ apiBase, analytics, openBrowser })
       await analytics.shutdown()
       return
     case "auth":
-      await runAuthCommand(parsed.subcommand, { apiBase, analytics })
+      await runAuthCommand(parsed.subcommand, { apiBase, analytics, openBrowser })
       await analytics.shutdown()
       return
     case "brief":

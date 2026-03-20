@@ -12,10 +12,10 @@ Last updated: 2026-03-20
 
 ## CLI Release
 
-- [ ] Add `README`, `repository`, `homepage`, `bugs`, `license`, and `publishConfig` metadata to `packages/cli/package.json`.
-- [ ] Add an npm publish workflow and versioning/release process.
-- [ ] Add a browserless/manual authentication fallback for server environments.
-- [ ] Add install and troubleshooting docs for macOS/Linux/Windows.
+- [x] Add `README`, `repository`, `homepage`, `bugs`, `license`, and `publishConfig` metadata to `packages/cli/package.json`.
+- [x] Add an npm publish workflow and versioning/release process.
+- [x] Add a browserless/manual authentication fallback for server environments.
+- [x] Add install and troubleshooting docs for macOS/Linux/Windows.
 
 ## MCP On Vercel
 
@@ -27,7 +27,7 @@ Last updated: 2026-03-20
 ## Security Hardening
 
 - [ ] Move extension auth storage away from long-lived plaintext `chrome.storage.local` where feasible.
-- [ ] Remove raw token persistence from CLI auth sessions.
+- [x] Remove raw token persistence from CLI auth sessions.
 - [ ] Move browser handoff tokens out of URL query strings.
 - [ ] Add auth/token issuance and revocation tests.
 - [ ] Review extension permission scope and tighten host permissions before store submission.
@@ -42,8 +42,8 @@ Last updated: 2026-03-20
 
 ## Operations
 
-- [ ] Add CI for lint, typecheck, tests, and production build.
-- [ ] Add deployment documentation and environment validation for Vercel.
+- [x] Add CI for lint, typecheck, tests, and production build.
+- [x] Add deployment documentation and environment validation for Vercel.
 - [ ] Define how internal drain jobs run in production.
 - [ ] Add structured production logging, alerting, and health checks.
 - [ ] Expand E2E coverage for auth, billing, onboarding, extension pairing, and MCP auth.

@@ -13,7 +13,7 @@ import { printBanner, success, info, step } from "./ui"
 
 const DEFAULT_API_BASE = "https://onrelay.app"
 
-export async function runWizard(options: { apiBase?: string; analytics?: RelayCliAnalytics } = {}) {
+export async function runWizard(options: { apiBase?: string; analytics?: RelayCliAnalytics; openBrowser?: boolean } = {}) {
   printBanner()
 
   const apiBase = options.apiBase ?? process.env["RELAY_API_BASE"] ?? DEFAULT_API_BASE
@@ -35,8 +35,8 @@ export async function runWizard(options: { apiBase?: string; analytics?: RelayCl
   // Auth
   p.intro(pc.bold("Let's connect your terminal to Relay"))
 
-  step("Starting browser authorization...")
-  const auth = await startAuthFlow(apiBase)
+  step(options.openBrowser === false ? "Starting manual authorization..." : "Starting browser authorization...")
+  const auth = await startAuthFlow(apiBase, { openBrowser: options.openBrowser })
   await options.analytics?.identify(auth.apiBase, auth.token)
   success("Authenticated successfully!")
 
@@ -67,7 +67,9 @@ export async function runWizard(options: { apiBase?: string; analytics?: RelayCl
 
   if (projectId) {
     step("Requesting scoped MCP token...")
-    const scopedAuth = await startScopedMcpAuthFlow(auth.apiBase, projectId)
+    const scopedAuth = await startScopedMcpAuthFlow(auth.apiBase, projectId, {
+      openBrowser: options.openBrowser
+    })
     accessToken = scopedAuth.accessToken
     refreshToken = scopedAuth.refreshToken
     accessTokenExpiresAt = scopedAuth.accessExpiresAt

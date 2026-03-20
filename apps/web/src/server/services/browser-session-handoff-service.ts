@@ -1,54 +1,16 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto"
+import { randomBytes } from "node:crypto"
 
 import { createRepositoryBundle } from "@relay/db"
 import { browserSessionHandoffStartSchema, hashContent } from "@relay/shared"
 
 import { resolveSafeNextPath } from "@/server/policies/viewer"
+import { decryptSecret, encryptSecret } from "@/server/lib/secret-crypto"
 import { resolveGoogleAuthUser } from "./google-auth-service"
 
 const HANDOFF_TTL_MS = 10 * 60 * 1000
 
 function buildHandoffToken() {
   return `relay_handoff_${randomBytes(24).toString("hex")}`
-}
-
-function getEncryptionKey() {
-  const secret = process.env.RELAY_BROWSER_HANDOFF_SECRET ?? process.env.NEON_AUTH_COOKIE_SECRET
-
-  if (!secret) {
-    throw new Error("RELAY_BROWSER_HANDOFF_SECRET or NEON_AUTH_COOKIE_SECRET is required.")
-  }
-
-  return createHash("sha256").update(secret).digest()
-}
-
-function encryptSecret(value: string) {
-  const iv = randomBytes(12)
-  const cipher = createCipheriv("aes-256-gcm", getEncryptionKey(), iv)
-  const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()])
-  const tag = cipher.getAuthTag()
-
-  return `${iv.toString("base64url")}.${tag.toString("base64url")}.${encrypted.toString("base64url")}`
-}
-
-function decryptSecret(value: string) {
-  const [ivRaw, tagRaw, encryptedRaw] = value.split(".")
-  if (!ivRaw || !tagRaw || !encryptedRaw) {
-    throw new Error("Browser handoff token payload is malformed.")
-  }
-
-  const decipher = createDecipheriv(
-    "aes-256-gcm",
-    getEncryptionKey(),
-    Buffer.from(ivRaw, "base64url")
-  )
-  decipher.setAuthTag(Buffer.from(tagRaw, "base64url"))
-  const decrypted = Buffer.concat([
-    decipher.update(Buffer.from(encryptedRaw, "base64url")),
-    decipher.final()
-  ])
-
-  return decrypted.toString("utf8")
 }
 
 export async function startBrowserSessionHandoff(

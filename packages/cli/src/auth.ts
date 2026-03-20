@@ -45,7 +45,30 @@ interface PollMcpAuthResponse {
   apiBase?: string
 }
 
-export async function startAuthFlow(apiBase: string): Promise<AuthResult> {
+interface AuthFlowOptions {
+  openBrowser?: boolean
+}
+
+function shouldOpenBrowser(options?: AuthFlowOptions) {
+  return options?.openBrowser !== false
+}
+
+async function maybeOpenBrowser(url: string, options?: AuthFlowOptions) {
+  if (!shouldOpenBrowser(options)) {
+    console.log("  Browser launch skipped. Open the URL above manually.")
+    console.log()
+    return
+  }
+
+  try {
+    await open(url)
+  } catch {
+    console.log("  Could not open a browser automatically. Open the URL above manually.")
+    console.log()
+  }
+}
+
+export async function startAuthFlow(apiBase: string, options?: AuthFlowOptions): Promise<AuthResult> {
   const response = await fetch(`${apiBase}/api/cli/auth/start`, {
     method: "POST",
     headers: { "content-type": "application/json" }
@@ -63,11 +86,11 @@ export async function startAuthFlow(apiBase: string): Promise<AuthResult> {
   console.log()
   console.log(pc.bold(pc.cyan(`     ${data.sessionCode}`)))
   console.log()
-  console.log(`  Opening browser to authorize...`)
+  console.log(`  ${shouldOpenBrowser(options) ? "Opening browser to authorize..." : "Open this URL to authorize:"}`)
   console.log(pc.dim(`  ${confirmUrl}`))
   console.log()
 
-  await open(confirmUrl)
+  await maybeOpenBrowser(confirmUrl, options)
 
   return pollForConfirmation(apiBase, data.pollingSecret)
 }
@@ -113,7 +136,7 @@ function sha256Base64Url(input: string) {
   return createHash("sha256").update(input).digest("base64url")
 }
 
-export async function startScopedMcpAuthFlow(apiBase: string, projectId: string): Promise<ScopedMcpAuthResult> {
+export async function startScopedMcpAuthFlow(apiBase: string, projectId: string, options?: AuthFlowOptions): Promise<ScopedMcpAuthResult> {
   const codeVerifier = randomBytes(32).toString("base64url")
   const codeChallenge = sha256Base64Url(codeVerifier)
 
@@ -139,11 +162,11 @@ export async function startScopedMcpAuthFlow(apiBase: string, projectId: string)
   console.log()
   console.log(pc.bold(pc.cyan(`     ${data.sessionCode}`)))
   console.log()
-  console.log("  Opening browser for MCP approval...")
+  console.log(`  ${shouldOpenBrowser(options) ? "Opening browser for MCP approval..." : "Open this URL for MCP approval:"}`)
   console.log(pc.dim(`  ${confirmUrl}`))
   console.log()
 
-  await open(confirmUrl)
+  await maybeOpenBrowser(confirmUrl, options)
 
   const maxAttempts = 90
   for (let index = 0; index < maxAttempts; index += 1) {

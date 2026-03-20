@@ -4,6 +4,7 @@ import { createRepositoryBundle } from "@relay/db"
 import { hashContent } from "@relay/shared"
 
 import { withApiRoute } from "@/server/http/api-route"
+import { decryptSecret, encryptSecret } from "@/server/lib/secret-crypto"
 import { createExtensionTokenForUser } from "@/server/services/extension-token-service"
 
 export const GET = withApiRoute(async (request: Request) => {
@@ -29,7 +30,7 @@ export const GET = withApiRoute(async (request: Request) => {
     if (session.apiToken) {
       return NextResponse.json({
         status: "confirmed",
-        token: session.apiToken,
+        token: decryptSecret(session.apiToken),
         apiBase: process.env["NEXT_PUBLIC_APP_URL"] ?? "https://onrelay.app"
       })
     }
@@ -39,7 +40,7 @@ export const GET = withApiRoute(async (request: Request) => {
       purpose: "cli_mcp"
     })
 
-    await repositories.cliAuthSessions.markTokenIssued(session.id, token)
+    await repositories.cliAuthSessions.markTokenIssued(session.id, encryptSecret(token))
 
     return NextResponse.json({
       status: "confirmed",
