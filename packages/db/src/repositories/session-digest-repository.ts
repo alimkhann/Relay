@@ -71,7 +71,7 @@ export class SessionDigestRepository {
          needs_project_state_merge,
          created_by
        )
-       values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        on conflict (source_session_id) do update
          set source_signature = excluded.source_signature,
              summary_short = excluded.summary_short,

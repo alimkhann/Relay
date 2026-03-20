@@ -52,13 +52,21 @@ export function decryptTextIfNeeded(value: string) {
 }
 
 /**
- * Decrypts a JSONB value that might have been stored as an encrypted string.
- * If the value is already a parsed object/array (normal JSONB), returns as-is.
- * If it's a string starting with "enc::", decrypts and parses as JSON.
+ * Decrypts and parses a value that may be:
+ * - An encrypted string ("enc::...") → decrypt then JSON.parse
+ * - A plain JSON string ("[]", "{...}") → JSON.parse (columns converted from jsonb to text)
+ * - An already-parsed object/array → return as-is
  */
 export function decryptJsonbIfNeeded(value: unknown): unknown {
-  if (typeof value === "string" && value.startsWith(ENCRYPTED_PREFIX)) {
-    return JSON.parse(decryptTextIfNeeded(value))
+  if (typeof value === "string") {
+    if (value.startsWith(ENCRYPTED_PREFIX)) {
+      return JSON.parse(decryptTextIfNeeded(value))
+    }
+    try {
+      return JSON.parse(value)
+    } catch {
+      return value
+    }
   }
   return value
 }

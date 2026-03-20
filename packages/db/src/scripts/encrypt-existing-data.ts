@@ -127,11 +127,11 @@ async function main() {
            current_objective = $3,
            stack_domain = $4,
            recent_progress = $5,
-           decisions = $6::jsonb,
-           constraints = $7::jsonb,
-           open_tasks = $8::jsonb,
-           relevant_tools = $9::jsonb,
-           objective_history = $10::jsonb
+           decisions = $6,
+           constraints = $7,
+           open_tasks = $8,
+           relevant_tools = $9,
+           objective_history = $10
        WHERE project_id = $1`,
       [
         r.project_id,
@@ -173,7 +173,7 @@ async function main() {
       await provider.query(
         `UPDATE session_digests
          SET summary_short = $2,
-             structured_digest = $3::jsonb
+             structured_digest = $3
          WHERE id = $1`,
         [
           r.id,

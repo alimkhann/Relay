@@ -49,7 +49,7 @@ export class ProjectStateRepository {
          dirty,
          last_bootstrap_at
        )
-       values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11, $12)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        on conflict (project_id) do update
          set project_overview = excluded.project_overview,
              current_objective = excluded.current_objective,
