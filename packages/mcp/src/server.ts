@@ -57,21 +57,21 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
     }
 
     throw new Error(
-      "Could not determine project. Provide a projectId argument, set RELAY_PROJECT_ID env var, or call relay_list_projects to find your project ID."
+      "Could not determine project. Provide a projectId argument, set RELAY_PROJECT_ID env var, or call list_projects to find your project ID."
     )
   }
 
   // --- Tools ---
 
   server.tool(
-    "relay_list_projects",
+    "list_projects",
     "List all Relay projects you have access to. Returns project IDs, names, and metadata. Call this first if you need to find a project ID.",
     listProjectsSchema.shape,
     async () => listProjects(client)
   )
 
   server.tool(
-    "relay_get_brief",
+    "get_brief",
     "Fetch a project context brief from Relay. Returns a markdown document with project state, decisions, constraints, tasks, and key notes. Call this at the start of every coding session to restore project memory.",
     getBriefSchema.shape,
     async (args) => {
@@ -92,7 +92,7 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
   )
 
   server.tool(
-    "relay_get_project_state",
+    "get_project_state",
     "Get full structured project state including overview, objectives, decisions, constraints, tasks, and all memory items grouped by type. Use for debugging or when you need raw structured data.",
     getProjectStateSchema.shape,
     async (args) => {
@@ -103,7 +103,7 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
   )
 
   server.tool(
-    "relay_search_context",
+    "search_context",
     "Search memory items and project context by keyword. Supports stemming (e.g., 'auth' matches 'authentication') and tag filtering. Use to check if a decision or constraint already exists before adding duplicates.",
     searchContextSchema.shape,
     async (args) => {
@@ -119,7 +119,7 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
   )
 
   server.tool(
-    "relay_add_memory",
+    "add_memory",
     "Add a single memory item to the project. Use for recording decisions, constraints, tasks, notes, or other structured knowledge during a coding session. Tag items with relevant keywords for easier search.",
     addMemorySchema.shape,
     async (args) => {
@@ -141,7 +141,7 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
   )
 
   server.tool(
-    "relay_save_context",
+    "save_context",
     "Save a structured coding session summary to Relay. Creates multiple memory items atomically from a session summary, decisions, progress, next steps, constraints, and notes. Call this before ending a session to preserve context for the next agent.",
     saveContextSchema.shape,
     async (args) => {
@@ -165,7 +165,7 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
   )
 
   server.tool(
-    "relay_manage_memory",
+    "manage_memory",
     "Update, delete, or archive memory items. Supports bulk operations for cleaning up outdated or contradicting items. Use to keep project context lean and accurate.",
     manageMemorySchema.shape,
     async (args) => {
@@ -181,7 +181,7 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
   )
 
   server.tool(
-    "relay_update_project",
+    "update_project",
     "Update a project's name or description. Use this to fix outdated project metadata.",
     updateProjectSchema.shape,
     async (args) => {

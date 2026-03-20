@@ -1,5 +1,7 @@
 import type { ContextPacketRow, MemoryItemRow, ProjectBindingRow, TargetProfileRow, UserSettingsRow } from "@relay/shared"
 
+import { decryptTextIfNeeded } from "../utils/encrypted-text"
+
 export function toMemoryRow(record: Record<string, unknown>): MemoryItemRow {
   return {
     id: String(record.id),
@@ -42,7 +44,7 @@ export function toContextPacketRow(record: Record<string, unknown>): ContextPack
     id: String(record.id),
     projectId: String(record.project_id),
     targetProfileId: String(record.target_profile_id),
-    content: String(record.content),
+    content: decryptTextIfNeeded(String(record.content)),
     sourceSnapshot: (record.source_snapshot as Record<string, unknown>) ?? {},
     createdBy: String(record.created_by),
     createdAt: String(record.created_at)

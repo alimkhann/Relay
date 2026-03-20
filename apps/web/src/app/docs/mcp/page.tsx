@@ -63,14 +63,14 @@ export default function McpDocsPage() {
           <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Available tools</h2>
           <div className="divide-y divide-[var(--relay-line)] rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
             {[
-              { name: "relay_get_brief", desc: "Load current project context and recent decisions" },
-              { name: "relay_get_project_state", desc: "Get full project state including objectives and constraints" },
-              { name: "relay_list_projects", desc: "List all Relay projects" },
-              { name: "relay_add_memory", desc: "Save a decision, constraint, or note to project memory" },
-              { name: "relay_update_memory", desc: "Update an existing memory item" },
-              { name: "relay_delete_memory", desc: "Remove a memory item" },
-              { name: "relay_search_context", desc: "Search across project context and memory" },
-              { name: "relay_save_context", desc: "Save a session summary with decisions and next steps" },
+              { name: "get_brief", desc: "Load current project context and recent decisions" },
+              { name: "get_project_state", desc: "Get full project state including objectives and constraints" },
+              { name: "list_projects", desc: "List all Relay projects" },
+              { name: "add_memory", desc: "Save a decision, constraint, or note to project memory" },
+              { name: "manage_memory", desc: "Update, archive, or delete a memory item" },
+              { name: "search_context", desc: "Search across project context and memory" },
+              { name: "save_context", desc: "Save a session summary with decisions and next steps" },
+              { name: "update_project", desc: "Rename a project or refresh its description" },
             ].map((tool) => (
               <div key={tool.name} className="px-4 py-3">
                 <code className="text-[13px] font-mono font-medium text-[var(--relay-ink)]">{tool.name}</code>

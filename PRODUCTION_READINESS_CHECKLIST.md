@@ -7,7 +7,7 @@ Last updated: 2026-03-20
 - [x] Default auto-capture to off for newly created users and gate it behind a one-time post-onboarding prompt.
 - [x] Show the yellow auto-capture warning in both the dashboard workspace shell and extension after first project setup.
 - [x] Stop persisting plaintext Google OAuth tokens in `google-auth-service` fallback account linking.
-- [ ] Encrypt sensitive user content in the database at the application layer.
+- [ ] Encrypt all sensitive user content in the database at the application layer.
 - [ ] Replace long-lived extension/CLI bearer handling with shorter-lived scoped credentials and safer local storage.
 
 ## CLI Release
@@ -37,7 +37,7 @@ Last updated: 2026-03-20
 - [ ] Update privacy and terms to exactly match shipped behavior.
 - [ ] Implement or remove the claimed export flow.
 - [ ] Implement analytics opt-out behavior or remove the Do Not Track claim.
-- [ ] Refresh MCP docs to match `relay_manage_memory` and current tool names.
+- [x] Refresh MCP docs to match current MCP tool names.
 - [ ] Prepare Chrome Web Store reviewer notes and data-use disclosures.
 
 ## Operations

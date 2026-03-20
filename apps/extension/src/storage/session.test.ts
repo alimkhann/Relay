@@ -34,13 +34,23 @@ describe("resolveRelayApiBase", () => {
     ).toBe("http://localhost:3000")
   })
 
-  it("keeps the stored api base in neon mode", () => {
+  it("keeps the stored api base when it matches the configured origin", () => {
     expect(
       resolveRelayApiBase({
         storedApiBase: "https://onrelay.app",
         authProvider: "neon",
-        configuredApiBase: "http://localhost:3000"
+        configuredApiBase: "https://onrelay.app"
       })
     ).toBe("https://onrelay.app")
+  })
+
+  it("prefers the configured api base when stored origin is stale", () => {
+    expect(
+      resolveRelayApiBase({
+        storedApiBase: "https://relay-flow.vercel.app",
+        authProvider: "neon",
+        configuredApiBase: "https://www.onrelay.app"
+      })
+    ).toBe("https://www.onrelay.app")
   })
 })

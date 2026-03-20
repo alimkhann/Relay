@@ -2,6 +2,7 @@ import type { BootstrapPacketRow } from "@relay/shared"
 
 import { toBootstrapPacketRow } from "../mappers/relay-v2-mapper"
 import type { DatabaseProvider } from "../store/provider"
+import { encryptTextIfConfigured } from "../utils/encrypted-text"
 
 export class BootstrapPacketRepository {
   constructor(private readonly provider: DatabaseProvider) {}
@@ -62,7 +63,7 @@ export class BootstrapPacketRepository {
         input.projectId,
         input.targetProfileId,
         input.kind,
-        input.content,
+         encryptTextIfConfigured(input.content),
         JSON.stringify(input.structuredSnapshot),
         input.renderer,
         JSON.stringify(input.generationMetadata),

@@ -1,0 +1,52 @@
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto"
+
+const ENCRYPTED_PREFIX = "enc::"
+
+function getEncryptionKey() {
+  const secret = process.env.RELAY_CONTENT_ENCRYPTION_KEY ?? process.env.RELAY_BROWSER_HANDOFF_SECRET ?? process.env.NEON_AUTH_COOKIE_SECRET
+
+  if (!secret) {
+    return null
+  }
+
+  return createHash("sha256").update(secret).digest()
+}
+
+export function encryptTextIfConfigured(value: string) {
+  const key = getEncryptionKey()
+  if (!key) {
+    return value
+  }
+
+  const iv = randomBytes(12)
+  const cipher = createCipheriv("aes-256-gcm", key, iv)
+  const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()])
+  const tag = cipher.getAuthTag()
+
+  return `${ENCRYPTED_PREFIX}${iv.toString("base64url")}.${tag.toString("base64url")}.${encrypted.toString("base64url")}`
+}
+
+export function decryptTextIfNeeded(value: string) {
+  if (!value.startsWith(ENCRYPTED_PREFIX)) {
+    return value
+  }
+
+  const key = getEncryptionKey()
+  if (!key) {
+    throw new Error("Encrypted Relay content cannot be read without RELAY_CONTENT_ENCRYPTION_KEY or fallback secret.")
+  }
+
+  const [ivRaw, tagRaw, encryptedRaw] = value.slice(ENCRYPTED_PREFIX.length).split(".")
+  if (!ivRaw || !tagRaw || !encryptedRaw) {
+    throw new Error("Encrypted Relay content payload is malformed.")
+  }
+
+  const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivRaw, "base64url"))
+  decipher.setAuthTag(Buffer.from(tagRaw, "base64url"))
+  const decrypted = Buffer.concat([
+    decipher.update(Buffer.from(encryptedRaw, "base64url")),
+    decipher.final()
+  ])
+
+  return decrypted.toString("utf8")
+}

@@ -2,6 +2,7 @@ import type { SessionDigestRow } from "@relay/shared"
 
 import { toSessionDigestRow } from "../mappers/relay-v2-mapper"
 import type { DatabaseProvider } from "../store/provider"
+import { encryptTextIfConfigured } from "../utils/encrypted-text"
 
 export class SessionDigestRepository {
   constructor(private readonly provider: DatabaseProvider) {}
@@ -83,7 +84,7 @@ export class SessionDigestRepository {
         input.projectId,
         input.sourceSessionId,
         input.sourceSignature,
-        input.summaryShort,
+         encryptTextIfConfigured(input.summaryShort),
         JSON.stringify(input.structuredDigest),
         input.confidence,
         input.importanceScore,

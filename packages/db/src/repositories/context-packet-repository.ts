@@ -2,6 +2,7 @@ import type { ComposedContextPacket, ContextPacketRow } from "@relay/shared"
 
 import { toContextPacketRow } from "../mappers/memory-mapper"
 import type { DatabaseProvider } from "../store/provider"
+import { encryptTextIfConfigured } from "../utils/encrypted-text"
 
 export class ContextPacketRepository {
   constructor(private readonly provider: DatabaseProvider) {}
@@ -23,8 +24,8 @@ export class ContextPacketRepository {
       `insert into context_packets (project_id, target_profile_id, content, source_snapshot, created_by)
        values ($1, $2, $3, $4::jsonb, $5)
        returning *`,
-      [projectId, targetProfileId, packet.content, JSON.stringify(packet.sourceSnapshot), userId]
-    )
+       [projectId, targetProfileId, encryptTextIfConfigured(packet.content), JSON.stringify(packet.sourceSnapshot), userId]
+     )
 
     return toContextPacketRow(rows[0] as Record<string, unknown>)
   }

@@ -74,7 +74,7 @@ function mockClient(overrides: Record<string, unknown> = {}) {
   } as unknown as RelayClient
 }
 
-describe("relay_list_projects", () => {
+describe("list_projects", () => {
   it("returns formatted project list", async () => {
     const client = mockClient()
     const result = await listProjects(client)
@@ -86,7 +86,7 @@ describe("relay_list_projects", () => {
   })
 })
 
-describe("relay_get_brief", () => {
+describe("get_brief", () => {
   it("generates a new brief", async () => {
     const client = mockClient()
     const result = await getBrief(
@@ -130,7 +130,7 @@ describe("relay_get_brief", () => {
   })
 })
 
-describe("relay_get_project_state", () => {
+describe("get_project_state", () => {
   it("returns structured project state with grouped memory", async () => {
     const client = mockClient()
     const result = await getProjectState(client, "proj-1")
@@ -141,7 +141,7 @@ describe("relay_get_project_state", () => {
   })
 })
 
-describe("relay_search_context", () => {
+describe("search_context", () => {
   it("filters memory by keyword", async () => {
     const client = mockClient()
     const result = await searchContext(
@@ -180,7 +180,7 @@ describe("relay_search_context", () => {
   })
 })
 
-describe("relay_add_memory", () => {
+describe("add_memory", () => {
   it("creates a memory item with source metadata", async () => {
     const client = mockClient()
     await addMemory(
@@ -204,7 +204,7 @@ describe("relay_add_memory", () => {
   })
 })
 
-describe("relay_save_context", () => {
+describe("save_context", () => {
   it("creates multiple memory items via batch endpoint", async () => {
     const client = mockClient({
       post: vi.fn().mockResolvedValue({
@@ -257,7 +257,7 @@ describe("relay_save_context", () => {
   })
 })
 
-describe("relay_manage_memory", () => {
+describe("manage_memory", () => {
   it("updates a memory item", async () => {
     const client = mockClient()
     const result = await manageMemory(client, {

@@ -7,6 +7,8 @@ import type {
   SessionDigestRow,
 } from "@relay/shared"
 
+import { decryptTextIfNeeded } from "../utils/encrypted-text"
+
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return value.flatMap((item) => {
@@ -25,7 +27,7 @@ export function toSessionDigestRow(record: Record<string, unknown>): SessionDige
     projectId: String(record.project_id),
     sourceSessionId: String(record.source_session_id),
     sourceSignature: String(record.source_signature),
-    summaryShort: String(record.summary_short),
+    summaryShort: decryptTextIfNeeded(String(record.summary_short)),
     structuredDigest: (record.structured_digest as Record<string, unknown>) ?? {},
     confidence: Number(record.confidence ?? 0),
     importanceScore: Number(record.importance_score ?? 0),
@@ -75,7 +77,7 @@ export function toBootstrapPacketRow(record: Record<string, unknown>): Bootstrap
     projectId: String(record.project_id),
     targetProfileId: String(record.target_profile_id),
     kind: record.kind as BootstrapPacketRow["kind"],
-    content: String(record.content),
+    content: decryptTextIfNeeded(String(record.content)),
     structuredSnapshot: (record.structured_snapshot as Record<string, unknown>) ?? {},
     renderer: record.renderer as BootstrapPacketRow["renderer"],
     generationMetadata: (record.generation_metadata as Record<string, unknown>) ?? {},

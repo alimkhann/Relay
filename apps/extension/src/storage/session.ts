@@ -4,7 +4,8 @@ import type { UserSettingsRow } from "@relay/shared"
 import type { RelayTargetMode } from "../utils/target-profile"
 import type { RelayProjectOption, RelayTrustMetadata } from "../messaging/contracts"
 
-const storage = typeof chrome !== "undefined" ? chrome.storage.local : null
+const localStorageArea = typeof chrome !== "undefined" ? chrome.storage.local : null
+const sessionStorageArea = typeof chrome !== "undefined" ? chrome.storage.session : null
 
 const keys = {
   apiBase: "relay.apiBase",
@@ -46,7 +47,22 @@ export function resolveRelayApiBase(options?: {
     return configuredApiBase
   }
 
-  return storedApiBase || configuredApiBase
+  if (!storedApiBase) {
+    return configuredApiBase
+  }
+
+  try {
+    const configuredUrl = new URL(configuredApiBase)
+    const storedUrl = new URL(storedApiBase)
+
+    if (storedUrl.origin !== configuredUrl.origin) {
+      return configuredApiBase
+    }
+  } catch {
+    return configuredApiBase
+  }
+
+  return storedApiBase
 }
 
 function createPendingOnboardingState(): RelayOnboardingState {
@@ -84,17 +100,19 @@ export function normalizeRelaySession(values: Record<string, unknown>): RelaySes
   const targetMode = (values[keys.targetMode] as RelayTargetMode | undefined) ?? "auto"
   const manualTargetProfileKey = hasExplicitTargetMode ? (values[keys.targetProfileKey] as string | undefined) ?? "" : ""
 
+  const token = (values[keys.token] as string | undefined) ?? ""
+
   return {
     apiBase: resolveRelayApiBase({
       storedApiBase: values[keys.apiBase] as string | undefined
     }),
-    token: (values[keys.token] as string | undefined) ?? "",
+    token,
     userId: (values[keys.userId] as string | undefined) ?? "",
     projectId: (values[keys.projectId] as string | undefined) ?? "",
     targetMode,
     targetProfileKey: manualTargetProfileKey,
     resolvedTargetProfileKey: (values[keys.resolvedTargetProfileKey] as string | undefined) ?? "",
-    connected: Boolean(values[keys.connected]),
+    connected: Boolean(values[keys.connected]) && Boolean(token),
     autoCapture: (values[keys.autoCapture] as boolean | undefined) ?? true,
     autoCapturePrompt:
       (values[keys.autoCapturePrompt] as RelaySessionState["autoCapturePrompt"] | undefined) ?? {
@@ -123,7 +141,7 @@ export function normalizeRelaySession(values: Record<string, unknown>): RelaySes
 }
 
 export async function getRelaySession() {
-  if (!storage) {
+  if (!localStorageArea) {
     return {
       apiBase: resolveRelayApiBase(),
       token: "",
@@ -155,17 +173,25 @@ export async function getRelaySession() {
     }
   }
 
-  const values = await storage.get(Object.values(keys))
+  const values = await localStorageArea.get(Object.values(keys).filter((key) => key !== keys.token))
+  if (sessionStorageArea) {
+    const sessionValues = await sessionStorageArea.get([keys.token])
+    values[keys.token] = sessionValues[keys.token]
+  } else {
+    const fallbackValues = await localStorageArea.get([keys.token])
+    values[keys.token] = fallbackValues[keys.token]
+  }
   return normalizeRelaySession(values)
 }
 
 export async function setRelaySession(input: Partial<RelaySessionState>) {
-  if (!storage) return
+  if (!localStorageArea) return
 
   const payload: Record<string, unknown> = {}
+  let tokenValue: string | undefined
 
   if (input.apiBase !== undefined) payload[keys.apiBase] = input.apiBase
-  if (input.token !== undefined) payload[keys.token] = input.token
+  if (input.token !== undefined) tokenValue = input.token
   if (input.userId !== undefined) payload[keys.userId] = input.userId
   if (input.projectId !== undefined) payload[keys.projectId] = input.projectId
   if (input.targetMode !== undefined) payload[keys.targetMode] = input.targetMode
@@ -184,11 +210,25 @@ export async function setRelaySession(input: Partial<RelaySessionState>) {
   if (input.onboarding !== undefined) payload[keys.onboarding] = input.onboarding
 
   if (Object.keys(payload).length > 0) {
-    await storage.set(payload)
+    await localStorageArea.set(payload)
+  }
+
+  if (tokenValue !== undefined) {
+    if (sessionStorageArea) {
+      await sessionStorageArea.set({ [keys.token]: tokenValue })
+      await localStorageArea.remove(keys.token)
+    } else {
+      await localStorageArea.set({ [keys.token]: tokenValue })
+    }
   }
 }
 
 export async function clearRelaySession() {
-  if (!storage) return
-  await storage.remove(Object.values(keys))
+  if (!localStorageArea) return
+  await localStorageArea.remove(Object.values(keys).filter((key) => key !== keys.token))
+  if (sessionStorageArea) {
+    await sessionStorageArea.remove(keys.token)
+  } else {
+    await localStorageArea.remove(keys.token)
+  }
 }

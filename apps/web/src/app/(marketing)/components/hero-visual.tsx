@@ -281,7 +281,7 @@ export function HeroVisual() {
               >
                 <p className="text-white/40">
                   <span className="text-white/50">→</span>{" "}
-                  relay_get_brief(
+                  get_brief(
                   <span className="text-white/60">
                     &quot;My App Project&quot;
                   </span>
