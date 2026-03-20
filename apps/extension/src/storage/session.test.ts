@@ -34,14 +34,14 @@ describe("resolveRelayApiBase", () => {
     ).toBe("http://localhost:3000")
   })
 
-  it("keeps the stored api base when it matches the configured origin", () => {
+  it("canonicalizes bare onrelay.app to www.onrelay.app", () => {
     expect(
       resolveRelayApiBase({
         storedApiBase: "https://onrelay.app",
         authProvider: "neon",
         configuredApiBase: "https://onrelay.app"
       })
-    ).toBe("https://onrelay.app")
+    ).toBe("https://www.onrelay.app")
   })
 
   it("prefers the configured api base when stored origin is stale", () => {
