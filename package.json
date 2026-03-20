@@ -6,6 +6,7 @@
   "scripts": {
     "build": "pnpm --filter @relay/shared build && pnpm --filter @relay/formatters build && pnpm --filter @relay/adapters build && pnpm --filter @relay/db build && pnpm --filter @relay/web build && pnpm --filter @relay/extension build",
     "build:extension:prod": "pnpm --filter @relay/extension build:prod",
+    "build:cli": "pnpm --filter @relay/cli build",
     "build:mcp": "pnpm --filter @relay/mcp build",
     "db:local:start": "docker compose -f docker-compose.local.yml up -d",
     "db:local:stop": "docker compose -f docker-compose.local.yml down",
