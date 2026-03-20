@@ -1363,6 +1363,31 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         ) : null}
       </header>
 
+      {shouldShowAutoCapturePrompt ? (
+        <div className={styles.warningBanner}>
+          <div className={styles.warningContent}>
+            <span className={styles.warningTitle}>Auto-capture is off by default.</span>
+            <button
+              className={styles.warningPrimaryButton}
+              disabled={busy}
+              onClick={() => void updateAutoCapturePrompt("activate")}
+            >
+              {busy ? "Working…" : "Turn on"}
+            </button>
+          </div>
+          <button
+            className={styles.warningDismissButton}
+            disabled={busy}
+            onClick={() => void updateAutoCapturePrompt("dismiss")}
+            aria-label="Dismiss"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M1 1l11 11M12 1L1 12" />
+            </svg>
+          </button>
+        </div>
+      ) : null}
+
       {activeState.viewState === "disconnected" || !session?.connected ? (
         /* ─── Connect state ─── */
         <section className={styles.panel}>
@@ -1503,34 +1528,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         </section>
       ) : (
         <>
-          {shouldShowAutoCapturePrompt ? (
-            <section className={styles.warningBanner}>
-              <div>
-                <p className={styles.warningEyebrow}>Capture stays manual first</p>
-                <h2 className={styles.warningTitle}>Auto-capture is off by default.</h2>
-                <p className={styles.warningCopy}>
-                  Turn it on when you are ready for Relay to save supported chats automatically.
-                </p>
-              </div>
-              <div className={styles.warningActions}>
-                <button
-                  className={styles.warningPrimaryButton}
-                  disabled={busy}
-                  onClick={() => void updateAutoCapturePrompt("activate")}
-                >
-                  {busy ? "Working..." : "Turn on"}
-                </button>
-                <button
-                  className={styles.warningSecondaryButton}
-                  disabled={busy}
-                  onClick={() => void updateAutoCapturePrompt("dismiss")}
-                >
-                  Dismiss
-                </button>
-              </div>
-            </section>
-          ) : null}
-
           {/* ─── Project + Status ─── */}
           <section className={styles.panel}>
             <div className={styles.panelTopRow}>
