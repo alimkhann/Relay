@@ -38,7 +38,7 @@ import {
   setRelaySession,
 } from "../storage/session";
 import { setRelayThemeMode, type RelayThemeMode } from "../storage/theme";
-import { relayFetch } from "../utils/api";
+import { readRateLimitError, relayFetch } from "../utils/api";
 import { resolveTargetProfile } from "../utils/target-profile";
 import {
   buildSavedAssociationFromMemory,
@@ -1785,9 +1785,10 @@ async function captureTab(projectId: string, tabId: number) {
   });
 
   if (!response.ok) {
+    const rateLimitError = await readRateLimitError(response);
     return {
       ok: false,
-      reason: await readErrorResponse(response, "Capture request failed."),
+      reason: rateLimitError?.message ?? await readErrorResponse(response, "Capture request failed."),
     };
   }
 

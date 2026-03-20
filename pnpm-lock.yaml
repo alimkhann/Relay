@@ -155,6 +155,9 @@ importers:
       react-dom:
         specifier: ^19.1.1
         version: 19.2.4(react@19.2.4)
+      resend:
+        specifier: ^6.9.4
+        version: 6.9.4(@react-email/render@2.0.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4))
       tailwind-merge:
         specifier: ^3.3.1
         version: 3.5.0
@@ -180,9 +183,6 @@ importers:
       '@clack/prompts':
         specifier: ^0.9.1
         version: 0.9.1
-      '@relay/cli-core':
-        specifier: workspace:*
-        version: link:../cli-core
       open:
         specifier: ^10.2.0
         version: 10.2.0
@@ -193,6 +193,9 @@ importers:
         specifier: ^5.28.4
         version: 5.28.4(rxjs@7.8.2)
     devDependencies:
+      '@relay/cli-core':
+        specifier: workspace:*
+        version: link:../cli-core
       '@types/node':
         specifier: ^24.5.2
         version: 24.12.0
@@ -274,9 +277,6 @@ importers:
       '@clack/prompts':
         specifier: ^0.9.1
         version: 0.9.1
-      '@relay/cli-core':
-        specifier: workspace:*
-        version: link:../cli-core
       open:
         specifier: ^10.2.0
         version: 10.2.0
@@ -284,6 +284,9 @@ importers:
         specifier: ^1.1.1
         version: 1.1.1
     devDependencies:
+      '@relay/cli-core':
+        specifier: workspace:*
+        version: link:../cli-core
       '@types/node':
         specifier: ^24.5.2
         version: 24.12.0
@@ -9281,6 +9284,9 @@ packages:
     resolution: {integrity: sha512-/+5VFTchJDoVj3bhoqi6UeymcD00DAwb1nJwamzPvHEszJ4FpF6SNNbUbOS8yI56qHzdV8eK0qEfOSiodkTdxg==}
     engines: {node: '>= 0.4'}
 
+  postal-mime@2.7.3:
+    resolution: {integrity: sha512-MjhXadAJaWgYzevi46+3kLak8y6gbg0ku14O1gO/LNOuay8dO+1PtcSGvAdgDR0DoIsSaiIA8y/Ddw6MnrO0Tw==}
+
   postcss-calc@10.1.1:
     resolution: {integrity: sha512-NYEsLHh8DgG/PRH2+G9BTuUdtf9ViS+vdoQ0YA5OQdGsfN4ztiwtDWNtBl9EKeqNMFnIu8IKZ0cLxEQ5r5KVMw==}
     engines: {node: ^18.12 || ^20.9 || >=22.0}
@@ -10037,6 +10043,15 @@ packages:
   reselect@5.1.1:
     resolution: {integrity: sha512-K/BG6eIky/SBpzfHZv/dd+9JBFiS4SWV7FIujVyJRux6e45+73RaUHXLmIR1f7WOMaQ0U1km6qwklRQxpJJY0w==}
 
+  resend@6.9.4:
+    resolution: {integrity: sha512-/M3dsJzu5OgozqVsA4Psd/1L7EdePgOIIxClas453GOQYFG3VHc2ZyCHZFlvqsc9aZCCd2BJRRqZgWC8D9c7/g==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@react-email/render': '*'
+    peerDependenciesMeta:
+      '@react-email/render':
+        optional: true
+
   resize-observer-polyfill@1.5.1:
     resolution: {integrity: sha512-LwZrotdHOo12nQuZlHEmtuXdqGoOD0OhaxopaNFxWzInpEgaLWoVuAMbTzixuosCx2nEG58ngzW3vxdWoxIgdg==}
 
@@ -10576,6 +10591,9 @@ packages:
     engines: {node: '>=16'}
     hasBin: true
 
+  svix@1.86.0:
+    resolution: {integrity: sha512-/HTvXwjLJe1l/MsLXAO1ddCYxElJk4eNR4DzOjDOEmGrPN/3BtBE8perGwMAaJ2sT5T172VkBYzmHcjUfM1JRQ==}
+
   swr@2.4.1:
     resolution: {integrity: sha512-2CC6CiKQtEwaEeNiqWTAw9PGykW8SR5zZX8MZk6TeAvEAnVS7Visz8WzphqgtQ8v2xz/4Q5K+j+SeMaKXeeQIA==}
     peerDependencies:
@@ -11100,6 +11118,10 @@ packages:
   utility-types@3.11.0:
     resolution: {integrity: sha512-6Z7Ma2aVEWisaL6TvBCy7P8rm2LQoPv6dJ7ecIaIixHcwfbJ0x7mWdbcwlIM5IGQxPZSFYeqRCqlOOeKoJYMkw==}
     engines: {node: '>= 4'}
+
+  uuid@10.0.0:
+    resolution: {integrity: sha512-8XkAphELsDnEGrDxUOHB3RGvXz6TeuYSGEZBOjtTtPm2lwhGBjLgOzLHB63IUWfBpNucQjND6d3AOudO+H3RWQ==}
+    hasBin: true
 
   uuid@11.1.0:
     resolution: {integrity: sha512-0/A9rDy9P7cJ+8w1c9WD9V//9Wj15Ce2MPz8Ri6032usz+NfePxx5AcN3bN+r6ZL6jEo066/yNYB3tn4pQEx+A==}
@@ -22030,6 +22052,8 @@ snapshots:
 
   possible-typed-array-names@1.1.0: {}
 
+  postal-mime@2.7.3: {}
+
   postcss-calc@10.1.1(postcss@8.5.8):
     dependencies:
       postcss: 8.5.8
@@ -22896,6 +22920,13 @@ snapshots:
 
   reselect@5.1.1: {}
 
+  resend@6.9.4(@react-email/render@2.0.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4)):
+    dependencies:
+      postal-mime: 2.7.3
+      svix: 1.86.0
+    optionalDependencies:
+      '@react-email/render': 2.0.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+
   resize-observer-polyfill@1.5.1: {}
 
   resolve-alpn@1.2.1: {}
@@ -23533,6 +23564,11 @@ snapshots:
       picocolors: 1.1.1
       sax: 1.5.0
 
+  svix@1.86.0:
+    dependencies:
+      standardwebhooks: 1.0.0
+      uuid: 10.0.0
+
   swr@2.4.1(react@19.2.4):
     dependencies:
       dequal: 2.0.3
@@ -24072,6 +24108,8 @@ snapshots:
   util-deprecate@1.0.2: {}
 
   utility-types@3.11.0: {}
+
+  uuid@10.0.0: {}
 
   uuid@11.1.0: {}
 
