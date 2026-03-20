@@ -23,7 +23,19 @@
       "Bash(npx vitest:*)",
       "Bash(cd apps/web && npx eslint src/features/projects/dashboard-content.tsx src/features/projects/governance-section.tsx src/components/layout/account-menu.tsx src/components/layout/app-shell.tsx src/components/settings/settings-preferences.tsx src/app/dashboard/loading.tsx src/features/projects/dashboard-content.test.tsx --ext .ts,.tsx 2>&1)",
       "Bash(pnpm --filter @relay/web add @radix-ui/react-dialog @radix-ui/react-tooltip @radix-ui/react-accordion 2>&1 | tail -5)",
-      "Bash(pnpm build:*)"
+      "Bash(pnpm build:*)",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(grep -E \"\\\\.\\(test|spec\\)\\\\.\\(ts|tsx\\)$\")",
+      "mcp__playwright__browser_navigate",
+      "Bash(ls:*)",
+      "mcp__playwright__browser_take_screenshot",
+      "Bash(git add:*)",
+      "Bash(cat:*)",
+      "Bash(ls -la /Users/alim/Developer/Projects/Apps/Relay/apps/web/src/app/\\\\\\(workspace\\\\\\)/)",
+      "Bash(find /Users/alim/Developer/Projects/Apps/Relay/apps/web/src/app -path *docs* -name page.tsx)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(vercel --prod)"
     ]
   }
 }
