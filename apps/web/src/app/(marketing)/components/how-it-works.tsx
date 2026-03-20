@@ -1,12 +1,21 @@
 "use client"
 
+import Image from "next/image"
 import { motion, useInView } from "motion/react"
 import { useRef } from "react"
+import type { ReactNode } from "react"
 import OpenAI from "@lobehub/icons/es/OpenAI"
 import Claude from "@lobehub/icons/es/Claude"
 import Gemini from "@lobehub/icons/es/Gemini"
+import Grok from "@lobehub/icons/es/Grok"
+import Perplexity from "@lobehub/icons/es/Perplexity"
+import DeepSeek from "@lobehub/icons/es/DeepSeek"
 import ClaudeCode from "@lobehub/icons/es/ClaudeCode"
 import Cursor from "@lobehub/icons/es/Cursor"
+import Codex from "@lobehub/icons/es/Codex"
+import Antigravity from "@lobehub/icons/es/Antigravity"
+import Windsurf from "@lobehub/icons/es/Windsurf"
+import GithubCopilot from "@lobehub/icons/es/GithubCopilot"
 
 const ease = [0.25, 0.1, 0.25, 1] as const
 
@@ -31,16 +40,96 @@ const STEPS = [
   },
 ]
 
-const browserApps = [
-  { Icon: OpenAI, label: "ChatGPT" },
-  { Icon: Claude, label: "Claude" },
-  { Icon: Gemini, label: "Gemini" },
+interface TickerItem {
+  name: string
+  icon: ReactNode
+}
+
+const BROWSER_AIS: TickerItem[] = [
+  { name: "ChatGPT", icon: <OpenAI size={16} /> },
+  { name: "Claude", icon: <Claude size={16} /> },
+  { name: "Gemini", icon: <Gemini size={16} /> },
+  { name: "Grok", icon: <Grok size={16} /> },
+  { name: "Perplexity", icon: <Perplexity size={16} /> },
+  { name: "DeepSeek", icon: <DeepSeek size={16} /> },
 ]
 
-const ideApps = [
-  { Icon: ClaudeCode, label: "Claude Code" },
-  { Icon: Cursor, label: "Cursor" },
+const IDE_AGENTS: TickerItem[] = [
+  { name: "Claude Code", icon: <ClaudeCode size={16} /> },
+  { name: "Cursor", icon: <Cursor size={16} /> },
+  { name: "Codex", icon: <Codex size={16} /> },
+  { name: "Antigravity", icon: <Antigravity size={16} /> },
+  { name: "Windsurf", icon: <Windsurf size={16} /> },
+  { name: "Copilot", icon: <GithubCopilot size={16} /> },
 ]
+
+function DiagramTicker({
+  items,
+  direction = "left",
+  speed = "normal",
+}: {
+  items: TickerItem[]
+  direction?: "left" | "right"
+  speed?: "slow" | "normal"
+}) {
+  const duration = speed === "slow" ? "40s" : "25s"
+
+  return (
+    <div
+      className="relative max-w-[220px] overflow-hidden"
+      style={{
+        maskImage:
+          "linear-gradient(to right, transparent 0%, black 15%, black 85%, transparent 100%)",
+        WebkitMaskImage:
+          "linear-gradient(to right, transparent 0%, black 15%, black 85%, transparent 100%)",
+      }}
+    >
+      <div
+        className="flex w-max gap-2.5"
+        style={{
+          animation: `hiw-ticker ${duration} linear infinite ${direction === "right" ? "reverse" : ""}`,
+        }}
+      >
+        {[...items, ...items, ...items].map((item, i) => (
+          <div
+            key={i}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/[0.08] bg-white/[0.03] whitespace-nowrap"
+          >
+            <span className="w-4 h-4 flex-shrink-0 flex items-center justify-center">
+              {item.icon}
+            </span>
+            <span className="text-[11px] text-white/55 font-medium">
+              {item.name}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <style jsx>{`
+        @keyframes hiw-ticker {
+          0% {
+            transform: translateX(0);
+          }
+          100% {
+            transform: translateX(-33.333%);
+          }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+function BidirectionalArrow() {
+  return (
+    <svg className="w-full h-6" viewBox="0 0 120 24" fill="none">
+      <polygon points="4,12 12,6 12,18" fill="currentColor" className="text-white/15" />
+      <line x1="12" y1="12" x2="108" y2="12" stroke="currentColor" className="text-white/10" strokeWidth="1" strokeDasharray="4 4">
+        <animate attributeName="stroke-dashoffset" from="8" to="0" dur="1.5s" repeatCount="indefinite" />
+      </line>
+      <polygon points="116,12 108,6 108,18" fill="currentColor" className="text-white/15" />
+    </svg>
+  )
+}
 
 export function HowItWorks() {
   const ref = useRef<HTMLDivElement>(null)
@@ -87,85 +176,61 @@ export function HowItWorks() {
           ))}
         </div>
 
-        {/* Flow diagram with app icon circles */}
+        {/* Flow diagram — 3-column ticker layout */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={inView ? { opacity: 1, y: 0 } : undefined}
           transition={{ duration: 0.8, delay: 0.5, ease }}
-          className="mt-20 flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-0"
+          className="mt-20"
         >
-          {/* Browser Chat — with app icon circles */}
-          <div className="flex flex-col items-center gap-3">
-            <div className="flex -space-x-2">
-              {browserApps.map((app, i) => (
-                <motion.div
-                  key={app.label}
-                  initial={{ opacity: 0, scale: 0 }}
-                  animate={inView ? { opacity: 1, scale: 1 } : undefined}
-                  transition={{ delay: 0.7 + i * 0.1, duration: 0.3, type: "spring" }}
-                  className="w-8 h-8 rounded-full bg-white/[0.06] border border-white/[0.12] flex items-center justify-center"
-                  title={app.label}
-                >
-                  <app.Icon size={14} />
-                </motion.div>
-              ))}
+          {/* Desktop: 3-column grid */}
+          <div className="hidden sm:grid grid-cols-[1fr_auto_1fr] gap-4 items-center">
+            {/* Browser Chats column */}
+            <div className="flex flex-col items-center gap-3">
+              <span className="text-sm font-medium text-white/70">
+                Browser Chats
+              </span>
+              <DiagramTicker items={BROWSER_AIS} direction="left" speed="slow" />
             </div>
-            <div className="px-7 py-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] text-center min-w-[180px]">
-              <p className="text-sm font-medium text-white/70">Browser Chat</p>
-              <p className="text-[12px] text-white/30 mt-1">ChatGPT, Claude, Gemini</p>
+
+            {/* Relay column — elevated */}
+            <div className="flex items-center gap-3 relative -top-3">
+              <div className="w-16 md:w-20">
+                <BidirectionalArrow />
+              </div>
+              <div className="flex flex-col items-center gap-2 px-4">
+                <Image src="/images/relay_logo_white.png" alt="Relay" width={80} height={24} className="h-6 w-auto" />
+                <p className="text-[11px] text-white/35 whitespace-nowrap">auto-captures &amp; syncs</p>
+              </div>
+              <div className="w-16 md:w-20">
+                <BidirectionalArrow />
+              </div>
+            </div>
+
+            {/* IDE Agents column */}
+            <div className="flex flex-col items-center gap-3">
+              <span className="text-sm font-medium text-white/70">
+                IDE Agents
+              </span>
+              <DiagramTicker items={IDE_AGENTS} direction="right" speed="normal" />
             </div>
           </div>
 
-          {/* Bidirectional arrow */}
-          <div className="hidden sm:flex items-center w-20 md:w-28 mt-8">
-            <svg className="w-full h-6" viewBox="0 0 120 24" fill="none">
-              <polygon points="4,12 12,6 12,18" fill="currentColor" className="text-white/15" />
-              <line x1="12" y1="12" x2="108" y2="12" stroke="currentColor" className="text-white/10" strokeWidth="1" strokeDasharray="4 4">
-                <animate attributeName="stroke-dashoffset" from="8" to="0" dur="1.5s" repeatCount="indefinite" />
-              </line>
-              <polygon points="116,12 108,6 108,18" fill="currentColor" className="text-white/15" />
-            </svg>
-          </div>
-          <div className="sm:hidden text-white/15 text-lg">↕</div>
-
-          {/* Relay */}
-          <div className="px-7 py-5 rounded-2xl border border-white/[0.16] bg-white/[0.05] text-center min-w-[180px] shadow-[0_0_30px_rgba(255,255,255,0.04)]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/images/relay_logo_white.png" alt="Relay" className="h-5 mx-auto" />
-            <p className="text-[12px] text-white/30 mt-2">auto-captures & syncs</p>
-          </div>
-
-          {/* Bidirectional arrow */}
-          <div className="hidden sm:flex items-center w-20 md:w-28 mt-8">
-            <svg className="w-full h-6" viewBox="0 0 120 24" fill="none">
-              <polygon points="4,12 12,6 12,18" fill="currentColor" className="text-white/15" />
-              <line x1="12" y1="12" x2="108" y2="12" stroke="currentColor" className="text-white/10" strokeWidth="1" strokeDasharray="4 4">
-                <animate attributeName="stroke-dashoffset" from="8" to="0" dur="1.5s" repeatCount="indefinite" />
-              </line>
-              <polygon points="116,12 108,6 108,18" fill="currentColor" className="text-white/15" />
-            </svg>
-          </div>
-          <div className="sm:hidden text-white/15 text-lg">↕</div>
-
-          {/* IDE Agent — with app icon circles */}
-          <div className="flex flex-col items-center gap-3">
-            <div className="flex -space-x-2">
-              {ideApps.map((app, i) => (
-                <motion.div
-                  key={app.label}
-                  initial={{ opacity: 0, scale: 0 }}
-                  animate={inView ? { opacity: 1, scale: 1 } : undefined}
-                  transition={{ delay: 1.1 + i * 0.1, duration: 0.3, type: "spring" }}
-                  className="w-8 h-8 rounded-full bg-white/[0.06] border border-white/[0.12] flex items-center justify-center"
-                  title={app.label}
-                >
-                  <app.Icon size={14} />
-                </motion.div>
-              ))}
+          {/* Mobile: vertical stack */}
+          <div className="flex sm:hidden flex-col items-center gap-4">
+            <div className="flex flex-col items-center gap-3">
+              <span className="text-sm font-medium text-white/70">Browser Chats</span>
+              <DiagramTicker items={BROWSER_AIS} direction="left" speed="slow" />
             </div>
-            <div className="px-7 py-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] text-center min-w-[180px]">
-              <p className="text-sm font-medium text-white/70">IDE Agent / New Chat</p>
-              <p className="text-[12px] text-white/30 mt-1">reads & writes brief</p>
+            <span className="text-white/15 text-lg">↕</span>
+            <div className="flex flex-col items-center gap-2">
+              <Image src="/images/relay_logo_white.png" alt="Relay" width={67} height={20} className="h-5 w-auto" />
+              <p className="text-[11px] text-white/35">auto-captures &amp; syncs</p>
+            </div>
+            <span className="text-white/15 text-lg">↕</span>
+            <div className="flex flex-col items-center gap-3">
+              <span className="text-sm font-medium text-white/70">IDE Agents</span>
+              <DiagramTicker items={IDE_AGENTS} direction="right" speed="normal" />
             </div>
           </div>
         </motion.div>

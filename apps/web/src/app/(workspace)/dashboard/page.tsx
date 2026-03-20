@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation"
+
 import { AppShell } from "@/components/layout/app-shell"
 import { CreateProjectForm } from "@/components/projects/create-project-form"
 import { PageTelemetry } from "@/components/telemetry/page-telemetry"
@@ -71,6 +73,12 @@ export default async function DashboardPage({
       : projects.find((p) => p.id === onboarding.completedProjectId)) ??
     projects[0] ??
     null
+
+  // Canonicalize URL so sidebar and dashboard always agree on project
+  if (!selectedProjectId && currentProject) {
+    redirect(`/dashboard?project=${currentProject.id}`)
+  }
+
   const dashboard = currentProject
     ? await getProjectDashboardForUser(viewer.userId, currentProject.id)
     : null

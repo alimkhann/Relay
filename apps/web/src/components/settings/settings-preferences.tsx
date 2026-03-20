@@ -12,6 +12,7 @@ import OpenAIIcon from "@lobehub/icons/es/OpenAI"
 import PerplexityIcon from "@lobehub/icons/es/Perplexity"
 
 import { deleteAccountAction } from "@/components/auth/delete-account-action"
+import { FadeIn } from "@/components/ui/fade-in"
 import { signOutAction } from "@/components/auth/sign-out-action"
 import { useTheme } from "@/components/theme-provider"
 import { cn } from "@/lib/cn"
@@ -237,6 +238,7 @@ export function SettingsPreferences({
     <div className="space-y-4 pt-6">
       {section === "app" ? (
         <>
+          <FadeIn>
           <SettingsSection title="Appearance" description="Choose your preferred color scheme.">
             <div className="px-5 py-4">
               <div className="flex flex-wrap gap-2">
@@ -258,7 +260,9 @@ export function SettingsPreferences({
               </div>
             </div>
           </SettingsSection>
+          </FadeIn>
 
+          <FadeIn delay={0.05}>
           <SettingsSection title="Platforms" description="Choose which AI chats Relay watches.">
             <div className="divide-y divide-[var(--relay-line)]">
               {platformOptions.map((platform) => {
@@ -292,7 +296,9 @@ export function SettingsPreferences({
               })}
             </div>
           </SettingsSection>
+          </FadeIn>
 
+          <FadeIn delay={0.1}>
           <SettingsSection title="Behavior" description="Fine-tune how Relay runs in the background.">
             <div className="divide-y divide-[var(--relay-line)]">
               <div className="flex items-center justify-between gap-4 px-5 py-3.5">
@@ -324,7 +330,9 @@ export function SettingsPreferences({
               </div>
             </div>
           </SettingsSection>
+          </FadeIn>
 
+          <FadeIn delay={0.15}>
           <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-soft)] px-5 py-4">
             <p className="text-[13px] font-medium text-[var(--relay-ink)]">Offline fallback</p>
             <p className="mt-1 text-[13px] leading-relaxed text-[var(--relay-muted)]">
@@ -332,11 +340,13 @@ export function SettingsPreferences({
               currently automatic and does not need separate configuration.
             </p>
           </div>
+          </FadeIn>
         </>
       ) : null}
 
       {section === "integrations" ? (
         <>
+          <FadeIn>
           <SettingsSection title="Chrome extension" description="Monitor connection status and browser setup.">
             <div className="space-y-4 px-5 py-4">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -370,7 +380,9 @@ export function SettingsPreferences({
               </div>
             </div>
           </SettingsSection>
+          </FadeIn>
 
+          <FadeIn delay={0.05}>
           <SettingsSection id="settings-api-tokens" title="API tokens" description="Create tokens for Relay MCP, the CLI, or manual integrations.">
             <div className="space-y-4 px-5 py-4">
               <div className="flex flex-col gap-2 sm:flex-row">
@@ -471,12 +483,14 @@ export function SettingsPreferences({
               )}
             </div>
           </SettingsSection>
+          </FadeIn>
         </>
       ) : null}
 
       {section === "account" ? (
         <>
           {viewer ? (
+            <FadeIn>
             <SettingsSection title="Profile">
               <div className="flex items-center gap-4 px-5 py-4">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--relay-accent)] text-[var(--relay-bg)] text-sm font-semibold shrink-0">
@@ -492,8 +506,10 @@ export function SettingsPreferences({
                 </div>
               </div>
             </SettingsSection>
+            </FadeIn>
           ) : null}
 
+          <FadeIn delay={0.05}>
           <SettingsSection title="Account">
             <div className="flex items-center justify-between gap-4 px-5 py-4">
               <div>
@@ -510,7 +526,9 @@ export function SettingsPreferences({
               </form>
             </div>
           </SettingsSection>
+          </FadeIn>
 
+          <FadeIn delay={0.1}>
           <section className="overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-danger)]/20 bg-[var(--relay-surface)]">
             <div className="px-5 py-4">
               <h2 className="text-sm font-semibold text-[var(--relay-danger)]">Danger zone</h2>
@@ -531,6 +549,7 @@ export function SettingsPreferences({
               </button>
             </div>
           </section>
+          </FadeIn>
         </>
       ) : null}
 

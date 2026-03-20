@@ -7,6 +7,7 @@ import { AlertCircle, Check } from "lucide-react"
 import type { BillingStatusDto } from "@relay/shared"
 
 import { PRICING } from "../../app/(marketing)/pricing.config"
+import { FadeIn } from "@/components/ui/fade-in"
 import { cn } from "@/lib/cn"
 import { createClientFlowId } from "@/lib/telemetry/client"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
@@ -81,6 +82,7 @@ function PlanCard({
   title,
   subtitle,
   price,
+  priceNote,
   badge,
   features,
   tone = "default",
@@ -89,6 +91,7 @@ function PlanCard({
   title: string
   subtitle: string
   price: string
+  priceNote?: string
   badge?: string
   features: string[]
   tone?: "default" | "accent"
@@ -97,7 +100,7 @@ function PlanCard({
   return (
     <div
       className={cn(
-        "relative rounded-[var(--relay-radius)] border p-4",
+        "relative rounded-[var(--relay-radius)] border p-5",
         tone === "accent"
           ? "border-[var(--relay-accent)]/30 bg-[var(--relay-accent)]/[0.03] ring-1 ring-[var(--relay-accent)]/20"
           : "border-[var(--relay-line)] bg-[var(--relay-bg)]",
@@ -119,11 +122,14 @@ function PlanCard({
         <h3 className="text-[15px] font-semibold text-[var(--relay-ink)]">{title}</h3>
         <p className="mt-1 text-[12px] text-[var(--relay-muted)]">{subtitle}</p>
       </div>
-      <p className="mt-4 text-[24px] font-semibold tracking-tight text-[var(--relay-ink)]">{price}</p>
+      <div className="mt-4">
+        <p className="text-[24px] font-semibold tracking-tight text-[var(--relay-ink)]">{price}</p>
+        {priceNote ? <p className="mt-1 text-[11px] font-medium text-emerald-500">{priceNote}</p> : null}
+      </div>
       <ul className="mt-4 space-y-2">
         {features.map((feature) => (
           <li key={feature} className="flex items-start gap-2 text-[13px] text-[var(--relay-muted)]">
-            <Check className="h-3.5 w-3.5 shrink-0 text-emerald-500 mt-0.5" />
+            <Check className={cn("h-3.5 w-3.5 shrink-0 mt-0.5", tone === "accent" ? "text-emerald-500" : "text-[var(--relay-muted)]")} />
             {feature}
           </li>
         ))}
@@ -135,6 +141,7 @@ function PlanCard({
 
 export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps) {
   const { entitlements, usage } = billing
+  const [yearly, setYearly] = useState(false)
   const [loading, setLoading] = useState<"month" | "year" | "portal" | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showSuccess, setShowSuccess] = useState(true)
@@ -264,6 +271,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
   return (
     <div className="space-y-4">
       {checkoutSuccess && showSuccess ? (
+        <FadeIn>
         <section className="overflow-hidden rounded-[var(--relay-radius)] border border-emerald-500/20 bg-emerald-500/5">
           <div className="flex items-start justify-between gap-3 px-5 py-4">
             <div>
@@ -282,6 +290,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
             </button>
           </div>
         </section>
+        </FadeIn>
       ) : null}
 
       {anyLimitReached && !entitlements.isPro ? (
@@ -305,6 +314,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
         </section>
       ) : null}
 
+      <FadeIn delay={0.05}>
       <section className="overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
         <div className="px-5 py-4">
           <div className="flex items-center justify-between gap-3">
@@ -324,11 +334,32 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
         </div>
 
         <div className="border-t border-[var(--relay-line)] px-5 py-5">
+          {/* Monthly / Yearly toggle */}
+          {entitlements.plan !== "pro" ? (
+            <div className="flex items-center justify-center gap-3 mb-5">
+              <span className={cn("text-[13px] font-medium transition-colors", !yearly ? "text-[var(--relay-ink)]" : "text-[var(--relay-muted)]")}>Monthly</span>
+              <button
+                type="button"
+                onClick={() => setYearly(!yearly)}
+                className={cn(
+                  "relative h-6 w-10 shrink-0 rounded-full transition-colors",
+                  yearly ? "bg-emerald-500" : "bg-[var(--relay-line-strong)]",
+                )}
+              >
+                <span className={cn(
+                  "absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
+                  yearly ? "translate-x-4" : "translate-x-0",
+                )} />
+              </button>
+              <span className={cn("text-[13px] font-medium transition-colors", yearly ? "text-[var(--relay-ink)]" : "text-[var(--relay-muted)]")}>Yearly</span>
+            </div>
+          ) : null}
+
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
             <PlanCard
               title="Free"
               subtitle={PRICING.free.description}
-              price="$0"
+              price="$0 / forever"
               badge={entitlements.plan === "free" ? "Current plan" : undefined}
               features={[...PRICING.free.features]}
               actions={
@@ -353,7 +384,8 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
             <PlanCard
               title="Pro"
               subtitle={entitlements.isTrialing ? "Trialing now" : PRICING.pro.description}
-              price="$9/mo or $90/yr"
+              price={yearly ? `$${PRICING.pro.yearlyPrice}/yr` : `$${PRICING.pro.monthlyPrice}/mo`}
+              priceNote={yearly ? "Save 17% vs monthly" : undefined}
               badge={entitlements.plan === "pro" ? "Current plan" : "RECOMMENDED"}
               tone="accent"
               features={[...PRICING.pro.features]}
@@ -377,24 +409,16 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
                     </p>
                   </div>
                 ) : (
-                  <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="space-y-2">
                     <button
                       type="button"
-                      onClick={() => void handleCheckout("month")}
+                      onClick={() => void handleCheckout(yearly ? "year" : "month")}
                       disabled={loading !== null}
-                      className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
+                      className="w-full rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
                     >
-                      {loading === "month" ? "Starting..." : "Choose monthly"}
+                      {loading ? "Starting..." : `Get Pro — ${yearly ? `$${PRICING.pro.yearlyPrice}/yr` : `$${PRICING.pro.monthlyPrice}/mo`}`}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleCheckout("year")}
-                      disabled={loading !== null}
-                      className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-surface)] px-4 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition hover:bg-[var(--relay-soft)] disabled:opacity-50"
-                    >
-                      {loading === "year" ? "Starting..." : "Choose yearly"}
-                    </button>
-                    <p className="sm:col-span-2 text-[12px] text-[var(--relay-muted)]">7-day trial included. Cancel anytime.</p>
+                    <p className="text-[12px] text-[var(--relay-muted)]">7-day trial included. Cancel anytime.</p>
                   </div>
                 )
               }
@@ -404,7 +428,9 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
           {error ? <p className="mt-3 text-[12px] font-medium text-[var(--relay-danger)]">{error}</p> : null}
         </div>
       </section>
+      </FadeIn>
 
+      <FadeIn delay={0.1}>
       <section className="overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
         <div className="px-5 py-4">
           <h2 className="text-sm font-semibold text-[var(--relay-ink)]">Usage</h2>
@@ -433,6 +459,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
           </div>
         ) : null}
       </section>
+      </FadeIn>
     </div>
   )
 }

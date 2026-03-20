@@ -48,7 +48,16 @@ export function MemoryPageContent({
   const [editingMemory, setEditingMemory] = useState(false);
 
   const tabParam = searchParams.get("tab") as MemoryTab | null;
-  const activeTab: MemoryTab = tabParam && ["all", "decisions", "tasks", "constraints"].includes(tabParam) ? tabParam : "all";
+  const urlTab: MemoryTab = tabParam && ["all", "decisions", "tasks", "constraints"].includes(tabParam) ? tabParam : "all";
+  const [localTab, setLocalTab] = useState<MemoryTab>(urlTab);
+  const [tabPending, startTabTransition] = useTransition();
+
+  // Sync local tab when URL changes externally (e.g. governance links)
+  useEffect(() => {
+    setLocalTab(urlTab);
+  }, [urlTab]);
+
+  const activeTab = localTab;
 
   const tabCounts = useMemo(() => {
     const decisions = countSectionItems(dashboard, "decision");
@@ -250,13 +259,16 @@ export function MemoryPageContent({
               key={tab.key}
               type="button"
               onClick={() => {
+                setLocalTab(tab.key);
                 const params = new URLSearchParams(searchParams.toString());
                 if (tab.key === "all") {
                   params.delete("tab");
                 } else {
                   params.set("tab", tab.key);
                 }
-                router.push(`?${params.toString()}`, { scroll: false });
+                startTabTransition(() => {
+                  router.replace(`?${params.toString()}`, { scroll: false });
+                });
               }}
               className={cn(
                 "rounded-full px-3 py-1 text-[12px] font-medium transition-colors",
@@ -273,11 +285,13 @@ export function MemoryPageContent({
 
       {/* Governance (decisions, tasks, constraints) */}
       <FadeIn delay={0.15}>
+        <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
         <GovernanceSection
           projectId={project.id}
           dashboard={dashboard}
           visibleSections={visibleSections}
         />
+        </div>
       </FadeIn>
 
       {status && (

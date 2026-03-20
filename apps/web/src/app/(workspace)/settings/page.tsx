@@ -1,4 +1,5 @@
 import { SettingsPreferences } from "@/components/settings/settings-preferences"
+import { SettingsContent } from "@/components/settings/settings-content"
 import { BillingSection } from "@/components/settings/billing-section"
 import Link from "next/link"
 import { requirePageViewer } from "@/server/policies/viewer"
@@ -37,8 +38,8 @@ export default async function SettingsPage({
     : "account"
 
   return (
-    <div className="flex gap-8">
-      <nav className="sticky top-0 w-48 shrink-0 pt-6">
+    <div className="mx-auto max-w-4xl flex gap-8">
+      <nav className="sticky top-0 w-44 shrink-0 pt-6">
         <div className="flex flex-col gap-1">
           {navItems.map((item) => {
             const Icon = item.icon
@@ -65,18 +66,20 @@ export default async function SettingsPage({
         </div>
       </nav>
 
-      <div className="flex-1 max-w-2xl space-y-4 pt-6">
-        {section === "billing" ? (
-          <BillingSection billing={billing} checkoutSuccess={checkoutSuccess} />
-        ) : (
-          <SettingsPreferences
-            initialSettings={settings.settings}
-            hasConnectedExtension={hasConnectedExtension}
-            initialTokens={activeTokens}
-            section={section}
-            viewer={{ displayName: viewer.name ?? null, email: viewer.email ?? null }}
-          />
-        )}
+      <div className="flex-1 max-w-2xl pt-6">
+        <SettingsContent section={section}>
+          {section === "billing" ? (
+            <BillingSection billing={billing} checkoutSuccess={checkoutSuccess} />
+          ) : (
+            <SettingsPreferences
+              initialSettings={settings.settings}
+              hasConnectedExtension={hasConnectedExtension}
+              initialTokens={activeTokens}
+              section={section}
+              viewer={{ displayName: viewer.name ?? null, email: viewer.email ?? null }}
+            />
+          )}
+        </SettingsContent>
       </div>
     </div>
   )

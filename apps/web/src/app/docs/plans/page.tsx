@@ -66,7 +66,7 @@ export default function PlansDocsPage() {
             <ul className="mt-3 space-y-2">
               {PRICING.free.features.map((f) => (
                 <li key={f} className="flex items-start gap-2 text-[13px] text-[var(--relay-muted)]">
-                  <Check className="h-3.5 w-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                  <Check className="h-3.5 w-3.5 text-[var(--relay-muted)] mt-0.5 shrink-0" />
                   {f}
                 </li>
               ))}

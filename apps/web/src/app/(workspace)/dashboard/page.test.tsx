@@ -52,6 +52,7 @@ vi.mock("next/navigation", () => ({
     push: vi.fn(),
     refresh: vi.fn(),
   }),
+  redirect: vi.fn(),
 }));
 
 vi.mock("@/components/layout/app-shell", () => ({

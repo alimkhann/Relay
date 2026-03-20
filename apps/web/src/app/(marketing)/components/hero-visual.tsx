@@ -9,6 +9,7 @@ import ClaudeCode from "@lobehub/icons/es/ClaudeCode"
 const ease = [0.25, 0.1, 0.25, 1] as const
 
 /* ─── Typing animation characters ─── */
+const INPUT_TEXT = "Let's continue building the auth flow..."
 const USER_TEXT = "Let's continue building the auth flow. We decided to use Supabase and the user table needs..."
 const AI_TEXT = "I'll help with the auth flow. Based on the Supabase setup, we should first define the user table schema with RLS\u00a0policies..."
 
@@ -29,6 +30,83 @@ function TypingText({ text, delayMs, className }: { text: string; delayMs: numbe
   )
 }
 
+/* ─── Input bar typing: shows chars appearing then clears ─── */
+function InputTyping({ text, startDelay, inView }: { text: string; startDelay: number; inView: boolean }) {
+  const charDuration = 0.018
+  const totalTypingTime = text.length * charDuration
+
+  return (
+    <span className="text-[13px] text-white/55 flex-1 relative">
+      {/* Typing characters */}
+      {inView ? text.split("").map((char, i) => (
+        <motion.span
+          key={i}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 1, 1, 0] }}
+          transition={{
+            delay: startDelay + i * charDuration,
+            duration: 0.6,
+            times: [0, 0.05, 0.8, 1],
+            // All chars disappear together when "sent"
+            ease: "linear",
+          }}
+        >
+          {char}
+        </motion.span>
+      )) : null}
+      {/* Placeholder shown before typing starts */}
+      <motion.span
+        className="absolute inset-0 text-white/25"
+        initial={{ opacity: 1 }}
+        animate={inView ? { opacity: 0 } : undefined}
+        transition={{ delay: startDelay, duration: 0.1 }}
+      >
+        Message ChatGPT...
+      </motion.span>
+      {/* Blinking cursor during typing */}
+      {inView ? (
+        <motion.span
+          className="inline-block w-px h-[14px] bg-white/50 align-middle ml-px"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 1, 1, 0] }}
+          transition={{
+            delay: startDelay,
+            duration: totalTypingTime + 0.4,
+            times: [0, 0.02, 0.9, 1],
+          }}
+        />
+      ) : null}
+    </span>
+  )
+}
+
+/* ─── Cursor keyframes (approximate % positions within the hero) ─── */
+const CURSOR_X = [
+  "15%",   // 0: start at input bar
+  "15%",   // 1: in input field
+  "42%",   // 2: send button
+  "42%",   // 3: stay at send
+  "25%",   // 4: drift center-left
+  "30%",   // 5: up to toast area
+  "55%",   // 6: cross to right panel
+  "70%",   // 7: center of right panel
+  "78%",   // 8: bottom-right
+  "78%",   // 9: fade out position
+]
+const CURSOR_Y = [
+  "88%",   // 0: input bar
+  "88%",   // 1: in input
+  "88%",   // 2: send button
+  "88%",   // 3: stay
+  "55%",   // 4: drift up
+  "12%",   // 5: toast
+  "35%",   // 6: cross divider
+  "50%",   // 7: center right
+  "75%",   // 8: bottom right
+  "75%",   // 9: fade out
+]
+const CURSOR_TIMES = [0, 0.06, 0.12, 0.18, 0.30, 0.42, 0.52, 0.60, 0.78, 1]
+
 export function HeroVisual() {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: "-80px" })
@@ -41,6 +119,23 @@ export function HeroVisual() {
       </div>
 
       <div className="relative mx-auto max-w-6xl">
+        {/* Animated cursor — desktop only */}
+        <motion.div
+          className="hidden md:block absolute w-3 h-3 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.4)] z-30 pointer-events-none"
+          initial={{ opacity: 0, left: CURSOR_X[0], top: CURSOR_Y[0] }}
+          animate={inView ? {
+            opacity: [0, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+            left: CURSOR_X,
+            top: CURSOR_Y,
+          } : undefined}
+          transition={{
+            duration: 8,
+            times: CURSOR_TIMES,
+            ease: "easeInOut",
+            delay: 0.5,
+          }}
+        />
+
         <div className="grid md:grid-cols-2 gap-4 md:gap-5">
           {/* Left panel — Browser chat */}
           <motion.div
@@ -94,17 +189,17 @@ export function HeroVisual() {
 
             {/* Chat content with typing animation */}
             <div className="px-5 py-4 space-y-3.5 flex-1">
-              {/* User message — types in */}
+              {/* User message — appears after input typing + send */}
               <motion.div
                 className="flex justify-end"
                 initial={{ opacity: 0 }}
                 animate={inView ? { opacity: 1 } : undefined}
-                transition={{ delay: 0.8, duration: 0.2 }}
+                transition={{ delay: 1.5, duration: 0.2 }}
               >
                 <div className="bg-white/[0.06] rounded-2xl rounded-br-md px-4 py-3 max-w-[85%]">
                   <p className="text-[13px] text-white/70 leading-relaxed">
                     {inView ? (
-                      <TypingText text={USER_TEXT} delayMs={900} className="text-white/70" />
+                      <TypingText text={USER_TEXT} delayMs={1600} className="text-white/70" />
                     ) : USER_TEXT}
                   </p>
                 </div>
@@ -127,16 +222,16 @@ export function HeroVisual() {
               </motion.div>
             </div>
 
-            {/* Chat input mock with animated send button */}
+            {/* Chat input mock with animated typing then send */}
             <div className="px-5 pb-4 mt-auto">
               <div className="flex items-center gap-2 bg-white/[0.03] border border-white/[0.08] rounded-xl px-4 py-2.5">
-                <span className="text-[13px] text-white/25 flex-1">Message ChatGPT...</span>
+                <InputTyping text={INPUT_TEXT} startDelay={0.6} inView={inView} />
                 <motion.div
                   animate={inView ? {
                     scale: [1, 1.15, 1],
-                    opacity: [0.2, 0.5, 0.2],
+                    opacity: [0.2, 0.6, 0.2],
                   } : undefined}
-                  transition={{ delay: 0.6, duration: 0.4 }}
+                  transition={{ delay: 1.3, duration: 0.3 }}
                 >
                   <Send size={14} className="text-white/20" />
                 </motion.div>
