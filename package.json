@@ -6,10 +6,10 @@
   "scripts": {
     "build": "pnpm --filter @relay/shared build && pnpm --filter @relay/formatters build && pnpm --filter @relay/adapters build && pnpm --filter @relay/db build && pnpm --filter @relay/web build && pnpm --filter @relay/extension build",
     "build:extension:prod": "pnpm --filter @relay/extension build:prod",
-    "build:cli": "pnpm --filter @relay/cli build",
+    "build:cli": "pnpm --filter @onrelay/cli build",
     "build:mcp": "pnpm --filter @relay/mcp build",
-    "release:cli:dry-run": "pnpm --filter @relay/cli pack --pack-destination ../../.tmp/cli-pack",
-    "release:cli": "pnpm --filter @relay/cli publish --access public",
+    "release:cli:dry-run": "pnpm --filter @onrelay/cli pack --pack-destination ../../.tmp/cli-pack",
+    "release:cli": "pnpm --filter @onrelay/cli publish --access public",
     "db:local:start": "docker compose -f docker-compose.local.yml up -d",
     "db:local:stop": "docker compose -f docker-compose.local.yml down",
     "db:local:migrate": "node scripts/db-admin.js migrate",
