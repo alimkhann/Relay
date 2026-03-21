@@ -2,9 +2,9 @@ import { z } from "zod"
 
 import { supportedPlatforms } from "../constants/platforms"
 
-const MAX_TURN_CONTENT_LENGTH = 12_000
-const MAX_RAW_HTML_LENGTH = 40_000
-const MAX_TURNS_PER_CAPTURE = 120
+const MAX_TURN_CONTENT_LENGTH = 120_000
+const MAX_RAW_HTML_LENGTH = 250_000
+const MAX_TURNS_PER_CAPTURE = 500
 
 const parsedTurnSchema = z.object({
   role: z.enum(["user", "assistant", "system", "unknown"]),

@@ -313,6 +313,29 @@
     return merged;
   }
 
+  var CAPTURE_LIMITS = {
+    maxTurnContent: 120000,
+    maxRawHtml: 250000,
+    maxTurns: 500,
+  };
+
+  function sanitizeTurnsForCapture(turns) {
+    var capped = turns.slice(0, CAPTURE_LIMITS.maxTurns);
+    return capped.map(function (t) {
+      var sanitized = Object.assign({}, t);
+      if (typeof sanitized.content === "string" && sanitized.content.length > CAPTURE_LIMITS.maxTurnContent) {
+        sanitized.content = sanitized.content.slice(0, CAPTURE_LIMITS.maxTurnContent - 14) + "\n[…truncated]";
+      }
+      if (!sanitized.content) {
+        sanitized.content = "[empty]";
+      }
+      if (typeof sanitized.rawHtml === "string" && sanitized.rawHtml.length > CAPTURE_LIMITS.maxRawHtml) {
+        sanitized.rawHtml = sanitized.rawHtml.slice(0, CAPTURE_LIMITS.maxRawHtml - 14) + "\n[…truncated]";
+      }
+      return sanitized;
+    });
+  }
+
   function tagTurnsWithSource(turns, source) {
     return turns.map(function (t) {
       return Object.assign({}, t, { captureSource: source });
@@ -2678,7 +2701,8 @@
       }
 
       const metadata = getPageMetadata();
-      const turns = collectTurns(config, metadata);
+      const rawTurns = collectTurns(config, metadata);
+      const turns = sanitizeTurnsForCapture(rawTurns);
 
       sendResponse({
         ok: true,
@@ -2690,7 +2714,7 @@
             pageFingerprint: metadata.pageFingerprint,
             sourceConversationId: getConversationIdentity(config.platform, metadata),
             captureSignature: computeSignature(
-              turns,
+              rawTurns,
               metadata,
               config.platform,
             ),
