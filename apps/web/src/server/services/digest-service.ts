@@ -16,7 +16,7 @@ const DIGEST_JOB_TIMEOUT_MINUTES = 5
 const DIGEST_INLINE_TIMEOUT_MS = 20_000
 const DIGEST_FALLBACK_PLANNED = true
 
-type DigestJobStage = "queued" | GeminiStage | "merge_state" | "completed" | "failed" | "timed_out"
+type DigestJobStage = "queued" | "deferred" | GeminiStage | "merge_state" | "completed" | "failed" | "timed_out"
 
 interface DigestGenerationResult {
   digest: DigestModelShape
@@ -35,12 +35,20 @@ interface DigestGenerationResult {
   }
 }
 
-export type DigestExecutionStrategy = "skip" | "deterministic" | "ai"
+export type DigestExecutionStrategy = "skip" | "deterministic" | "ai" | "deferred"
+
+export interface DigestBudgetStatus {
+  aiUsed: number
+  aiLimit: number
+  aiRemaining: number
+  plan: "free" | "pro"
+}
 
 export interface DigestStrategyDecision {
   strategy: DigestExecutionStrategy
   reason: string
   deterministicDigest: DigestModelShape
+  budgetStatus?: DigestBudgetStatus
 }
 
 function createDigestTimeoutError(timeoutMs: number) {
@@ -63,6 +71,7 @@ function buildJobProgress(stage: DigestJobStage, input: {
   summaryShort?: string
   skipped?: boolean
   reason?: string
+  batchSize?: number
 } = {}) {
   return {
     jobStage: stage,
@@ -155,24 +164,19 @@ export function deterministicDigest(session: SourceSessionRow, turns: SourceTurn
     ? truncateSentence(latestMeaningfulAssistantTurn.content, 280)
     : null
 
-  const currentObjectiveDelta =
-    latestMeaningfulUserTurn && normalizeText(latestMeaningfulUserTurn.content) !== normalizeText(state?.currentObjective ?? "")
-      ? truncateSentence(normalizeText(latestMeaningfulUserTurn.content), 220)
-      : null
-  const shouldMerge = Boolean(currentObjectiveDelta || recentSummary || !state?.projectOverview)
+  // Deterministic digests are a safe fallback — they must never pollute project state
+  // with raw conversation excerpts. Only record progress metadata, never overwrite
+  // overview/objective or create tasks from raw turns.
+  const needsInitialOverview = !state?.projectOverview
+  const shouldMerge = needsInitialOverview
 
   return {
-    summaryShort: recentSummary || currentObjectiveDelta || session.title || "Captured a new session update.",
+    summaryShort: recentSummary || session.title || "Captured a new session update.",
     newDecisions: [],
     newConstraints: [],
-    newTasks: [
-      ...(currentObjectiveDelta ? [currentObjectiveDelta] : []),
-      ...(recentSummary && recentSummary !== currentObjectiveDelta
-        ? [`Progress: ${truncateSentence(recentSummary, 160)}`]
-        : []),
-    ],
-    projectOverviewDelta: session.title ?? null,
-    currentObjectiveDelta,
+    newTasks: [],
+    projectOverviewDelta: null,
+    currentObjectiveDelta: null,
     recentProgressDelta: recentSummary,
     relevantToolsDelta: shouldMerge ? [session.platform] : [],
     importanceScore: Math.min(100, Math.max(cleanedTurns.length * 8, latestMeaningfulUserTurn ? 45 : 18)),
@@ -267,6 +271,13 @@ export async function decideDigestStrategy(
     }
   }
 
+  const budgetStatus: DigestBudgetStatus = {
+    aiUsed: budget.dailyProjectAiUsed,
+    aiLimit: budget.dailyProjectAiLimit,
+    aiRemaining: budget.dailyProjectAiRemaining,
+    plan: budget.plan,
+  }
+
   if ((firstState || staleState || majorUpdate) && budget.aiEligible) {
     return {
       strategy: "ai",
@@ -275,24 +286,35 @@ export async function decideDigestStrategy(
         : staleState
           ? "AI is refreshing a stale project state."
           : "AI is justified for a major project update.",
-      deterministicDigest: deterministic
+      deterministicDigest: deterministic,
+      budgetStatus
     }
   }
 
-  if (deterministic.importanceScore < 56 || !budget.aiEligible) {
+  // Budget blocked but capture has enough signal for AI — defer for batch processing
+  if (!budget.aiEligible && (firstState || staleState || majorUpdate || deterministic.importanceScore >= 56)) {
+    return {
+      strategy: "deferred",
+      reason: budget.reason ?? "AI digest budget is unavailable, deferring for batch processing.",
+      deterministicDigest: deterministic,
+      budgetStatus
+    }
+  }
+
+  if (deterministic.importanceScore < 56) {
     return {
       strategy: "deterministic",
-      reason: budget.aiEligible
-        ? "Deterministic digest is enough for this update."
-        : budget.reason ?? "AI digest budget is unavailable, using deterministic digest.",
-      deterministicDigest: deterministic
+      reason: "Deterministic digest is enough for this low-signal update.",
+      deterministicDigest: deterministic,
+      budgetStatus
     }
   }
 
   return {
     strategy: "ai",
     reason: "AI is allowed for a meaningful project update.",
-    deterministicDigest: deterministic
+    deterministicDigest: deterministic,
+    budgetStatus
   }
 }
 
@@ -314,12 +336,24 @@ async function generateDigest(
     maxOutputTokens: GEMINI_MODELS.digest.maxOutputTokens,
     signal: input.signal,
     onStage: input.onStage,
-    systemInstruction:
-      "You compress AI chat activity into a project-state digest. Return only JSON. Prefer concise, durable carry-forward state over transcript details.",
+    systemInstruction: [
+      "You compress AI chat activity into a project-state digest. Return only JSON.",
+      "CRITICAL RULES:",
+      "- Never store raw user or assistant messages as items. Always synthesize into concise, actionable statements.",
+      "- Every item in newDecisions, newConstraints, newTasks must be a self-contained statement understandable without the conversation.",
+      "- projectOverviewDelta must describe what the project IS, not repeat the session title.",
+      "- currentObjectiveDelta must be a clear goal statement, not raw chat text or file names.",
+      "- Ignore file upload names, UI artifacts, system metadata, and garbled text.",
+      "- Prefer concise, durable carry-forward state over transcript details.",
+    ].join(" "),
     prompt: [
       "Return a JSON object with these keys exactly:",
       "summaryShort, newDecisions, newConstraints, newTasks, projectOverviewDelta, currentObjectiveDelta, recentProgressDelta, relevantToolsDelta, importanceScore, shouldMerge, confidence.",
-      "Use short strings. Arrays should contain only durable carry-forward items.",
+      "Use short strings. Arrays should contain only durable carry-forward items — never raw quotes or conversation excerpts.",
+      "BAD task: 'btw, what if during onboarding i say that we auto capture by default' — raw user message, not a task.",
+      "GOOD task: 'Evaluate auto-capture default ON vs OFF for onboarding flow.'",
+      "BAD task: 'Progress: Short answer: don't do that' — raw AI response, not a task.",
+      "GOOD decision: 'Default auto-capture to OFF during onboarding to comply with platform policies.'",
       "Ignore trivial meta prompts like 'yes', 'do that', 'continue', or 'what's better?' unless they clearly redefine the project goal.",
       "Ignore transcript wrappers like 'You said:' and 'ChatGPT said:'.",
       ...(projectDescription ? [`Project description: ${projectDescription}`] : []),
@@ -361,18 +395,21 @@ export async function enqueueDigestJob(userId: string, input: {
   projectId: string
   sessionId: string
   captureSignature: string
+  status?: "pending" | "deferred"
 }) {
   const repositories = createRepositoryBundle(userId)
+  const isDeferred = input.status === "deferred"
   return repositories.aiJobs.create({
     projectId: input.projectId,
     sessionId: input.sessionId,
     createdBy: userId,
     jobKind: "session_digest",
+    status: isDeferred ? "deferred" : "pending",
     inputPayload: {
       captureSignature: input.captureSignature
     },
-    outputPayload: buildJobProgress("queued"),
-    primaryModel: GEMINI_MODELS.digest.primary
+    outputPayload: buildJobProgress(isDeferred ? "deferred" : "queued"),
+    primaryModel: isDeferred ? null : GEMINI_MODELS.digest.primary
   })
 }
 
@@ -799,13 +836,202 @@ export async function runDigestJobInline(
   await runDigestJobInternal(repositories, userId, job, timeoutMs)
 }
 
+export async function runBatchDigestForProject(
+  repositories: RepositoryBundle,
+  userId: string,
+  projectId: string,
+  deferredJobs: AiJobRunRow[],
+  timeoutMs = DIGEST_INLINE_TIMEOUT_MS
+) {
+  if (deferredJobs.length === 0) return
+
+  const controller = new AbortController()
+  const timeoutHandle = setTimeout(() => controller.abort(createDigestTimeoutError(timeoutMs)), timeoutMs)
+
+  let currentModel: string | null = null
+  let currentFallbackUsed = false
+  let tokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+
+  try {
+    // Mark all deferred jobs as running
+    for (const job of deferredJobs) {
+      await repositories.aiJobs.markRunning(job.id, job.attempts + 1)
+    }
+
+    const [project, projectState] = await Promise.all([
+      repositories.projects.getById(projectId),
+      repositories.projectState.getByProject(projectId)
+    ])
+
+    if (!project) {
+      throw new Error("Project not found for batch digest.")
+    }
+
+    // Gather turns from all deferred sessions
+    const sessionData: Array<{ session: SourceSessionRow; turns: SourceTurnRow[] }> = []
+    for (const job of deferredJobs) {
+      if (!job.sessionId) continue
+      const session = await repositories.sessions.getById(job.sessionId)
+      if (!session) continue
+      const turns = await repositories.turns.listBySession(session.id)
+      sessionData.push({ session, turns })
+    }
+
+    if (sessionData.length === 0) {
+      for (const job of deferredJobs) {
+        await repositories.aiJobs.markCompleted(job.id, {
+          actualModel: "skipped",
+          outputPayload: buildJobProgress("completed", { skipped: true, reason: "No sessions to process." })
+        })
+      }
+      return
+    }
+
+    // Build multi-session prompt
+    const sessionSummaries = sessionData.map(({ session, turns }, index) => {
+      const cleaned = prepareDigestTurns(turns)
+      const turnText = cleaned
+        .slice(-8)
+        .map((t) => `${t.role.toUpperCase()}: ${t.content}`)
+        .join("\n")
+      return `--- Session ${index + 1}: "${session.title ?? "Untitled"}" (${session.platform}) ---\n${turnText}`
+    }).join("\n\n")
+
+    const result = await runGeminiJsonWithFallback<DigestModelShape>({
+      primaryModel: GEMINI_MODELS.digest.primary,
+      fallbackModel: GEMINI_MODELS.digest.fallback,
+      maxInputTokens: GEMINI_MODELS.digest.maxInputTokens,
+      maxOutputTokens: GEMINI_MODELS.digest.maxOutputTokens,
+      signal: controller.signal,
+      systemInstruction: [
+        "You compress AI chat activity into a project-state digest. Return only JSON.",
+        "You are processing MULTIPLE chat sessions captured for the same project. Synthesize insights from ALL sessions into a single unified digest.",
+        "CRITICAL RULES:",
+        "- Never store raw user or assistant messages as items. Always synthesize into concise, actionable statements.",
+        "- Every item in newDecisions, newConstraints, newTasks must be a self-contained statement understandable without the conversation.",
+        "- projectOverviewDelta must describe what the project IS, not repeat session titles.",
+        "- currentObjectiveDelta must be a clear goal statement, not raw chat text or file names.",
+        "- Ignore file upload names, UI artifacts, system metadata, and garbled text.",
+        "- Prefer concise, durable carry-forward state over transcript details.",
+      ].join(" "),
+      prompt: [
+        "Return a JSON object with these keys exactly:",
+        "summaryShort, newDecisions, newConstraints, newTasks, projectOverviewDelta, currentObjectiveDelta, recentProgressDelta, relevantToolsDelta, importanceScore, shouldMerge, confidence.",
+        "Use short strings. Arrays should contain only durable carry-forward items — never raw quotes or conversation excerpts.",
+        "BAD task: 'btw, what if during onboarding i say that we auto capture by default' — raw user message, not a task.",
+        "GOOD task: 'Evaluate auto-capture default ON vs OFF for onboarding flow.'",
+        ...(project.description ? [`Project description: ${project.description}`] : []),
+        ...(projectState?.projectOverview ? [`Existing project overview: ${projectState.projectOverview}`] : []),
+        ...(projectState?.currentObjective ? [`Existing current objective: ${projectState.currentObjective}`] : []),
+        ...((projectState?.decisions ?? []).length ? [`Existing decisions: ${projectState!.decisions.join(" | ")}`] : []),
+        ...((projectState?.constraints ?? []).length ? [`Existing constraints: ${projectState!.constraints.join(" | ")}`] : []),
+        ...((projectState?.openTasks ?? []).length ? [`Existing open tasks: ${projectState!.openTasks.join(" | ")}`] : []),
+        `\nYou have ${sessionData.length} sessions to process:\n`,
+        sessionSummaries
+      ].join("\n\n")
+    })
+
+    currentModel = result.actualModel
+    currentFallbackUsed = result.fallbackUsed
+    tokenUsage = result.tokenUsage
+
+    const digest = sanitizeDigest(result.data)
+
+    // Persist digest for each session and merge once at the end
+    const lastSession = sessionData[sessionData.length - 1]!
+    const signature = lastSession.session.captureSignature ?? `batch-${Date.now()}`
+
+    await persistDigestResult(repositories, userId, {
+      projectId,
+      session: lastSession.session,
+      projectState,
+      turns: lastSession.turns,
+      digest,
+      signature
+    })
+
+    // Create digest records for earlier sessions too (so they're marked as processed)
+    for (let i = 0; i < sessionData.length - 1; i++) {
+      const { session } = sessionData[i]!
+      const sessionSignature = session.captureSignature ?? `batch-${session.id}`
+      await repositories.sessionDigests.create({
+        projectId,
+        sourceSessionId: session.id,
+        sourceSignature: sessionSignature,
+        summaryShort: digest.summaryShort,
+        structuredDigest: { ...digest },
+        confidence: digest.confidence ?? 0.65,
+        importanceScore: digest.importanceScore,
+        needsProjectStateMerge: false,
+        createdBy: userId
+      })
+    }
+
+    // Mark all jobs as completed
+    for (const job of deferredJobs) {
+      await repositories.aiJobs.markCompleted(job.id, {
+        actualModel: result.actualModel,
+        fallbackUsed: result.fallbackUsed,
+        tokenUsage: { ...tokenUsage },
+        outputPayload: buildJobProgress("completed", {
+          model: result.actualModel,
+          fallbackUsed: result.fallbackUsed,
+          batchSize: sessionData.length,
+          summaryShort: digest.summaryShort
+        })
+      })
+    }
+  } catch (error) {
+    const failureMessage = error instanceof Error ? error.message : "Batch digest failed."
+
+    for (const job of deferredJobs) {
+      if (isTimeoutError(error) || controller.signal.aborted) {
+        await repositories.aiJobs.markTimedOut(job.id, {
+          errorMessage: failureMessage,
+          actualModel: currentModel,
+          fallbackUsed: currentFallbackUsed,
+          tokenUsage,
+          outputPayload: buildJobProgress("timed_out", { failureMessage })
+        })
+      } else {
+        await repositories.aiJobs.markFailed(job.id, {
+          errorClass: error instanceof Error ? error.name : "BatchDigestError",
+          errorMessage: failureMessage,
+          actualModel: currentModel,
+          fallbackUsed: currentFallbackUsed,
+          tokenUsage,
+          outputPayload: buildJobProgress("failed", { failureMessage })
+        })
+      }
+    }
+  } finally {
+    clearTimeout(timeoutHandle)
+  }
+}
+
 export async function drainDigestJobs(userId: string, limit = 4) {
   const repositories = createRepositoryBundle(userId)
   await repositories.aiJobs.markTimedOutOlderThan("session_digest", DIGEST_JOB_TIMEOUT_MINUTES)
-  const pending = await repositories.aiJobs.listByStatuses(["pending", "timed_out"], limit, "session_digest")
 
+  // Process pending/timed_out jobs individually (retries)
+  const pending = await repositories.aiJobs.listByStatuses(["pending", "timed_out"], limit, "session_digest")
   for (const job of pending) {
     await runDigestJobInternal(repositories, userId, job)
+  }
+
+  // Process deferred jobs in batches by project
+  const deferred = await repositories.aiJobs.listByStatuses(["deferred"], limit * 2, "session_digest")
+  if (deferred.length === 0) return
+
+  const byProject = new Map<string, AiJobRunRow[]>()
+  for (const job of deferred) {
+    const existing = byProject.get(job.projectId) ?? []
+    existing.push(job)
+    byProject.set(job.projectId, existing)
+  }
+
+  for (const [projectId, jobs] of byProject) {
+    await runBatchDigestForProject(repositories, userId, projectId, jobs)
   }
 }
 

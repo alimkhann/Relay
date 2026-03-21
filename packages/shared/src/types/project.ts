@@ -46,13 +46,13 @@ export interface ProjectDashboardDto {
 
 export interface ProjectStateStatusDto {
   rawCapturePresent: boolean
-  digestStatus: "idle" | "pending" | "running" | "completed" | "failed" | "timed_out"
+  digestStatus: "idle" | "pending" | "running" | "completed" | "failed" | "timed_out" | "deferred"
   projectStateReady: boolean
   digestErrorMessage: string | null
   lastCapturedAt: string | null
   lastDigestAt: string | null
   activeJobId: string | null
-  activeJobStatus: "idle" | "pending" | "running" | "completed" | "failed" | "timed_out"
+  activeJobStatus: "idle" | "pending" | "running" | "completed" | "failed" | "timed_out" | "deferred"
   activeJobStage: string | null
   activeJobAttempts: number
   fallbackPlanned: boolean
@@ -170,5 +170,7 @@ export interface ProjectAiBudgetDto {
   dailyProjectAiLimit: number
   dailyUserAiUsed: number
   dailyUserAiLimit: number
+  dailyProjectAiRemaining: number
+  dailyUserAiRemaining: number
   nextAiAllowedAt: string | null
 }

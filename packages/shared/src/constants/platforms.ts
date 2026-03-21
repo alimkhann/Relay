@@ -8,7 +8,7 @@ export const aiRenderers = ["deterministic", "gemini"] as const
 
 export const aiJobKinds = ["session_digest", "fresh_chat_bootstrap", "quick_continuity"] as const
 
-export const aiJobStatuses = ["pending", "running", "completed", "failed", "timed_out"] as const
+export const aiJobStatuses = ["pending", "running", "completed", "failed", "timed_out", "deferred"] as const
 
 export const memoryItemTypes = [
   "note",

@@ -11,19 +11,21 @@ export class AiJobRunRepository {
     sessionId: string | null
     createdBy: string
     jobKind: AiJobRunRow["jobKind"]
+    status?: AiJobRunRow["status"]
     inputPayload: Record<string, unknown>
     outputPayload?: Record<string, unknown>
     primaryModel?: string | null
   }): Promise<AiJobRunRow> {
     const rows = await this.provider.query(
-      `insert into ai_job_runs (project_id, session_id, created_by, job_kind, input_payload, output_payload, primary_model)
-       values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7)
+      `insert into ai_job_runs (project_id, session_id, created_by, job_kind, status, input_payload, output_payload, primary_model)
+       values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8)
        returning *`,
       [
         input.projectId,
         input.sessionId,
         input.createdBy,
         input.jobKind,
+        input.status ?? "pending",
         JSON.stringify(input.inputPayload),
         JSON.stringify(input.outputPayload ?? {}),
         input.primaryModel ?? null
@@ -244,6 +246,21 @@ export class AiJobRunRepository {
         JSON.stringify(patch.tokenUsage ?? {})
       ]
     )
+  }
+
+  async listDeferredByProject(projectId: string, limit = 10): Promise<AiJobRunRow[]> {
+    const rows = await this.provider.query(
+      `select *
+       from ai_job_runs
+       where project_id = $1
+         and status = 'deferred'
+         and job_kind = 'session_digest'
+       order by created_at asc
+       limit $2`,
+      [projectId, limit]
+    )
+
+    return rows.map((record) => toAiJobRunRow(record as Record<string, unknown>))
   }
 
   async countRecentAiDigestRunsByProject(projectId: string, sinceHours = 24): Promise<number> {

@@ -78,7 +78,7 @@ describe("prepareDigestTurns", () => {
 })
 
 describe("deterministicDigest", () => {
-  it("ignores low-signal final user prompts when choosing the project objective", () => {
+  it("never sets objective or tasks from raw turns (safe fallback)", () => {
     const state = makeState()
     const turns = [
       makeTurn(0, "user", "Implement Relay as a fresh-chat bootstrap system that restores durable project state into new AI chats."),
@@ -92,17 +92,15 @@ describe("deterministicDigest", () => {
 
     const digest = deterministicDigest(makeSession(), turns, state)
 
-    expect(digest.currentObjectiveDelta).toBe(
-      "Implement Relay as a fresh-chat bootstrap system that restores durable project state into new AI chats."
-    )
+    expect(digest.currentObjectiveDelta).toBeNull()
+    expect(digest.projectOverviewDelta).toBeNull()
     expect(digest.recentProgressDelta).toContain("Relay should compress captures into project state")
-    expect(digest.newTasks).toEqual([
-      "Implement Relay as a fresh-chat bootstrap system that restores durable project state into new AI chats.",
-      "Progress: Relay should compress captures into project state, then generate a bounded bootstrap with goals, progress, tasks, and constraints."
-    ])
+    expect(digest.newTasks).toEqual([])
+    expect(digest.newDecisions).toEqual([])
+    expect(digest.newConstraints).toEqual([])
   })
 
-  it("skips long feedback turns and pairs progress with the last meaningful project request", () => {
+  it("only merges when no existing project overview (first capture)", () => {
     const turns = [
       makeTurn(0, "user", "Build Relay as a browser-first AI continuity layer that captures useful project context and restores it into fresh chats."),
       makeTurn(
@@ -118,12 +116,15 @@ describe("deterministicDigest", () => {
       makeTurn(3, "assistant", "Both: generate structured JSON internally, then render clean text/markdown on the surface.")
     ]
 
-    const digest = deterministicDigest(makeSession(), turns, null)
+    // No existing state → shouldMerge = true (first capture)
+    const digestNoState = deterministicDigest(makeSession(), turns, null)
+    expect(digestNoState.shouldMerge).toBe(true)
+    expect(digestNoState.currentObjectiveDelta).toBeNull()
+    expect(digestNoState.recentProgressDelta).toContain("fresh-chat bootstrap flow")
 
-    expect(digest.currentObjectiveDelta).toBe(
-      "Build Relay as a browser-first AI continuity layer that captures useful project context and restores it into fresh chats."
-    )
-    expect(digest.recentProgressDelta).toContain("fresh-chat bootstrap flow")
+    // Existing state with overview → shouldMerge = false
+    const digestWithState = deterministicDigest(makeSession(), turns, makeState())
+    expect(digestWithState.shouldMerge).toBe(false)
   })
 
   it("does not merge when only low-signal chatter is present", () => {

@@ -54,7 +54,8 @@ export async function saveCapture(userId: string, input: unknown) {
 
   const shouldQueueDigest = latestComparable?.captureSignature !== normalizedInput.session.captureSignature
   let jobId: string | null = null
-  let digestStrategy: "skip" | "deterministic" | "ai" = "skip"
+  let digestStrategy: "skip" | "deterministic" | "ai" | "deferred" = "skip"
+  let budgetStatus: { aiUsed: number; aiLimit: number; aiRemaining: number; plan: "free" | "pro" } | null = null
 
   if (shouldQueueDigest && normalizedInput.session.captureSignature) {
     const decision = await decideDigestStrategy(repositories, userId, {
@@ -62,6 +63,7 @@ export async function saveCapture(userId: string, input: unknown) {
       sessionId: session.id
     })
     digestStrategy = decision.strategy
+    budgetStatus = decision.budgetStatus ?? null
 
     if (decision.strategy === "ai") {
       const job = await enqueueDigestJob(userId, {
@@ -80,6 +82,14 @@ export async function saveCapture(userId: string, input: unknown) {
         reason: decision.reason
       })
       jobId = job.id
+    } else if (decision.strategy === "deferred") {
+      const job = await enqueueDigestJob(userId, {
+        projectId: normalizedInput.projectId,
+        sessionId: session.id,
+        captureSignature: normalizedInput.session.captureSignature,
+        status: "deferred"
+      })
+      jobId = job.id
     }
   }
 
@@ -91,6 +101,7 @@ export async function saveCapture(userId: string, input: unknown) {
     digestQueued: digestStrategy !== "skip",
     digestStrategy,
     aiJobId: jobId,
+    budgetStatus,
     stateStatus
   }
 }

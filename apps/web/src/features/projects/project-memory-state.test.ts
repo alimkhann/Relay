@@ -51,6 +51,8 @@ describe("project memory state helpers", () => {
           dailyProjectAiLimit: 0,
           dailyUserAiUsed: 0,
           dailyUserAiLimit: 0,
+          dailyProjectAiRemaining: 0,
+          dailyUserAiRemaining: 0,
           nextAiAllowedAt: null,
         },
       },
