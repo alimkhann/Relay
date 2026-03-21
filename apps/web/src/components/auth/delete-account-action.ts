@@ -8,6 +8,7 @@ import { clearLocalSessionCookie } from "@/lib/auth/local-session"
 import { getAuthProvider } from "@/lib/auth/provider"
 import { requireAuthServer } from "@/lib/auth/server"
 import { requireSessionViewer } from "@/server/policies/viewer"
+import { sendAccountDeletedEmail } from "@/server/services/email-service"
 
 async function deleteAccountForUser(userId: string) {
   const repositories = createRepositoryBundle()
@@ -30,10 +31,16 @@ async function deleteAccountForUser(userId: string) {
 export async function deleteAccountAction() {
   const viewer = await requireSessionViewer()
 
+  // Capture email before deletion since the profile will be removed
+  const repositories = createRepositoryBundle()
+  const profile = await repositories.profiles.getById(viewer.userId)
+  const email = profile?.email ?? viewer.email
+  const name = profile?.displayName ?? viewer.name ?? null
+
   if (getAuthProvider() === "local") {
-    const repositories = createRepositoryBundle()
     await clearLocalSessionCookie()
     await repositories.provider.query(`delete from profiles where id = $1`, [viewer.userId])
+    if (email) void sendAccountDeletedEmail(email, name)
     redirect("/get-started")
   }
 
@@ -43,6 +50,7 @@ export async function deleteAccountAction() {
   }
 
   await deleteAccountForUser(viewer.userId)
+  if (email) void sendAccountDeletedEmail(email, name)
 
   redirect("/get-started")
 }

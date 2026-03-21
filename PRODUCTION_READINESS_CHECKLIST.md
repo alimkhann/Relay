@@ -34,9 +34,9 @@ Last updated: 2026-03-20
 
 ## Compliance And Docs
 
-- [ ] Update privacy and terms to exactly match shipped behavior.
-- [ ] Implement or remove the claimed export flow.
-- [ ] Implement analytics opt-out behavior or remove the Do Not Track claim.
+- [x] Update privacy and terms to exactly match shipped behavior.
+- [x] Implement or remove the claimed export flow.
+- [x] Implement analytics opt-out behavior or remove the Do Not Track claim.
 - [x] Refresh MCP docs to match current MCP tool names.
 - [ ] Prepare Chrome Web Store reviewer notes and data-use disclosures.
 
@@ -44,6 +44,6 @@ Last updated: 2026-03-20
 
 - [x] Add CI for lint, typecheck, tests, and production build.
 - [x] Add deployment documentation and environment validation for Vercel.
-- [ ] Define how internal drain jobs run in production.
-- [ ] Add structured production logging, alerting, and health checks.
+- [x] Define how internal drain jobs run in production.
+- [x] Add structured production logging, alerting, and health checks.
 - [ ] Expand E2E coverage for auth, billing, onboarding, extension pairing, and MCP auth.

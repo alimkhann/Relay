@@ -21,7 +21,7 @@ export default function PrivacyPage() {
           Privacy Policy
         </h1>
         <p className="mt-2 text-sm text-gray-400">
-          Last updated: March 12, 2026
+          Last updated: March 21, 2026
         </p>
 
         <div className="mt-10 space-y-8 text-[15px] leading-relaxed text-gray-600">
@@ -118,10 +118,10 @@ export default function PrivacyPage() {
               5. Analytics
             </h2>
             <p>
-              We may use PostHog or similar privacy-respecting analytics tools
-              to understand how the Service is used. Analytics data is
-              aggregated and does not include your chat content. You may opt out
-              of analytics via your browser's Do Not Track setting.
+              We use PostHog for privacy-respecting, aggregated analytics to
+              understand how the Service is used. Analytics data does not
+              include your chat content or personal data. No data is shared
+              with third-party advertisers.
             </p>
           </section>
 
@@ -153,7 +153,6 @@ export default function PrivacyPage() {
                 <li>
                   Delete your data at any time (via Settings → Delete Account)
                 </li>
-                <li>Export your project data</li>
                 <li>
               Disconnect the Chrome extension at any time, which stops all
               data capture
