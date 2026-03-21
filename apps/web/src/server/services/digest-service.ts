@@ -164,12 +164,9 @@ export function deterministicDigest(session: SourceSessionRow, turns: SourceTurn
     ? truncateSentence(latestMeaningfulAssistantTurn.content, 280)
     : null
 
-  // Deterministic digests are a safe fallback — they must never pollute project state
-  // with raw conversation excerpts. Only record progress metadata, never overwrite
-  // overview/objective or create tasks from raw turns.
-  const needsInitialOverview = !state?.projectOverview
-  const shouldMerge = needsInitialOverview
-
+  // Deterministic digests must NEVER merge into project state.
+  // They only log that the session was captured — no overview, no tasks, no state changes.
+  // If first state or budget blocked, the strategy decision routes to AI or deferred instead.
   return {
     summaryShort: recentSummary || session.title || "Captured a new session update.",
     newDecisions: [],
@@ -178,10 +175,10 @@ export function deterministicDigest(session: SourceSessionRow, turns: SourceTurn
     projectOverviewDelta: null,
     currentObjectiveDelta: null,
     recentProgressDelta: recentSummary,
-    relevantToolsDelta: shouldMerge ? [session.platform] : [],
+    relevantToolsDelta: [],
     importanceScore: Math.min(100, Math.max(cleanedTurns.length * 8, latestMeaningfulUserTurn ? 45 : 18)),
-    shouldMerge,
-    confidence: shouldMerge ? 0.58 : 0.24
+    shouldMerge: false,
+    confidence: 0.24
   }
 }
 
@@ -255,6 +252,7 @@ export async function decideDigestStrategy(
   )
   const majorUpdate = deterministic.importanceScore >= 78 || signalCount >= 3
 
+  // 1. Skip: no turns or truly low-signal
   if (turns.length === 0 || (meaningfulUserTurns === 0 && deterministic.importanceScore < 28)) {
     return {
       strategy: "skip",
@@ -263,7 +261,8 @@ export async function decideDigestStrategy(
     }
   }
 
-  if (!deterministic.shouldMerge && deterministic.importanceScore < 42) {
+  // 2. Skip: low importance and not first state
+  if (deterministic.importanceScore < 42 && !firstState) {
     return {
       strategy: "skip",
       reason: "Capture changed too little to affect project state.",
@@ -278,6 +277,7 @@ export async function decideDigestStrategy(
     plan: budget.plan,
   }
 
+  // 3. AI (priority): first/stale/major update with budget available
   if ((firstState || staleState || majorUpdate) && budget.aiEligible) {
     return {
       strategy: "ai",
@@ -291,8 +291,18 @@ export async function decideDigestStrategy(
     }
   }
 
-  // Budget blocked but capture has enough signal for AI — defer for batch processing
-  if (!budget.aiEligible && (firstState || staleState || majorUpdate || deterministic.importanceScore >= 56)) {
+  // 4. AI (budget available): use AI generously when budget allows (score >= 28)
+  if (budget.aiEligible && deterministic.importanceScore >= 28) {
+    return {
+      strategy: "ai",
+      reason: "AI is allowed for a meaningful project update.",
+      deterministicDigest: deterministic,
+      budgetStatus
+    }
+  }
+
+  // 5. Deferred: budget blocked but capture has signal worth processing later
+  if (!budget.aiEligible && (firstState || staleState || majorUpdate || deterministic.importanceScore >= 42)) {
     return {
       strategy: "deferred",
       reason: budget.reason ?? "AI digest budget is unavailable, deferring for batch processing.",
@@ -301,18 +311,10 @@ export async function decideDigestStrategy(
     }
   }
 
-  if (deterministic.importanceScore < 56) {
-    return {
-      strategy: "deterministic",
-      reason: "Deterministic digest is enough for this low-signal update.",
-      deterministicDigest: deterministic,
-      budgetStatus
-    }
-  }
-
+  // 6. Deterministic: log-only record, no state merge
   return {
-    strategy: "ai",
-    reason: "AI is allowed for a meaningful project update.",
+    strategy: "deterministic",
+    reason: "Logged session without state changes (low signal or budget exhausted).",
     deterministicDigest: deterministic,
     budgetStatus
   }
@@ -644,18 +646,18 @@ export async function runDeterministicDigestInline(
   }
 
   const digestShape = sanitizeDigest(input.digest ?? deterministicDigest(session, turns, projectState))
-  await patchDigestJobStage(repositories, job.id, "merge_state", {
-    model: "deterministic",
-    summaryShort: digestShape.summaryShort,
-    reason: input.reason
-  })
-  const { digest } = await persistDigestResult(repositories, userId, {
+  // Deterministic digests are log-only: create the session_digest record directly
+  // without calling persistDigestResult (which can merge into project state).
+  const digest = await repositories.sessionDigests.create({
     projectId: input.projectId,
-    session,
-    projectState,
-    turns,
-    digest: digestShape,
-    signature
+    sourceSessionId: session.id,
+    sourceSignature: signature,
+    summaryShort: digestShape.summaryShort,
+    structuredDigest: { ...digestShape },
+    confidence: digestShape.confidence ?? 0.24,
+    importanceScore: digestShape.importanceScore,
+    needsProjectStateMerge: false,
+    createdBy: userId
   })
 
   await repositories.aiJobs.markCompleted(job.id, {

@@ -17,7 +17,7 @@ export async function sendWelcomeEmail(to: string, name: string | null) {
   const docsUrl = "https://www.onrelay.app/docs/getting-started"
 
   await client.emails.send({
-    from: "Relay <noreply@onrelay.app>",
+    from: "Relay <support@onrelay.app>",
     to,
     subject: "Welcome to Relay",
     html: `
@@ -48,7 +48,7 @@ export async function sendAccountDeletedEmail(to: string, name: string | null) {
   const signUpUrl = "https://www.onrelay.app/get-started"
 
   await client.emails.send({
-    from: "Relay <noreply@onrelay.app>",
+    from: "Relay <support@onrelay.app>",
     to,
     subject: "Your Relay account has been deleted",
     html: `

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 
 import { logServerEvent } from "@/server/logging/logger"
 import { getRequestContext, withRequestContext } from "@/server/logging/request-context"
-import { BadRequestError, ForbiddenError, TooManyRequestsError } from "@/server/http/errors"
+import { BadRequestError, ForbiddenError, TooManyRequestsError, UnauthorizedError } from "@/server/http/errors"
 import { applyExtensionCorsHeaders } from "@/server/http/extension-cors"
 import { isAuthRequiredError } from "@/server/policies/viewer"
 
@@ -111,6 +111,26 @@ export function withApiRoute<TArgs extends [Request, ...unknown[]]>(
               { error: error.issues[0]?.message ?? "Request validation failed." },
               { status: 400 }
             )
+          )
+        }
+
+        if (error instanceof UnauthorizedError) {
+          await logServerEvent({
+            level: "warn",
+            surface: "web-api",
+            area: "auth",
+            event: "api.unauthorized",
+            message: error.message,
+            context: {
+              method: request.method,
+              path: requestContext?.path ?? new URL(request.url).pathname,
+              durationMs: Date.now() - startedAt
+            }
+          })
+
+          return finalizeResponse(
+            request,
+            NextResponse.json({ error: error.message }, { status: 401 })
           )
         }
 

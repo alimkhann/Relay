@@ -503,9 +503,9 @@ function buildDashboardContextPreview(
     }));
 
   return {
-    decisions: [...manualDecisions, ...derivedDecisions].slice(0, 5),
-    constraints: [...manualConstraints, ...derivedConstraints].slice(0, 5),
-    tasks: [...manualTasks, ...derivedTasks].slice(0, 5),
+    decisions: [...manualDecisions, ...derivedDecisions],
+    constraints: [...manualConstraints, ...derivedConstraints],
+    tasks: [...manualTasks, ...derivedTasks],
   };
 }
 
@@ -1680,13 +1680,17 @@ async function syncTabRemoteState(
       state.chatAssociation = createEmptyChatAssociation();
     }
 
-    // Show a brief confirmation toast when dashboard sync reveals a newly saved association
+    // Show a brief confirmation toast when dashboard sync reveals a newly saved association.
+    // Only fire when the association came from the dashboard (server-side sessionHistory),
+    // not from a local remembered association or a just-completed local capture.
     const transitionedToSaved =
       previousAssociationStatus === "none" &&
+      dashboardChatAssociation.status === "saved" &&
       state.chatAssociation.status === "saved" &&
       state.chatAssociation.projectId &&
       state.chatAssociation.projectName &&
-      !state.associationToast.visible;
+      !state.associationToast.visible &&
+      options.reason !== "capture_complete";
     if (transitionedToSaved) {
       const CONFIRMED_TOAST_WINDOW_MS = 5_000;
       await showAssociationToast(tabId, {
@@ -2505,6 +2509,7 @@ async function captureObservedChange(
           state,
           approvedAssociations,
         );
+
         state.routingReview = {
           confidence: routingDecision.confidence,
           score: routingDecision.score,

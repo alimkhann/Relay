@@ -45,7 +45,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
         targetProfileKey: args.targetProfileKey,
         since: since ?? null,
         syncSurface,
-      })
+      }).catch(() => {})
       return result
     }
   )
@@ -56,7 +56,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
     getProjectStateSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
-      await client.recordSessionEvent(projectId, "project_state_read", {})
+      await client.recordSessionEvent(projectId, "project_state_read", {}).catch(() => {})
       return getProjectState(client, projectId)
     }
   )
@@ -72,7 +72,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
         query: args.query,
         types: args.types ?? [],
         tags: args.tags ?? [],
-      })
+      }).catch(() => {})
       return result
     }
   )
@@ -94,7 +94,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
         constraints: args.type === "constraint" ? [args.content] : undefined,
         nextSteps: args.type === "task" ? [args.content] : undefined,
         notes: args.type === "note" || args.type === "artifact" || args.type === "requirement" ? [args.content] : undefined,
-      })
+      }).catch(() => {})
       return result
     }
   )
@@ -117,8 +117,8 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
         constraints: args.constraints,
         nextSteps: args.nextSteps,
         notes: args.notes,
-      })
-      await client.closeWorkSession()
+      }).catch(() => {})
+      await client.closeWorkSession().catch(() => {})
       return result
     }
   )
@@ -154,7 +154,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
           descriptionChanged: typeof args.description === "string",
         },
         summary: args.description ?? undefined,
-      })
+      }).catch(() => {})
       return result
     }
   )

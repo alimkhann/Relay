@@ -21,7 +21,7 @@ interface ConfigFile {
   refreshTokenExpiresAt?: string
 }
 
-const DEFAULT_API_BASE = "https://onrelay.app"
+const DEFAULT_API_BASE = "https://www.onrelay.app"
 const CONFIG_PATH = join(homedir(), ".relay", "mcp.json")
 
 async function loadConfigFile(): Promise<ConfigFile> {

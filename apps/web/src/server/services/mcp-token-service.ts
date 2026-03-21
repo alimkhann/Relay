@@ -4,6 +4,8 @@ import { createRepositoryBundle } from "@relay/db"
 import type { McpTokenScope } from "@relay/shared"
 import { hashContent } from "@relay/shared"
 
+import { UnauthorizedError } from "@/server/http/errors"
+
 function generateSessionCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
   let code = ""
@@ -34,7 +36,7 @@ export async function startMcpAuthorization(input: {
   const repositories = createRepositoryBundle()
   const sessionCode = generateSessionCode()
   const sessionSecret = `relay_mcp_auth_${randomBytes(16).toString("hex")}`
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString()
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
 
   await repositories.mcpAuthSessions.create({
     sessionCode,
@@ -95,7 +97,7 @@ export async function pollMcpAuthorization(sessionSecret: string, codeVerifier?:
 
   const accessToken = buildAccessToken()
   const refreshToken = buildRefreshToken()
-  const accessExpiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString()
+  const accessExpiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
   const refreshExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
   const userId = session.userId
 
@@ -141,12 +143,12 @@ export async function refreshMcpAccessToken(refreshToken: string) {
   const repositories = createRepositoryBundle()
   const existing = await repositories.mcpTokens.getValidRefreshTokenByHash(hashContent(refreshToken))
   if (!existing) {
-    throw new Error("Refresh token is invalid or expired.")
+    throw new UnauthorizedError("Refresh token is invalid or expired.")
   }
 
   const accessToken = buildAccessToken()
   const nextRefreshToken = buildRefreshToken()
-  const accessExpiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString()
+  const accessExpiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
   const refreshExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
 
   const rotated = await repositories.provider.transaction(async (provider) => {
@@ -164,7 +166,7 @@ export async function refreshMcpAccessToken(refreshToken: string) {
   })
 
   if (!rotated) {
-    throw new Error("Refresh token was already rotated. Re-authenticate your MCP client.")
+    throw new UnauthorizedError("Refresh token was already rotated. Re-authenticate your MCP client.")
   }
 
   return {
