@@ -503,7 +503,8 @@ async function persistDigestResult(
       },
     })
 
-    if (input.digest.shouldMerge) {
+    // Always merge if no project state exists yet (first capture must create initial state)
+    if (input.digest.shouldMerge || !input.projectState) {
       const nextState = mergeDigestIntoState(project, input.projectState, input.digest)
       await tx.projectState.upsert({
         projectId: input.projectId,
