@@ -33,6 +33,7 @@ interface CandidateScore {
   explicitNameSignal: boolean
   bootstrapDescriptionOverlap: number
   wholeChatExactMention: boolean
+  domainMatchApplied: boolean
 }
 
 interface EvaluateProjectRoutingInput {
@@ -237,11 +238,13 @@ function scoreApprovedAssociation(
 
   if (
     candidate.phase === "context-aware" &&
+    !candidate.domainMatchApplied &&
     page.domain &&
     association.domain === page.domain &&
     association.platform === page.platform
   ) {
     candidate.score += 8
+    candidate.domainMatchApplied = true
     pushReason(candidate, "Shares a recent approved domain and platform.")
   }
 }
@@ -260,6 +263,7 @@ function scoreProjectCandidate(
     explicitNameSignal: false,
     bootstrapDescriptionOverlap: 0,
     wholeChatExactMention: false,
+    domainMatchApplied: false,
   }
   const projectTokens = collectProjectTokens(project)
   const descriptionTokens = collectProjectDescriptionTokens(project)

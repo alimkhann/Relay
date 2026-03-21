@@ -55,6 +55,7 @@
     forcedInsertKind: null,
     projectSwitcherSurface: null,
     observationTimer: null,
+    stabilityRecheckTimer: null,
     lastMeaningfulMutationAt: Date.now(),
     freshCandidateSince: 0,
     lastPageStateKey: "",
@@ -441,9 +442,16 @@
     var url = metadata.url;
     var match = null;
 
-    if (platform === "chatgpt" && /\/[cg]\/([a-zA-Z0-9-]+)/.test(url)) {
-      match = url.match(/\/[cg]\/([a-zA-Z0-9-]+)/);
-      return match ? match[1] : null;
+    if (platform === "chatgpt") {
+      // /g/{id}/c/{id} — chat inside a project → extract chat ID
+      match = url.match(/\/g\/[^/]+\/c\/([a-zA-Z0-9-]+)/);
+      if (match) return match[1];
+      // /g/{id} alone — project directory, not a conversation
+      if (/\/g\/[a-zA-Z0-9-]+\/?$/.test(url)) return null;
+      // /c/{id} — regular chat
+      match = url.match(/\/c\/([a-zA-Z0-9-]+)/);
+      if (match) return match[1];
+      return null;
     }
 
     if (platform === "claude" && /\/chat\/([a-zA-Z0-9-]+)/.test(url)) {
@@ -566,6 +574,14 @@
       if (/^\/gems\/[^/]+/.test(pathname)) return "project_root";
       if (/^\/app\/[^/]+/.test(pathname)) return "chat";
       return "fresh";
+    }
+
+    if (config.platform === "chatgpt" || config.platform === "codex") {
+      // /g/{id}/project/ — project settings page
+      if (/^\/g\/[^/]+\/project\/?$/.test(pathname)) return "project_root";
+      // /g/{id} — project directory/listing page (no /c/ or /project/ suffix)
+      if (/^\/g\/[^/]+\/?$/.test(pathname)) return "project_root";
+      return pathname === "/" ? "fresh" : "chat";
     }
 
     if (config.platform === "grok") {
@@ -760,6 +776,11 @@
     if (relayChipState.resetButtonTimer !== null) {
       window.clearTimeout(relayChipState.resetButtonTimer);
       relayChipState.resetButtonTimer = null;
+    }
+
+    if (relayChipState.stabilityRecheckTimer !== null) {
+      window.clearTimeout(relayChipState.stabilityRecheckTimer);
+      relayChipState.stabilityRecheckTimer = null;
     }
   }
 
@@ -2446,6 +2467,17 @@
   function markMeaningfulMutation() {
     relayChipState.lastMeaningfulMutationAt = Date.now();
     queuePageObservation(false);
+
+    // Schedule a re-check after PAGE_STABLE_MS so isStable can transition to true.
+    // Without this, after mutations stop, nothing triggers a re-observation and
+    // the background never sees isStable=true (required for auto-capture).
+    if (relayChipState.stabilityRecheckTimer !== null) {
+      window.clearTimeout(relayChipState.stabilityRecheckTimer);
+    }
+    relayChipState.stabilityRecheckTimer = window.setTimeout(() => {
+      relayChipState.stabilityRecheckTimer = null;
+      queuePageObservation(false);
+    }, PAGE_STABLE_MS + 100);
   }
 
   function scheduleObservation() {

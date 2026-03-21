@@ -21,7 +21,13 @@ function resolveRouteKind(pathname: string): PageRouteKind {
     return "fresh"
   }
 
+  // /g/{id}/project/ — project settings page
   if (/^\/g\/[^/]+\/project\/?$/.test(pathname)) {
+    return "project_root"
+  }
+
+  // /g/{id} — project directory/listing page (no /c/ or /project/ suffix)
+  if (/^\/g\/[^/]+\/?$/.test(pathname)) {
     return "project_root"
   }
 

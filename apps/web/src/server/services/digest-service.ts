@@ -165,7 +165,12 @@ export function deterministicDigest(session: SourceSessionRow, turns: SourceTurn
     summaryShort: recentSummary || currentObjectiveDelta || session.title || "Captured a new session update.",
     newDecisions: [],
     newConstraints: [],
-    newTasks: currentObjectiveDelta ? [currentObjectiveDelta] : [],
+    newTasks: [
+      ...(currentObjectiveDelta ? [currentObjectiveDelta] : []),
+      ...(recentSummary && recentSummary !== currentObjectiveDelta
+        ? [`Progress: ${truncateSentence(recentSummary, 160)}`]
+        : []),
+    ],
     projectOverviewDelta: session.title ?? null,
     currentObjectiveDelta,
     recentProgressDelta: recentSummary,
