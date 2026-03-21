@@ -114,9 +114,13 @@ export function buildHeldReviewAssociation(input: {
 }
 
 export function resolveAssociationToastAction(input: {
-  mode: "auto_save" | "held_review";
+  mode: "auto_save" | "held_review" | "confirmed";
   action: "approve" | "cancel";
 }) {
+  if (input.mode === "confirmed") {
+    return "dismiss";
+  }
+
   if (input.mode === "auto_save") {
     return input.action === "cancel" ? "dismiss" : "noop";
   }

@@ -2215,13 +2215,17 @@
     delete root.dataset.pendingAction;
 
     const title =
-      payload.mode === "auto_save"
-        ? `Saving to ${payload.projectName}`
-        : `Approve save to ${payload.projectName}`;
+      payload.mode === "confirmed"
+        ? `Saved to ${payload.projectName}`
+        : payload.mode === "auto_save"
+          ? `Saving to ${payload.projectName}`
+          : `Approve save to ${payload.projectName}`;
     const meta =
-      payload.mode === "auto_save"
-        ? "Relay is 100% sure about this chat. Cancel if this association is wrong."
-        : "Relay is not fully sure. Approve now or review it later in the sidebar.";
+      payload.mode === "confirmed"
+        ? "This chat was automatically captured."
+        : payload.mode === "auto_save"
+          ? "Relay is 100% sure about this chat. Cancel if this association is wrong."
+          : "Relay is not fully sure. Approve now or review it later in the sidebar.";
     const toastProjectSwitcherOpen = isProjectSwitcherOpen("toast");
     const titleMarkup =
       payload.projectOptions && payload.projectOptions.length > 1
@@ -2257,14 +2261,14 @@
         <button class="relay-association-toast__dismiss" type="button" aria-label="Dismiss association toast">×</button>
       </div>
       <p class="relay-association-toast__meta">${escapeHtml(meta)}</p>
-      <div class="relay-association-toast__actions">
+      ${payload.mode !== "confirmed" ? `<div class="relay-association-toast__actions">
         ${
           payload.mode === "auto_save"
             ? '<button class="relay-association-toast__button" type="button" data-action="cancel">Cancel save</button>'
             : '<button class="relay-association-toast__button relay-association-toast__button--primary" type="button" data-action="approve">Approve save</button><button class="relay-association-toast__button relay-association-toast__button--subtle" type="button" data-action="cancel">Not this chat</button>'
         }
         ${renderAssociationToastTimer(payload)}
-      </div>
+      </div>` : ""}
     `;
 
     root.onclick = null;

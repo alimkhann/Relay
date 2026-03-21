@@ -67,7 +67,7 @@ export interface RelayChatAssociation {
 }
 
 export interface RelayAssociationToastPayload {
-  mode: "auto_save" | "held_review";
+  mode: "auto_save" | "held_review" | "confirmed";
   projectId: string;
   projectName: string;
   projectOptions: RelayProjectOption[];
@@ -85,7 +85,7 @@ export type RelayAssociationTier = "none" | "high" | "medium" | "low";
 
 export interface RelayAssociationToastState {
   visible: boolean;
-  mode: "auto_save" | "held_review" | null;
+  mode: "auto_save" | "held_review" | "confirmed" | null;
   projectId: string | null;
   projectName: string | null;
   projectOptions: RelayProjectOption[];
@@ -193,7 +193,7 @@ export type RelayMessage =
       type: "RELAY_RESOLVE_ASSOCIATION_TOAST";
       payload: {
         action: "approve" | "cancel";
-        mode: "auto_save" | "held_review";
+        mode: "auto_save" | "held_review" | "confirmed";
         projectId: string;
         tabId?: number;
       };
@@ -202,7 +202,7 @@ export type RelayMessage =
       type: "RELAY_SET_ASSOCIATION_TOAST_PAUSED";
       payload: {
         paused: boolean;
-        mode: "auto_save" | "held_review";
+        mode: "auto_save" | "held_review" | "confirmed";
         projectId: string;
         tabId?: number;
       };

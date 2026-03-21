@@ -417,7 +417,6 @@ function buildTrustMetadata(
     )[0] ?? null;
 
   const savedContextCount =
-    (dashboard?.memory?.length ?? 0) +
     (dashboard?.projectState?.decisions?.length ?? 0) +
     (dashboard?.projectState?.constraints?.length ?? 0) +
     (dashboard?.projectState?.openTasks?.length ?? 0);
@@ -1668,12 +1667,7 @@ async function syncTabRemoteState(
     state.trust = trust;
     state.stateStatus = nextStateStatus;
     state.contextPreview = contextPreview;
-    const preserveLocalAssociation =
-      state.chatAssociation.status === "held" ||
-      state.chatAssociation.status === "ignored" ||
-      state.chatAssociation.status === "pending" ||
-      state.chatAssociation.status === "archived" ||
-      state.chatAssociation.status === "saved";
+    const previousAssociationStatus = state.chatAssociation.status;
     if (nextChatAssociation.status !== "none") {
       state.chatAssociation = nextChatAssociation;
     } else if (
@@ -1684,6 +1678,25 @@ async function syncTabRemoteState(
       state.chatAssociation.status !== "saved"
     ) {
       state.chatAssociation = createEmptyChatAssociation();
+    }
+
+    // Show a brief confirmation toast when dashboard sync reveals a newly saved association
+    const transitionedToSaved =
+      previousAssociationStatus === "none" &&
+      state.chatAssociation.status === "saved" &&
+      state.chatAssociation.projectId &&
+      state.chatAssociation.projectName &&
+      !state.associationToast.visible;
+    if (transitionedToSaved) {
+      const CONFIRMED_TOAST_WINDOW_MS = 5_000;
+      await showAssociationToast(tabId, {
+        mode: "confirmed",
+        projectId: state.chatAssociation.projectId!,
+        projectName: state.chatAssociation.projectName!,
+        projectOptions: projects,
+        sessionId: state.chatAssociation.sessionId ?? null,
+        expiresAt: Date.now() + CONFIRMED_TOAST_WINDOW_MS,
+      });
     }
     state.remoteStatus = connected ? "ready" : "unavailable";
     state.lastSuccessfulSyncAt = new Date().toISOString();
@@ -2098,7 +2111,7 @@ async function setAssociationToastPaused(
   tabId: number,
   payload: {
     paused: boolean;
-    mode: "auto_save" | "held_review";
+    mode: "auto_save" | "held_review" | "confirmed";
     projectId: string;
   },
 ) {
@@ -2156,11 +2169,19 @@ async function resolveAssociationToast(
   tabId: number,
   payload: {
     action: "approve" | "cancel";
-    mode: "auto_save" | "held_review";
+    mode: "auto_save" | "held_review" | "confirmed";
     projectId: string;
   },
 ) {
   const state = getOrCreateTabState(tabId);
+
+  // Confirmed toasts are informational — just clear the toast without changing association
+  if (payload.mode === "confirmed") {
+    clearAssociationToast(state);
+    await broadcastActiveProjectState(tabId);
+    return { ok: true, action: "dismissed" as const };
+  }
+
   const effect = resolveAssociationToastAction(payload);
 
   if (effect === "dismiss") {

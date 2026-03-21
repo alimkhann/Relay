@@ -97,7 +97,8 @@ describe("deterministicDigest", () => {
     )
     expect(digest.recentProgressDelta).toContain("Relay should compress captures into project state")
     expect(digest.newTasks).toEqual([
-      "Implement Relay as a fresh-chat bootstrap system that restores durable project state into new AI chats."
+      "Implement Relay as a fresh-chat bootstrap system that restores durable project state into new AI chats.",
+      "Progress: Relay should compress captures into project state, then generate a bounded bootstrap with goals, progress, tasks, and constraints."
     ])
   })
 
