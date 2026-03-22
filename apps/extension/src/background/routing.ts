@@ -174,7 +174,7 @@ function buildAssociationComparisonKey(page: Pick<RelayPageState, "platform" | "
     return `${platform}:fingerprint:${page.pageFingerprint}`
   }
 
-  if (page.pathname) {
+  if (page.pathname && page.pathname !== "/") {
     return `${platform}:path:${page.pathname}`
   }
 
@@ -206,6 +206,8 @@ export function findApprovedAssociationMatch(
       (association) =>
         Boolean(page.pathname) &&
         Boolean(page.platform) &&
+        page.pathname !== "/" &&
+        association.pathname !== "/" &&
         association.pathname === page.pathname &&
         association.platform === page.platform
     ) ??
