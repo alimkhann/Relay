@@ -1,5 +1,5 @@
 import type { RelayMcpAnalytics } from "./analytics.js"
-import { saveConfig, type RelayConfig } from "./config.js"
+import { loadConfig, saveConfig, type RelayConfig } from "./config.js"
 
 interface WorkSessionResponse {
   session: {
@@ -151,8 +151,12 @@ export class RelayClient {
 
   async getDefaultSince(projectId: string, explicitSince?: string) {
     if (explicitSince) return explicitSince
-    const session = await this.ensureWorkSession(projectId)
-    return session?.baseSyncMarkAt ?? undefined
+    try {
+      const session = await this.ensureWorkSession(projectId)
+      return session?.baseSyncMarkAt ?? undefined
+    } catch {
+      return undefined
+    }
   }
 
   async recordSessionEvent(
@@ -402,7 +406,7 @@ export class RelayClient {
         throw new Error("Relay refresh token is missing.")
       }
 
-      const response = await fetch(`${this.baseUrl}/api/mcp/refresh`, {
+      let response = await fetch(`${this.baseUrl}/api/mcp/refresh`, {
         method: "POST",
         headers: {
           Accept: "application/json",
@@ -410,6 +414,36 @@ export class RelayClient {
         },
         body: JSON.stringify({ refreshToken: this.refreshToken })
       })
+
+      // If refresh fails (token consumed externally), try re-reading config from disk
+      // in case the wizard or another process wrote fresh tokens.
+      if (!response.ok && (response.status === 401 || response.status === 403)) {
+        const diskConfig = await loadConfig().catch(() => null)
+        if (diskConfig?.refreshToken && diskConfig.refreshToken !== this.refreshToken) {
+          // Disk has a different refresh token — try it
+          this.token = diskConfig.token
+          this.refreshToken = diskConfig.refreshToken
+          this.accessTokenExpiresAt = diskConfig.accessTokenExpiresAt
+
+          // Check if the disk token is still valid (not expired)
+          const diskExpiry = diskConfig.accessTokenExpiresAt
+            ? new Date(diskConfig.accessTokenExpiresAt).getTime()
+            : 0
+          if (diskExpiry - Date.now() > 60_000) {
+            // Disk access token is still valid, no need to refresh
+            return
+          }
+
+          response = await fetch(`${this.baseUrl}/api/mcp/refresh`, {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ refreshToken: this.refreshToken })
+          })
+        }
+      }
 
       if (!response.ok) {
         const text = await response.text().catch(() => "")
