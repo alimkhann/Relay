@@ -184,16 +184,22 @@ export function withApiRoute<TArgs extends [Request, ...unknown[]]>(
           )
         }
 
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        const errorStack = error instanceof Error ? error.stack : undefined
+
         await logServerEvent({
           level: "error",
           surface: "web-api",
           area: "request",
           event: "api.exception",
-          message: `${request.method} ${requestContext?.path ?? new URL(request.url).pathname} failed`,
+          message: `${request.method} ${requestContext?.path ?? new URL(request.url).pathname} failed: ${errorMessage}`,
           context: {
             method: request.method,
             path: requestContext?.path ?? new URL(request.url).pathname,
-            durationMs: Date.now() - startedAt
+            durationMs: Date.now() - startedAt,
+            errorMessage,
+            errorStack,
+            requestId: requestContext?.requestId ?? null
           },
           error
         })

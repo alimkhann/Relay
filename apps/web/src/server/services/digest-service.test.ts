@@ -116,9 +116,9 @@ describe("deterministicDigest", () => {
       makeTurn(3, "assistant", "Both: generate structured JSON internally, then render clean text/markdown on the surface.")
     ]
 
-    // No existing state → shouldMerge = true (first capture)
+    // Deterministic digests never merge — they log sessions only
     const digestNoState = deterministicDigest(makeSession(), turns, null)
-    expect(digestNoState.shouldMerge).toBe(true)
+    expect(digestNoState.shouldMerge).toBe(false)
     expect(digestNoState.currentObjectiveDelta).toBeNull()
     expect(digestNoState.recentProgressDelta).toContain("fresh-chat bootstrap flow")
 
