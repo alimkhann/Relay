@@ -44,6 +44,7 @@
       "https://chat.deepseek.com/*",
       "https://www.onrelay.app/*",
       "https://onrelay.app/*",
+      "https://t.onrelay.app/*",
       "$PLASMO_PUBLIC_POSTHOG_HOST/*",
       "$PLASMO_PUBLIC_RELAY_API_BASE/*"
     ],
@@ -51,10 +52,11 @@
       "matches": [
         "https://www.onrelay.app/*",
         "https://onrelay.app/*",
-        "$PLASMO_PUBLIC_RELAY_API_BASE/*",
-        "http://localhost:3000/*",
-        "http://localhost:3001/*"
+        "$PLASMO_PUBLIC_RELAY_API_BASE/*"
       ]
+    },
+    "content_security_policy": {
+      "extension_pages": "script-src 'self'; object-src 'self'"
     },
     "content_scripts": [
       {

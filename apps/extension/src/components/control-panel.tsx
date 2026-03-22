@@ -1621,12 +1621,42 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               {activeState.capturePending ? <span> · updating…</span> : null}
             </div>
             {activeState.lastBudgetStatus ? (
-              <div className={styles.budgetLine}>
-                <span>
-                  ⚡ {activeState.lastBudgetStatus.aiRemaining}/
-                  {activeState.lastBudgetStatus.aiLimit} AI analyses ·{" "}
-                  {activeState.lastBudgetStatus.plan}
-                </span>
+              <div
+                className={styles.budgetLine}
+                data-warning={activeState.lastBudgetStatus.aiRemaining === 0 ? "" : undefined}
+              >
+                {activeState.lastBudgetStatus.aiRemaining === 0 &&
+                activeState.lastBudgetStatus.plan === "free" ? (
+                  <span>
+                    AI analyses used up today ·{" "}
+                    <a
+                      href="https://www.onrelay.app/pricing"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles.upgradeLink}
+                    >
+                      Upgrade for {activeState.lastBudgetStatus.aiLimit === 6 ? "120" : "more"}/day
+                    </a>
+                  </span>
+                ) : (
+                  <span>
+                    ⚡ {activeState.lastBudgetStatus.aiRemaining}/
+                    {activeState.lastBudgetStatus.aiLimit} AI analyses
+                    {activeState.lastBudgetStatus.plan === "free" ? (
+                      <>
+                        {" · "}
+                        <a
+                          href="https://www.onrelay.app/pricing"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={styles.upgradeLink}
+                        >
+                          Upgrade
+                        </a>
+                      </>
+                    ) : null}
+                  </span>
+                )}
               </div>
             ) : null}
           </section>

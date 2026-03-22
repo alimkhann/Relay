@@ -475,6 +475,21 @@
   color: var(--faint);
 }
 
+.budgetLine[data-warning] {
+  color: #d97706;
+}
+
+.upgradeLink {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.upgradeLink:hover {
+  opacity: 0.8;
+}
+
 .inlineLink,
 .ghostButton {
   border: none;

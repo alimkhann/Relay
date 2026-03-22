@@ -3,6 +3,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { z } from "zod"
 
 import { resolveViewer, type Viewer } from "@/server/policies/viewer"
+import { assertIpRateLimit } from "@/server/services/rate-limit-service"
 import { RelayHttpMcpClient } from "./relay-http-mcp-client"
 
 async function resolveViewerFromRequest(request: Request): Promise<Viewer> {
@@ -189,6 +190,7 @@ function registerHttpTools(
 }
 
 async function handleMcpRequest(request: Request) {
+  await assertIpRateLimit(request, "mcp_stream_ip", 30)
   const viewer = await resolveViewerFromRequest(request)
   const server = createHttpMcpServer(viewer)
 

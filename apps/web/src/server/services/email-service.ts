@@ -151,3 +151,65 @@ export async function sendAccountDeletedEmail(to: string, name: string | null) {
     `
   })
 }
+
+export async function sendBetaAccessGrantedEmail(to: string, name: string | null) {
+  const client = getResend()
+  if (!client) return
+
+  const greeting = name ? `Hi ${name}` : "Hi there"
+  const dashboardUrl = "https://www.onrelay.app/dashboard"
+
+  await client.emails.send({
+    from: "Relay <support@onrelay.app>",
+    to,
+    subject: "Your Relay beta access is ready",
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 20px;">
+        <h1 style="font-size: 24px; font-weight: 600; margin-bottom: 16px;">${greeting}, your beta access is ready!</h1>
+        <p style="font-size: 16px; line-height: 1.5; color: #374151;">
+          Congratulations &mdash; you're in! Your Relay beta access has been activated and you can start using it right away.
+        </p>
+        <p style="font-size: 16px; line-height: 1.5; color: #374151;">
+          Head to your dashboard to set up your first project, then install the Chrome extension to keep context synchronized across ChatGPT, Claude, Gemini, and more.
+        </p>
+        <div style="margin: 24px 0;">
+          <a href="${dashboardUrl}" style="display: inline-block; background: #2563eb; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Open Dashboard</a>
+        </div>
+        <p style="font-size: 14px; color: #6b7280;">
+          Have feedback or run into issues? Reply to this email &mdash; we read everything.
+        </p>
+      </div>
+    `
+  })
+}
+
+export async function sendTrialStartedEmail(to: string, name: string | null, trialDays: number) {
+  const client = getResend()
+  if (!client) return
+
+  const greeting = name ? `Hi ${name}` : "Hi there"
+  const dashboardUrl = "https://www.onrelay.app/dashboard"
+
+  await client.emails.send({
+    from: "Relay <support@onrelay.app>",
+    to,
+    subject: "Your Relay Pro trial has started",
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 20px;">
+        <h1 style="font-size: 24px; font-weight: 600; margin-bottom: 16px;">${greeting}, your Pro trial is live!</h1>
+        <p style="font-size: 16px; line-height: 1.5; color: #374151;">
+          Your ${trialDays}-day Relay Pro trial has started. You now have access to everything Pro includes: unlimited AI analysis, up to 10 projects, 365-day history, and handoff packs.
+        </p>
+        <p style="font-size: 16px; line-height: 1.5; color: #374151;">
+          Make the most of your trial by heading to the dashboard and setting up your projects. Relay will keep your context synchronized across every AI tool you use.
+        </p>
+        <div style="margin: 24px 0;">
+          <a href="${dashboardUrl}" style="display: inline-block; background: #2563eb; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Open Dashboard</a>
+        </div>
+        <p style="font-size: 14px; color: #6b7280;">
+          Your trial lasts ${trialDays} days. We'll send you a reminder before it ends.
+        </p>
+      </div>
+    `
+  })
+}

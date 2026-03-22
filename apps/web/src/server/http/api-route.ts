@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { logServerEvent } from "@/server/logging/logger"
 import { getRequestContext, withRequestContext } from "@/server/logging/request-context"
+import { captureServerException } from "@/lib/telemetry/posthog-server"
 import { BadRequestError, ForbiddenError, NotFoundError, TooManyRequestsError, UnauthorizedError } from "@/server/http/errors"
 import { applyExtensionCorsHeaders } from "@/server/http/extension-cors"
 import { isAuthRequiredError } from "@/server/policies/viewer"
@@ -193,16 +194,24 @@ export function withApiRoute<TArgs extends [Request, ...unknown[]]>(
 
         const errorMessage = error instanceof Error ? error.message : String(error)
         const errorStack = error instanceof Error ? error.stack : undefined
+        const errorPath = requestContext?.path ?? new URL(request.url).pathname
+
+        captureServerException(error, {
+          path: errorPath,
+          method: request.method,
+          requestId: requestContext?.requestId ?? null,
+          durationMs: Date.now() - startedAt,
+        })
 
         await logServerEvent({
           level: "error",
           surface: "web-api",
           area: "request",
           event: "api.exception",
-          message: `${request.method} ${requestContext?.path ?? new URL(request.url).pathname} failed: ${errorMessage}`,
+          message: `${request.method} ${errorPath} failed: ${errorMessage}`,
           context: {
             method: request.method,
-            path: requestContext?.path ?? new URL(request.url).pathname,
+            path: errorPath,
             durationMs: Date.now() - startedAt,
             errorMessage,
             errorStack,

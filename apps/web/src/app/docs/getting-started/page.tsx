@@ -20,7 +20,7 @@ export default function GettingStartedPage() {
           <Link href="/get-started" className="text-[var(--relay-accent)] underline underline-offset-2">
             onrelay.app/get-started
           </Link>{" "}
-          and sign up with Google or a magic link. No credit card required for the free plan.
+          and sign up with Google. No credit card required for the free plan.
         </p>
       </section>
 
