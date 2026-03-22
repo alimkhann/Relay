@@ -35,6 +35,6 @@ create policy memory_relations_viewer_policy on memory_relations
       select 1 from memory_items mi
       join project_members pm on pm.project_id = mi.project_id
       where mi.id = memory_relations.source_id
-        and pm.user_id = current_setting('relay.current_user_id', true)::uuid
+        and pm.user_id = current_setting('relay.current_user_id', true)
     )
   );
