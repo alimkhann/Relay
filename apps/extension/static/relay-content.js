@@ -1844,7 +1844,13 @@
     const activeState = getRenderableState();
 
     if (!config || !activeState || !shouldRenderChip(activeState)) {
-      removeInlineChipImmediately();
+      // Don't remove chip during transitional sync states — prevents flicker
+      // when force-syncing on tab focus triggers loading → ready broadcasts
+      const isTransitional = activeState &&
+        (activeState.remoteStatus === "loading" || activeState.remoteStatus === "stale");
+      if (!isTransitional || !document.getElementById("relay-inline-chip")) {
+        removeInlineChipImmediately();
+      }
       return;
     }
 
