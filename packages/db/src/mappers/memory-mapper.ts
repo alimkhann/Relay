@@ -1,4 +1,4 @@
-import type { ContextPacketRow, MemoryItemRow, ProjectBindingRow, TargetProfileRow, UserSettingsRow } from "@relay/shared"
+import type { ContextPacketRow, MemoryItemRow, MemoryRelationRow, ProjectBindingRow, TargetProfileRow, UserSettingsRow } from "@relay/shared"
 
 import { decryptTextIfNeeded } from "../utils/encrypted-text"
 
@@ -23,7 +23,21 @@ export function toMemoryRow(record: Record<string, unknown>): MemoryItemRow {
     sourceConversationId: record.source_conversation_id ? String(record.source_conversation_id) : null,
     sourceUrl: record.source_url ? String(record.source_url) : null,
     capturedAt: record.captured_at ? String(record.captured_at) : null,
-    derivedFrom: Array.isArray(record.derived_from) ? (record.derived_from as string[]) : null
+    derivedFrom: Array.isArray(record.derived_from) ? (record.derived_from as string[]) : null,
+    // Embedding fields
+    embedding: record.embedding ? (record.embedding as number[]) : null,
+    embeddingModel: record.embedding_model ? String(record.embedding_model) : null
+  }
+}
+
+export function toMemoryRelationRow(record: Record<string, unknown>): MemoryRelationRow {
+  return {
+    id: String(record.id),
+    sourceId: String(record.source_id),
+    targetId: String(record.target_id),
+    relationType: String(record.relation_type) as MemoryRelationRow["relationType"],
+    confidence: Number(record.confidence ?? 1),
+    createdAt: String(record.created_at)
   }
 }
 

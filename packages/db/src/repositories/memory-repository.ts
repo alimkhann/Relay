@@ -1,11 +1,16 @@
-import type { CreateMemoryItemInput, MemoryItemRow, UpdateMemoryItemInput } from "@relay/shared"
+import type { CreateMemoryItemInput, MemoryItemRow, MemoryRelationRow, MemoryRelationType, UpdateMemoryItemInput } from "@relay/shared"
 
-import { toMemoryRow } from "../mappers/memory-mapper"
+import { toMemoryRelationRow, toMemoryRow } from "../mappers/memory-mapper"
 import type { DatabaseProvider } from "../store/provider"
 import { encryptTextIfConfigured } from "../utils/encrypted-text"
 
 export interface MemorySearchResult extends MemoryItemRow {
   rank: number
+}
+
+export interface SemanticSearchResult extends MemoryItemRow {
+  similarity: number
+  matchType: "semantic" | "lexical"
 }
 
 export class MemoryRepository {
@@ -209,5 +214,265 @@ export class MemoryRepository {
        where id = $1`,
       [id]
     )
+  }
+
+  /* ─── Embedding operations ─── */
+
+  async updateEmbedding(id: string, embedding: number[], model: string): Promise<void> {
+    await this.provider.query(
+      `update memory_items
+       set embedding = $2::vector,
+           embedding_model = $3,
+           updated_at = now()
+       where id = $1`,
+      [id, JSON.stringify(embedding), model]
+    )
+  }
+
+  async updateEmbeddingsBatch(items: Array<{ id: string; embedding: number[]; model: string }>): Promise<void> {
+    if (items.length === 0) return
+
+    const cases: string[] = []
+    const modelCases: string[] = []
+    const ids: string[] = []
+    const params: unknown[] = []
+    let paramIndex = 1
+
+    for (const item of items) {
+      cases.push(`when id = $${paramIndex} then $${paramIndex + 1}::vector`)
+      modelCases.push(`when id = $${paramIndex} then $${paramIndex + 2}`)
+      ids.push(item.id)
+      params.push(item.id, JSON.stringify(item.embedding), item.model)
+      paramIndex += 3
+    }
+
+    params.push(ids)
+
+    await this.provider.query(
+      `update memory_items
+       set embedding = case ${cases.join(" ")} end,
+           embedding_model = case ${modelCases.join(" ")} end,
+           updated_at = now()
+       where id = any($${paramIndex}::text[])`,
+      params
+    )
+  }
+
+  async findSimilar(itemId: string, options?: { threshold?: number; limit?: number }): Promise<SemanticSearchResult[]> {
+    const threshold = options?.threshold ?? 0.7
+    const limit = options?.limit ?? 10
+
+    const rows = await this.provider.query(
+      `select m.*, 1 - (m.embedding <=> ref.embedding) as similarity
+       from memory_items m, memory_items ref
+       where ref.id = $1
+         and m.id != $1
+         and m.project_id = ref.project_id
+         and m.is_archived = false
+         and m.embedding is not null
+         and ref.embedding is not null
+         and 1 - (m.embedding <=> ref.embedding) >= $2
+       order by m.embedding <=> ref.embedding
+       limit $3`,
+      [itemId, threshold, limit]
+    )
+
+    return rows.map((record) => {
+      const row = record as Record<string, unknown>
+      return {
+        ...toMemoryRow(row),
+        similarity: Number(row.similarity ?? 0),
+        matchType: "semantic" as const
+      }
+    })
+  }
+
+  async semanticSearch(projectId: string, queryEmbedding: number[], options?: {
+    threshold?: number
+    limit?: number
+    types?: string[]
+  }): Promise<SemanticSearchResult[]> {
+    const threshold = options?.threshold ?? 0.6
+    const limit = options?.limit ?? 20
+    const conditions = [
+      "project_id = $1",
+      "is_archived = false",
+      "embedding is not null",
+      `1 - (embedding <=> $2::vector) >= $3`
+    ]
+    const params: unknown[] = [projectId, JSON.stringify(queryEmbedding), threshold]
+    let paramIndex = 4
+
+    if (options?.types?.length) {
+      conditions.push(`type = ANY($${paramIndex}::text[])`)
+      params.push(options.types)
+      paramIndex++
+    }
+
+    params.push(limit)
+
+    const rows = await this.provider.query(
+      `select *, 1 - (embedding <=> $2::vector) as similarity
+       from memory_items
+       where ${conditions.join(" and ")}
+       order by embedding <=> $2::vector
+       limit $${paramIndex}`,
+      params
+    )
+
+    return rows.map((record) => {
+      const row = record as Record<string, unknown>
+      return {
+        ...toMemoryRow(row),
+        similarity: Number(row.similarity ?? 0),
+        matchType: "semantic" as const
+      }
+    })
+  }
+
+  async hybridSearch(projectId: string, query: string, queryEmbedding: number[], options?: {
+    threshold?: number
+    limit?: number
+    types?: string[]
+    tags?: string[]
+  }): Promise<SemanticSearchResult[]> {
+    const limit = options?.limit ?? 20
+    const threshold = options?.threshold ?? 0.5
+
+    const typeFilter = options?.types?.length
+      ? `and type = ANY($5::text[])`
+      : ""
+    const tagFilter = options?.tags?.length
+      ? `and tags && $${options?.types?.length ? 6 : 5}::text[]`
+      : ""
+
+    const params: unknown[] = [projectId, query, JSON.stringify(queryEmbedding), threshold]
+    if (options?.types?.length) params.push(options.types)
+    if (options?.tags?.length) params.push(options.tags)
+    params.push(limit)
+
+    const limitParam = `$${params.length}`
+
+    const rows = await this.provider.query(
+      `with semantic as (
+         select id, 1 - (embedding <=> $3::vector) as score, 'semantic'::text as match_type
+         from memory_items
+         where project_id = $1
+           and is_archived = false
+           and embedding is not null
+           and 1 - (embedding <=> $3::vector) >= $4
+           ${typeFilter} ${tagFilter}
+         order by embedding <=> $3::vector
+         limit ${limitParam}
+       ),
+       lexical as (
+         select id, ts_rank(search_vector, plainto_tsquery('english', $2)) as score, 'lexical'::text as match_type
+         from memory_items
+         where project_id = $1
+           and is_archived = false
+           and search_vector @@ plainto_tsquery('english', $2)
+           ${typeFilter} ${tagFilter}
+         order by score desc
+         limit ${limitParam}
+       ),
+       combined as (
+         select id, max(score) as score, (array_agg(match_type order by score desc))[1] as match_type
+         from (select * from semantic union all select * from lexical) u
+         group by id
+       )
+       select m.*, c.score as similarity, c.match_type
+       from combined c
+       join memory_items m on m.id = c.id
+       order by m.pinned desc, c.score desc
+       limit ${limitParam}`,
+      params
+    )
+
+    return rows.map((record) => {
+      const row = record as Record<string, unknown>
+      return {
+        ...toMemoryRow(row),
+        similarity: Number(row.similarity ?? 0),
+        matchType: (row.match_type as "semantic" | "lexical") ?? "semantic"
+      }
+    })
+  }
+
+  /* ─── Relation operations ─── */
+
+  async addRelation(sourceId: string, targetId: string, relationType: MemoryRelationType, confidence?: number): Promise<MemoryRelationRow> {
+    const rows = await this.provider.query(
+      `insert into memory_relations (source_id, target_id, relation_type, confidence)
+       values ($1, $2, $3, $4)
+       on conflict (source_id, target_id, relation_type) do update set confidence = $4
+       returning *`,
+      [sourceId, targetId, relationType, confidence ?? 1.0]
+    )
+
+    return toMemoryRelationRow(rows[0] as Record<string, unknown>)
+  }
+
+  async getRelationsForItem(itemId: string): Promise<MemoryRelationRow[]> {
+    const rows = await this.provider.query(
+      `select * from memory_relations
+       where source_id = $1 or target_id = $1
+       order by created_at desc`,
+      [itemId]
+    )
+
+    return rows.map((record) => toMemoryRelationRow(record as Record<string, unknown>))
+  }
+
+  async getRelationsForProject(projectId: string): Promise<MemoryRelationRow[]> {
+    const rows = await this.provider.query(
+      `select mr.* from memory_relations mr
+       join memory_items mi on mi.id = mr.source_id
+       where mi.project_id = $1
+       order by mr.created_at desc`,
+      [projectId]
+    )
+
+    return rows.map((record) => toMemoryRelationRow(record as Record<string, unknown>))
+  }
+
+  async getSimilarityEdgesForProject(projectId: string, threshold?: number): Promise<Array<{ sourceId: string; targetId: string; similarity: number }>> {
+    const minSimilarity = threshold ?? 0.75
+
+    const rows = await this.provider.query(
+      `select a.id as source_id, b.id as target_id, 1 - (a.embedding <=> b.embedding) as similarity
+       from memory_items a
+       join memory_items b on a.project_id = b.project_id and a.id < b.id
+       where a.project_id = $1
+         and a.is_archived = false
+         and b.is_archived = false
+         and a.embedding is not null
+         and b.embedding is not null
+         and 1 - (a.embedding <=> b.embedding) >= $2
+       order by similarity desc
+       limit 200`,
+      [projectId, minSimilarity]
+    )
+
+    return rows.map((record) => {
+      const row = record as Record<string, unknown>
+      return {
+        sourceId: String(row.source_id),
+        targetId: String(row.target_id),
+        similarity: Number(row.similarity)
+      }
+    })
+  }
+
+  async getItemsWithoutEmbeddings(limit?: number): Promise<MemoryItemRow[]> {
+    const rows = await this.provider.query(
+      `select * from memory_items
+       where embedding is null
+         and is_archived = false
+       order by created_at desc
+       limit $1`,
+      [limit ?? 100]
+    )
+
+    return rows.map((record) => toMemoryRow(record as Record<string, unknown>))
   }
 }

@@ -125,6 +125,21 @@ export interface MemoryItemRow {
   capturedAt: string | null
   /** Array of memory item IDs this item was derived/merged from */
   derivedFrom: string[] | null
+  /** Vector embedding for semantic search (768-dimensional, Gemini text-embedding-004) */
+  embedding: number[] | null
+  /** Model used to generate the embedding */
+  embeddingModel: string | null
+}
+
+export type MemoryRelationType = "supersedes" | "extends" | "derives"
+
+export interface MemoryRelationRow {
+  id: string
+  sourceId: string
+  targetId: string
+  relationType: MemoryRelationType
+  confidence: number
+  createdAt: string
 }
 
 export interface TargetProfileRow {

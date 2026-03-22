@@ -16,6 +16,7 @@ import { DashboardMemoryCard } from "@/features/projects/dashboard-memory-card";
 import { DashboardBriefCard } from "@/features/projects/dashboard-brief-card";
 import { DashboardActivityCard } from "@/features/projects/dashboard-activity-card";
 import { DashboardGovernanceSummary } from "@/features/projects/dashboard-governance-summary";
+import { GraphView } from "@/features/graph";
 import { cn } from "@/lib/cn";
 import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
@@ -99,6 +100,7 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
+  const [activeView, setActiveView] = useState<"overview" | "graph">("overview");
   const [editingMemory, setEditingMemory] = useState(false);
   const [editingProject, setEditingProject] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -539,64 +541,102 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
         </div>
       </FadeIn>
 
-      {/* ─── Stats row ─── */}
+      {/* ─── View switcher ─── */}
       <FadeIn delay={0.05}>
-        <DashboardStats
-          totalChats={totalChats}
-          totalContextItems={totalContextItems}
-          briefStatus={briefStatus}
-          briefGeneratedAt={briefGeneratedAt}
-        />
-      </FadeIn>
-
-      {/* ─── Analytics bar ─── */}
-      <FadeIn delay={0.07}>
-        <DashboardAnalyticsBar
-          sessions={dashboard.sessionHistory.map((s) => ({
-            platform: s.platform,
-            capturedAt: s.capturedAt,
-          }))}
-          digestConfidenceScores={[]}
-        />
-      </FadeIn>
-
-      {/* ─── 2-column: Memory + Brief ─── */}
-      <FadeIn delay={0.1}>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          <DashboardMemoryCard
-            projectId={project.id}
-            overview={overview}
-            objective={objective}
-            progress={progress}
-            editingMemory={editingMemory}
-            setEditingMemory={setEditingMemory}
-            onSave={saveStateOverrides}
-            onOverviewChange={setOverview}
-            onObjectiveChange={setObjective}
-            onProgressChange={setProgress}
-            pending={pending}
-          />
-          <DashboardBriefCard
-            projectId={project.id}
-            packets={dashboard.packets}
-            onRegenerate={regenerateBriefs}
-            pending={pending}
-          />
+        <div className="flex items-center gap-1 border-b border-[var(--relay-line)]">
+          <button
+            type="button"
+            onClick={() => setActiveView("overview")}
+            className={cn(
+              "px-3 py-2 text-[13px] font-medium transition border-b-2 -mb-px",
+              activeView === "overview"
+                ? "border-[var(--relay-accent)] text-[var(--relay-ink)]"
+                : "border-transparent text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
+            )}
+          >
+            Overview
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveView("graph")}
+            className={cn(
+              "px-3 py-2 text-[13px] font-medium transition border-b-2 -mb-px",
+              activeView === "graph"
+                ? "border-[var(--relay-accent)] text-[var(--relay-ink)]"
+                : "border-transparent text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
+            )}
+          >
+            Knowledge Graph
+          </button>
         </div>
       </FadeIn>
 
-      {/* ─── Recent Activity ─── */}
-      <FadeIn delay={0.15}>
-        <DashboardActivityCard
-          sessions={groupedSessions.slice(0, 5)}
-          totalChats={totalChats}
-        />
-      </FadeIn>
+      {activeView === "graph" ? (
+        <FadeIn delay={0.1}>
+          <GraphView projectId={project.id} />
+        </FadeIn>
+      ) : (
+        <>
+          {/* ─── Stats row ─── */}
+          <FadeIn delay={0.05}>
+            <DashboardStats
+              totalChats={totalChats}
+              totalContextItems={totalContextItems}
+              briefStatus={briefStatus}
+              briefGeneratedAt={briefGeneratedAt}
+            />
+          </FadeIn>
 
-      {/* ─── Governance summary ─── */}
-      <FadeIn delay={0.2}>
-        <DashboardGovernanceSummary projectId={project.id} dashboard={dashboard} />
-      </FadeIn>
+          {/* ─── Analytics bar ─── */}
+          <FadeIn delay={0.07}>
+            <DashboardAnalyticsBar
+              sessions={dashboard.sessionHistory.map((s) => ({
+                platform: s.platform,
+                capturedAt: s.capturedAt,
+              }))}
+              digestConfidenceScores={[]}
+            />
+          </FadeIn>
+
+          {/* ─── 2-column: Memory + Brief ─── */}
+          <FadeIn delay={0.1}>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <DashboardMemoryCard
+                projectId={project.id}
+                overview={overview}
+                objective={objective}
+                progress={progress}
+                editingMemory={editingMemory}
+                setEditingMemory={setEditingMemory}
+                onSave={saveStateOverrides}
+                onOverviewChange={setOverview}
+                onObjectiveChange={setObjective}
+                onProgressChange={setProgress}
+                pending={pending}
+              />
+              <DashboardBriefCard
+                projectId={project.id}
+                packets={dashboard.packets}
+                onRegenerate={regenerateBriefs}
+                pending={pending}
+              />
+            </div>
+          </FadeIn>
+
+          {/* ─── Recent Activity ─── */}
+          <FadeIn delay={0.15}>
+            <DashboardActivityCard
+              sessions={groupedSessions.slice(0, 5)}
+              totalChats={totalChats}
+            />
+          </FadeIn>
+
+          {/* ─── Governance summary ─── */}
+          <FadeIn delay={0.2}>
+            <DashboardGovernanceSummary projectId={project.id} dashboard={dashboard} />
+          </FadeIn>
+        </>
+      )}
 
       {/* ─── Delete confirmation dialog ─── */}
       <Dialog.Root open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

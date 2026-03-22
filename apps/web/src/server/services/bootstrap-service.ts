@@ -336,6 +336,8 @@ function workSessionCheckpointToMemoryDtos(checkpoints: WorkSessionCheckpointWit
         sourceUrl: null,
         capturedAt: checkpoint.createdAt,
         derivedFrom: checkpoint.sourceEventIds,
+        embedding: null,
+        embeddingModel: null,
       })
     }
 
@@ -360,6 +362,8 @@ function workSessionCheckpointToMemoryDtos(checkpoints: WorkSessionCheckpointWit
         sourceUrl: null,
         capturedAt: checkpoint.createdAt,
         derivedFrom: checkpoint.sourceEventIds,
+        embedding: null,
+        embeddingModel: null,
       })
     }
 
@@ -384,6 +388,8 @@ function workSessionCheckpointToMemoryDtos(checkpoints: WorkSessionCheckpointWit
         sourceUrl: null,
         capturedAt: checkpoint.createdAt,
         derivedFrom: checkpoint.sourceEventIds,
+        embedding: null,
+        embeddingModel: null,
       })
     }
 
@@ -408,6 +414,8 @@ function workSessionCheckpointToMemoryDtos(checkpoints: WorkSessionCheckpointWit
         sourceUrl: null,
         capturedAt: checkpoint.createdAt,
         derivedFrom: checkpoint.sourceEventIds,
+        embedding: null,
+        embeddingModel: null,
       })
     }
 
@@ -432,6 +440,8 @@ function workSessionCheckpointToMemoryDtos(checkpoints: WorkSessionCheckpointWit
         sourceUrl: null,
         capturedAt: checkpoint.createdAt,
         derivedFrom: checkpoint.sourceEventIds,
+        embedding: null,
+        embeddingModel: null,
       })
     }
   }
