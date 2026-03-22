@@ -149,6 +149,7 @@ const emptyActiveState: RelayActiveProjectState = {
     completedAt: null,
   },
   lastReconciliation: null,
+  lastBudgetStatus: null,
 };
 
 function isRelayActiveProjectState(
@@ -1639,6 +1640,15 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               ) : null}
               {activeState.capturePending ? <span> · updating…</span> : null}
             </div>
+            {activeState.lastBudgetStatus ? (
+              <div className={styles.budgetLine}>
+                <span>
+                  ⚡ {activeState.lastBudgetStatus.aiRemaining}/
+                  {activeState.lastBudgetStatus.aiLimit} AI analyses ·{" "}
+                  {activeState.lastBudgetStatus.plan}
+                </span>
+              </div>
+            ) : null}
           </section>
 
           {shouldRenderAssociationCard ? (

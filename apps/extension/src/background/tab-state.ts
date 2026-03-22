@@ -41,6 +41,7 @@ export interface BuildRelayActiveProjectStateInput {
   insertState: RelayInsertState
   lastError?: string | null
   lastReconciliation?: { archivedCount: number; archivedItems: string[] } | null
+  lastBudgetStatus?: { aiUsed: number; aiLimit: number; aiRemaining: number; plan: string } | null
 }
 
 export interface AutoCaptureDecisionInput {
@@ -101,7 +102,8 @@ export function createEmptyAssociationToast(): RelayAssociationToastState {
     projectOptions: [],
     sessionId: null,
     expiresAt: null,
-    paused: false
+    paused: false,
+    digestStatus: null
   }
 }
 
@@ -150,6 +152,7 @@ export function createEmptyActiveProjectState(
       completedAt: null
     },
     lastReconciliation: null,
+    lastBudgetStatus: null,
     ...overrides
   }
 }
@@ -363,7 +366,8 @@ export function deriveRelayActiveProjectState(input: BuildRelayActiveProjectStat
     associationSuppressed: input.associationSuppressed,
     insertState: input.insertState,
     onboarding: input.onboarding,
-    lastReconciliation: input.lastReconciliation ?? null
+    lastReconciliation: input.lastReconciliation ?? null,
+    lastBudgetStatus: input.lastBudgetStatus ?? null
   }
 }
 

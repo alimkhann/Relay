@@ -67,12 +67,13 @@ export interface RelayChatAssociation {
 }
 
 export interface RelayAssociationToastPayload {
-  mode: "auto_save" | "held_review" | "confirmed";
+  mode: "auto_save" | "held_review" | "confirmed" | "capture_result";
   projectId: string;
   projectName: string;
   projectOptions: RelayProjectOption[];
   sessionId?: string | null;
   expiresAt: number;
+  digestStatus?: "analyzed" | "queued" | "saved" | null;
 }
 
 export interface RelayRoutingReview {
@@ -85,13 +86,14 @@ export type RelayAssociationTier = "none" | "high" | "medium" | "low";
 
 export interface RelayAssociationToastState {
   visible: boolean;
-  mode: "auto_save" | "held_review" | "confirmed" | null;
+  mode: "auto_save" | "held_review" | "confirmed" | "capture_result" | null;
   projectId: string | null;
   projectName: string | null;
   projectOptions: RelayProjectOption[];
   sessionId: string | null;
   expiresAt: number | null;
   paused: boolean;
+  digestStatus?: "analyzed" | "queued" | "saved" | null;
 }
 
 export interface RelayInsertState {
@@ -129,6 +131,7 @@ export interface RelayActiveProjectState {
   insertState: RelayInsertState;
   onboarding: RelayOnboardingState;
   lastReconciliation: { archivedCount: number; archivedItems: string[] } | null;
+  lastBudgetStatus: { aiUsed: number; aiLimit: number; aiRemaining: number; plan: string } | null;
 }
 
 export type RelayMessage =

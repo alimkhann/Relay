@@ -468,6 +468,13 @@
   color: var(--faint);
 }
 
+.budgetLine {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--faint);
+}
+
 .inlineLink,
 .ghostButton {
   border: none;

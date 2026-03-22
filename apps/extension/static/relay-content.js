@@ -2215,17 +2215,29 @@
     delete root.dataset.pendingAction;
 
     const title =
-      payload.mode === "confirmed"
-        ? `Saved to ${payload.projectName}`
-        : payload.mode === "auto_save"
-          ? `Saving to ${payload.projectName}`
-          : `Approve save to ${payload.projectName}`;
+      payload.mode === "capture_result"
+        ? payload.digestStatus === "analyzed"
+          ? `Saved & analyzed`
+          : payload.digestStatus === "queued"
+            ? `Saved — analysis queued`
+            : `Saved`
+        : payload.mode === "confirmed"
+          ? `Saved to ${payload.projectName}`
+          : payload.mode === "auto_save"
+            ? `Saving to ${payload.projectName}`
+            : `Approve save to ${payload.projectName}`;
     const meta =
-      payload.mode === "confirmed"
-        ? "This chat was automatically captured."
-        : payload.mode === "auto_save"
-          ? "Relay is 100% sure about this chat. Cancel if this association is wrong."
-          : "Relay is not fully sure. Approve now or review it later in the sidebar.";
+      payload.mode === "capture_result"
+        ? payload.digestStatus === "analyzed"
+          ? "Chat captured and your project brief is being updated."
+          : payload.digestStatus === "queued"
+            ? "Chat captured. Analysis will run shortly."
+            : "Chat captured to your project."
+        : payload.mode === "confirmed"
+          ? "This chat was automatically captured."
+          : payload.mode === "auto_save"
+            ? "Relay is 100% sure about this chat. Cancel if this association is wrong."
+            : "Relay is not fully sure. Approve now or review it later in the sidebar.";
     const toastProjectSwitcherOpen = isProjectSwitcherOpen("toast");
     const titleMarkup =
       payload.projectOptions && payload.projectOptions.length > 1
@@ -2261,7 +2273,7 @@
         <button class="relay-association-toast__dismiss" type="button" aria-label="Dismiss association toast">×</button>
       </div>
       <p class="relay-association-toast__meta">${escapeHtml(meta)}</p>
-      ${payload.mode !== "confirmed" ? `<div class="relay-association-toast__actions">
+      ${payload.mode !== "confirmed" && payload.mode !== "capture_result" ? `<div class="relay-association-toast__actions">
         ${
           payload.mode === "auto_save"
             ? '<button class="relay-association-toast__button" type="button" data-action="cancel">Cancel save</button>'

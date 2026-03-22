@@ -195,6 +195,7 @@ interface RelayTabState {
   lastCapturedTurns: number;
   lastRoutedSignature: string | null;
   lastReconciliation: { archivedCount: number; archivedItems: string[] } | null;
+  lastBudgetStatus: { aiUsed: number; aiLimit: number; aiRemaining: number; plan: string } | null;
 }
 
 interface PendingInsertedBriefState {
@@ -207,6 +208,34 @@ interface PendingInsertedBriefState {
 }
 
 const tabStates = new Map<number, RelayTabState>();
+
+// ── Drain scheduler ──────────────────────────────────────────────
+// When a capture returns digestStrategy === "deferred", we schedule
+// a drain call after DRAIN_DELAY_MS to batch-process deferred jobs.
+const DRAIN_DELAY_MS = 5 * 60 * 1000; // 5 minutes
+const pendingDrainProjects = new Set<string>();
+let drainTimerId: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleDrain(projectId: string) {
+  pendingDrainProjects.add(projectId);
+  if (drainTimerId !== null) return; // timer already running
+  drainTimerId = setTimeout(async () => {
+    drainTimerId = null;
+    const projects = [...pendingDrainProjects];
+    pendingDrainProjects.clear();
+    for (const pid of projects) {
+      try {
+        await relayFetch(`/api/projects/${pid}/drain`, { method: "POST" });
+      } catch { /* non-fatal */ }
+    }
+    // If more deferred captures arrived during drain, restart timer
+    if (pendingDrainProjects.size > 0) {
+      const next = [...pendingDrainProjects];
+      pendingDrainProjects.clear();
+      for (const pid of next) scheduleDrain(pid);
+    }
+  }, DRAIN_DELAY_MS);
+}
 
 /**
  * In-memory cache of persisted capture signatures, loaded from
@@ -741,6 +770,7 @@ function createTabState(tabId: number): RelayTabState {
     lastCapturedTurns: 0,
     lastRoutedSignature: null,
     lastReconciliation: null,
+    lastBudgetStatus: null,
   };
 }
 
@@ -908,6 +938,7 @@ function setAssociationToastState(
     sessionId: payload.sessionId ?? null,
     expiresAt: payload.expiresAt,
     paused: payload.mode === "auto_save" ? state.pendingAssociation?.paused ?? false : false,
+    digestStatus: payload.digestStatus ?? null,
   };
 }
 
@@ -1524,6 +1555,7 @@ async function buildActiveProjectState(
     insertState: state.insertState,
     onboarding,
     lastReconciliation: state.lastReconciliation,
+    lastBudgetStatus: state.lastBudgetStatus,
   });
 }
 
@@ -1816,7 +1848,8 @@ async function captureTab(projectId: string, tabId: number) {
     sessionId: payload.session?.id ?? null,
     turns: payload.turns?.length ?? result.capture.turns?.length ?? 0,
     digestQueued: Boolean(payload.digestQueued),
-    digestStrategy: payload.digestStrategy ?? "skip",
+    digestStrategy: (payload.digestStrategy ?? "skip") as "ai" | "deferred" | "deterministic" | "skip",
+    budgetStatus: payload.budgetStatus ?? null,
     stateStatus: payload.stateStatus ?? null,
     reconciliation: payload.reconciliation ?? null,
   };
@@ -2682,6 +2715,36 @@ async function captureObservedChange(
         force: true,
         reason: "capture_complete",
       });
+
+      // Schedule drain for deferred captures
+      if (result.digestStrategy === "deferred" && projectId) {
+        scheduleDrain(projectId);
+      }
+
+      // Show capture result toast
+      const digestStatus =
+        result.digestStrategy === "ai" ? "analyzed" as const
+        : result.digestStrategy === "deferred" ? "queued" as const
+        : result.digestStrategy === "deterministic" ? "saved" as const
+        : null;
+      if (digestStatus) {
+        const CAPTURE_TOAST_MS = digestStatus === "queued" ? 5_000 : 3_000;
+        await showAssociationToast(tabId, {
+          mode: "capture_result",
+          projectId,
+          projectName: state.projectName ?? projectName ?? "",
+          projectOptions: state.projectOptions,
+          sessionId: result.sessionId ?? null,
+          expiresAt: Date.now() + CAPTURE_TOAST_MS,
+          digestStatus,
+        });
+      }
+
+      // Store budget status for sidepanel display
+      if (result.budgetStatus) {
+        state.lastBudgetStatus = result.budgetStatus;
+      }
+
       return {
         ok: true,
         turns: result.turns ?? state.page.turns ?? 0,
