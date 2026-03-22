@@ -1,5 +1,6 @@
 (function () {
   const PAGE_STABLE_MS = 1800;
+  const POST_STREAMING_STABLE_MS = 800;
   const FRESH_CHAT_STABILIZE_MS = 800;
   const RELAY_THEME_STORAGE_KEY = "relay.themeMode";
 
@@ -66,6 +67,8 @@
     exitTimer: null,
     resetButtonTimer: null,
     mounted: false,
+    wasStreaming: false,
+    streamingEndedAt: 0,
     associationToast: {
       payload: null,
       hideTimer: null,
@@ -613,8 +616,12 @@
       relayChipState.freshCandidateSince = Date.now();
     }
 
-    const isStable =
-      Date.now() - relayChipState.lastMeaningfulMutationAt >= PAGE_STABLE_MS;
+    const timeSinceLastMutation = Date.now() - relayChipState.lastMeaningfulMutationAt;
+    const recentlyStoppedStreaming =
+      relayChipState.streamingEndedAt > 0 &&
+      Date.now() - relayChipState.streamingEndedAt < PAGE_STABLE_MS;
+    const stabilityThreshold = recentlyStoppedStreaming ? POST_STREAMING_STABLE_MS : PAGE_STABLE_MS;
+    const isStable = timeSinceLastMutation >= stabilityThreshold;
     const isFreshChat =
       candidateFresh &&
       Date.now() - relayChipState.freshCandidateSince >=
@@ -2458,6 +2465,25 @@
     }
     console.debug("[Relay] pageState →", { supported: pageState.supported, platform: pageState.platform, routeKind: pageState.routeKind });
     relayChipState.pageState = pageState;
+
+    // Fast path: when streaming just ended, record the time and schedule a quick
+    // stability recheck so captures fire ~800ms after streaming stops
+    const nowStreaming = pageState.supported && pageState.isStreaming;
+    if (relayChipState.wasStreaming && !nowStreaming) {
+      relayChipState.streamingEndedAt = Date.now();
+      if (relayChipState.stabilityRecheckTimer !== null) {
+        window.clearTimeout(relayChipState.stabilityRecheckTimer);
+      }
+      relayChipState.stabilityRecheckTimer = window.setTimeout(() => {
+        relayChipState.stabilityRecheckTimer = null;
+        queuePageObservation(false);
+      }, POST_STREAMING_STABLE_MS);
+    }
+    if (nowStreaming) {
+      relayChipState.streamingEndedAt = 0;
+    }
+    relayChipState.wasStreaming = !!nowStreaming;
+
     const nextKey = buildPageStateKey(pageState);
 
     if (force || relayChipState.lastPageStateKey !== nextKey) {

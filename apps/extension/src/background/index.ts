@@ -2740,6 +2740,13 @@ async function captureObservedChange(
         });
       }
 
+      // Force other tabs to re-sync on next focus so they see fresh project state
+      for (const [otherTabId, otherState] of tabStates.entries()) {
+        if (otherTabId !== tabId) {
+          otherState.lastSuccessfulSyncAt = null;
+        }
+      }
+
       // Store budget status for sidepanel display
       if (result.budgetStatus) {
         state.lastBudgetStatus = result.budgetStatus;
@@ -3099,7 +3106,7 @@ chrome.tabs.onActivated.addListener((activeInfo: { tabId: number }) => {
   void requestPageStateFromTab(activeInfo.tabId);
   const state = tabStates.get(activeInfo.tabId);
   void syncTabRemoteState(activeInfo.tabId, {
-    force: !state?.lastSuccessfulSyncAt,
+    force: true,
     reason: "tab_focus",
   });
 
