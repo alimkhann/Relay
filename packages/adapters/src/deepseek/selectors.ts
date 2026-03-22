@@ -1,11 +1,11 @@
 export const deepseekTurnSelectors = [
+  ".ds-message",
   ".chat-message",
   "[data-message-role]",
-  ".chat-message-user",
-  ".chat-message-assistant"
 ]
 
 export const deepseekPromptSelectors = [
+  "textarea[placeholder*='Message']",
   "textarea",
   "[contenteditable='true']"
 ]

@@ -1,11 +1,15 @@
 export const grokTurnSelectors = [
+  // Current Grok (2025+)
+  ".message-bubble",
+  // Legacy selectors
   "[data-testid='message']",
   ".message-container",
   "[data-message-role]",
-  "[role='article']"
+  "[role='article']",
 ]
 
 export const grokPromptSelectors = [
   "textarea",
-  "[contenteditable='true']"
+  "[contenteditable='true']",
+  "[role='textbox']",
 ]

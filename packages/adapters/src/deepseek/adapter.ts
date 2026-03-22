@@ -22,8 +22,10 @@ export class DeepseekAdapter extends BaseSiteAdapter {
       const role = node.getAttribute("data-message-role")
       if (role === "user") return "user"
       if (role === "assistant") return "assistant"
-      if (node.classList.contains("chat-message-user")) return "user"
-      if (node.classList.contains("chat-message-assistant")) return "assistant"
+      // ds-message: assistant turns contain .ds-markdown child
+      if (node.classList.contains("ds-message")) {
+        return node.querySelector(".ds-markdown") ? "assistant" : "user"
+      }
       return "assistant"
     }).map(({ contentHash: _contentHash, ...turn }) => turn)
   }

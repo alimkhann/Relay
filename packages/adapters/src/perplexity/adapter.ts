@@ -18,9 +18,18 @@ export class PerplexityAdapter extends BaseSiteAdapter {
   }
 
   extractVisibleTurns(doc = document): ParsedTurn[] {
-    return collectTurns(doc, perplexityTurnSelectors, (node) =>
-      node.getAttribute("data-testid") === "query" ? "user" : "assistant"
-    ).map(({ contentHash: _contentHash, ...turn }) => turn)
+    return collectTurns(doc, perplexityTurnSelectors, (node) => {
+      // Current: h1 with query class is user, .prose is assistant
+      if (node.tagName === "H1" || node.classList.contains("query") || node.className?.includes?.("query")) {
+        return "user"
+      }
+      if (node.classList.contains("prose")) {
+        return "assistant"
+      }
+      // Legacy data-testid
+      if (node.getAttribute("data-testid") === "query") return "user"
+      return "assistant"
+    }).map(({ contentHash: _contentHash, ...turn }) => turn)
   }
 
   findPromptInput(doc = document) {

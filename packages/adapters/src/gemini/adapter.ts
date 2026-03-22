@@ -13,7 +13,7 @@ function resolveRouteKind(pathname: string): PageRouteKind {
     return "fresh"
   }
 
-  if (/^\/prompts\/new/.test(pathname)) {
+  if (/^\/prompts\/new/.test(pathname) || pathname === "/prompts/new_chat") {
     return "fresh"
   }
 
@@ -44,10 +44,17 @@ export class GeminiAdapter extends BaseSiteAdapter {
   extractVisibleTurns(doc = document): ParsedTurn[] {
     return collectTurns(doc, geminiTurnSelectors, (node) => {
       const tag = node.tagName?.toLowerCase() ?? ""
+      // Regular Gemini custom elements
       if (tag === "user-query" || node.getAttribute("data-message-id")?.startsWith("user")) {
         return "user"
       }
       if (tag === "model-response") {
+        return "assistant"
+      }
+      // AI Studio: ms-chat-turn with .chat-turn-container.user / .model
+      if (tag === "ms-chat-turn") {
+        const container = node.querySelector(".chat-turn-container")
+        if (container?.classList.contains("user")) return "user"
         return "assistant"
       }
       const role = node.getAttribute("data-message-author-role") ?? node.getAttribute("data-role")

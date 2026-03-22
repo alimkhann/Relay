@@ -1,4 +1,8 @@
 export const perplexityTurnSelectors = [
+  // Current Perplexity (2025+)
+  "h1[class*='query']",
+  "main .prose",
+  // Legacy selectors
   "main [data-testid='query']",
   "main [data-testid='answer']",
   "[data-testid='thread-query']",
@@ -8,10 +12,11 @@ export const perplexityTurnSelectors = [
 ]
 
 export const perplexityPromptSelectors = [
+  "[role='textbox'][contenteditable='true']",
   "textarea[placeholder*='Ask']",
   "textarea[placeholder*='ask']",
-  "textarea[placeholder*='Search']",
-  "textarea[placeholder*='search']",
+  "textarea[placeholder*='Follow']",
+  "textarea[placeholder*='follow']",
   "#ppl-search-input",
   "textarea",
   "[contenteditable='true']"

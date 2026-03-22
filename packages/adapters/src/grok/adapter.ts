@@ -18,11 +18,25 @@ export class GrokAdapter extends BaseSiteAdapter {
   }
 
   extractVisibleTurns(doc = document): ParsedTurn[] {
-    return collectTurns(doc, grokTurnSelectors, (node) => {
+    const turns = collectTurns(doc, grokTurnSelectors, (node) => {
+      // Legacy data attributes
       const role = node.getAttribute("data-message-role") ?? node.getAttribute("data-testid")
       if (role === "user" || role === "user-message") return "user"
-      return "assistant"
+      if (role === "assistant" || role === "model") return "assistant"
+      // Current Grok: .message-bubble — mark as unknown for index-based fallback
+      return "unknown"
     }).map(({ contentHash: _contentHash, ...turn }) => turn)
+
+    // If all roles are unknown (current Grok), alternate user/assistant
+    const allUnknown = turns.length > 0 && turns.every((t) => t.role === "unknown")
+    if (allUnknown) {
+      for (let i = 0; i < turns.length; i++) {
+        const turn = turns[i]!
+        turn.role = i % 2 === 0 ? "user" : "assistant"
+      }
+    }
+
+    return turns
   }
 
   findPromptInput(doc = document) {
