@@ -11,6 +11,17 @@ echo "Checking for changes in apps/web and shared packages..."
 # VERCEL_GIT_PREVIOUS_SHA is set by Vercel; fall back to HEAD~1.
 BASE="${VERCEL_GIT_PREVIOUS_SHA:-HEAD~1}"
 
+# If BASE is empty or the commit isn't available (shallow clone), always build.
+if [ -z "$BASE" ]; then
+  echo "No base SHA available. Proceeding with build."
+  exit 1
+fi
+
+if ! git cat-file -e "$BASE" 2>/dev/null; then
+  echo "Base commit $BASE not available (shallow clone?). Proceeding with build."
+  exit 1
+fi
+
 CHANGED=$(git diff --name-only "$BASE" HEAD -- \
   apps/web \
   packages/shared \
