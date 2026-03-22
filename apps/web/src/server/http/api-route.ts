@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 
 import { logServerEvent } from "@/server/logging/logger"
 import { getRequestContext, withRequestContext } from "@/server/logging/request-context"
-import { BadRequestError, ForbiddenError, TooManyRequestsError, UnauthorizedError } from "@/server/http/errors"
+import { BadRequestError, ForbiddenError, NotFoundError, TooManyRequestsError, UnauthorizedError } from "@/server/http/errors"
 import { applyExtensionCorsHeaders } from "@/server/http/extension-cors"
 import { isAuthRequiredError } from "@/server/policies/viewer"
 
@@ -154,6 +154,13 @@ export function withApiRoute<TArgs extends [Request, ...unknown[]]>(
               { error: error.message },
               { status: 400 }
             )
+          )
+        }
+
+        if (error instanceof NotFoundError) {
+          return finalizeResponse(
+            request,
+            NextResponse.json({ error: error.message }, { status: 404 })
           )
         }
 

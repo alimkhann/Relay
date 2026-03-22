@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ProjectDashboardDto, ProjectStateStatusDto } from "@relay/shared";
-import { RefreshCw, Pencil } from "lucide-react";
+import { RefreshCw, Pencil, Trash2 } from "lucide-react";
+import * as Dialog from "@radix-ui/react-dialog";
 
 import { motion, AnimatePresence } from "motion/react";
 
@@ -100,6 +101,7 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
   const [status, setStatus] = useState("");
   const [editingMemory, setEditingMemory] = useState(false);
   const [editingProject, setEditingProject] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [headerHovered, setHeaderHovered] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const [projectNameDraft, setProjectNameDraft] = useState(project.name);
@@ -348,6 +350,27 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
     );
   }
 
+  function archiveProject() {
+    runMutation(
+      async () => {
+        const res = await relayClientFetch(`/api/projects/${project.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ isArchived: true }),
+        });
+        if (!res.ok) {
+          const payload = (await res.json().catch(() => ({}))) as {
+            error?: string;
+          };
+          throw new Error(payload.error ?? "Failed to delete project.");
+        }
+        router.push("/dashboard");
+      },
+      "Deleting project…",
+      "Project deleted.",
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* ─── Header strip ─── */}
@@ -503,6 +526,15 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
               <RefreshCw className="h-3 w-3" />
               Rebuild
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={pending}
+              onClick={() => setDeleteDialogOpen(true)}
+              className="h-7 w-7 p-0 text-[var(--relay-muted)] hover:text-red-500"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
           </div>
         </div>
       </FadeIn>
@@ -565,6 +597,42 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
       <FadeIn delay={0.2}>
         <DashboardGovernanceSummary projectId={project.id} dashboard={dashboard} />
       </FadeIn>
+
+      {/* ─── Delete confirmation dialog ─── */}
+      <Dialog.Root open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/45" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-[var(--relay-radius-lg)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-6 shadow-[var(--relay-shadow-lg)]">
+            <Dialog.Title className="text-[15px] font-semibold text-[var(--relay-ink)]">
+              Delete {projectMeta.name}?
+            </Dialog.Title>
+            <Dialog.Description className="mt-2 text-[13px] leading-relaxed text-[var(--relay-muted)]">
+              This will remove the project and free up a project slot. This action cannot be undone.
+            </Dialog.Description>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setDeleteDialogOpen(false)}
+                className="h-8 text-[12px]"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={pending}
+                onClick={() => {
+                  setDeleteDialogOpen(false);
+                  archiveProject();
+                }}
+                className="h-8 text-[12px] bg-red-600 text-white hover:bg-red-700"
+              >
+                Delete project
+              </Button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       {/* Status toast */}
       {status && (

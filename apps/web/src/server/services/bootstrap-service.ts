@@ -2,6 +2,7 @@ import { createRepositoryBundle } from "@relay/db"
 import type { BootstrapPacketDto, BootstrapRequest, BootstrapPacketRow, MemoryItemRow, ProjectRow, ProjectStateRow, ProjectStateStatusDto, SessionDigestRow, TargetProfileRow, WorkSessionCheckpointWithSessionRow } from "@relay/shared"
 import { bootstrapRequestSchema, buildEffectiveProjectState, hashContent, mergeGovernedList, normalizeText } from "@relay/shared"
 
+import { NotFoundError } from "@/server/http/errors"
 import { GEMINI_MODELS, runGeminiJsonWithFallback } from "./gemini-service"
 import { getProjectStateStatus } from "./state-status-service"
 import { stripArrowNotation, truncateSentence, escapeMarkdownInline } from "@relay/shared"
@@ -770,11 +771,11 @@ export async function generateBootstrapForProject(userId: string, projectId: str
   ])
 
   if (!project) {
-    throw new Error("Project not found.")
+    throw new NotFoundError("Project not found.")
   }
 
   if (!profile) {
-    throw new Error("Target profile not found.")
+    throw new NotFoundError("Target profile not found.")
   }
 
   const activeMemoryItems = memoryItems.filter((item) => !item.isArchived)
@@ -982,7 +983,7 @@ export async function getLatestBootstrapForProject(userId: string, projectId: st
   const repositories = createRepositoryBundle(userId)
   const profile = await repositories.targetProfiles.getByKey(targetProfileKey)
   if (!profile) {
-    throw new Error("Target profile not found.")
+    throw new NotFoundError("Target profile not found.")
   }
 
   return repositories.bootstrapPackets.getLatest(projectId, profile.id, kind)
