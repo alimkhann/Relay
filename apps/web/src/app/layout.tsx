@@ -12,12 +12,25 @@ import { LogoPreloader } from "@/components/ui/logo-preloader";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://onrelay.app"),
   title: "Relay",
   description: "Keep your project brief ready for every fresh AI chat.",
   icons: {
     icon: "/images/relay_logo_white.png",
     shortcut: "/images/relay_logo_white.png",
     apple: "/images/relay_logo_white.png",
+  },
+  openGraph: {
+    title: "Relay",
+    description: "Keep your project brief ready for every fresh AI chat.",
+    siteName: "Relay",
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Relay",
+    description: "Keep your project brief ready for every fresh AI chat.",
   },
 };
 

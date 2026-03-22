@@ -9,16 +9,17 @@ export const metadata: Metadata = {
     title: "Relay — Stop repeating yourself to every AI",
     description:
       "Relay captures context from your AI chats and keeps a living project brief synced across ChatGPT, Claude, Cursor, Claude Code, and 20+ tools.",
-    images: [{ url: "/images/hero-bg.jpg", width: 1920, height: 1080 }],
     type: "website",
     url: "https://onrelay.app",
+    siteName: "Relay",
+    locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
     title: "Relay — Stop repeating yourself to every AI",
     description:
       "Relay captures context from your AI chats and keeps a living project brief synced across ChatGPT, Claude, Cursor, Claude Code, and 20+ tools.",
-    images: ["/images/hero-bg.jpg"],
+    creator: "@onrelayapp",
   },
 }
 

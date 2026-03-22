@@ -6,6 +6,10 @@ import { DocsSidebar } from "@/components/docs/docs-sidebar"
 export const metadata: Metadata = {
   title: "Docs — Relay",
   description: "Learn how to set up and use Relay to keep project context synced across all your AI tools.",
+  openGraph: {
+    title: "Docs — Relay",
+    description: "Learn how to set up and use Relay to keep project context synced across all your AI tools.",
+  },
 }
 
 export default function DocsLayout({ children }: { children: React.ReactNode }) {
