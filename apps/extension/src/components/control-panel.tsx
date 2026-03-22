@@ -8,7 +8,6 @@ import { relayFetch } from "../utils/api";
 import {
   getRelaySession,
   setRelaySession,
-  resolveRelayApiBase,
   type RelaySessionState,
 } from "../storage/session";
 import {
@@ -26,10 +25,6 @@ import {
   createExtensionFlowId,
   logExtensionEvent,
 } from "../utils/telemetry";
-import {
-  inferTargetProfile,
-  resolveTargetProfile,
-} from "../utils/target-profile";
 import relayIconUrl from "../../assets/icon.png";
 import styles from "./control-panel.module.css";
 
@@ -204,7 +199,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     useState<RelayActiveProjectState>(emptyActiveState);
   const [status, setStatus] = useState("Relay stays quiet until it is useful.");
   const [busy, setBusy] = useState(false);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [deviceName, setDeviceName] = useState("");
   const [projectSwitcherOpen, setProjectSwitcherOpen] = useState(false);
   const [associationAction, setAssociationAction] = useState<
@@ -1276,17 +1270,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     );
   }
 
-  const resolvedTargetProfileKey = resolveTargetProfile({
-    platform: activeState.page.platform,
-    targetMode: session?.targetMode,
-    manualTargetProfileKey: session?.targetProfileKey,
-  });
-  const resolvedTargetLabel = {
-    chatgpt_planning: "ChatGPT Planning",
-    claude_code_build: "Claude Build",
-    codex_implementation: "Codex Build",
-    perplexity_research: "Perplexity Research",
-  }[resolvedTargetProfileKey];
   const selectedProjectId =
     activeState.projectId ??
     session?.projectId ??
@@ -1310,9 +1293,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       activeState.remoteStatus === "stale" ||
       activeState.remoteStatus === "unavailable");
   const insertButtonState = deriveInsertButtonState(activeState);
-  const effectiveApiBase = resolveRelayApiBase({
-    storedApiBase: session?.apiBase ?? null,
-  });
   const shouldRenderAssociationCard = shouldShowAssociationCard({
     onboardingStatus: activeState.onboarding.status,
     supported: activeState.page.supported,
@@ -1987,90 +1967,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             )}
           </section>
 
-          {/* ─── Debug ─── */}
-          <details
-            className={styles.debugPanel}
-            open={advancedOpen}
-            onToggle={(event) =>
-              setAdvancedOpen((event.target as HTMLDetailsElement).open)
-            }
-          >
-            <summary className={styles.summary}>Debug</summary>
-
-            <label className={styles.field}>
-              <span>Target override</span>
-              <select
-                value={
-                  session?.targetMode === "manual"
-                    ? session.targetProfileKey
-                    : ""
-                }
-                onChange={async (event) => {
-                  const nextTarget = event.target.value;
-                  await setRelaySession({
-                    targetMode: nextTarget ? "manual" : "auto",
-                    targetProfileKey: nextTarget,
-                    resolvedTargetProfileKey:
-                      nextTarget ||
-                      inferTargetProfile(activeState.page.platform),
-                  });
-                  await refreshLocalSession();
-                }}
-              >
-                <option value="">Automatic</option>
-                <option value="chatgpt_planning">ChatGPT planning</option>
-                <option value="claude_code_build">Claude build</option>
-                <option value="codex_implementation">Codex build</option>
-                <option value="perplexity_research">Perplexity research</option>
-              </select>
-            </label>
-
-            <div className={styles.advancedButtons}>
-              <button
-                className={styles.secondaryButton}
-                disabled={
-                  busy || !activeState.projectId || !activeState.page.supported
-                }
-                onClick={() => void captureNow()}
-              >
-                Capture now
-              </button>
-              <button
-                className={styles.secondaryButton}
-                disabled={busy}
-                onClick={() => void refreshRemoteSession()}
-              >
-                Refresh session
-              </button>
-            </div>
-
-            <div className={styles.debugCard}>
-              <p>{status}</p>
-              <p>API base: {effectiveApiBase}</p>
-              <p>Auth provider: {extensionAuthProvider}</p>
-              <p>Remote: {activeState.remoteStatus}</p>
-              <p>Connected: {session?.connected ? "yes" : "no"}</p>
-              <p>
-                Target: {session?.targetMode === "manual" ? "Manual" : "Auto"} ·{" "}
-                {resolvedTargetLabel}
-              </p>
-              <p>Shortcut: {activeState.shortcutLabel}</p>
-              {activeState.issue ? (
-                <p>Issue: {activeState.issue.detail}</p>
-              ) : null}
-              {activeState.lastSuccessfulSyncAt ? (
-                <p>
-                  Last sync:{" "}
-                  {new Date(
-                    activeState.lastSuccessfulSyncAt,
-                  ).toLocaleTimeString()}
-                </p>
-              ) : null}
-              {session?.limitedMode ? (
-                <p>Fallback: saved context only</p>
-              ) : null}
-            </div>
-          </details>
         </>
       )}
     </div>
