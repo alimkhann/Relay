@@ -4,6 +4,14 @@ import { toMemoryRelationRow, toMemoryRow } from "../mappers/memory-mapper"
 import type { DatabaseProvider } from "../store/provider"
 import { encryptTextIfConfigured } from "../utils/encrypted-text"
 
+/** Columns to select for general memory queries — excludes the large `embedding` vector column */
+const MEMORY_COLS = `id, project_id, source_turn_id, type, title, content, pinned, is_archived, sort_order, tags, metadata, created_by, created_at, updated_at, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector, embedding_model`
+
+/** Same columns but prefixed with a table alias for JOINed queries */
+function prefixCols(alias: string) {
+  return MEMORY_COLS.split(", ").map((c) => `${alias}.${c}`).join(", ")
+}
+
 export interface MemorySearchResult extends MemoryItemRow {
   rank: number
 }
@@ -18,7 +26,7 @@ export class MemoryRepository {
 
   async getById(id: string): Promise<MemoryItemRow | null> {
     const rows = await this.provider.query(
-      `select *
+      `select ${MEMORY_COLS}
        from memory_items
        where id = $1
        limit 1`,
@@ -31,7 +39,7 @@ export class MemoryRepository {
 
   async listByProject(projectId: string): Promise<MemoryItemRow[]> {
     const rows = await this.provider.query(
-      `select *
+      `select ${MEMORY_COLS}
        from memory_items
        where project_id = $1
          and is_archived = false
@@ -49,7 +57,7 @@ export class MemoryRepository {
     const rows = await this.provider.query(
       `insert into memory_items (project_id, source_turn_id, type, title, content, pinned, tags, metadata, created_by, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector)
        values ($1, $2, $3, $4, $5, $6, $7::text[], $8::jsonb, $9, $10, $11, $12, coalesce($13::timestamptz, now()), $14::text[], to_tsvector('english', coalesce($4, '') || ' ' || $15))
-       returning *`,
+       returning ${MEMORY_COLS}`,
       [
         input.projectId,
         input.sourceTurnId ?? null,
@@ -109,7 +117,7 @@ export class MemoryRepository {
     const rows = await this.provider.query(
       `insert into memory_items (project_id, source_turn_id, type, title, content, pinned, tags, metadata, created_by, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector)
        values ${placeholders.join(", ")}
-       returning *`,
+       returning ${MEMORY_COLS}`,
       params
     )
 
@@ -136,7 +144,7 @@ export class MemoryRepository {
             search_vector = case when $18::text is not null then to_tsvector('english', coalesce(case when $2::boolean then null else coalesce($3, title) end, '') || ' ' || $18) else search_vector end,
             updated_at = now()
         where id = $1
-        returning *`,
+        returning ${MEMORY_COLS}`,
       [
         id,
         patch.title === null,
@@ -189,7 +197,7 @@ export class MemoryRepository {
     params.push(limit)
 
     const rows = await this.provider.query(
-      `select *, ts_rank(search_vector, plainto_tsquery('english', $2)) as rank
+      `select ${MEMORY_COLS}, ts_rank(search_vector, plainto_tsquery('english', $2)) as rank
        from memory_items
        where ${conditions.join(" and ")}
        order by pinned desc, rank desc
@@ -263,7 +271,7 @@ export class MemoryRepository {
     const limit = options?.limit ?? 10
 
     const rows = await this.provider.query(
-      `select m.*, 1 - (m.embedding <=> ref.embedding) as similarity
+      `select ${prefixCols("m")}, 1 - (m.embedding <=> ref.embedding) as similarity
        from memory_items m, memory_items ref
        where ref.id = $1
          and m.id != $1
@@ -312,7 +320,7 @@ export class MemoryRepository {
     params.push(limit)
 
     const rows = await this.provider.query(
-      `select *, 1 - (embedding <=> $2::vector) as similarity
+      `select ${MEMORY_COLS}, 1 - (embedding <=> $2::vector) as similarity
        from memory_items
        where ${conditions.join(" and ")}
        order by embedding <=> $2::vector
@@ -380,7 +388,7 @@ export class MemoryRepository {
          from (select * from semantic union all select * from lexical) u
          group by id
        )
-       select m.*, c.score as similarity, c.match_type
+       select ${prefixCols("m")}, c.score as similarity, c.match_type
        from combined c
        join memory_items m on m.id = c.id
        order by m.pinned desc, c.score desc
@@ -405,7 +413,7 @@ export class MemoryRepository {
       `insert into memory_relations (source_id, target_id, relation_type, confidence)
        values ($1, $2, $3, $4)
        on conflict (source_id, target_id, relation_type) do update set confidence = $4
-       returning *`,
+       returning ${MEMORY_COLS}`,
       [sourceId, targetId, relationType, confidence ?? 1.0]
     )
 
@@ -465,7 +473,7 @@ export class MemoryRepository {
 
   async getItemsWithoutEmbeddings(limit?: number): Promise<MemoryItemRow[]> {
     const rows = await this.provider.query(
-      `select * from memory_items
+      `select ${MEMORY_COLS} from memory_items
        where embedding is null
          and is_archived = false
        order by created_at desc
