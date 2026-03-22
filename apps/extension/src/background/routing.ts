@@ -34,6 +34,7 @@ interface CandidateScore {
   bootstrapDescriptionOverlap: number
   wholeChatExactMention: boolean
   domainMatchApplied: boolean
+  signalCategories: Set<"name" | "title" | "description" | "context" | "binding" | "association">
 }
 
 interface EvaluateProjectRoutingInput {
@@ -51,25 +52,45 @@ const STOP_WORDS = new Set([
   "again",
   "also",
   "and",
+  "best",
   "build",
   "chat",
   "continue",
+  "create",
   "current",
+  "find",
   "from",
+  "get",
+  "good",
   "have",
+  "help",
   "into",
   "just",
+  "like",
+  "make",
   "more",
+  "need",
   "next",
   "open",
   "page",
+  "plan",
+  "progress",
   "project",
+  "run",
   "save",
+  "set",
+  "show",
+  "start",
+  "test",
   "that",
   "them",
   "then",
   "they",
   "this",
+  "track",
+  "using",
+  "want",
+  "way",
   "what",
   "when",
   "where",
@@ -205,6 +226,7 @@ function scoreApprovedAssociation(
   if (association.key && association.key === buildAssociationComparisonKey(page)) {
     candidate.score += 120
     candidate.highConfidenceEligible = true
+    candidate.signalCategories.add("association")
     pushReason(candidate, "Matched a previously approved chat fingerprint.")
     return
   }
@@ -212,6 +234,7 @@ function scoreApprovedAssociation(
   if (page.pageFingerprint && association.pageFingerprint === page.pageFingerprint) {
     candidate.score += 100
     candidate.highConfidenceEligible = true
+    candidate.signalCategories.add("association")
     pushReason(candidate, "Matched an approved chat fingerprint on this platform.")
     return
   }
@@ -219,6 +242,7 @@ function scoreApprovedAssociation(
   if (page.sourceConversationId && association.sourceConversationId === page.sourceConversationId) {
     candidate.score += 104
     candidate.highConfidenceEligible = true
+    candidate.signalCategories.add("association")
     pushReason(candidate, "Matched a previously approved conversation identity.")
     return
   }
@@ -226,12 +250,14 @@ function scoreApprovedAssociation(
   if (page.url && association.url === page.url) {
     candidate.score += 84
     candidate.highConfidenceEligible = true
+    candidate.signalCategories.add("association")
     pushReason(candidate, "Matched an approved chat URL.")
     return
   }
 
   if (page.pathname && association.pathname === page.pathname && association.platform === page.platform) {
     candidate.score += 58
+    candidate.signalCategories.add("association")
     pushReason(candidate, "Matched a recent approved path on this platform.")
     return
   }
@@ -245,6 +271,7 @@ function scoreApprovedAssociation(
   ) {
     candidate.score += 8
     candidate.domainMatchApplied = true
+    candidate.signalCategories.add("association")
     pushReason(candidate, "Shares a recent approved domain and platform.")
   }
 }
@@ -264,6 +291,7 @@ function scoreProjectCandidate(
     bootstrapDescriptionOverlap: 0,
     wholeChatExactMention: false,
     domainMatchApplied: false,
+    signalCategories: new Set(),
   }
   const projectTokens = collectProjectTokens(project)
   const descriptionTokens = collectProjectDescriptionTokens(project)
@@ -287,6 +315,7 @@ function scoreProjectCandidate(
     candidate.score += candidate.phase === "bootstrap" ? 42 : 34
     candidate.highConfidenceEligible = true
     candidate.explicitNameSignal = true
+    candidate.signalCategories.add("name")
     pushReason(candidate, "The project name appears verbatim in the current chat.")
   }
 
@@ -297,6 +326,7 @@ function scoreProjectCandidate(
       candidate.highConfidenceEligible = true
     }
     candidate.explicitNameSignal = true
+    candidate.signalCategories.add("title")
     pushReason(candidate, "Project name overlaps with the chat title.")
   }
 
@@ -310,6 +340,7 @@ function scoreProjectCandidate(
       candidate.highConfidenceEligible = true
     }
     candidate.explicitNameSignal = true
+    candidate.signalCategories.add("name")
     pushReason(candidate, "The latest user turn mentions the project.")
   }
 
@@ -323,6 +354,7 @@ function scoreProjectCandidate(
       candidate.highConfidenceEligible = true
     }
     candidate.explicitNameSignal = true
+    candidate.signalCategories.add("name")
     pushReason(candidate, "Recent chat turns mention the project.")
   }
 
@@ -334,12 +366,14 @@ function scoreProjectCandidate(
     candidate.highConfidenceEligible = true
     candidate.explicitNameSignal = true
     candidate.wholeChatExactMention = true
+    candidate.signalCategories.add("name")
     pushReason(candidate, "A visible chat turn mentions the project by name.")
   }
 
   const pathOverlap = overlapCount(projectTokens, pathTokens)
   if (pathOverlap > 0) {
     candidate.score += Math.min(candidate.phase === "bootstrap" ? 18 : 12, pathOverlap * 6)
+    candidate.signalCategories.add("name")
     pushReason(candidate, "Project name overlaps with the route or URL.")
   }
 
@@ -357,6 +391,7 @@ function scoreProjectCandidate(
       candidate.highConfidenceEligible = true
     }
     candidate.bootstrapDescriptionOverlap += descriptionTitleOverlap
+    candidate.signalCategories.add("description")
     pushReason(candidate, "The project description overlaps with the chat title.")
   }
 
@@ -374,6 +409,7 @@ function scoreProjectCandidate(
       candidate.highConfidenceEligible = true
     }
     candidate.bootstrapDescriptionOverlap += descriptionRecentWindowOverlap
+    candidate.signalCategories.add("description")
     pushReason(candidate, "Recent chat turns overlap with the project description.")
   }
 
@@ -384,6 +420,7 @@ function scoreProjectCandidate(
       descriptionPathOverlap * 3
     )
     candidate.bootstrapDescriptionOverlap += descriptionPathOverlap
+    candidate.signalCategories.add("description")
     pushReason(candidate, "The route overlaps with the project description.")
   }
 
@@ -404,6 +441,7 @@ function scoreProjectCandidate(
       candidate.highConfidenceEligible = true
     }
     candidate.bootstrapDescriptionOverlap += descriptionWholeChatOverlap
+    candidate.signalCategories.add("description")
     pushReason(candidate, "Visible chat turns overlap with the project description.")
   }
 
@@ -419,6 +457,7 @@ function scoreProjectCandidate(
     if (contextTitleOverlap >= 2) {
       candidate.highConfidenceEligible = true
     }
+    candidate.signalCategories.add("context")
     pushReason(candidate, "The chat title overlaps with saved project context.")
   }
 
@@ -427,11 +466,13 @@ function scoreProjectCandidate(
     if (contextUserOverlap >= 2) {
       candidate.highConfidenceEligible = true
     }
+    candidate.signalCategories.add("context")
     pushReason(candidate, "Recent chat turns overlap with saved project context.")
   }
 
   if (candidate.phase === "context-aware" && contextPathOverlap > 0) {
     candidate.score += Math.min(10, contextPathOverlap * 4)
+    candidate.signalCategories.add("context")
     pushReason(candidate, "The route overlaps with saved project context.")
   }
 
@@ -439,24 +480,40 @@ function scoreProjectCandidate(
   if (input.boundProject?.projectId === project.id && allowWeakAffinity) {
     if (input.boundProject.bindingKind === "tab") {
       candidate.score += 10
+      candidate.signalCategories.add("binding")
       pushReason(candidate, "This tab is already linked to the project.")
     } else if (input.boundProject.bindingKind === "domain") {
       candidate.score += candidate.phase === "context-aware" ? 6 : 3
+      candidate.signalCategories.add("binding")
       pushReason(candidate, "This domain was previously linked to the project.")
     } else {
       candidate.score += 4
+      candidate.signalCategories.add("binding")
       pushReason(candidate, "This project was manually chosen recently.")
     }
   }
 
   if (input.lastTabProjectId === project.id && allowWeakAffinity) {
     candidate.score += 3
+    candidate.signalCategories.add("binding")
     pushReason(candidate, "This tab was recently associated with the project.")
   }
 
   if (input.selectedProjectId === project.id && allowWeakAffinity) {
     candidate.score += 2
+    candidate.signalCategories.add("binding")
     pushReason(candidate, "This is the currently selected project.")
+  }
+
+  // Cap description-only scoring: if the ONLY signals are from description overlap
+  // (no name, title, context, or binding), cap score at 40 to prevent pure
+  // description matching from reaching auto-save thresholds
+  const nonDescriptionCategories = new Set(candidate.signalCategories)
+  nonDescriptionCategories.delete("description")
+  nonDescriptionCategories.delete("association")
+  if (candidate.signalCategories.has("description") && nonDescriptionCategories.size === 0) {
+    candidate.score = Math.min(candidate.score, 40)
+    candidate.highConfidenceEligible = false
   }
 
   return candidate
@@ -472,10 +529,21 @@ function resolveConfidence(
   const strongBootstrapEvidence =
     top.explicitNameSignal || top.bootstrapDescriptionOverlap >= 3
 
+  // Association matches are inherently high-confidence — skip diversity check
+  const hasAssociationMatch = top.signalCategories.has("association")
+
+  // For auto-save, require at least 2 distinct content signal categories
+  // (name, title, description, context) unless backed by an association match
+  const contentCategories = new Set(top.signalCategories)
+  contentCategories.delete("binding")
+  contentCategories.delete("association")
+  const hasSignalDiversity = hasAssociationMatch || contentCategories.size >= 2
+
   if (
     top.highConfidenceEligible &&
     top.score >= (top.phase === "bootstrap" ? 70 : 68) &&
-    scoreGap >= (top.phase === "bootstrap" ? 18 : 12)
+    scoreGap >= (top.phase === "bootstrap" ? 18 : 12) &&
+    hasSignalDiversity
   ) {
     return "high" as const
   }
@@ -484,7 +552,8 @@ function resolveConfidence(
     top.phase === "bootstrap" &&
     strongBootstrapEvidence &&
     top.score >= 24 &&
-    scoreGap >= (workspaceIsEffectivelySingleProject ? 4 : 8)
+    scoreGap >= (workspaceIsEffectivelySingleProject ? 4 : 8) &&
+    hasSignalDiversity
   ) {
     return "high" as const
   }

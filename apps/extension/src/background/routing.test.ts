@@ -245,8 +245,10 @@ describe("evaluateProjectRouting", () => {
       approvedAssociations: []
     })
 
-    expect(result.mode).toBe("auto-save")
-    expect(result.confidence).toBe("high")
+    // Description-only overlap (no name/title/context signal) caps at hold
+    // to prevent incidental keyword overlap from triggering auto-save
+    expect(result.mode).toBe("hold")
+    expect(result.confidence).toBe("medium")
     expect(result.candidateProjectId).toBe("project_relay_brand")
     expect(
       result.reasons.some((reason) =>
