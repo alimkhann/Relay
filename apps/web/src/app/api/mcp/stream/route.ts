@@ -42,6 +42,7 @@ function registerHttpTools(
     "list_projects",
     "List all Relay projects you have access to.",
     {},
+    { readOnlyHint: true, destructiveHint: false },
     async () => {
       const projects = await client.listProjects()
       return {
@@ -52,13 +53,14 @@ function registerHttpTools(
 
   server.tool(
     "get_brief",
-    "Fetch a project context brief from Relay.",
+    "Fetch a project context brief — decisions, constraints, progress, and memory items formatted for an AI coding session.",
     {
-      projectId: z.string().optional().describe("Project ID"),
+      projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
       kind: z.string().optional().describe("Brief kind: fresh_chat_bootstrap or quick_continuity"),
-      targetProfileKey: z.string().optional().describe("Target profile key"),
-      include: z.array(z.string()).optional().describe("Extra data to include"),
+      targetProfileKey: z.string().optional().describe("Target profile key for formatting"),
+      include: z.array(z.string()).optional().describe("Extra sections to include in the brief"),
     },
+    { readOnlyHint: true, destructiveHint: false },
     async (args) => {
       const pid = await resolveProjectId(args.projectId)
       const brief = await client.getBrief(pid, args as Record<string, unknown>)
@@ -70,10 +72,11 @@ function registerHttpTools(
 
   server.tool(
     "get_project_state",
-    "Get full structured project state.",
+    "Get full structured project state including overview, objectives, decisions, constraints, and tasks.",
     {
-      projectId: z.string().optional().describe("Project ID"),
+      projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
     },
+    { readOnlyHint: true, destructiveHint: false },
     async (args) => {
       const pid = await resolveProjectId(args.projectId)
       const state = await client.getProjectState(pid)
@@ -85,14 +88,15 @@ function registerHttpTools(
 
   server.tool(
     "search_context",
-    "Search memory items by keyword.",
+    "Search memory items by keyword or semantic query. Returns matching decisions, constraints, tasks, notes, and other memory items.",
     {
-      projectId: z.string().optional().describe("Project ID"),
-      query: z.string().describe("Search query"),
-      types: z.array(z.string()).optional().describe("Filter by types"),
-      tags: z.array(z.string()).optional().describe("Filter by tags"),
-      limit: z.number().optional().describe("Max results"),
+      projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
+      query: z.string().describe("Search query to find relevant memory items"),
+      types: z.array(z.string()).optional().describe("Filter by memory types: decision, constraint, task, note, artifact, requirement"),
+      tags: z.array(z.string()).optional().describe("Filter by tags attached to memory items"),
+      limit: z.number().optional().describe("Maximum number of results to return"),
     },
+    { readOnlyHint: true, destructiveHint: false },
     async (args) => {
       const pid = await resolveProjectId(args.projectId)
       const results = await client.searchMemory(pid, args.query, {
@@ -108,14 +112,15 @@ function registerHttpTools(
 
   server.tool(
     "add_memory",
-    "Add a memory item to the project.",
+    "Add a memory item to the project. Use this to persist decisions, constraints, tasks, or notes discovered during the session.",
     {
-      projectId: z.string().optional().describe("Project ID"),
-      type: z.string().describe("Memory type: decision, constraint, task, note, artifact, requirement"),
-      content: z.string().describe("Memory content"),
-      title: z.string().optional().describe("Optional title"),
-      tags: z.array(z.string()).optional().describe("Tags"),
+      projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
+      type: z.string().describe("Memory type: decision, constraint, task, note, artifact, or requirement"),
+      content: z.string().describe("The memory content to store"),
+      title: z.string().optional().describe("Short title for the memory item"),
+      tags: z.array(z.string()).optional().describe("Tags for categorizing and searching"),
     },
+    { readOnlyHint: false, destructiveHint: false },
     async (args) => {
       const pid = await resolveProjectId(args.projectId)
       const item = await client.addMemory(pid, {
@@ -132,16 +137,17 @@ function registerHttpTools(
 
   server.tool(
     "save_context",
-    "Save a structured session summary.",
+    "Save a structured session summary with decisions, progress, next steps, and constraints. Call this at the end of a coding session.",
     {
-      projectId: z.string().optional().describe("Project ID"),
-      summary: z.string().optional().describe("Session summary"),
-      decisions: z.array(z.string()).optional().describe("Decisions made"),
-      progress: z.string().optional().describe("Progress description"),
-      nextSteps: z.array(z.string()).optional().describe("Next steps"),
-      constraints: z.array(z.string()).optional().describe("Constraints"),
-      notes: z.array(z.string()).optional().describe("Notes"),
+      projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
+      summary: z.string().optional().describe("High-level session summary"),
+      decisions: z.array(z.string()).optional().describe("Decisions made during the session"),
+      progress: z.string().optional().describe("Description of progress made"),
+      nextSteps: z.array(z.string()).optional().describe("Tasks or next steps identified"),
+      constraints: z.array(z.string()).optional().describe("Constraints discovered during the session"),
+      notes: z.array(z.string()).optional().describe("General notes or observations"),
     },
+    { readOnlyHint: false, destructiveHint: false },
     async (args) => {
       const pid = await resolveProjectId(args.projectId)
       await client.saveContext(pid, args as Record<string, unknown>)
@@ -153,14 +159,15 @@ function registerHttpTools(
 
   server.tool(
     "manage_memory",
-    "Update, delete, or archive memory items.",
+    "Update, delete, or archive an existing memory item by its ID.",
     {
-      action: z.string().describe("Action: update, delete, archive"),
-      memoryId: z.string().describe("Memory item ID"),
-      content: z.string().optional().describe("Updated content (for update)"),
-      title: z.string().optional().describe("Updated title (for update)"),
-      tags: z.array(z.string()).optional().describe("Updated tags (for update)"),
+      action: z.string().describe("Action to perform: update, delete, or archive"),
+      memoryId: z.string().describe("The ID of the memory item to manage"),
+      content: z.string().optional().describe("New content (for update action)"),
+      title: z.string().optional().describe("New title (for update action)"),
+      tags: z.array(z.string()).optional().describe("New tags (for update action)"),
     },
+    { readOnlyHint: false, destructiveHint: true },
     async (args) => {
       await client.manageMemory(args as Record<string, unknown>)
       return {
@@ -173,10 +180,11 @@ function registerHttpTools(
     "update_project",
     "Update a project's name or description.",
     {
-      projectId: z.string().optional().describe("Project ID"),
-      name: z.string().optional().describe("New name"),
-      description: z.string().optional().describe("New description"),
+      projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
+      name: z.string().optional().describe("New project name"),
+      description: z.string().optional().describe("New project description"),
     },
+    { readOnlyHint: false, destructiveHint: false },
     async (args) => {
       const pid = await resolveProjectId(args.projectId)
       await client.updateProject(pid, {
@@ -193,9 +201,10 @@ function registerHttpTools(
     "recall_context",
     "Search memory and retrieve project state in one call. Use before making decisions to check for existing constraints and context.",
     {
-      projectId: z.string().optional().describe("Project ID"),
+      projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
       query: z.string().describe("What to search for in project memory"),
     },
+    { readOnlyHint: true, destructiveHint: false },
     async (args) => {
       const pid = await resolveProjectId(args.projectId)
       const result = await client.recallContext(pid, args.query)
