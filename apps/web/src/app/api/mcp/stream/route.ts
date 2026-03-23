@@ -16,7 +16,7 @@ function createHttpMcpServer(viewer: Viewer) {
   const client = new RelayHttpMcpClient(viewer)
   const server = new McpServer({
     name: "relay",
-    version: "0.1.0"
+    version: "0.2.0"
   })
 
   const projectId = viewer.projectId
@@ -28,6 +28,7 @@ function createHttpMcpServer(viewer: Viewer) {
   }
 
   registerHttpTools(server, client, resolveProjectId)
+  registerHttpPrompts(server)
 
   return server
 }
@@ -186,6 +187,63 @@ function registerHttpTools(
         content: [{ type: "text" as const, text: "Project updated successfully." }]
       }
     }
+  )
+
+  server.tool(
+    "recall_context",
+    "Search memory and retrieve project state in one call. Use before making decisions to check for existing constraints and context.",
+    {
+      projectId: z.string().optional().describe("Project ID"),
+      query: z.string().describe("What to search for in project memory"),
+    },
+    async (args) => {
+      const pid = await resolveProjectId(args.projectId)
+      const result = await client.recallContext(pid, args.query)
+      return {
+        content: [{ type: "text" as const, text: result }]
+      }
+    }
+  )
+}
+
+const SESSION_GUIDELINES = `# Relay Session Guidelines
+
+You have access to Relay, a project memory system that keeps context synchronized across coding sessions and AI tools.
+
+## Recommended Workflow
+
+### At Session Start
+- Call \`get_brief\` to load the current project context, decisions, constraints, and recent progress.
+
+### During the Session
+- Before making architectural decisions, call \`recall_context\` to check for existing decisions or constraints.
+- When the user makes a new decision or identifies a task, call \`add_memory\` to persist it immediately.
+- Use \`search_context\` to check for duplicates before adding.
+
+### At Session End
+- Call \`save_context\` with a structured summary of what was accomplished, new decisions, and next steps.
+
+## Memory Types
+- **decision**: Architectural or implementation choices
+- **constraint**: Hard limits or requirements
+- **task**: Actionable next steps
+- **note**: General observations or context
+- **requirement**: Product or business requirements
+- **artifact**: Code snippets, schemas, or reference material
+`
+
+function registerHttpPrompts(server: McpServer) {
+  server.prompt(
+    "relay_session_guidelines",
+    "Guidelines for using Relay tools effectively during a coding session.",
+    () => ({
+      messages: [
+        {
+          role: "user" as const,
+          content: { type: "text" as const, text: SESSION_GUIDELINES },
+        },
+      ],
+    })
   )
 }
 

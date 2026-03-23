@@ -112,4 +112,35 @@ export class RelayHttpMcpClient {
       description: input.description,
     })
   }
+
+  async recallContext(projectId: string, query: string): Promise<string> {
+    const repositories = createRepositoryBundle(this.viewer.userId)
+    const [searchResults, state] = await Promise.all([
+      repositories.memory.search(projectId, query, { limit: 5 }),
+      repositories.projectState.getByProject(projectId),
+    ])
+
+    const sections: string[] = []
+
+    if (state) {
+      const stateLines: string[] = []
+      if (state.projectOverview) stateLines.push(`**Overview:** ${state.projectOverview}`)
+      if (state.currentObjective) stateLines.push(`**Current Objective:** ${state.currentObjective}`)
+      if (state.recentProgress) stateLines.push(`**Progress:** ${state.recentProgress}`)
+      if (stateLines.length > 0) {
+        sections.push(`## Project Context\n${stateLines.join("\n")}`)
+      }
+    }
+
+    if (searchResults.length > 0) {
+      const items = searchResults.map((m) =>
+        `- [${m.type}] ${m.title ?? m.content.slice(0, 100)}${m.tags.length > 0 ? ` (${m.tags.join(", ")})` : ""}`
+      )
+      sections.push(`## Matching Memory Items\n${items.join("\n")}`)
+    } else {
+      sections.push("## Matching Memory Items\nNo matching items found.")
+    }
+
+    return sections.join("\n\n")
+  }
 }
