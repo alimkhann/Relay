@@ -1848,7 +1848,7 @@ async function captureTab(projectId: string, tabId: number) {
     sessionId: payload.session?.id ?? null,
     turns: payload.turns?.length ?? result.capture.turns?.length ?? 0,
     digestQueued: Boolean(payload.digestQueued),
-    digestStrategy: (payload.digestStrategy ?? "skip") as "ai" | "deferred" | "deterministic" | "skip",
+    digestStrategy: (payload.digestStrategy ?? "skip") as "ai" | "deferred" | "skip",
     budgetStatus: payload.budgetStatus ?? null,
     stateStatus: payload.stateStatus ?? null,
     reconciliation: payload.reconciliation ?? null,
@@ -2725,7 +2725,6 @@ async function captureObservedChange(
       const digestStatus =
         result.digestStrategy === "ai" ? "analyzed" as const
         : result.digestStrategy === "deferred" ? "queued" as const
-        : result.digestStrategy === "deterministic" ? "saved" as const
         : null;
       if (digestStatus) {
         const CAPTURE_TOAST_MS = digestStatus === "queued" ? 5_000 : 3_000;

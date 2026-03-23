@@ -1,7 +1,7 @@
 import { createRepositoryBundle } from "@relay/db"
 import { capturePayloadSchema, withCaptureSignature } from "@relay/shared"
 
-import { decideDigestStrategy, enqueueDigestJob, runDeterministicDigestInline, runDigestJobInline } from "./digest-service"
+import { decideDigestStrategy, enqueueDigestJob, runDigestJobInline } from "./digest-service"
 import { getProjectStateStatus } from "./state-status-service"
 
 export async function saveCapture(userId: string, input: unknown) {
@@ -54,7 +54,7 @@ export async function saveCapture(userId: string, input: unknown) {
 
   const shouldQueueDigest = latestComparable?.captureSignature !== normalizedInput.session.captureSignature
   let jobId: string | null = null
-  let digestStrategy: "skip" | "deterministic" | "ai" | "deferred" = "skip"
+  let digestStrategy: "skip" | "ai" | "deferred" = "skip"
   let budgetStatus: { aiUsed: number; aiLimit: number; aiRemaining: number; plan: "free" | "pro" } | null = null
 
   if (shouldQueueDigest && normalizedInput.session.captureSignature) {
@@ -73,15 +73,6 @@ export async function saveCapture(userId: string, input: unknown) {
       })
       jobId = job.id
       await runDigestJobInline(repositories, userId, job)
-    } else if (decision.strategy === "deterministic") {
-      const job = await runDeterministicDigestInline(repositories, userId, {
-        projectId: normalizedInput.projectId,
-        sessionId: session.id,
-        captureSignature: normalizedInput.session.captureSignature,
-        digest: decision.deterministicDigest,
-        reason: decision.reason
-      })
-      jobId = job.id
     } else if (decision.strategy === "deferred") {
       const job = await enqueueDigestJob(userId, {
         projectId: normalizedInput.projectId,

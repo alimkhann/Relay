@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ProjectDashboardDto, ProjectStateStatusDto } from "@relay/shared";
-import { RefreshCw, Pencil, Trash2, Maximize2 } from "lucide-react";
-import Link from "next/link";
+import { RefreshCw, Pencil, Trash2 } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 
 import { motion, AnimatePresence } from "motion/react";
@@ -17,8 +16,6 @@ import { DashboardMemoryCard } from "@/features/projects/dashboard-memory-card";
 import { DashboardBriefCard } from "@/features/projects/dashboard-brief-card";
 import { DashboardActivityCard } from "@/features/projects/dashboard-activity-card";
 import { DashboardGovernanceSummary } from "@/features/projects/dashboard-governance-summary";
-import { GraphView } from "@/features/graph";
-import { DashboardTimeline } from "@/features/projects/dashboard-timeline";
 import { cn } from "@/lib/cn";
 import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
@@ -102,7 +99,6 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
-  const [activeView, setActiveView] = useState<"overview" | "graph" | "timeline">("overview");
   const [editingMemory, setEditingMemory] = useState(false);
   const [editingProject, setEditingProject] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -543,127 +539,64 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
         </div>
       </FadeIn>
 
-      {/* ─── View switcher ─── */}
+      {/* ─── Stats row ─── */}
       <FadeIn delay={0.05}>
-        <div className="flex items-center gap-1 border-b border-[var(--relay-line)]">
-          <button
-            type="button"
-            onClick={() => setActiveView("overview")}
-            className={cn(
-              "px-3 py-2 text-[13px] font-medium transition border-b-2 -mb-px",
-              activeView === "overview"
-                ? "border-[var(--relay-accent)] text-[var(--relay-ink)]"
-                : "border-transparent text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
-            )}
-          >
-            Overview
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveView("graph")}
-            className={cn(
-              "px-3 py-2 text-[13px] font-medium transition border-b-2 -mb-px",
-              activeView === "graph"
-                ? "border-[var(--relay-accent)] text-[var(--relay-ink)]"
-                : "border-transparent text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
-            )}
-          >
-            Knowledge Graph
-          </button>
-          {activeView === "graph" && (
-            <Link
-              href={`/projects/${project.id}/graph`}
-              className="ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-[var(--relay-radius-sm)] text-[11px] text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)] transition"
-            >
-              <Maximize2 className="h-3 w-3" />
-              Fullscreen
-            </Link>
-          )}
-          <button
-            type="button"
-            onClick={() => setActiveView("timeline")}
-            className={cn(
-              "px-3 py-2 text-[13px] font-medium transition border-b-2 -mb-px",
-              activeView === "timeline"
-                ? "border-[var(--relay-accent)] text-[var(--relay-ink)]"
-                : "border-transparent text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
-            )}
-          >
-            Timeline
-          </button>
+        <DashboardStats
+          totalChats={totalChats}
+          totalContextItems={totalContextItems}
+          briefStatus={briefStatus}
+          briefGeneratedAt={briefGeneratedAt}
+        />
+      </FadeIn>
+
+      {/* ─── Analytics bar ─── */}
+      <FadeIn delay={0.07}>
+        <DashboardAnalyticsBar
+          sessions={dashboard.sessionHistory.map((s) => ({
+            platform: s.platform,
+            capturedAt: s.capturedAt,
+          }))}
+          digestConfidenceScores={[]}
+        />
+      </FadeIn>
+
+      {/* ─── 2-column: Memory + Brief ─── */}
+      <FadeIn delay={0.1}>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <DashboardMemoryCard
+            projectId={project.id}
+            overview={overview}
+            objective={objective}
+            progress={progress}
+            editingMemory={editingMemory}
+            setEditingMemory={setEditingMemory}
+            onSave={saveStateOverrides}
+            onOverviewChange={setOverview}
+            onObjectiveChange={setObjective}
+            onProgressChange={setProgress}
+            pending={pending}
+          />
+          <DashboardBriefCard
+            projectId={project.id}
+            packets={dashboard.packets}
+            onRegenerate={regenerateBriefs}
+            pending={pending}
+          />
         </div>
       </FadeIn>
 
-      {activeView === "graph" ? (
-        <FadeIn delay={0.1}>
-          <GraphView projectId={project.id} />
-        </FadeIn>
-      ) : activeView === "timeline" ? (
-        <FadeIn delay={0.1}>
-          <DashboardTimeline projectId={project.id} />
-        </FadeIn>
-      ) : (
-        <>
-          {/* ─── Stats row ─── */}
-          <FadeIn delay={0.05}>
-            <DashboardStats
-              totalChats={totalChats}
-              totalContextItems={totalContextItems}
-              briefStatus={briefStatus}
-              briefGeneratedAt={briefGeneratedAt}
-            />
-          </FadeIn>
+      {/* ─── Recent Activity ─── */}
+      <FadeIn delay={0.15}>
+        <DashboardActivityCard
+          sessions={groupedSessions.slice(0, 5)}
+          totalChats={totalChats}
+        />
+      </FadeIn>
 
-          {/* ─── Analytics bar ─── */}
-          <FadeIn delay={0.07}>
-            <DashboardAnalyticsBar
-              sessions={dashboard.sessionHistory.map((s) => ({
-                platform: s.platform,
-                capturedAt: s.capturedAt,
-              }))}
-              digestConfidenceScores={[]}
-            />
-          </FadeIn>
-
-          {/* ─── 2-column: Memory + Brief ─── */}
-          <FadeIn delay={0.1}>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              <DashboardMemoryCard
-                projectId={project.id}
-                overview={overview}
-                objective={objective}
-                progress={progress}
-                editingMemory={editingMemory}
-                setEditingMemory={setEditingMemory}
-                onSave={saveStateOverrides}
-                onOverviewChange={setOverview}
-                onObjectiveChange={setObjective}
-                onProgressChange={setProgress}
-                pending={pending}
-              />
-              <DashboardBriefCard
-                projectId={project.id}
-                packets={dashboard.packets}
-                onRegenerate={regenerateBriefs}
-                pending={pending}
-              />
-            </div>
-          </FadeIn>
-
-          {/* ─── Recent Activity ─── */}
-          <FadeIn delay={0.15}>
-            <DashboardActivityCard
-              sessions={groupedSessions.slice(0, 5)}
-              totalChats={totalChats}
-            />
-          </FadeIn>
-
-          {/* ─── Governance summary ─── */}
-          <FadeIn delay={0.2}>
-            <DashboardGovernanceSummary projectId={project.id} dashboard={dashboard} />
-          </FadeIn>
-        </>
-      )}
+      {/* ─── Governance summary ─── */}
+      <FadeIn delay={0.2}>
+        <DashboardGovernanceSummary projectId={project.id} dashboard={dashboard} />
+      </FadeIn>
 
       {/* ─── Delete confirmation dialog ─── */}
       <Dialog.Root open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

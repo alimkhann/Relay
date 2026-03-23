@@ -6,6 +6,8 @@ export const FREE_LIMITS: EntitlementLimitsDto = {
   captureMonthly: 200,
   mcpReadDaily: 20,
   mcpWriteDaily: 5,
+  aiAnalysesPerProjectDaily: 6,
+  aiAnalysesPerUserDaily: 18,
 }
 
 export const PRO_LIMITS: EntitlementLimitsDto = {
@@ -14,6 +16,8 @@ export const PRO_LIMITS: EntitlementLimitsDto = {
   captureMonthly: 2000,
   mcpReadDaily: 200,
   mcpWriteDaily: 50,
+  aiAnalysesPerProjectDaily: 32,
+  aiAnalysesPerUserDaily: 120,
 }
 
 export const PLAN_PRODUCT_IDS = {

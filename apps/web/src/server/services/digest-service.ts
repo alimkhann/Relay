@@ -36,7 +36,7 @@ interface DigestGenerationResult {
   }
 }
 
-export type DigestExecutionStrategy = "skip" | "deterministic" | "ai" | "deferred"
+export type DigestExecutionStrategy = "skip" | "ai" | "deferred"
 
 export interface DigestBudgetStatus {
   aiUsed: number
@@ -312,10 +312,10 @@ export async function decideDigestStrategy(
     }
   }
 
-  // 6. Deterministic: log-only record, no state merge
+  // 6. Skip: budget exhausted or low signal — notify user, don't create low-quality digest
   return {
-    strategy: "deterministic",
-    reason: "Logged session without state changes (low signal or budget exhausted).",
+    strategy: "skip",
+    reason: "AI budget exhausted. Capture logged but not analyzed.",
     deterministicDigest: deterministic,
     budgetStatus
   }
@@ -628,107 +628,6 @@ async function createMemoryItemsFromDigest(
   return created
 }
 
-export async function runDeterministicDigestInline(
-  repositories: RepositoryBundle,
-  userId: string,
-  input: {
-    projectId: string
-    sessionId: string
-    captureSignature: string
-    digest?: DigestModelShape
-    reason?: string
-  }
-) {
-  const session = await repositories.sessions.getById(input.sessionId)
-  if (!session) {
-    throw new Error("Session not found for deterministic digest.")
-  }
-
-  const [project, turns, existingDigest, projectState] = await Promise.all([
-    repositories.projects.getById(input.projectId),
-    repositories.turns.listBySession(input.sessionId),
-    repositories.sessionDigests.getBySessionId(input.sessionId),
-    repositories.projectState.getByProject(input.projectId)
-  ])
-
-  if (!project) {
-    throw new Error("Project not found for deterministic digest.")
-  }
-
-  const signature =
-    session.captureSignature ??
-    input.captureSignature ??
-    buildCaptureSignature({
-      platform: session.platform,
-      url: session.url,
-      pageFingerprint: session.pageFingerprint,
-      turns: turns.map((turn) => ({
-        role: turn.role,
-        content: turn.content,
-        turnIndex: turn.turnIndex,
-        rawHtml: turn.rawHtml
-      }))
-    })
-
-  const job = await repositories.aiJobs.create({
-    projectId: input.projectId,
-    sessionId: input.sessionId,
-    createdBy: userId,
-    jobKind: "session_digest",
-    inputPayload: {
-      captureSignature: signature,
-      strategy: "deterministic"
-    }
-  })
-
-  await repositories.aiJobs.markRunning(job.id, 1)
-
-  if (existingDigest && existingDigest.sourceSignature === signature) {
-    await repositories.aiJobs.markCompleted(job.id, {
-      actualModel: "deterministic",
-      fallbackUsed: false,
-      tokenUsage: {},
-      outputPayload: buildJobProgress("completed", {
-        model: "deterministic",
-        digestId: existingDigest.id,
-        summaryShort: existingDigest.summaryShort,
-        skipped: true,
-        reason: "Digest already exists for this signature."
-      })
-    })
-
-    return job
-  }
-
-  const digestShape = sanitizeDigest(input.digest ?? deterministicDigest(session, turns, projectState))
-  // Deterministic digests are log-only: create the session_digest record directly
-  // without calling persistDigestResult (which can merge into project state).
-  const digest = await repositories.sessionDigests.create({
-    projectId: input.projectId,
-    sourceSessionId: session.id,
-    sourceSignature: signature,
-    summaryShort: digestShape.summaryShort,
-    structuredDigest: { ...digestShape },
-    confidence: digestShape.confidence ?? 0.24,
-    importanceScore: digestShape.importanceScore,
-    needsProjectStateMerge: false,
-    createdBy: userId
-  })
-
-  await repositories.aiJobs.markCompleted(job.id, {
-    actualModel: "deterministic",
-    fallbackUsed: false,
-    tokenUsage: {},
-    outputPayload: buildJobProgress("completed", {
-      model: "deterministic",
-      digestId: digest.id,
-      summaryShort: digest.summaryShort,
-      reason: input.reason
-    })
-  })
-
-  return job
-}
 
 async function runDigestJobInternal(
   repositories: RepositoryBundle,

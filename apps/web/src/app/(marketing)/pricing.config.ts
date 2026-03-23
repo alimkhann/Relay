@@ -8,6 +8,7 @@ export const PRICING = {
     ctaVariant: "outline" as const,
     features: [
       "Up to 2 active projects",
+      "6 AI analyses / day per project",
       "Standard brief depth",
       "MCP access (read + limited write)",
       "30-day history retention",
@@ -24,6 +25,7 @@ export const PRICING = {
     ctaVariant: "primary" as const,
     features: [
       "Up to 10 active projects",
+      "32 AI analyses / day per project",
       "Deep brief with full history",
       "Full MCP access (read + write)",
       "365-day history retention",

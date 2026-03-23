@@ -42,6 +42,7 @@ export default function PlansDocsPage() {
                 { label: "Active projects", free: "2", pro: "10" },
                 { label: "History retention", free: "30 days", pro: "365 days" },
                 { label: "Captures / month", free: "200", pro: "2,000" },
+                { label: "AI analyses / day", free: "6 / project · 18 total", pro: "32 / project · 120 total" },
                 { label: "MCP reads / day", free: "20", pro: "200" },
                 { label: "MCP writes / day", free: "5", pro: "50" },
                 { label: "Handoff packs", free: "No", pro: "Yes" },

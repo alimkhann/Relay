@@ -1625,23 +1625,27 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 className={styles.budgetLine}
                 data-warning={activeState.lastBudgetStatus.aiRemaining === 0 ? "" : undefined}
               >
-                {activeState.lastBudgetStatus.aiRemaining === 0 &&
-                activeState.lastBudgetStatus.plan === "free" ? (
+                {activeState.lastBudgetStatus.aiRemaining === 0 ? (
                   <span>
-                    AI analyses used up today ·{" "}
-                    <a
-                      href="https://www.onrelay.app/pricing"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={styles.upgradeLink}
-                    >
-                      Upgrade for {activeState.lastBudgetStatus.aiLimit === 6 ? "120" : "more"}/day
-                    </a>
+                    AI analyses used up today — resets at midnight UTC
+                    {activeState.lastBudgetStatus.plan === "free" ? (
+                      <>
+                        {" · "}
+                        <a
+                          href="https://www.onrelay.app/pricing"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={styles.upgradeLink}
+                        >
+                          Upgrade for 32/project · 120/day
+                        </a>
+                      </>
+                    ) : null}
                   </span>
                 ) : (
                   <span>
                     ⚡ {activeState.lastBudgetStatus.aiRemaining}/
-                    {activeState.lastBudgetStatus.aiLimit} AI analyses
+                    {activeState.lastBudgetStatus.aiLimit} analyses today
                     {activeState.lastBudgetStatus.plan === "free" ? (
                       <>
                         {" · "}

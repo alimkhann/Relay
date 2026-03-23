@@ -8,6 +8,8 @@ export interface EntitlementLimitsDto {
   captureMonthly: number
   mcpReadDaily: number
   mcpWriteDaily: number
+  aiAnalysesPerProjectDaily: number
+  aiAnalysesPerUserDaily: number
 }
 
 export interface UserEntitlementsDto {
@@ -40,5 +42,6 @@ export interface BillingStatusDto {
     mcpWritesToday: number
     handoffsThisMonth: number
     activeProjects: number
+    aiAnalysesToday: number
   }
 }

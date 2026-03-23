@@ -61,10 +61,13 @@ export async function getBillingStatusForUser(userId: string): Promise<BillingSt
     repositories.projects.listByOwner(userId),
   ])
 
-  const capturesThisMonth = await getUsageCount(userId, "capture_monthly", "month")
-  const mcpReadsToday = await getUsageCount(userId, "mcp_read_daily", "day")
-  const mcpWritesToday = await getUsageCount(userId, "mcp_write_daily", "day")
-  const handoffsThisMonth = await getUsageCount(userId, "handoff_monthly", "month")
+  const [capturesThisMonth, mcpReadsToday, mcpWritesToday, handoffsThisMonth, aiAnalysesToday] = await Promise.all([
+    getUsageCount(userId, "capture_monthly", "month"),
+    getUsageCount(userId, "mcp_read_daily", "day"),
+    getUsageCount(userId, "mcp_write_daily", "day"),
+    getUsageCount(userId, "handoff_monthly", "month"),
+    repositories.aiJobs.countRecentAiDigestRunsByUser(userId, 24),
+  ])
 
   return {
     entitlements,
@@ -79,6 +82,7 @@ export async function getBillingStatusForUser(userId: string): Promise<BillingSt
       mcpWritesToday,
       handoffsThisMonth,
       activeProjects: activeProjects.filter((project) => !project.isArchived).length,
+      aiAnalysesToday,
     },
   }
 }

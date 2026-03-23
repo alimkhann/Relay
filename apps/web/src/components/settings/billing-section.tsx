@@ -176,6 +176,13 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
         periodLabel: "/ day",
         upgradeCopy: `unlock ${50} MCP writes per day`,
       },
+      {
+        label: "AI analyses",
+        used: usage.aiAnalysesToday,
+        limit: entitlements.limits.aiAnalysesPerUserDaily,
+        periodLabel: "/ day",
+        upgradeCopy: `unlock ${120} AI analyses per day`,
+      },
     ],
     [entitlements.limits, usage],
   )
