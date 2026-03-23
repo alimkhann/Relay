@@ -42,9 +42,13 @@ function registerHttpTools(
   server.tool(
     "project.list",
     "List all Relay projects you have access to. Returns project IDs, names, slugs, and descriptions.",
+    {
+      limit: z.number().optional().describe("Maximum number of projects to return"),
+    },
     { readOnlyHint: true, destructiveHint: false },
-    async () => {
-      const projects = await client.listProjects()
+    async (args) => {
+      let projects = await client.listProjects()
+      if (args.limit && args.limit > 0) projects = projects.slice(0, args.limit)
       return {
         content: [{ type: "text" as const, text: JSON.stringify(projects, null, 2) }]
       }
