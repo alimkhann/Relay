@@ -9,7 +9,8 @@ export const addMemorySchema = z.object({
   content: z.string().describe("Memory item content"),
   title: z.string().optional().describe("Optional title for the memory item"),
   pinned: z.boolean().optional().describe("Whether to pin this memory item"),
-  tags: z.array(z.string()).optional().describe("Tags for categorization and search (e.g., ['auth', 'security'])")
+  tags: z.array(z.string()).optional().describe("Tags for categorization and search (e.g., ['auth', 'security'])"),
+  forgetAfter: z.string().datetime().optional().describe("ISO timestamp after which this memory auto-archives. Use for temporary decisions or time-bound context.")
 })
 
 interface CreateMemoryResponse {
@@ -45,7 +46,8 @@ export async function addMemory(
       },
       // Source provenance: mark as MCP-sourced
       sourceSurface: "mcp",
-      capturedAt: new Date().toISOString()
+      capturedAt: new Date().toISOString(),
+      forgetAfter: args.forgetAfter ?? null
     }
   )
 

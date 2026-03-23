@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import Link from "next/link"
 
 import type { MemoryItemType } from "@relay/shared"
 
@@ -17,10 +18,12 @@ interface MemoryGraphProps {
   data: GraphApiResponse | null
   loading?: boolean
   onNodeSelect?: (nodeId: string | null) => void
+  projectId?: string
+  fullscreen?: boolean
   className?: string
 }
 
-export function MemoryGraph({ data, loading, onNodeSelect, className }: MemoryGraphProps) {
+export function MemoryGraph({ data, loading, onNodeSelect, projectId, fullscreen, className }: MemoryGraphProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const simulatedNodesRef = useRef<GraphNode[]>([])
   const [filters, setFilters] = useState<MemoryItemType[]>([])
@@ -185,6 +188,23 @@ export function MemoryGraph({ data, loading, onNodeSelect, className }: MemoryGr
         >
           Re-layout
         </button>
+        {projectId && (
+          fullscreen ? (
+            <Link
+              href={`/dashboard?project=${projectId}`}
+              className="h-6 rounded-[var(--relay-radius-sm)] px-2 text-[10px] font-medium text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)] transition inline-flex items-center"
+            >
+              Back
+            </Link>
+          ) : (
+            <Link
+              href={`/projects/${projectId}/graph`}
+              className="h-6 rounded-[var(--relay-radius-sm)] px-2 text-[10px] font-medium text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)] transition inline-flex items-center"
+            >
+              Fullscreen
+            </Link>
+          )
+        )}
       </div>
 
       {/* Canvas */}

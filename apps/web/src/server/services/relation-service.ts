@@ -111,6 +111,23 @@ export async function detectRelations(
     )
 
     relations.push(relation)
+
+    // Auto-archive superseded items with high confidence
+    if (classification.relationType === "supersedes" && confidence > 0.75) {
+      try {
+        await repos.memory.update(candidate.id, {
+          isArchived: true,
+          metadata: {
+            ...(candidate.metadata ?? {}),
+            archivedBy: "supersession",
+            supersededBy: newItem.id,
+          },
+        })
+        console.log(LOG_PREFIX, `auto-archived superseded item ${candidate.id}`)
+      } catch (error) {
+        console.error(LOG_PREFIX, `failed to auto-archive ${candidate.id}:`, (error as Error).message)
+      }
+    }
   }
 
   console.log(LOG_PREFIX, `created ${relations.length} relations for ${newItem.id}`)

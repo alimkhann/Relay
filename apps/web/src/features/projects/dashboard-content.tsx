@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ProjectDashboardDto, ProjectStateStatusDto } from "@relay/shared";
-import { RefreshCw, Pencil, Trash2 } from "lucide-react";
+import { RefreshCw, Pencil, Trash2, Maximize2 } from "lucide-react";
+import Link from "next/link";
 import * as Dialog from "@radix-ui/react-dialog";
 
 import { motion, AnimatePresence } from "motion/react";
@@ -17,6 +18,7 @@ import { DashboardBriefCard } from "@/features/projects/dashboard-brief-card";
 import { DashboardActivityCard } from "@/features/projects/dashboard-activity-card";
 import { DashboardGovernanceSummary } from "@/features/projects/dashboard-governance-summary";
 import { GraphView } from "@/features/graph";
+import { DashboardTimeline } from "@/features/projects/dashboard-timeline";
 import { cn } from "@/lib/cn";
 import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
@@ -100,7 +102,7 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
-  const [activeView, setActiveView] = useState<"overview" | "graph">("overview");
+  const [activeView, setActiveView] = useState<"overview" | "graph" | "timeline">("overview");
   const [editingMemory, setEditingMemory] = useState(false);
   const [editingProject, setEditingProject] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -568,12 +570,37 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
           >
             Knowledge Graph
           </button>
+          {activeView === "graph" && (
+            <Link
+              href={`/projects/${project.id}/graph`}
+              className="ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-[var(--relay-radius-sm)] text-[11px] text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)] transition"
+            >
+              <Maximize2 className="h-3 w-3" />
+              Fullscreen
+            </Link>
+          )}
+          <button
+            type="button"
+            onClick={() => setActiveView("timeline")}
+            className={cn(
+              "px-3 py-2 text-[13px] font-medium transition border-b-2 -mb-px",
+              activeView === "timeline"
+                ? "border-[var(--relay-accent)] text-[var(--relay-ink)]"
+                : "border-transparent text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
+            )}
+          >
+            Timeline
+          </button>
         </div>
       </FadeIn>
 
       {activeView === "graph" ? (
         <FadeIn delay={0.1}>
           <GraphView projectId={project.id} />
+        </FadeIn>
+      ) : activeView === "timeline" ? (
+        <FadeIn delay={0.1}>
+          <DashboardTimeline projectId={project.id} />
         </FadeIn>
       ) : (
         <>

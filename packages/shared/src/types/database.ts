@@ -129,6 +129,8 @@ export interface MemoryItemRow {
   embedding: number[] | null
   /** Model used to generate the embedding */
   embeddingModel: string | null
+  /** ISO timestamp after which this memory auto-archives */
+  forgetAfter: string | null
 }
 
 export type MemoryRelationType = "supersedes" | "extends" | "derives"

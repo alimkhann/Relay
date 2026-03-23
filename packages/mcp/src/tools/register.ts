@@ -8,6 +8,7 @@ import { addMemorySchema, addMemory } from "./add-memory.js"
 import { saveContextSchema, saveContext } from "./save-context.js"
 import { manageMemorySchema, manageMemory } from "./manage-memory.js"
 import { updateProjectSchema, updateProject } from "./update-project.js"
+import { recallContextSchema, recallContext } from "./recall-context.js"
 
 interface ToolRegistrationContext {
   client: RelayClient
@@ -154,6 +155,20 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
           descriptionChanged: typeof args.description === "string",
         },
         summary: args.description ?? undefined,
+      }).catch(() => {})
+      return result
+    }
+  )
+
+  server.tool(
+    "recall_context",
+    "Search memory and retrieve project state in one call. Use before making decisions to check for existing constraints, decisions, or prior context. Combines search_context results with a project state snapshot.",
+    recallContextSchema.shape,
+    async (args) => {
+      const projectId = await resolveProjectId(args.projectId)
+      const result = await recallContext(client, args, projectId)
+      await client.recordSessionEvent(projectId, "context_recalled", {
+        query: args.query,
       }).catch(() => {})
       return result
     }

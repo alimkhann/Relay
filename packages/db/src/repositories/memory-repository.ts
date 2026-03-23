@@ -5,7 +5,7 @@ import type { DatabaseProvider } from "../store/provider"
 import { encryptTextIfConfigured } from "../utils/encrypted-text"
 
 /** Columns to select for general memory queries — excludes the large `embedding` vector column */
-const MEMORY_COLS = `id, project_id, source_turn_id, type, title, content, pinned, is_archived, sort_order, tags, metadata, created_by, created_at, updated_at, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector, embedding_model`
+const MEMORY_COLS = `id, project_id, source_turn_id, type, title, content, pinned, is_archived, sort_order, tags, metadata, created_by, created_at, updated_at, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector, embedding_model, forget_after`
 
 /** Same columns but prefixed with a table alias for JOINed queries */
 function prefixCols(alias: string) {
@@ -55,8 +55,8 @@ export class MemoryRepository {
     const encryptedContent = encryptTextIfConfigured(plaintextContent)
 
     const rows = await this.provider.query(
-      `insert into memory_items (project_id, source_turn_id, type, title, content, pinned, tags, metadata, created_by, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector)
-       values ($1, $2, $3, $4, $5, $6, $7::text[], $8::jsonb, $9, $10, $11, $12, coalesce($13::timestamptz, now()), $14::text[], to_tsvector('english', coalesce($4, '') || ' ' || $15))
+      `insert into memory_items (project_id, source_turn_id, type, title, content, pinned, tags, metadata, created_by, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector, forget_after)
+       values ($1, $2, $3, $4, $5, $6, $7::text[], $8::jsonb, $9, $10, $11, $12, coalesce($13::timestamptz, now()), $14::text[], to_tsvector('english', coalesce($4, '') || ' ' || $15), $16::timestamptz)
        returning ${MEMORY_COLS}`,
       [
         input.projectId,
@@ -73,7 +73,8 @@ export class MemoryRepository {
         input.sourceUrl ?? null,
         input.capturedAt ?? null,
         input.derivedFrom ?? null,
-        plaintextContent
+        plaintextContent,
+        input.forgetAfter ?? null
       ]
     )
 
@@ -92,7 +93,7 @@ export class MemoryRepository {
       const encryptedContent = encryptTextIfConfigured(plaintextContent)
 
       placeholders.push(
-        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}::text[], $${paramIndex + 7}::jsonb, $${paramIndex + 8}, $${paramIndex + 9}, $${paramIndex + 10}, $${paramIndex + 11}, coalesce($${paramIndex + 12}::timestamptz, now()), $${paramIndex + 13}::text[], to_tsvector('english', coalesce($${paramIndex + 3}, '') || ' ' || $${paramIndex + 14}))`
+        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}::text[], $${paramIndex + 7}::jsonb, $${paramIndex + 8}, $${paramIndex + 9}, $${paramIndex + 10}, $${paramIndex + 11}, coalesce($${paramIndex + 12}::timestamptz, now()), $${paramIndex + 13}::text[], to_tsvector('english', coalesce($${paramIndex + 3}, '') || ' ' || $${paramIndex + 14}), $${paramIndex + 15}::timestamptz)`
       )
       params.push(
         item.projectId,
@@ -109,13 +110,14 @@ export class MemoryRepository {
         item.sourceUrl ?? null,
         item.capturedAt ?? null,
         item.derivedFrom ?? null,
-        plaintextContent
+        plaintextContent,
+        item.forgetAfter ?? null
       )
-      paramIndex += 15
+      paramIndex += 16
     }
 
     const rows = await this.provider.query(
-      `insert into memory_items (project_id, source_turn_id, type, title, content, pinned, tags, metadata, created_by, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector)
+      `insert into memory_items (project_id, source_turn_id, type, title, content, pinned, tags, metadata, created_by, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector, forget_after)
        values ${placeholders.join(", ")}
        returning ${MEMORY_COLS}`,
       params
@@ -142,6 +144,7 @@ export class MemoryRepository {
             captured_at = case when $14::boolean then null else coalesce($15::timestamptz, captured_at) end,
             derived_from = case when $16::boolean then null else coalesce($17::text[], derived_from) end,
             search_vector = case when $18::text is not null then to_tsvector('english', coalesce(case when $2::boolean then null else coalesce($3, title) end, '') || ' ' || $18) else search_vector end,
+            forget_after = case when $19::boolean then null else coalesce($20::timestamptz, forget_after) end,
             updated_at = now()
         where id = $1
         returning ${MEMORY_COLS}`,
@@ -164,6 +167,8 @@ export class MemoryRepository {
         patch.derivedFrom === null,
         patch.derivedFrom ?? null,
         plaintextContent,
+        patch.forgetAfter === null,
+        patch.forgetAfter ?? null,
       ]
     )
 
@@ -482,5 +487,21 @@ export class MemoryRepository {
     )
 
     return rows.map((record) => toMemoryRow(record as Record<string, unknown>))
+  }
+
+  async archiveExpiredItems(projectId: string): Promise<number> {
+    const rows = await this.provider.query(
+      `update memory_items
+       set is_archived = true,
+           metadata = metadata || '{"archivedBy": "expiry"}'::jsonb,
+           updated_at = now()
+       where project_id = $1
+         and forget_after is not null
+         and forget_after < now()
+         and is_archived = false
+       returning id`,
+      [projectId]
+    )
+    return rows.length
   }
 }

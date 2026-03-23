@@ -78,3 +78,38 @@ export async function insertContext(content: string) {
 
   return adapter.insertTextIntoPrompt(content, document)
 }
+
+let lastPromptText: string | null = null
+let promptCaptureDebounce: ReturnType<typeof setTimeout> | null = null
+
+export function captureLatestPrompt(projectId: string) {
+  const adapter = resolveAdapter(window.location.href)
+  if (!adapter) return
+
+  const turns = adapter.extractVisibleTurns(document)
+  // Find the last user turn
+  const lastUserTurn = [...turns].reverse().find((t) => t.role === "user")
+  if (!lastUserTurn?.content || lastUserTurn.content.length < 5) return
+
+  // Skip if identical to last captured prompt
+  if (lastUserTurn.content === lastPromptText) return
+  lastPromptText = lastUserTurn.content
+
+  // Debounce: wait 2s before sending
+  if (promptCaptureDebounce) clearTimeout(promptCaptureDebounce)
+  promptCaptureDebounce = setTimeout(() => {
+    const metadata = adapter.getPageMetadata(document)
+    void relayFetch("/api/captures/prompt", {
+      method: "POST",
+      body: JSON.stringify({
+        projectId,
+        platform: adapter.getPlatform(),
+        promptText: lastUserTurn.content,
+        url: metadata.url,
+        conversationId: metadata.url
+      })
+    }).catch(() => {
+      // Swallow errors — prompt capture is best-effort
+    })
+  }, 2000)
+}

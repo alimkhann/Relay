@@ -14,9 +14,10 @@ import type { GraphApiResponse } from "./types"
 interface GraphViewProps {
   projectId: string
   className?: string
+  fullscreen?: boolean
 }
 
-export function GraphView({ projectId, className }: GraphViewProps) {
+export function GraphView({ projectId, className, fullscreen }: GraphViewProps) {
   const [data, setData] = useState<GraphApiResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -59,27 +60,33 @@ export function GraphView({ projectId, className }: GraphViewProps) {
 
   if (error) {
     return (
-      <div className={cn("flex items-center justify-center h-[500px] text-[13px] text-red-500", className)}>
+      <div className={cn("flex items-center justify-center text-[13px] text-red-500", fullscreen ? "h-screen" : "h-[500px]", className)}>
         {error}
       </div>
     )
   }
 
   return (
-    <div className={cn("flex h-[600px] rounded-[var(--relay-radius-lg)] border border-[var(--relay-line)] overflow-hidden bg-[var(--relay-bg)]", className)}>
+    <div className={cn(
+      "flex overflow-hidden bg-[var(--relay-bg)]",
+      fullscreen ? "h-screen" : "h-[600px] rounded-[var(--relay-radius-lg)] border border-[var(--relay-line)]",
+      className
+    )}>
       {/* Graph canvas */}
       <div className="flex-1 min-w-0">
         <MemoryGraph
           data={data}
           loading={loading}
           onNodeSelect={handleNodeSelect}
+          projectId={projectId}
+          fullscreen={fullscreen}
           className="h-full"
         />
       </div>
 
       {/* Detail panel */}
       {selectedNode && (
-        <div className="w-72 shrink-0 border-l border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-y-auto">
+        <div className={cn("shrink-0 border-l border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-y-auto", fullscreen ? "w-80" : "w-72")}>
           <div className="p-4 space-y-4">
             {/* Type badge */}
             <div className="flex items-center gap-2">

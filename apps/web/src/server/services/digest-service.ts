@@ -1,10 +1,11 @@
 import { createRepositoryBundle, type RepositoryBundle } from "@relay/db"
-import type { AiJobRunRow, ProjectStateRow, SessionDigestShape, SourceSessionRow, SourceTurnRow } from "@relay/shared"
+import type { AiJobRunRow, CreateMemoryItemInput, ProjectStateRow, SessionDigestShape, SourceSessionRow, SourceSurface, SourceTurnRow } from "@relay/shared"
 import { buildCaptureSignature, normalizeText, truncateSentence } from "@relay/shared"
 
 import { reconcileAfterDigest } from "./context-reconciliation-service"
 import { runContinuityMaintenanceForProjectWithRepositories } from "./continuity-maintenance-service"
 import { describeGeminiError, GEMINI_MODELS, runGeminiJsonWithFallback, type GeminiStage } from "./gemini-service"
+import { embedAndRelateItems } from "./memory-service"
 import { mergeDigestIntoState } from "./project-state-service"
 import { resolveProjectAiBudget } from "./ai-budget-service"
 
@@ -564,13 +565,67 @@ async function persistDigestResult(
       })
       await tx.sessionDigests.markMerged(digest.id)
 
+      // Create memory items from digest outputs (decisions, constraints, tasks)
+      const digestMemoryItems = await createMemoryItemsFromDigest(tx, userId, {
+        projectId: input.projectId,
+        digest: input.digest,
+        digestId: digest.id,
+        session: input.session,
+      })
+
       const reconciliation = await reconcileAfterDigest(tx, input.projectId, input.digest)
       await runContinuityMaintenanceForProjectWithRepositories(tx, input.projectId)
-      return { digest, reconciliation }
+      return { digest, reconciliation, digestMemoryItems }
     }
 
     return { digest, reconciliation: { archivedCount: 0, archivedItems: [] } }
   })
+}
+
+async function createMemoryItemsFromDigest(
+  tx: RepositoryBundle,
+  userId: string,
+  input: {
+    projectId: string
+    digest: DigestModelShape
+    digestId: string
+    session: SourceSessionRow
+  }
+) {
+  const entries: Array<{ content: string; type: "decision" | "constraint" | "task" }> = []
+  for (const d of input.digest.newDecisions) entries.push({ content: d, type: "decision" })
+  for (const c of input.digest.newConstraints) entries.push({ content: c, type: "constraint" })
+  for (const t of input.digest.newTasks) entries.push({ content: t, type: "task" })
+
+  if (entries.length === 0) return []
+
+  // Dedup: fetch existing memory items and skip any with identical content
+  const existing = await tx.memory.listByProject(input.projectId)
+  const existingContentSet = new Set(existing.map((m) => m.content.trim().toLowerCase()))
+
+  const newItems: CreateMemoryItemInput[] = []
+  for (const entry of entries) {
+    if (existingContentSet.has(entry.content.trim().toLowerCase())) continue
+    newItems.push({
+      projectId: input.projectId,
+      type: entry.type,
+      title: entry.content.length > 80 ? entry.content.slice(0, 77) + "..." : entry.content,
+      content: entry.content,
+      sourceSurface: (input.session.platform as SourceSurface) ?? null,
+      sourceConversationId: input.session.sourceConversationId ?? null,
+      sourceUrl: input.session.url ?? null,
+      capturedAt: new Date().toISOString(),
+      derivedFrom: [input.digestId],
+      metadata: { source: "digest", digestId: input.digestId },
+      tags: ["digest"],
+    })
+  }
+
+  if (newItems.length === 0) return []
+
+  const created = await tx.memory.createBatch(userId, newItems)
+  console.log(`[digest-service] Created ${created.length} memory items from digest ${input.digestId}`)
+  return created
 }
 
 export async function runDeterministicDigestInline(
@@ -767,7 +822,7 @@ async function runDigestJobInternal(
       tokenUsage
     })
 
-    const { digest } = await persistDigestResult(repositories, userId, {
+    const { digest, digestMemoryItems } = await persistDigestResult(repositories, userId, {
       projectId: job.projectId,
       session,
       projectState,
@@ -775,6 +830,11 @@ async function runDigestJobInternal(
       digest: generation.digest,
       signature
     })
+
+    // Fire-and-forget: generate embeddings + detect relations for new memory items
+    if (digestMemoryItems?.length) {
+      void embedAndRelateItems(digestMemoryItems, repositories)
+    }
 
     await repositories.aiJobs.markCompleted(job.id, {
       actualModel: generation.actualModel,
@@ -943,7 +1003,7 @@ export async function runBatchDigestForProject(
     const lastSession = sessionData[sessionData.length - 1]!
     const signature = lastSession.session.captureSignature ?? `batch-${Date.now()}`
 
-    await persistDigestResult(repositories, userId, {
+    const { digestMemoryItems: batchDigestMemoryItems } = await persistDigestResult(repositories, userId, {
       projectId,
       session: lastSession.session,
       projectState,
@@ -951,6 +1011,11 @@ export async function runBatchDigestForProject(
       digest,
       signature
     })
+
+    // Fire-and-forget: generate embeddings + detect relations for new memory items
+    if (batchDigestMemoryItems?.length) {
+      void embedAndRelateItems(batchDigestMemoryItems, repositories)
+    }
 
     // Create digest records for earlier sessions too (so they're marked as processed)
     for (let i = 0; i < sessionData.length - 1; i++) {

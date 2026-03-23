@@ -1,4 +1,4 @@
-import { createRepositoryBundle } from "@relay/db"
+import { createRepositoryBundle, type RepositoryBundle } from "@relay/db"
 import type { CreateMemoryItemInput, MemoryItemRow } from "@relay/shared"
 import { createMemoryItemSchema, updateMemoryItemSchema } from "@relay/shared"
 
@@ -12,6 +12,23 @@ async function postCreateHook(item: MemoryItemRow, repos: ReturnType<typeof crea
     await detectRelations(item, repos)
   } catch (error) {
     console.error("[memory-service] post-create hook failed:", error instanceof Error ? error.message : error)
+  }
+}
+
+/** Generate embeddings and detect relations for a batch of items (fire-and-forget safe) */
+export async function embedAndRelateItems(items: MemoryItemRow[], repos: RepositoryBundle): Promise<void> {
+  if (items.length === 0) return
+  try {
+    await embedMemoryItems(items, repos)
+    for (const item of items) {
+      try {
+        await detectRelations(item, repos)
+      } catch (error) {
+        console.error("[memory-service] relation detection failed:", error instanceof Error ? error.message : error)
+      }
+    }
+  } catch (error) {
+    console.error("[memory-service] embedAndRelateItems failed:", error instanceof Error ? error.message : error)
   }
 }
 

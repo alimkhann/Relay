@@ -28,7 +28,8 @@ export const createMemoryItemSchema = z.object({
   sourceConversationId: z.string().nullable().optional(),
   sourceUrl: z.string().url().nullable().optional(),
   capturedAt: z.string().datetime().nullable().optional(),
-  derivedFrom: z.array(z.string()).nullable().optional()
+  derivedFrom: z.array(z.string()).nullable().optional(),
+  forgetAfter: z.string().datetime().nullable().optional()
 })
 
 export const updateMemoryItemSchema = z.object({
@@ -42,5 +43,6 @@ export const updateMemoryItemSchema = z.object({
   sourceConversationId: z.string().nullable().optional(),
   sourceUrl: z.string().url().nullable().optional(),
   capturedAt: z.string().datetime().nullable().optional(),
-  derivedFrom: z.array(z.string()).nullable().optional()
+  derivedFrom: z.array(z.string()).nullable().optional(),
+  forgetAfter: z.string().datetime().nullable().optional()
 })

@@ -4,6 +4,7 @@ import type { RelayConfig } from "./config.js"
 import { detectProjectId } from "./utils/project-detection.js"
 import { registerTools } from "./tools/register.js"
 import { readProjectBrief } from "./resources/project-brief.js"
+import { SESSION_GUIDELINES } from "./prompts/session-guidelines.js"
 
 interface ProjectSummary {
   id: string
@@ -87,6 +88,24 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
       mimeType: "text/markdown"
     },
     async (uri, { projectId }) => readProjectBrief(client, projectId as string)
+  )
+
+  // --- Prompts ---
+
+  server.prompt(
+    "relay_session_guidelines",
+    "Best practices for using Relay tools during a coding session — when to read briefs, save context, and record decisions.",
+    () => ({
+      messages: [
+        {
+          role: "user" as const,
+          content: {
+            type: "text" as const,
+            text: SESSION_GUIDELINES
+          }
+        }
+      ]
+    })
   )
 
   return server

@@ -10,6 +10,7 @@ interface RelayAdapterRuntime {
   getPageMetadata(doc?: Document, url?: string): PageMetadata | null
   findPrompt(doc?: Document, url?: string): PromptTarget | null
   insertText(text: string, doc?: Document, url?: string): Promise<InjectionResult>
+  getLatestUserMessage(doc?: Document, url?: string): string | null
 }
 
 declare global {
@@ -43,6 +44,13 @@ export function installRelayAdapterRuntime() {
     async insertText(text: string, doc = document, url = window.location.href) {
       const adapter = getAdapter(url)
       return adapter ? adapter.insertTextIntoPrompt(text, doc) : { ok: false, reason: "Unsupported site." }
+    },
+    getLatestUserMessage(doc = document, url = window.location.href) {
+      const adapter = getAdapter(url)
+      if (!adapter) return null
+      const turns = adapter.extractVisibleTurns(doc)
+      const lastUser = [...turns].reverse().find((t) => t.role === "user")
+      return lastUser?.content && lastUser.content.length >= 5 ? lastUser.content : null
     }
   }
 }

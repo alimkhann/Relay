@@ -338,6 +338,7 @@ function workSessionCheckpointToMemoryDtos(checkpoints: WorkSessionCheckpointWit
         derivedFrom: checkpoint.sourceEventIds,
         embedding: null,
         embeddingModel: null,
+        forgetAfter: null,
       })
     }
 
@@ -364,6 +365,7 @@ function workSessionCheckpointToMemoryDtos(checkpoints: WorkSessionCheckpointWit
         derivedFrom: checkpoint.sourceEventIds,
         embedding: null,
         embeddingModel: null,
+        forgetAfter: null,
       })
     }
 
@@ -390,6 +392,7 @@ function workSessionCheckpointToMemoryDtos(checkpoints: WorkSessionCheckpointWit
         derivedFrom: checkpoint.sourceEventIds,
         embedding: null,
         embeddingModel: null,
+        forgetAfter: null,
       })
     }
 
@@ -416,6 +419,7 @@ function workSessionCheckpointToMemoryDtos(checkpoints: WorkSessionCheckpointWit
         derivedFrom: checkpoint.sourceEventIds,
         embedding: null,
         embeddingModel: null,
+        forgetAfter: null,
       })
     }
 
@@ -442,6 +446,7 @@ function workSessionCheckpointToMemoryDtos(checkpoints: WorkSessionCheckpointWit
         derivedFrom: checkpoint.sourceEventIds,
         embedding: null,
         embeddingModel: null,
+        forgetAfter: null,
       })
     }
   }

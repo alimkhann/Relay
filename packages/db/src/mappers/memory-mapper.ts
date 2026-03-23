@@ -26,7 +26,9 @@ export function toMemoryRow(record: Record<string, unknown>): MemoryItemRow {
     derivedFrom: Array.isArray(record.derived_from) ? (record.derived_from as string[]) : null,
     // Embedding fields
     embedding: record.embedding ? (record.embedding as number[]) : null,
-    embeddingModel: record.embedding_model ? String(record.embedding_model) : null
+    embeddingModel: record.embedding_model ? String(record.embedding_model) : null,
+    // Lifecycle
+    forgetAfter: record.forget_after ? String(record.forget_after) : null
   }
 }
 

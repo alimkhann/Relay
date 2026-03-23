@@ -19,6 +19,8 @@ export interface CreateMemoryItemInput {
   capturedAt?: string | null
   /** Array of memory item IDs this item was derived/merged from */
   derivedFrom?: string[] | null
+  /** ISO timestamp after which this memory auto-archives */
+  forgetAfter?: string | null
 }
 
 export interface UpdateMemoryItemInput {
@@ -33,4 +35,5 @@ export interface UpdateMemoryItemInput {
   sourceUrl?: string | null
   capturedAt?: string | null
   derivedFrom?: string[] | null
+  forgetAfter?: string | null
 }
