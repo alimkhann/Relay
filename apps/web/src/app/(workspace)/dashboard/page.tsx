@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation"
 
-import { AppShell } from "@/components/layout/app-shell"
 import { CreateProjectForm } from "@/components/projects/create-project-form"
 import { PageTelemetry } from "@/components/telemetry/page-telemetry"
 import { DashboardContent } from "@/features/projects/dashboard-content"
@@ -34,12 +33,7 @@ export default async function DashboardPage({
     })
 
     return (
-      <AppShell
-        account={{
-          name: viewer.name,
-          email: viewer.email,
-        }}
-      >
+      <>
         <PageTelemetry
           surface="web-dashboard"
           area="page"
@@ -51,7 +45,7 @@ export default async function DashboardPage({
             projectId: null,
           }}
         />
-        <section className="max-w-2xl py-10">
+        <section className="py-10">
           <header className="mb-10 space-y-2">
             <h1 className="text-[28px] font-medium tracking-tight text-[var(--relay-ink)]">
               Welcome to Relay
@@ -62,7 +56,7 @@ export default async function DashboardPage({
           </header>
           <CreateProjectForm />
         </section>
-      </AppShell>
+      </>
     )
   }
 

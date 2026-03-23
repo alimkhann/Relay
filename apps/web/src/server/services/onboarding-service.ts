@@ -66,11 +66,11 @@ export async function getResolvedOnboardingStateForUser(
   const repositories = createRepositoryBundle(userId)
   const existing = await repositories.userOnboarding.getByUser(userId)
 
-  if (existing?.status === "completed") {
+  const projects = options.projects ?? (await repositories.projects.listByOwner(userId))
+
+  if (existing?.status === "completed" && projects.length > 0) {
     return toState(existing)
   }
-
-  const projects = options.projects ?? (await repositories.projects.listByOwner(userId))
 
   if (projects.length > 0) {
     const completedProjectId = existing?.completedProjectId ?? projects[0]?.id ?? null
@@ -83,7 +83,7 @@ export async function getResolvedOnboardingStateForUser(
     })
   }
 
-  if (existing) {
+  if (existing && existing.status === "pending") {
     return toState(existing)
   }
 
