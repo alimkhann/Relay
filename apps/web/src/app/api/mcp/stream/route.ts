@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
 import { z } from "zod"
 
-import { resolveViewer, type Viewer } from "@/server/policies/viewer"
+import { isAuthRequiredError, resolveViewer, type Viewer } from "@/server/policies/viewer"
 import { assertIpRateLimit } from "@/server/services/rate-limit-service"
 import { RelayHttpMcpClient } from "./relay-http-mcp-client"
 
@@ -191,7 +191,20 @@ function registerHttpTools(
 
 async function handleMcpRequest(request: Request) {
   await assertIpRateLimit(request, "mcp_stream_ip", 30)
-  const viewer = await resolveViewerFromRequest(request)
+
+  let viewer: Viewer
+  try {
+    viewer = await resolveViewerFromRequest(request)
+  } catch (error) {
+    if (isAuthRequiredError(error)) {
+      return new Response(JSON.stringify({ error: "unauthorized", message: "Valid MCP token required. Run npx @onrelay/wizard to get one." }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+    throw error
+  }
+
   const server = createHttpMcpServer(viewer)
 
   const transport = new WebStandardStreamableHTTPServerTransport({
