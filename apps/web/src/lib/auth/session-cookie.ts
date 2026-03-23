@@ -3,7 +3,7 @@ import { cookies, headers } from "next/headers"
 import { readLocalSessionUserFromCookie } from "./local-session"
 import { getAuthProvider } from "./provider"
 
-const AUTH_CACHE_TTL_MS = 10_000
+const AUTH_CACHE_TTL_MS = 60_000
 const authCache = new Map<string, { user: SessionCookieUser; expiresAt: number }>()
 
 export function clearAuthCacheForTests() {

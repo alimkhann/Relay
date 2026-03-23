@@ -238,10 +238,10 @@ export async function setRelaySession(input: Partial<RelaySessionState>) {
   if (tokenValue !== undefined) {
     if (sessionStorageArea) {
       await sessionStorageArea.set({ [keys.token]: tokenValue })
-      await localStorageArea.remove(keys.token)
-    } else {
-      await localStorageArea.set({ [keys.token]: tokenValue })
     }
+    // Always persist to local storage as a durable fallback — session storage
+    // is volatile and can be cleared when the MV3 service worker suspends.
+    await localStorageArea.set({ [keys.token]: tokenValue })
   }
 }
 

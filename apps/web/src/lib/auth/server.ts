@@ -26,7 +26,7 @@ export function getAuthServer() {
     baseUrl,
     cookies: {
       secret,
-      sessionDataTtl: 3600 // 1 hour — default 300s (5 min) caused session bounces
+      sessionDataTtl: 604800 // 7 days — clamped to underlying session expiry by Neon Auth
     }
   })
 

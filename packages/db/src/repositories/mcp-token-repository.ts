@@ -62,6 +62,23 @@ export class McpTokenRepository {
     return row ? toMcpTokenRow(row as Record<string, unknown>) : null
   }
 
+  async getExpiredButRefreshableByHash(tokenHash: string): Promise<McpTokenRow | null> {
+    const rows = await this.provider.query(
+      `select *
+       from mcp_tokens
+       where token_hash = $1
+         and revoked_at is null
+         and expires_at <= now()
+         and refresh_expires_at is not null
+         and refresh_expires_at > now()
+       limit 1`,
+      [tokenHash]
+    )
+
+    const row = rows[0]
+    return row ? toMcpTokenRow(row as Record<string, unknown>) : null
+  }
+
   async getValidRefreshTokenByHash(refreshTokenHash: string): Promise<McpTokenRow | null> {
     const rows = await this.provider.query(
       `select *

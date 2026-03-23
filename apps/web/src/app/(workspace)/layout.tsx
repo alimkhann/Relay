@@ -3,6 +3,7 @@ import type { ReactNode } from "react"
 import { AutoCaptureOnboardingBanner } from "@/components/onboarding/auto-capture-onboarding-banner"
 import { SidebarProvider } from "@/components/layout/sidebar-context"
 import { SidebarMainArea } from "@/components/layout/sidebar-main-area"
+import { SessionKeepalive } from "@/components/auth/session-keepalive"
 import { PostHogIdentity } from "@/components/telemetry/posthog-identity"
 import { WorkspaceSidebarShell } from "@/components/layout/workspace-sidebar-shell"
 import { requirePageViewer, syncViewerProfile } from "@/server/policies/viewer"
@@ -30,6 +31,7 @@ export default async function WorkspaceLayout({
 
   return (
     <SidebarProvider>
+      <SessionKeepalive />
       <PostHogIdentity userId={viewer.userId} />
       <div className="flex min-h-screen bg-[var(--relay-bg)] text-[var(--relay-ink)]">
         <WorkspaceSidebarShell

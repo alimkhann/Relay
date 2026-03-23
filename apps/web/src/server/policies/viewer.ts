@@ -111,6 +111,22 @@ export async function resolveViewer(authorizationHeader?: string | null): Promis
       }
     }
 
+    // Accept expired MCP access tokens if their refresh token is still valid (30-day window).
+    // This keeps stateless HTTP clients (Smithery) working without token rotation.
+    const expiredMcpToken = await repositories.mcpTokens.getExpiredButRefreshableByHash(hashContent(token))
+    if (expiredMcpToken) {
+      await repositories.mcpTokens.touchIfStale(expiredMcpToken.id)
+      return {
+        userId: expiredMcpToken.userId,
+        mode: "mcp",
+        email: null,
+        name: null,
+        image: null,
+        projectId: expiredMcpToken.projectId,
+        scopes: expiredMcpToken.scopes
+      }
+    }
+
     const tokenRecord = await repositories.extensionTokens.getValidByHash(hashContent(token))
 
     if (tokenRecord) {
