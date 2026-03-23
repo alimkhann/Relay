@@ -29,6 +29,7 @@ function createHttpMcpServer(viewer: Viewer) {
 
   registerHttpTools(server, client, resolveProjectId)
   registerHttpPrompts(server)
+  registerHttpResources(server)
 
   return server
 }
@@ -39,9 +40,8 @@ function registerHttpTools(
   resolveProjectId: (explicitId?: string) => Promise<string>
 ) {
   server.tool(
-    "list_projects",
-    "List all Relay projects you have access to.",
-    {},
+    "project.list",
+    "List all Relay projects you have access to. Returns project IDs, names, slugs, and descriptions.",
     { readOnlyHint: true, destructiveHint: false },
     async () => {
       const projects = await client.listProjects()
@@ -52,7 +52,7 @@ function registerHttpTools(
   )
 
   server.tool(
-    "get_brief",
+    "project.get_brief",
     "Fetch a project context brief — decisions, constraints, progress, and memory items formatted for an AI coding session.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -71,7 +71,7 @@ function registerHttpTools(
   )
 
   server.tool(
-    "get_project_state",
+    "project.get_state",
     "Get full structured project state including overview, objectives, decisions, constraints, and tasks.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -87,7 +87,7 @@ function registerHttpTools(
   )
 
   server.tool(
-    "search_context",
+    "memory.search",
     "Search memory items by keyword or semantic query. Returns matching decisions, constraints, tasks, notes, and other memory items.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -111,7 +111,7 @@ function registerHttpTools(
   )
 
   server.tool(
-    "add_memory",
+    "memory.add",
     "Add a memory item to the project. Use this to persist decisions, constraints, tasks, or notes discovered during the session.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -136,7 +136,7 @@ function registerHttpTools(
   )
 
   server.tool(
-    "save_context",
+    "context.save",
     "Save a structured session summary with decisions, progress, next steps, and constraints. Call this at the end of a coding session.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -158,7 +158,7 @@ function registerHttpTools(
   )
 
   server.tool(
-    "manage_memory",
+    "memory.manage",
     "Update, delete, or archive an existing memory item by its ID.",
     {
       action: z.string().describe("Action to perform: update, delete, or archive"),
@@ -177,7 +177,7 @@ function registerHttpTools(
   )
 
   server.tool(
-    "update_project",
+    "project.update",
     "Update a project's name or description.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -198,7 +198,7 @@ function registerHttpTools(
   )
 
   server.tool(
-    "recall_context",
+    "memory.recall",
     "Search memory and retrieve project state in one call. Use before making decisions to check for existing constraints and context.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -252,6 +252,17 @@ function registerHttpPrompts(server: McpServer) {
           content: { type: "text" as const, text: SESSION_GUIDELINES },
         },
       ],
+    })
+  )
+}
+
+function registerHttpResources(server: McpServer) {
+  server.resource(
+    "session_guidelines",
+    "relay://session-guidelines",
+    { description: "Relay session guidelines for AI coding tools", mimeType: "text/markdown" },
+    async () => ({
+      contents: [{ uri: "relay://session-guidelines", text: SESSION_GUIDELINES, mimeType: "text/markdown" }],
     })
   )
 }
