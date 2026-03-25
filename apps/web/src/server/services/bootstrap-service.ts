@@ -1,6 +1,6 @@
 import { createRepositoryBundle } from "@relay/db"
 import type { BootstrapPacketDto, BootstrapRequest, BootstrapPacketRow, MemoryItemRow, ProjectRow, ProjectStateRow, ProjectStateStatusDto, SessionDigestRow, TargetProfileRow, WorkSessionCheckpointWithSessionRow } from "@relay/shared"
-import { bootstrapRequestSchema, buildEffectiveProjectState, hashContent, mergeGovernedList, normalizeText } from "@relay/shared"
+import { bootstrapRequestSchema, buildEffectiveProjectState, computeDecayScore, DECAY_VISIBILITY_THRESHOLD, hashContent, mergeGovernedList, normalizeText } from "@relay/shared"
 
 import { NotFoundError } from "@/server/http/errors"
 import { GEMINI_MODELS, runGeminiJsonWithFallback } from "./gemini-service"
@@ -261,20 +261,20 @@ function formatAge(updatedAt: string): string | null {
 }
 
 function filterRelevantNotes(memoryItems: MemoryItemRow[]): MemoryItemRow[] {
-  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
   return memoryItems
     .filter((item) => {
       if (!["note", "requirement", "artifact"].includes(item.type)) return false
-      // Skip ephemeral IDE session summaries
       if (item.metadata?.source === "mcp" && item.title === "IDE Session Summary") return false
-      // Include pinned items always, otherwise only recent
-      return item.pinned || new Date(item.updatedAt).getTime() > sevenDaysAgo
+      const score = computeDecayScore(item.type, item.updatedAt, item.lastReaffirmedAt, item.pinned)
+      return score >= DECAY_VISIBILITY_THRESHOLD
     })
     .sort((a, b) => {
       if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
-      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      const sa = computeDecayScore(a.type, a.updatedAt, a.lastReaffirmedAt, a.pinned)
+      const sb = computeDecayScore(b.type, b.updatedAt, b.lastReaffirmedAt, b.pinned)
+      return sb - sa
     })
-    .slice(0, 5)
+    .slice(0, 8)
 }
 
 function normalizeCheckpointText(value: unknown) {
@@ -339,6 +339,7 @@ function workSessionCheckpointToMemoryDtos(checkpoints: WorkSessionCheckpointWit
         embedding: null,
         embeddingModel: null,
         forgetAfter: null,
+        lastReaffirmedAt: null,
       })
     }
 
@@ -366,6 +367,7 @@ function workSessionCheckpointToMemoryDtos(checkpoints: WorkSessionCheckpointWit
         embedding: null,
         embeddingModel: null,
         forgetAfter: null,
+        lastReaffirmedAt: null,
       })
     }
 
@@ -393,6 +395,7 @@ function workSessionCheckpointToMemoryDtos(checkpoints: WorkSessionCheckpointWit
         embedding: null,
         embeddingModel: null,
         forgetAfter: null,
+        lastReaffirmedAt: null,
       })
     }
 
@@ -420,6 +423,7 @@ function workSessionCheckpointToMemoryDtos(checkpoints: WorkSessionCheckpointWit
         embedding: null,
         embeddingModel: null,
         forgetAfter: null,
+        lastReaffirmedAt: null,
       })
     }
 
@@ -447,6 +451,7 @@ function workSessionCheckpointToMemoryDtos(checkpoints: WorkSessionCheckpointWit
         embedding: null,
         embeddingModel: null,
         forgetAfter: null,
+        lastReaffirmedAt: null,
       })
     }
   }

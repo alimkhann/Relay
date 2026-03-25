@@ -126,6 +126,10 @@ export interface MemoryItemDto {
   sourceUrl: string | null
   /** Actual capture timestamp for recency-based conflict resolution */
   capturedAt: string | null
+  /** Computed decay score 0.0-1.0 (1.0 = fresh/pinned, 0.0 = fully decayed) */
+  decayScore: number
+  /** Last reaffirmation timestamp */
+  lastReaffirmedAt: string | null
 }
 
 export interface ProjectStateDto {

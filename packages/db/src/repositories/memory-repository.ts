@@ -5,7 +5,7 @@ import type { DatabaseProvider } from "../store/provider"
 import { encryptTextIfConfigured } from "../utils/encrypted-text"
 
 /** Columns to select for general memory queries — excludes the large `embedding` vector column */
-const MEMORY_COLS = `id, project_id, source_turn_id, type, title, content, pinned, is_archived, sort_order, tags, metadata, created_by, created_at, updated_at, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector, embedding_model, forget_after`
+const MEMORY_COLS = `id, project_id, source_turn_id, type, title, content, pinned, is_archived, sort_order, tags, metadata, created_by, created_at, updated_at, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector, embedding_model, forget_after, last_reaffirmed_at`
 
 /** Same columns but prefixed with a table alias for JOINed queries */
 function prefixCols(alias: string) {
@@ -516,6 +516,82 @@ export class MemoryRepository {
          and is_archived = false
        returning id`,
       [projectId, conversationId]
+    )
+    return rows.length
+  }
+
+  async reaffirm(id: string): Promise<void> {
+    await this.provider.query(
+      `update memory_items set last_reaffirmed_at = now(), updated_at = now() where id = $1`,
+      [id]
+    )
+  }
+
+  async countActiveByProject(projectId: string): Promise<number> {
+    const rows = await this.provider.query(
+      `select count(*)::int as count from memory_items where project_id = $1 and is_archived = false`,
+      [projectId]
+    )
+    return Number((rows[0] as Record<string, unknown>)?.count ?? 0)
+  }
+
+  async archiveDecayedItems(projectId: string, threshold: number): Promise<number> {
+    const rows = await this.provider.query(
+      `update memory_items
+       set is_archived = true,
+           metadata = metadata || '{"archivedBy": "decay"}'::jsonb,
+           updated_at = now()
+       where project_id = $1
+         and is_archived = false
+         and pinned = false
+         and (
+           case when pinned then 1.0
+           else pow(0.5,
+             extract(epoch from now() - greatest(updated_at, coalesce(last_reaffirmed_at, updated_at))) / 86400.0
+             / case type
+                 when 'requirement' then 120 when 'decision' then 90 when 'constraint' then 60
+                 when 'note' then 30 when 'task' then 21 when 'artifact' then 14 else 30
+               end
+           ) end
+         ) < $2
+       returning id`,
+      [projectId, threshold]
+    )
+    return rows.length
+  }
+
+  async archiveOverBudget(projectId: string, maxItems: number): Promise<number> {
+    const rows = await this.provider.query(
+      `with ranked as (
+         select id,
+           case when pinned then 1.0
+           else pow(0.5,
+             extract(epoch from now() - greatest(updated_at, coalesce(last_reaffirmed_at, updated_at))) / 86400.0
+             / case type
+                 when 'requirement' then 120 when 'decision' then 90 when 'constraint' then 60
+                 when 'note' then 30 when 'task' then 21 when 'artifact' then 14 else 30
+               end
+           ) end as decay_score,
+           row_number() over (order by pinned desc,
+             case when pinned then 1.0
+             else pow(0.5,
+               extract(epoch from now() - greatest(updated_at, coalesce(last_reaffirmed_at, updated_at))) / 86400.0
+               / case type
+                   when 'requirement' then 120 when 'decision' then 90 when 'constraint' then 60
+                   when 'note' then 30 when 'task' then 21 when 'artifact' then 14 else 30
+                 end
+             ) end desc
+           ) as rn
+         from memory_items
+         where project_id = $1 and is_archived = false
+       )
+       update memory_items
+       set is_archived = true,
+           metadata = metadata || '{"archivedBy": "budget"}'::jsonb,
+           updated_at = now()
+       where id in (select id from ranked where rn > $2 and pinned = false)
+       returning id`,
+      [projectId, maxItems]
     )
     return rows.length
   }

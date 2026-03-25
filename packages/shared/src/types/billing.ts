@@ -10,6 +10,7 @@ export interface EntitlementLimitsDto {
   mcpWriteDaily: number
   aiAnalysesPerProjectDaily: number
   aiAnalysesPerUserDaily: number
+  memoryItemsPerProject: number
 }
 
 export interface UserEntitlementsDto {

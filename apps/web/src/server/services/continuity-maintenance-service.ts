@@ -88,6 +88,7 @@ async function runContinuityMaintenanceForProjectWithRepositories(
         validationState: metadata.validationState === "validated" ? "validated" : "confirmed",
       }),
     })
+    await repositories.memory.reaffirm(item.id)
     reaffirmedCount += 1
   }
 

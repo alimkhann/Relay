@@ -8,6 +8,7 @@ export const FREE_LIMITS: EntitlementLimitsDto = {
   mcpWriteDaily: 5,
   aiAnalysesPerProjectDaily: 6,
   aiAnalysesPerUserDaily: 18,
+  memoryItemsPerProject: 100,
 }
 
 export const PRO_LIMITS: EntitlementLimitsDto = {
@@ -18,6 +19,7 @@ export const PRO_LIMITS: EntitlementLimitsDto = {
   mcpWriteDaily: 50,
   aiAnalysesPerProjectDaily: 32,
   aiAnalysesPerUserDaily: 120,
+  memoryItemsPerProject: 500,
 }
 
 export const PLAN_PRODUCT_IDS = {

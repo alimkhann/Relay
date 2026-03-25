@@ -1,5 +1,16 @@
-import type { MemoryItemType } from "../types/database"
-import type { MemoryItemDto, ProjectStateDto, ProjectStateOverrideDto } from "../types/project"
+import type { MemoryItemType, SourceSurface } from "../types/database"
+import type { ProjectStateDto, ProjectStateOverrideDto } from "../types/project"
+
+type MemoryItemLike = {
+  id: string
+  type: MemoryItemType
+  content: string
+  pinned: boolean
+  updatedAt: string
+  sourceSurface: SourceSurface | null
+  capturedAt: string | null
+  metadata?: Record<string, unknown>
+}
 import {
   computeMemoryTruthScore,
   deduplicateMemoryItems,
@@ -14,7 +25,7 @@ function applyHidden(items: string[], hidden: string[]) {
 
 function extractGovernedContext(
   baseItems: string[],
-  memory: MemoryItemDto[],
+  memory: MemoryItemLike[],
   type: MemoryItemType,
   baseUpdatedAt: string,
 ) {
@@ -57,7 +68,7 @@ function extractGovernedContext(
 export function buildEffectiveProjectState(
   derived: ProjectStateDto | null,
   overrides: ProjectStateOverrideDto | null,
-  memory: MemoryItemDto[]
+  memory: MemoryItemLike[]
 ): ProjectStateDto | null {
   if (!derived && !overrides && memory.length === 0) {
     return null

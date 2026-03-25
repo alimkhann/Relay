@@ -28,7 +28,8 @@ export function toMemoryRow(record: Record<string, unknown>): MemoryItemRow {
     embedding: record.embedding ? (record.embedding as number[]) : null,
     embeddingModel: record.embedding_model ? String(record.embedding_model) : null,
     // Lifecycle
-    forgetAfter: record.forget_after ? String(record.forget_after) : null
+    forgetAfter: record.forget_after ? String(record.forget_after) : null,
+    lastReaffirmedAt: record.last_reaffirmed_at ? String(record.last_reaffirmed_at) : null
   }
 }
 

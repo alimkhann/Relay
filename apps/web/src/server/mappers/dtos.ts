@@ -12,6 +12,7 @@ import type {
   SessionDigestRow,
   SourceSessionRow
 } from "@relay/shared"
+import { computeDecayScore } from "@relay/shared"
 
 export function toProjectSummaryDto(project: ProjectSummaryDto): ProjectSummaryDto {
   return project
@@ -28,6 +29,8 @@ export function toMemoryItemDto(item: MemoryItemRow): MemoryItemDto {
     sourceSurface: item.sourceSurface,
     sourceUrl: item.sourceUrl,
     capturedAt: item.capturedAt,
+    decayScore: computeDecayScore(item.type, item.updatedAt, item.lastReaffirmedAt, item.pinned),
+    lastReaffirmedAt: item.lastReaffirmedAt,
   }
 }
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { ProjectDashboardDto } from "@relay/shared";
+import { DECAY_VISIBILITY_THRESHOLD } from "@relay/shared";
 import { Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -65,6 +66,13 @@ export function MemoryPageContent({
     const constraints = countSectionItems(dashboard, "constraint");
     return { all: decisions + tasks + constraints, decisions, tasks, constraints };
   }, [dashboard]);
+
+  const memoryHealth = useMemo(() => {
+    const items = dashboard.memory;
+    const active = items.filter((i) => i.decayScore >= 0.3).length;
+    const fading = items.filter((i) => i.decayScore >= DECAY_VISIBILITY_THRESHOLD && i.decayScore < 0.3).length;
+    return { active, fading, total: items.length };
+  }, [dashboard.memory]);
 
   const visibleSections = useMemo(() => {
     if (activeTab === "decisions") return ["decision"] as const;
@@ -144,6 +152,26 @@ export function MemoryPageContent({
           </div>
         </div>
       </FadeIn>
+
+      {/* Memory Health */}
+      {memoryHealth.total > 0 && (
+        <FadeIn delay={0.02}>
+          <div className="flex items-center gap-3 text-[12px] text-[var(--relay-muted)]">
+            <span className="flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+              {memoryHealth.active} active
+            </span>
+            {memoryHealth.fading > 0 && (
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-full bg-amber-400" />
+                {memoryHealth.fading} fading
+              </span>
+            )}
+            <span className="text-[var(--relay-line)]">·</span>
+            <span>{memoryHealth.total} items</span>
+          </div>
+        </FadeIn>
+      )}
 
       {/* Overview / Objective / Progress */}
       <FadeIn delay={0.05}>

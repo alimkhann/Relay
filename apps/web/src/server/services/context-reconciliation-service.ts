@@ -13,6 +13,7 @@ export interface ReconciliationResult {
   archivedCount: number
   archivedItems: string[]
   disputedCount: number
+  reaffirmedCount: number
 }
 
 function buildTopicKey(item: MemoryItemRow, candidate: string) {
@@ -110,9 +111,30 @@ export async function reconcileAfterDigest(
     }
   }
 
+  // Reaffirmation pass: boost items that appear in digest without contradiction
+  const digestTexts = [
+    ...digest.newDecisions,
+    ...digest.newConstraints,
+    ...(digest.newTasks ?? []),
+  ]
+  let reaffirmedCount = 0
+  const archivedSet = new Set(archivedItems)
+  for (const item of candidates) {
+    if (archivedSet.has(item.content)) continue
+    if (disputedItems.has(item.id)) continue
+    const reaffirmed = digestTexts.some(
+      (text) => isSameTopic(item.content, text) && !hasReplacementSignal(text) && !hasNegationSignal(text),
+    )
+    if (reaffirmed) {
+      await repositories.memory.reaffirm(item.id)
+      reaffirmedCount += 1
+    }
+  }
+
   return {
     archivedCount: archivedItems.length,
     archivedItems,
     disputedCount: disputedItems.size,
+    reaffirmedCount,
   }
 }

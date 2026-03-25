@@ -131,6 +131,8 @@ export interface MemoryItemRow {
   embeddingModel: string | null
   /** ISO timestamp after which this memory auto-archives */
   forgetAfter: string | null
+  /** Timestamp of last reaffirmation — resets the decay clock */
+  lastReaffirmedAt: string | null
 }
 
 export type MemoryRelationType = "supersedes" | "extends" | "derives"

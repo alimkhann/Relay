@@ -1,9 +1,10 @@
 import { createRepositoryBundle, type RepositoryBundle } from "@relay/db"
 import type { AiJobRunRow, CreateMemoryItemInput, ProjectStateRow, SessionDigestShape, SourceSessionRow, SourceSurface, SourceTurnRow } from "@relay/shared"
-import { buildCaptureSignature, normalizeText, truncateSentence } from "@relay/shared"
+import { buildCaptureSignature, DECAY_ARCHIVE_THRESHOLD, hasReplacementSignal, isSameTopic, normalizeText, truncateSentence } from "@relay/shared"
 
 import { reconcileAfterDigest } from "./context-reconciliation-service"
 import { runContinuityMaintenanceForProjectWithRepositories } from "./continuity-maintenance-service"
+import { resolveViewerEntitlements } from "./entitlement-service"
 import { describeGeminiError, GEMINI_MODELS, runGeminiJsonWithFallback, type GeminiStage } from "./gemini-service"
 import { embedAndRelateItems } from "./memory-service"
 import { mergeDigestIntoState } from "./project-state-service"
@@ -575,6 +576,13 @@ async function persistDigestResult(
 
       const reconciliation = await reconcileAfterDigest(tx, input.projectId, input.digest)
       await runContinuityMaintenanceForProjectWithRepositories(tx, input.projectId)
+
+      // Auto-cleanup: archive expired + decayed items, enforce memory budget
+      await tx.memory.archiveExpiredItems(input.projectId)
+      await tx.memory.archiveDecayedItems(input.projectId, DECAY_ARCHIVE_THRESHOLD)
+      const entitlements = await resolveViewerEntitlements(userId)
+      await tx.memory.archiveOverBudget(input.projectId, entitlements.limits.memoryItemsPerProject)
+
       return { digest, reconciliation, digestMemoryItems }
     }
 
@@ -599,13 +607,23 @@ async function createMemoryItemsFromDigest(
 
   if (entries.length === 0) return []
 
-  // Dedup: fetch existing memory items and skip any with identical content
+  // Dedup: fetch existing memory items and check for topic-level matches
   const existing = await tx.memory.listByProject(input.projectId)
-  const existingContentSet = new Set(existing.map((m) => m.content.trim().toLowerCase()))
 
   const newItems: CreateMemoryItemInput[] = []
   for (const entry of entries) {
-    if (existingContentSet.has(entry.content.trim().toLowerCase())) continue
+    const sameTypeExisting = existing.filter((m) => m.type === entry.type && !m.isArchived)
+    const topicMatch = sameTypeExisting.find((m) => isSameTopic(m.content, entry.content))
+    if (topicMatch) {
+      if (hasReplacementSignal(entry.content)) {
+        await tx.memory.update(topicMatch.id, {
+          isArchived: true,
+          metadata: { ...(topicMatch.metadata ?? {}), archivedBy: "digest_replaced" },
+        })
+      } else {
+        continue
+      }
+    }
     newItems.push({
       projectId: input.projectId,
       type: entry.type,

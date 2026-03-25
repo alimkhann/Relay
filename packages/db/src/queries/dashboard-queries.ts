@@ -1,4 +1,4 @@
-import { buildEffectiveProjectState, deriveProjectStateStatus, type ProjectDashboardDto } from "@relay/shared"
+import { buildEffectiveProjectState, computeDecayScore, deriveProjectStateStatus, type ProjectDashboardDto } from "@relay/shared"
 
 import type { RepositoryBundle } from "./repository-bundle"
 import { getProjectSummaries } from "./project-queries"
@@ -127,6 +127,8 @@ export async function getProjectDashboard(repositories: RepositoryBundle, ownerI
       sourceSurface: item.sourceSurface,
       sourceUrl: item.sourceUrl,
       capturedAt: item.capturedAt,
+      decayScore: computeDecayScore(item.type, item.updatedAt, item.lastReaffirmedAt, item.pinned),
+      lastReaffirmedAt: item.lastReaffirmedAt,
     })),
     packets: packets.map((packet) => ({
       id: packet.id,
