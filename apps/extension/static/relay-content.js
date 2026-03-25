@@ -1524,9 +1524,19 @@
       Math.max(16, window.innerWidth - dynamicWidth - 16),
     );
 
-    let top = rect.top - chipHeight - 4;
+    const chipVerticalOffset = {
+      chatgpt: -15,
+      codex: -15,
+      claude: -20,
+      perplexity: -16,
+      gemini: -21,
+      grok: 0,
+      deepseek: -1,
+    };
+    const vOffset = chipVerticalOffset[config.platform] ?? -4;
+    let top = rect.top - chipHeight + vOffset;
     if (top < 16) {
-      top = rect.bottom + 4;
+      top = rect.bottom + Math.abs(vOffset);
     }
     if (top + chipHeight > window.innerHeight - 16) {
       top = Math.max(16, window.innerHeight - chipHeight - 16);
