@@ -43,10 +43,7 @@
       ],
     },
     deepseek: {
-      streamingSelectors: [
-        "button[aria-label*='Stop']",
-        ".stop-generating",
-      ],
+      streamingSelectors: ["button[aria-label*='Stop']", ".stop-generating"],
     },
   };
 
@@ -170,7 +167,11 @@
   }
 
   function detectPlatformFromUrl(url) {
-    if (/codex\.openai\.com/.test(url) || /chatgpt\.com\/codex|chat\.openai\.com\/codex/.test(url)) return "codex";
+    if (
+      /codex\.openai\.com/.test(url) ||
+      /chatgpt\.com\/codex|chat\.openai\.com\/codex/.test(url)
+    )
+      return "codex";
     if (/chatgpt\.com|chat\.openai\.com/.test(url)) return "chatgpt";
     if (/claude\.ai/.test(url)) return "claude";
     if (/perplexity\.ai/.test(url)) return "perplexity";
@@ -184,7 +185,9 @@
     const runtime = getAdapterRuntime();
     const resolved = runtime ? runtime.resolve(window.location.href) : null;
 
-    const platform = resolved ? resolved.platform : detectPlatformFromUrl(window.location.href);
+    const platform = resolved
+      ? resolved.platform
+      : detectPlatformFromUrl(window.location.href);
 
     if (!platform) {
       return null;
@@ -192,14 +195,15 @@
 
     return {
       platform,
-      streamingSelectors:
-        platformUiConfigs[platform]?.streamingSelectors || [],
+      streamingSelectors: platformUiConfigs[platform]?.streamingSelectors || [],
     };
   }
 
   function collectTurns(config, metadata) {
     const runtime = getAdapterRuntime();
-    const domTurns = runtime ? runtime.collectTurns(document, window.location.href) : [];
+    const domTurns = runtime
+      ? runtime.collectTurns(document, window.location.href)
+      : [];
 
     // Try to merge with network-captured turns for completeness
     const merged = mergeNetworkAndDomTurns(domTurns, config, metadata);
@@ -231,8 +235,15 @@
       return tagTurnsWithSource(domTurns, "dom");
     }
 
-    var currentConversationId = getConversationIdentity(config.platform, metadata);
-    if (cache.conversationId && currentConversationId && cache.conversationId !== currentConversationId) {
+    var currentConversationId = getConversationIdentity(
+      config.platform,
+      metadata,
+    );
+    if (
+      cache.conversationId &&
+      currentConversationId &&
+      cache.conversationId !== currentConversationId
+    ) {
       return tagTurnsWithSource(domTurns, "dom");
     }
 
@@ -311,7 +322,7 @@
       domTurns.length,
       "DOM →",
       merged.length,
-      "merged"
+      "merged",
     );
 
     return merged;
@@ -327,14 +338,24 @@
     var capped = turns.slice(0, CAPTURE_LIMITS.maxTurns);
     return capped.map(function (t) {
       var sanitized = Object.assign({}, t);
-      if (typeof sanitized.content === "string" && sanitized.content.length > CAPTURE_LIMITS.maxTurnContent) {
-        sanitized.content = sanitized.content.slice(0, CAPTURE_LIMITS.maxTurnContent - 14) + "\n[…truncated]";
+      if (
+        typeof sanitized.content === "string" &&
+        sanitized.content.length > CAPTURE_LIMITS.maxTurnContent
+      ) {
+        sanitized.content =
+          sanitized.content.slice(0, CAPTURE_LIMITS.maxTurnContent - 14) +
+          "\n[…truncated]";
       }
       if (!sanitized.content) {
         sanitized.content = "[empty]";
       }
-      if (typeof sanitized.rawHtml === "string" && sanitized.rawHtml.length > CAPTURE_LIMITS.maxRawHtml) {
-        sanitized.rawHtml = sanitized.rawHtml.slice(0, CAPTURE_LIMITS.maxRawHtml - 14) + "\n[…truncated]";
+      if (
+        typeof sanitized.rawHtml === "string" &&
+        sanitized.rawHtml.length > CAPTURE_LIMITS.maxRawHtml
+      ) {
+        sanitized.rawHtml =
+          sanitized.rawHtml.slice(0, CAPTURE_LIMITS.maxRawHtml - 14) +
+          "\n[…truncated]";
       }
       return sanitized;
     });
@@ -364,7 +385,11 @@
       snippets.push(normalizedTitle.slice(0, 160));
     }
 
-    for (let index = turns.length - 1; index >= 0 && snippets.length < 5; index -= 1) {
+    for (
+      let index = turns.length - 1;
+      index >= 0 && snippets.length < 5;
+      index -= 1
+    ) {
       const turn = turns[index];
       const content = normalizeText(turn && turn.content);
       if (!content || content.length < 8) {
@@ -392,7 +417,11 @@
       totalLength += titleSnippet.length;
     }
 
-    for (let index = 0; index < turns.length && totalLength < 5976; index += 1) {
+    for (
+      let index = 0;
+      index < turns.length && totalLength < 5976;
+      index += 1
+    ) {
       const turn = turns[index];
       const content = normalizeText(turn && turn.content);
       if (!content || content.length < 3) {
@@ -487,36 +516,57 @@
 
   function getConversationIdentity(platform, metadata) {
     var fromNetwork =
-      networkCaptureCache.latest && networkCaptureCache.latest.platform === platform
+      networkCaptureCache.latest &&
+      networkCaptureCache.latest.platform === platform
         ? networkCaptureCache.latest.conversationId
         : null;
 
-    return fromNetwork || getUrlConversationId(platform, metadata) || metadata.pageFingerprint || null;
+    return (
+      fromNetwork ||
+      getUrlConversationId(platform, metadata) ||
+      metadata.pageFingerprint ||
+      null
+    );
   }
 
   const platformPromptSelectors = {
     chatgpt: ["#prompt-textarea", "div[contenteditable='true']", "textarea"],
     codex: ["#prompt-textarea", "div[contenteditable='true']", "textarea"],
     claude: ["div[contenteditable='true']", "textarea"],
-    perplexity: ["textarea[placeholder*='Ask']", "textarea", "[contenteditable='true']"],
-    gemini: [".ql-editor", "rich-textarea [contenteditable='true']", "[contenteditable='true']", "textarea"],
+    perplexity: [
+      "textarea[placeholder*='Ask']",
+      "textarea",
+      "[contenteditable='true']",
+    ],
+    gemini: [
+      ".ql-editor",
+      "rich-textarea [contenteditable='true']",
+      "[contenteditable='true']",
+      "textarea",
+    ],
     grok: ["textarea", "[contenteditable='true']"],
     deepseek: ["textarea", "[contenteditable='true']"],
   };
 
   function findPrompt(config) {
     const runtime = getAdapterRuntime();
-    const result = runtime ? runtime.findPrompt(document, window.location.href) : null;
+    const result = runtime
+      ? runtime.findPrompt(document, window.location.href)
+      : null;
     if (result) return result;
 
-    const selectors = platformPromptSelectors[config.platform] || ["div[contenteditable='true']", "textarea"];
+    const selectors = platformPromptSelectors[config.platform] || [
+      "div[contenteditable='true']",
+      "textarea",
+    ];
     for (const selector of selectors) {
       const nodes = document.querySelectorAll(selector);
       for (const node of nodes) {
         const rect = node.getBoundingClientRect();
         const style = window.getComputedStyle(node);
         if (
-          rect.width > 0 && rect.height > 0 &&
+          rect.width > 0 &&
+          rect.height > 0 &&
           style.visibility !== "hidden" &&
           style.display !== "none" &&
           !node.hasAttribute("disabled")
@@ -616,11 +666,14 @@
       relayChipState.freshCandidateSince = Date.now();
     }
 
-    const timeSinceLastMutation = Date.now() - relayChipState.lastMeaningfulMutationAt;
+    const timeSinceLastMutation =
+      Date.now() - relayChipState.lastMeaningfulMutationAt;
     const recentlyStoppedStreaming =
       relayChipState.streamingEndedAt > 0 &&
       Date.now() - relayChipState.streamingEndedAt < PAGE_STABLE_MS;
-    const stabilityThreshold = recentlyStoppedStreaming ? POST_STREAMING_STABLE_MS : PAGE_STABLE_MS;
+    const stabilityThreshold = recentlyStoppedStreaming
+      ? POST_STREAMING_STABLE_MS
+      : PAGE_STABLE_MS;
     const isStable = timeSinceLastMutation >= stabilityThreshold;
     const isFreshChat =
       candidateFresh &&
@@ -641,7 +694,10 @@
       captureSignature: computeSignature(turns, metadata, config.platform),
       recentUserTurnText: getLatestMeaningfulUserTurnText(turns),
       recentRoutingText: buildRecentRoutingText(turns, metadata.title),
-      fullVisibleRoutingText: buildFullVisibleRoutingText(turns, metadata.title),
+      fullVisibleRoutingText: buildFullVisibleRoutingText(
+        turns,
+        metadata.title,
+      ),
       promptReady,
       isFreshRoute,
       isFreshChat,
@@ -848,18 +904,18 @@
       }
 
       .relay-inline-chip[data-theme="light"] {
-        --relay-bg: #f4f1e8;
-        --relay-surface: #fffdf7;
-        --relay-ink: #191814;
-        --relay-ink-secondary: #464136;
-        --relay-muted: #7f7768;
-        --relay-faint: #a19887;
-        --relay-line: rgba(25, 24, 20, 0.1);
-        --relay-accent: #191814;
-        --relay-accent-text: #f7f4eb;
-        --relay-hover: rgba(25, 24, 20, 0.06);
-        --relay-shadow: 0 6px 24px rgba(25, 24, 20, 0.16);
-        --relay-tooltip-shadow: 0 10px 26px rgba(25, 24, 20, 0.14);
+        --relay-bg: #fafaf9;
+        --relay-surface: #ffffff;
+        --relay-ink: #0f0f0f;
+        --relay-ink-secondary: #3a3a3a;
+        --relay-muted: #737373;
+        --relay-faint: #a3a3a3;
+        --relay-line: rgba(0, 0, 0, 0.06);
+        --relay-accent: #171717;
+        --relay-accent-text: #fafafa;
+        --relay-hover: rgba(0, 0, 0, 0.04);
+        --relay-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 4px 12px rgba(0, 0, 0, 0.04);
+        --relay-tooltip-shadow: 0 2px 8px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.08);
       }
 
       .relay-inline-chip--visible {
@@ -1232,17 +1288,17 @@
       }
 
       .relay-association-toast[data-theme="light"] {
-        --relay-bg: rgba(255, 253, 247, 0.97);
-        --relay-surface: #fffdf7;
-        --relay-ink: #191814;
-        --relay-ink-secondary: #464136;
-        --relay-muted: #7f7768;
-        --relay-faint: #a19887;
-        --relay-line: rgba(25, 24, 20, 0.1);
-        --relay-accent: #191814;
-        --relay-accent-text: #f7f4eb;
-        --relay-hover: rgba(25, 24, 20, 0.06);
-        --relay-shadow: 0 14px 32px rgba(25, 24, 20, 0.16);
+        --relay-bg: rgba(250, 250, 249, 0.97);
+        --relay-surface: #ffffff;
+        --relay-ink: #0f0f0f;
+        --relay-ink-secondary: #3a3a3a;
+        --relay-muted: #737373;
+        --relay-faint: #a3a3a3;
+        --relay-line: rgba(0, 0, 0, 0.06);
+        --relay-accent: #171717;
+        --relay-accent-text: #fafafa;
+        --relay-hover: rgba(0, 0, 0, 0.04);
+        --relay-shadow: 0 2px 8px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.08);
       }
 
       .relay-association-toast--visible {
@@ -1515,7 +1571,11 @@
     }
 
     const rect = promptTarget.element.getBoundingClientRect();
-    const dynamicWidth = clamp(rect.width, 280, Math.min(600, window.innerWidth - 32));
+    const dynamicWidth = clamp(
+      rect.width,
+      280,
+      Math.min(600, window.innerWidth - 32),
+    );
     root.style.width = `${Math.round(dynamicWidth)}px`;
     const chipHeight = root.offsetHeight || 200;
     const left = clamp(
@@ -1605,7 +1665,8 @@
     if (sharedInsertState.status === "inserting") {
       return {
         mode: "loading",
-        message: '<span class="relay-inline-chip__shimmer">Inserting project brief…</span>',
+        message:
+          '<span class="relay-inline-chip__shimmer">Inserting project brief…</span>',
       };
     }
 
@@ -1626,7 +1687,8 @@
     if (relayChipState.buttonMode === "loading") {
       return {
         mode: "loading",
-        message: '<span class="relay-inline-chip__shimmer">Inserting project brief…</span>',
+        message:
+          '<span class="relay-inline-chip__shimmer">Inserting project brief…</span>',
       };
     }
 
@@ -1736,7 +1798,11 @@
     renderAssociationToast(payload);
   }
 
-  function formatProjectSwitcherOptions(projectOptions, activeProjectId, className) {
+  function formatProjectSwitcherOptions(
+    projectOptions,
+    activeProjectId,
+    className,
+  ) {
     return projectOptions
       .map((project) => {
         const active = project.id === activeProjectId;
@@ -1789,7 +1855,9 @@
         event: "inline_insert.failed",
         flowId,
         message:
-          result && result.reason ? result.reason : "Insert failed from inline chip.",
+          result && result.reason
+            ? result.reason
+            : "Insert failed from inline chip.",
         context: {
           projectId: activeState.projectId,
         },
@@ -1855,8 +1923,10 @@
     if (!config || !activeState || !shouldRenderChip(activeState)) {
       // Don't remove chip during transitional sync states — prevents flicker
       // when force-syncing on tab focus triggers loading → ready broadcasts
-      const isTransitional = activeState &&
-        (activeState.remoteStatus === "loading" || activeState.remoteStatus === "stale");
+      const isTransitional =
+        activeState &&
+        (activeState.remoteStatus === "loading" ||
+          activeState.remoteStatus === "stale");
       if (!isTransitional || !document.getElementById("relay-inline-chip")) {
         removeInlineChipImmediately();
       }
@@ -1913,13 +1983,22 @@
 
       // Note: All user-controlled values are sanitized via escapeHtml() before insertion.
       // chipTitle is built from escapeHtml'd values above. buttonClassName uses only hardcoded class names.
-      const shortcutDisplay = escapeHtml(activeState.shortcutLabel || "\u2318\u21e7I");
-      const trustStats = activeState.trust &&
-        (activeState.trust.recentChatCount > 0 || activeState.trust.savedContextCount > 0)
+      const shortcutDisplay = escapeHtml(
+        activeState.shortcutLabel || "\u2318\u21e7I",
+      );
+      const trustStats =
+        activeState.trust &&
+        (activeState.trust.recentChatCount > 0 ||
+          activeState.trust.savedContextCount > 0)
           ? `${escapeHtml(String(activeState.trust.recentChatCount))} chats \u00b7 ${escapeHtml(String(activeState.trust.savedContextCount))} saved`
           : escapeHtml(activeState.trustLine || "");
-      const freshnessText = activeState.freshnessText ? ` \u00b7 ${escapeHtml(activeState.freshnessText)}` : "";
-      const logoUrl = typeof chrome !== "undefined" && chrome.runtime ? chrome.runtime.getURL("assets/relay_logo_white.png") : "";
+      const freshnessText = activeState.freshnessText
+        ? ` \u00b7 ${escapeHtml(activeState.freshnessText)}`
+        : "";
+      const logoUrl =
+        typeof chrome !== "undefined" && chrome.runtime
+          ? chrome.runtime.getURL("assets/relay_logo_white.png")
+          : "";
 
       root.innerHTML = `
         <div class="relay-inline-chip__body">
@@ -1970,49 +2049,51 @@
         });
       }
 
-      root.querySelectorAll(".relay-inline-chip__projectOption").forEach((button) => {
-        button.addEventListener("click", async (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          const nextProjectId = button.getAttribute("data-project-id");
-          if (!nextProjectId) return;
-          const associationAware =
-            activeState.chatAssociation &&
-            ["pending", "held", "saved"].includes(
-              activeState.chatAssociation.status,
-            );
-          emitInlineTelemetry({
-            level: "info",
-            area: "project",
-            event: associationAware
-              ? "inline_association.retarget"
-              : "inline_project.switch",
-            message: associationAware
-              ? "Retargeted the chat association from the inline chip."
-              : "Switched the active project from the inline chip.",
-            context: {
-              projectId: nextProjectId,
-            },
-          });
-          relayChipState.buttonMode = "idle";
-          relayChipState.buttonError = "";
-          closeProjectSwitcher();
-          await sendRuntimeMessage(
-            associationAware
-              ? {
-                  type: "RELAY_SET_CHAT_ASSOCIATION_PROJECT",
-                  payload: {
-                    projectId: nextProjectId,
-                    source: "inline_chip",
+      root
+        .querySelectorAll(".relay-inline-chip__projectOption")
+        .forEach((button) => {
+          button.addEventListener("click", async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const nextProjectId = button.getAttribute("data-project-id");
+            if (!nextProjectId) return;
+            const associationAware =
+              activeState.chatAssociation &&
+              ["pending", "held", "saved"].includes(
+                activeState.chatAssociation.status,
+              );
+            emitInlineTelemetry({
+              level: "info",
+              area: "project",
+              event: associationAware
+                ? "inline_association.retarget"
+                : "inline_project.switch",
+              message: associationAware
+                ? "Retargeted the chat association from the inline chip."
+                : "Switched the active project from the inline chip.",
+              context: {
+                projectId: nextProjectId,
+              },
+            });
+            relayChipState.buttonMode = "idle";
+            relayChipState.buttonError = "";
+            closeProjectSwitcher();
+            await sendRuntimeMessage(
+              associationAware
+                ? {
+                    type: "RELAY_SET_CHAT_ASSOCIATION_PROJECT",
+                    payload: {
+                      projectId: nextProjectId,
+                      source: "inline_chip",
+                    },
+                  }
+                : {
+                    type: "RELAY_SET_ACTIVE_PROJECT",
+                    payload: { projectId: nextProjectId },
                   },
-                }
-              : {
-                  type: "RELAY_SET_ACTIVE_PROJECT",
-                  payload: { projectId: nextProjectId },
-                },
-          );
+            );
+          });
         });
-      });
 
       root.dataset.renderKey = renderKey;
     }
@@ -2220,7 +2301,10 @@
   function renderAssociationToast(payload) {
     ensureInlineChipStyles();
     const previousPayload = relayChipState.associationToast.payload;
-    if (getAssociationToastKey(previousPayload) !== getAssociationToastKey(payload)) {
+    if (
+      getAssociationToastKey(previousPayload) !==
+      getAssociationToastKey(payload)
+    ) {
       resetAssociationToastPauseState();
     }
     relayChipState.associationToast.payload = payload;
@@ -2295,14 +2379,18 @@
         <button class="relay-association-toast__dismiss" type="button" aria-label="Dismiss association toast">×</button>
       </div>
       <p class="relay-association-toast__meta">${escapeHtml(meta)}</p>
-      ${payload.mode !== "confirmed" && payload.mode !== "capture_result" ? `<div class="relay-association-toast__actions">
+      ${
+        payload.mode !== "confirmed" && payload.mode !== "capture_result"
+          ? `<div class="relay-association-toast__actions">
         ${
           payload.mode === "auto_save"
             ? '<button class="relay-association-toast__button" type="button" data-action="cancel">Cancel save</button>'
             : '<button class="relay-association-toast__button relay-association-toast__button--primary" type="button" data-action="approve">Approve save</button><button class="relay-association-toast__button relay-association-toast__button--subtle" type="button" data-action="cancel">Not this chat</button>'
         }
         ${renderAssociationToastTimer(payload)}
-      </div>` : ""}
+      </div>`
+          : ""
+      }
     `;
 
     root.onclick = null;
@@ -2313,7 +2401,9 @@
       };
     }
 
-    const titleButton = root.querySelector(".relay-association-toast__titleButton");
+    const titleButton = root.querySelector(
+      ".relay-association-toast__titleButton",
+    );
     if (titleButton) {
       titleButton.addEventListener("click", (event) => {
         event.preventDefault();
@@ -2322,41 +2412,44 @@
       });
     }
 
-    root.querySelectorAll(".relay-association-toast__projectOption").forEach((button) => {
-      button.addEventListener("click", async (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (root.dataset.pendingAction) {
-          return;
-        }
+    root
+      .querySelectorAll(".relay-association-toast__projectOption")
+      .forEach((button) => {
+        button.addEventListener("click", async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (root.dataset.pendingAction) {
+            return;
+          }
 
-        const nextProjectId = button.getAttribute("data-project-id");
-        if (!nextProjectId || nextProjectId === payload.projectId) {
-          return;
-        }
+          const nextProjectId = button.getAttribute("data-project-id");
+          if (!nextProjectId || nextProjectId === payload.projectId) {
+            return;
+          }
 
-        const response = await sendRuntimeMessage({
-          type: "RELAY_SET_CHAT_ASSOCIATION_PROJECT",
-          payload: {
-            projectId: nextProjectId,
-            source: "toast",
-          },
-        });
+          const response = await sendRuntimeMessage({
+            type: "RELAY_SET_CHAT_ASSOCIATION_PROJECT",
+            payload: {
+              projectId: nextProjectId,
+              source: "toast",
+            },
+          });
 
-        if (!response?.ok) {
-          renderAssociationToast(payload);
-          return;
-        }
+          if (!response?.ok) {
+            renderAssociationToast(payload);
+            return;
+          }
 
-        closeProjectSwitcher();
-        renderAssociationToast({
-          ...payload,
-          projectId: response.projectId ?? nextProjectId,
-          projectName: response.projectName ?? payload.projectName,
-          projectOptions: response.state?.projectOptions ?? payload.projectOptions,
+          closeProjectSwitcher();
+          renderAssociationToast({
+            ...payload,
+            projectId: response.projectId ?? nextProjectId,
+            projectName: response.projectName ?? payload.projectName,
+            projectOptions:
+              response.state?.projectOptions ?? payload.projectOptions,
+          });
         });
       });
-    });
 
     root.querySelectorAll("[data-action]").forEach((actionButton) => {
       actionButton.addEventListener("click", async (event) => {
@@ -2389,7 +2482,9 @@
       });
     });
 
-    const dismissButton = root.querySelector(".relay-association-toast__dismiss");
+    const dismissButton = root.querySelector(
+      ".relay-association-toast__dismiss",
+    );
     if (dismissButton) {
       dismissButton.addEventListener("click", async (event) => {
         event.preventDefault();
@@ -2440,9 +2535,12 @@
 
     if (!relayChipState.associationToast.paused) {
       updateAssociationToastCountdown(root, payload);
-      relayChipState.associationToast.countdownTimer = window.setInterval(() => {
-        updateAssociationToastCountdown(root, payload);
-      }, 250);
+      relayChipState.associationToast.countdownTimer = window.setInterval(
+        () => {
+          updateAssociationToastCountdown(root, payload);
+        },
+        250,
+      );
     }
   }
 
@@ -2474,11 +2572,15 @@
         area: "runtime",
         event: "inline_chip.compute_page_state_error",
         message: "computePageState threw during observation.",
-        error: { message: String(err && err.message || err) },
+        error: { message: String((err && err.message) || err) },
       });
       pageState = { supported: false };
     }
-    console.debug("[Relay] pageState →", { supported: pageState.supported, platform: pageState.platform, routeKind: pageState.routeKind });
+    console.debug("[Relay] pageState →", {
+      supported: pageState.supported,
+      platform: pageState.platform,
+      routeKind: pageState.routeKind,
+    });
     relayChipState.pageState = pageState;
 
     // Fast path: when streaming just ended, record the time and schedule a quick
@@ -2724,7 +2826,8 @@
           level: "info",
           area: "shortcut",
           event: "inline_chip.shortcut_insert",
-          message: "Shortcut triggered project brief insertion from a visible chip.",
+          message:
+            "Shortcut triggered project brief insertion from a visible chip.",
         });
         void invokeInsertFromChip();
         sendResponse({ ok: true, action: "invoked_insert" });
@@ -2801,7 +2904,10 @@
             title: metadata.title,
             url: metadata.url,
             pageFingerprint: metadata.pageFingerprint,
-            sourceConversationId: getConversationIdentity(config.platform, metadata),
+            sourceConversationId: getConversationIdentity(
+              config.platform,
+              metadata,
+            ),
             captureSignature: computeSignature(
               rawTurns,
               metadata,
@@ -2867,7 +2973,12 @@
       area: "runtime",
       event: "inline_chip.error",
       message: event.message || "Unhandled content-script error.",
-      error: event.error ? { message: String(event.error.message || event.error), stack: event.error.stack || null } : { message: event.message || "Unhandled content-script error." },
+      error: event.error
+        ? {
+            message: String(event.error.message || event.error),
+            stack: event.error.stack || null,
+          }
+        : { message: event.message || "Unhandled content-script error." },
     });
   });
 
@@ -2920,7 +3031,7 @@
         "[Relay] Network capture received:",
         payload.platform,
         payload.turns.length,
-        "turns"
+        "turns",
       );
     }
   });

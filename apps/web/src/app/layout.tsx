@@ -63,6 +63,24 @@ export default function RootLayout({
 }catch(e){}})();`,
           }}
         />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{
+  var isLight=document.documentElement.classList.contains("light");
+  if(!isLight&&!matchMedia("(prefers-color-scheme:light)").matches)return;
+  var img=new Image();img.crossOrigin="anonymous";
+  img.onload=function(){
+    var c=document.createElement("canvas");c.width=64;c.height=64;
+    var ctx=c.getContext("2d");ctx.filter="brightness(0)";
+    ctx.drawImage(img,0,0,64,64);
+    var link=document.querySelector("link[rel='icon']");
+    if(!link){link=document.createElement("link");link.rel="icon";document.head.appendChild(link)}
+    link.href=c.toDataURL("image/png");
+  };
+  img.src="/images/relay_logo_white.png";
+}catch(e){}})();`,
+          }}
+        />
       </head>
       <body>
         <PostHogProvider>
