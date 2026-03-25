@@ -4,19 +4,7 @@ import type {
   RelayProjectOption,
 } from "../messaging/contracts";
 
-export const ASSOCIATION_TOAST_WINDOW_MS = 20_000;
-export const AUTO_SAVE_ASSOCIATION_TOAST_WINDOW_MS = 10_000;
-export const HELD_REVIEW_ASSOCIATION_TOAST_WINDOW_MS = 20_000;
-
-export interface PendingAssociationState {
-  mode: "auto_save";
-  projectId: string;
-  projectName: string;
-  captureSignature: string | null;
-  expiresAt: number;
-  remainingMs: number | null;
-  paused: boolean;
-}
+export const DONE_TOAST_DURATION_MS = 2_000;
 
 export interface ResolveAssociationProjectNameInput {
   matchedProjectName?: string | null;
@@ -44,53 +32,37 @@ export function resolveAssociationProjectName(
   );
 }
 
-export function buildPendingAutoSaveAssociation(input: {
+export function buildSavingToast(input: {
   projectId: string;
   projectName: string;
   projectOptions: RelayProjectOption[];
-  captureSignature: string | null;
-  now?: number;
 }) {
-  const now = input.now ?? Date.now();
-  const expiresAt = now + AUTO_SAVE_ASSOCIATION_TOAST_WINDOW_MS;
   const chatAssociation: RelayChatAssociation = {
     status: "pending",
     projectId: input.projectId,
     projectName: input.projectName,
     sessionId: null,
-    reason: `Relay will save this chat to ${input.projectName} in 10 seconds unless you cancel.`,
+    reason: `Saving this chat to ${input.projectName}...`,
     capturedAt: null,
   };
   const toast: RelayAssociationToastPayload = {
-    mode: "auto_save",
+    mode: "saving",
     projectId: input.projectId,
     projectName: input.projectName,
     projectOptions: input.projectOptions,
     sessionId: null,
-    expiresAt,
-  };
-  const pending: PendingAssociationState = {
-    mode: "auto_save",
-    projectId: input.projectId,
-    projectName: input.projectName,
-    captureSignature: input.captureSignature,
-    expiresAt,
-    remainingMs: null,
-    paused: false,
+    expiresAt: 0,
   };
 
-  return { chatAssociation, toast, pending };
+  return { chatAssociation, toast };
 }
 
-export function buildHeldReviewAssociation(input: {
+export function buildAskToast(input: {
   projectId: string;
   projectName: string;
   projectOptions: RelayProjectOption[];
   reason?: string | null;
-  now?: number;
 }) {
-  const now = input.now ?? Date.now();
-  const expiresAt = now + HELD_REVIEW_ASSOCIATION_TOAST_WINDOW_MS;
   const chatAssociation: RelayChatAssociation = {
     status: "held",
     projectId: input.projectId,
@@ -102,69 +74,47 @@ export function buildHeldReviewAssociation(input: {
     capturedAt: null,
   };
   const toast: RelayAssociationToastPayload = {
-    mode: "held_review",
+    mode: "ask",
     projectId: input.projectId,
     projectName: input.projectName,
     projectOptions: input.projectOptions,
     sessionId: null,
-    expiresAt,
+    expiresAt: 0,
+    reason: input.reason ?? null,
   };
 
   return { chatAssociation, toast };
 }
 
+export function buildDoneToast(input: {
+  projectId: string;
+  projectName: string;
+  digestStatus?: "analyzed" | "queued" | null;
+  now?: number;
+}) {
+  const now = input.now ?? Date.now();
+  const toast: RelayAssociationToastPayload = {
+    mode: "done",
+    projectId: input.projectId,
+    projectName: input.projectName,
+    projectOptions: [],
+    sessionId: null,
+    expiresAt: now + DONE_TOAST_DURATION_MS,
+    digestStatus: input.digestStatus ?? null,
+  };
+
+  return { toast };
+}
+
 export function resolveAssociationToastAction(input: {
-  mode: "auto_save" | "held_review" | "confirmed";
+  mode: "saving" | "ask";
   action: "approve" | "cancel";
 }) {
-  if (input.mode === "confirmed") {
-    return "dismiss";
-  }
-
-  if (input.mode === "auto_save") {
+  if (input.mode === "saving") {
     return input.action === "cancel" ? "dismiss" : "noop";
   }
 
   return input.action === "approve" ? "capture" : "dismiss";
-}
-
-export function getPendingAssociationRemainingMs(
-  pending: PendingAssociationState,
-  now = Date.now(),
-) {
-  if (pending.paused && pending.remainingMs !== null) {
-    return Math.max(0, pending.remainingMs);
-  }
-
-  return Math.max(0, pending.expiresAt - now);
-}
-
-export function pausePendingAutoSaveAssociation(
-  pending: PendingAssociationState,
-  now = Date.now(),
-): PendingAssociationState {
-  const remainingMs = getPendingAssociationRemainingMs(pending, now);
-
-  return {
-    ...pending,
-    paused: true,
-    remainingMs,
-    expiresAt: now + remainingMs,
-  };
-}
-
-export function resumePendingAutoSaveAssociation(
-  pending: PendingAssociationState,
-  now = Date.now(),
-): PendingAssociationState {
-  const remainingMs = getPendingAssociationRemainingMs(pending, now);
-
-  return {
-    ...pending,
-    paused: false,
-    remainingMs: null,
-    expiresAt: now + remainingMs,
-  };
 }
 
 export function buildSavedAssociationFromMemory(input: {

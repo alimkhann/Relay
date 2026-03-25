@@ -67,13 +67,14 @@ export interface RelayChatAssociation {
 }
 
 export interface RelayAssociationToastPayload {
-  mode: "auto_save" | "held_review" | "confirmed" | "capture_result";
+  mode: "saving" | "ask" | "done";
   projectId: string;
   projectName: string;
   projectOptions: RelayProjectOption[];
   sessionId?: string | null;
   expiresAt: number;
-  digestStatus?: "analyzed" | "queued" | "saved" | null;
+  digestStatus?: "analyzed" | "queued" | null;
+  reason?: string | null;
 }
 
 export interface RelayRoutingReview {
@@ -86,14 +87,13 @@ export type RelayAssociationTier = "none" | "high" | "medium" | "low";
 
 export interface RelayAssociationToastState {
   visible: boolean;
-  mode: "auto_save" | "held_review" | "confirmed" | "capture_result" | null;
+  mode: "saving" | "ask" | "done" | null;
   projectId: string | null;
   projectName: string | null;
   projectOptions: RelayProjectOption[];
   sessionId: string | null;
-  expiresAt: number | null;
-  paused: boolean;
-  digestStatus?: "analyzed" | "queued" | "saved" | null;
+  digestStatus?: "analyzed" | "queued" | null;
+  reason?: string | null;
 }
 
 export interface RelayInsertState {
@@ -196,16 +196,7 @@ export type RelayMessage =
       type: "RELAY_RESOLVE_ASSOCIATION_TOAST";
       payload: {
         action: "approve" | "cancel";
-        mode: "auto_save" | "held_review" | "confirmed";
-        projectId: string;
-        tabId?: number;
-      };
-    }
-  | {
-      type: "RELAY_SET_ASSOCIATION_TOAST_PAUSED";
-      payload: {
-        paused: boolean;
-        mode: "auto_save" | "held_review" | "confirmed";
+        mode: "saving" | "ask";
         projectId: string;
         tabId?: number;
       };
