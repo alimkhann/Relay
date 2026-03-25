@@ -28,7 +28,7 @@
 :global(html[data-relay-theme="light"]),
 :global(body[data-relay-theme="light"]),
 :global(#__plasmo[data-relay-theme="light"]) {
-  background: #fafaf9;
+  background: #f4f1e8;
 }
 
 /* ── Shell ── */
@@ -68,18 +68,18 @@
 }
 
 .shell[data-theme="light"] {
-  --bg: #fafaf9;
-  --surface: #ffffff;
-  --ink: #0f0f0f;
-  --ink-secondary: #3a3a3a;
-  --muted: #737373;
-  --faint: #a3a3a3;
-  --line: rgba(0, 0, 0, 0.06);
-  --accent: #171717;
-  --accent-text: #fafafa;
-  --surface-soft: rgba(0, 0, 0, 0.03);
-  --hover: rgba(0, 0, 0, 0.04);
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 4px 12px rgba(0, 0, 0, 0.04);
+  --bg: #f4f1e8;
+  --surface: #fffdf7;
+  --ink: #191814;
+  --ink-secondary: #464136;
+  --muted: #7f7768;
+  --faint: #a19887;
+  --line: rgba(25, 24, 20, 0.1);
+  --accent: #191814;
+  --accent-text: #f7f4eb;
+  --surface-soft: rgba(25, 24, 20, 0.04);
+  --hover: rgba(25, 24, 20, 0.05);
+  --shadow: 0 10px 26px rgba(25, 24, 20, 0.12);
 }
 
 .compact {
@@ -112,10 +112,6 @@
   height: 16px;
   flex-shrink: 0;
   object-fit: contain;
-}
-
-:global([data-theme="light"]) .logoMark {
-  filter: brightness(0);
 }
 
 .logoLink {
