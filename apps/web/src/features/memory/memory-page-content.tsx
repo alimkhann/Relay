@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { ProjectDashboardDto } from "@relay/shared";
-import { DECAY_VISIBILITY_THRESHOLD } from "@relay/shared";
 import { Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -70,7 +69,7 @@ export function MemoryPageContent({
   const memoryHealth = useMemo(() => {
     const items = dashboard.memory;
     const active = items.filter((i) => i.decayScore >= 0.3).length;
-    const fading = items.filter((i) => i.decayScore >= DECAY_VISIBILITY_THRESHOLD && i.decayScore < 0.3).length;
+    const fading = items.filter((i) => i.decayScore >= 0.1 && i.decayScore < 0.3).length;
     return { active, fading, total: items.length };
   }, [dashboard.memory]);
 
