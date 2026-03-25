@@ -1,3 +1,4 @@
+import iconUrl from "../../assets/icon.png";
 import { createFlowId } from "@relay/shared/utils/telemetry";
 import { normalizeText, slugify } from "@relay/shared/utils/text";
 import type {
@@ -3854,3 +3855,47 @@ chrome.runtime.onMessageExternal.addListener(
     return true;
   },
 );
+
+// ── Theme-adaptive toolbar icon ──
+
+async function updateToolbarIcon(isDark: boolean) {
+  try {
+    const response = await fetch(iconUrl);
+    const blob = await response.blob();
+    const bitmap = await createImageBitmap(blob);
+    const sizes = [16, 32, 48, 128];
+    const imageData: Record<string, ImageData> = {};
+
+    for (const size of sizes) {
+      const canvas = new OffscreenCanvas(size, size);
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(bitmap, 0, 0, size, size);
+
+      if (!isDark) {
+        const data = ctx.getImageData(0, 0, size, size);
+        const pixels = data.data as Uint8ClampedArray;
+        for (let i = 0; i < pixels.length; i += 4) {
+          pixels[i]! = 255 - pixels[i]!;
+          pixels[i + 1]! = 255 - pixels[i + 1]!;
+          pixels[i + 2]! = 255 - pixels[i + 2]!;
+        }
+        ctx.putImageData(data, 0, 0);
+        imageData[String(size)] = data;
+      } else {
+        imageData[String(size)] = ctx.getImageData(0, 0, size, size);
+      }
+    }
+
+    await chrome.action.setIcon({
+      imageData: imageData as unknown as Record<string, ImageData>,
+    });
+  } catch {
+    // Silently ignore — toolbar icon stays as default
+  }
+}
+
+const prefersDark = self.matchMedia("(prefers-color-scheme: dark)");
+void updateToolbarIcon(prefersDark.matches);
+prefersDark.addEventListener("change", (e) => {
+  void updateToolbarIcon(e.matches);
+});
