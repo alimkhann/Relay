@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { ProjectDashboardDto } from "@relay/shared";
+import { getProjectContextCounts } from "@relay/shared/utils/project-context";
 import { Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -20,21 +21,6 @@ type MemoryTab = "all" | "decisions" | "tasks" | "constraints";
 interface MemoryPageContentProps {
   project: { id: string; name: string; description?: string | null };
   dashboard: ProjectDashboardDto;
-}
-
-function countSectionItems(dashboard: ProjectDashboardDto, section: "decision" | "task" | "constraint"): number {
-  const hiddenKey = section === "decision" ? "hiddenDecisions" : section === "constraint" ? "hiddenConstraints" : "hiddenOpenTasks";
-  const hidden = dashboard.stateOverrides?.[hiddenKey] ?? [];
-  const hiddenKeys = new Set(hidden.map((i) => i.toLowerCase()));
-  const derived = (
-    section === "decision"
-      ? (dashboard.derivedProjectState?.decisions ?? [])
-      : section === "constraint"
-        ? (dashboard.derivedProjectState?.constraints ?? [])
-        : (dashboard.derivedProjectState?.openTasks ?? [])
-  ).filter((i) => !hiddenKeys.has(i.toLowerCase()));
-  const manual = dashboard.memory.filter((i) => i.type === section);
-  return derived.length + manual.length;
 }
 
 export function MemoryPageContent({
@@ -60,10 +46,7 @@ export function MemoryPageContent({
   const activeTab = localTab;
 
   const tabCounts = useMemo(() => {
-    const decisions = countSectionItems(dashboard, "decision");
-    const tasks = countSectionItems(dashboard, "task");
-    const constraints = countSectionItems(dashboard, "constraint");
-    return { all: decisions + tasks + constraints, decisions, tasks, constraints };
+    return getProjectContextCounts(dashboard);
   }, [dashboard]);
 
   const memoryHealth = useMemo(() => {

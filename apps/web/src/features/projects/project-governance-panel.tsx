@@ -2,7 +2,13 @@
 
 import { useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import type { MemoryItemType, ProjectDashboardDto } from "@relay/shared"
+import {
+  type MemoryItemType,
+  type ProjectContextItem,
+  type ProjectContextSection,
+  type ProjectDashboardDto,
+} from "@relay/shared"
+import { buildProjectContextItems } from "@relay/shared/utils/project-context"
 import { Pencil, RotateCcw, Trash2 } from "lucide-react"
 
 import { PacketList } from "@/components/context/packet-list"
@@ -15,14 +21,13 @@ import {
   deriveProjectMemoryDrafts,
 } from "@/features/projects/project-memory-state"
 
-type ContextSection = "decision" | "constraint" | "task"
+type ContextSection = ProjectContextSection
+type ContextItem = ProjectContextItem
 
-interface ContextItem {
-  key: string
-  section: ContextSection
-  text: string
-  source: "manual" | "derived"
-  memoryId?: string
+const labelBySection: Record<ContextSection, string> = {
+  decision: "Decisions",
+  constraint: "Constraints",
+  task: "Tasks"
 }
 
 const memoryTypeBySection: Record<ContextSection, MemoryItemType> = {
@@ -31,48 +36,10 @@ const memoryTypeBySection: Record<ContextSection, MemoryItemType> = {
   task: "task"
 }
 
-const labelBySection: Record<ContextSection, string> = {
-  decision: "Decisions",
-  constraint: "Constraints",
-  task: "Tasks"
-}
-
 const hiddenKeyBySection: Record<ContextSection, "hiddenDecisions" | "hiddenConstraints" | "hiddenOpenTasks"> = {
   decision: "hiddenDecisions",
   constraint: "hiddenConstraints",
   task: "hiddenOpenTasks"
-}
-
-function buildContextItems(dashboard: ProjectDashboardDto, section: ContextSection): ContextItem[] {
-  const hidden = dashboard.stateOverrides?.[hiddenKeyBySection[section]] ?? []
-  const hiddenKeys = new Set(hidden.map((item) => item.toLowerCase()))
-
-  const derivedItems = (
-    section === "decision"
-      ? dashboard.derivedProjectState?.decisions ?? []
-      : section === "constraint"
-        ? dashboard.derivedProjectState?.constraints ?? []
-        : dashboard.derivedProjectState?.openTasks ?? []
-  )
-    .filter((item) => !hiddenKeys.has(item.toLowerCase()))
-    .map((text) => ({
-      key: `derived:${section}:${text}`,
-      section,
-      text,
-      source: "derived" as const
-    }))
-
-  const manualItems = dashboard.memory
-    .filter((item) => item.type === memoryTypeBySection[section])
-    .map((item) => ({
-      key: `manual:${item.id}`,
-      section,
-      text: item.content,
-      source: "manual" as const,
-      memoryId: item.id
-    }))
-
-  return [...manualItems, ...derivedItems]
 }
 
 export function ProjectGovernancePanel({
@@ -498,7 +465,7 @@ export function ProjectGovernancePanel({
 
           <div className="mt-5 grid gap-5 md:grid-cols-3">
             {sections.map((section) => {
-              const items = buildContextItems(dashboard, section)
+      const items = buildProjectContextItems(dashboard, section)
 
               return (
                 <div key={section} className="space-y-3">

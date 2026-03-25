@@ -2,7 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { ProjectDashboardDto, MemoryItemType } from "@relay/shared";
+import {
+  type MemoryItemType,
+  type ProjectContextItem,
+  type ProjectContextSection,
+  type ProjectDashboardDto,
+} from "@relay/shared";
+import { buildProjectContextItems } from "@relay/shared/utils/project-context";
 import {
   Pencil,
   Trash2,
@@ -24,15 +30,9 @@ import { relayClientFetch } from "@/lib/telemetry/fetch";
 
 /* ─── Types ─── */
 
-type ContextSection = "decision" | "constraint" | "task";
+type ContextSection = ProjectContextSection;
 
-interface ContextItem {
-  key: string;
-  section: ContextSection;
-  text: string;
-  source: "manual" | "derived";
-  memoryId?: string;
-}
+type ContextItem = ProjectContextItem;
 
 interface BentoDashboardProps {
   project: { id: string; name: string; description?: string | null };
@@ -45,16 +45,16 @@ interface BentoDashboardProps {
 
 const ITEMS_PER_PAGE = 5;
 
-const memoryTypeBySection: Record<ContextSection, MemoryItemType> = {
-  decision: "decision",
-  constraint: "constraint",
-  task: "task",
-};
-
 const labelBySection: Record<ContextSection, string> = {
   decision: "Decisions",
   constraint: "Constraints",
   task: "Tasks",
+};
+
+const memoryTypeBySection: Record<ContextSection, MemoryItemType> = {
+  decision: "decision",
+  constraint: "constraint",
+  task: "task",
 };
 
 const colorBySection: Record<ContextSection, string> = {
@@ -63,45 +63,14 @@ const colorBySection: Record<ContextSection, string> = {
   task: "var(--relay-section-task)",
 };
 
-const hiddenKeyBySection: Record<ContextSection, "hiddenDecisions" | "hiddenConstraints" | "hiddenOpenTasks"> = {
+const hiddenKeyBySection: Record<
+  ContextSection,
+  "hiddenDecisions" | "hiddenConstraints" | "hiddenOpenTasks"
+> = {
   decision: "hiddenDecisions",
   constraint: "hiddenConstraints",
   task: "hiddenOpenTasks",
 };
-
-/* ─── Helpers ─── */
-
-function buildContextItems(dashboard: ProjectDashboardDto, section: ContextSection): ContextItem[] {
-  const hidden = dashboard.stateOverrides?.[hiddenKeyBySection[section]] ?? [];
-  const hiddenKeys = new Set(hidden.map((item) => item.toLowerCase()));
-
-  const derivedItems = (
-    section === "decision"
-      ? dashboard.derivedProjectState?.decisions ?? []
-      : section === "constraint"
-        ? dashboard.derivedProjectState?.constraints ?? []
-        : dashboard.derivedProjectState?.openTasks ?? []
-  )
-    .filter((item) => !hiddenKeys.has(item.toLowerCase()))
-    .map((text) => ({
-      key: `derived:${section}:${text}`,
-      section,
-      text,
-      source: "derived" as const,
-    }));
-
-  const manualItems = dashboard.memory
-    .filter((item) => item.type === memoryTypeBySection[section])
-    .map((item) => ({
-      key: `manual:${item.id}`,
-      section,
-      text: item.content,
-      source: "manual" as const,
-      memoryId: item.id,
-    }));
-
-  return [...manualItems, ...derivedItems];
-}
 
 /* ─── Component ─── */
 
@@ -276,7 +245,7 @@ export function BentoDashboard({ project, dashboard, statusReady, statusText }: 
   /* ─── Computed ─── */
 
   const totalChats = dashboard.distinctConversationCount;
-  const totalContextItems = sections.reduce((acc, s) => acc + buildContextItems(dashboard, s).length, 0);
+  const totalContextItems = sections.reduce((acc, s) => acc + buildProjectContextItems(dashboard, s).length, 0);
   const latestPacket = dashboard.packets[0];
 
   return (
@@ -358,7 +327,7 @@ export function BentoDashboard({ project, dashboard, statusReady, statusText }: 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
           {/* ─── Context panel ─── */}
           {sections.map((section) => {
-            const items = buildContextItems(dashboard, section);
+      const items = buildProjectContextItems(dashboard, section);
             const page = contextPages[section];
             const totalPages = Math.max(1, Math.ceil(items.length / ITEMS_PER_PAGE));
             const pageItems = items.slice(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE);

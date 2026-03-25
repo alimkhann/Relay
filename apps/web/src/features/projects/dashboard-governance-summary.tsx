@@ -1,29 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import type { ProjectDashboardDto, MemoryItemType, SourceSurface } from "@relay/shared";
+import {
+  type ProjectContextSection,
+  type ProjectDashboardDto,
+} from "@relay/shared";
+import { buildProjectContextItems } from "@relay/shared/utils/project-context";
 
 /* ─── Types ─── */
 
-type ContextSection = "decision" | "constraint" | "task";
-
-interface ContextItem {
-  key: string;
-  section: ContextSection;
-  text: string;
-  source: "manual" | "derived";
-  memoryId?: string;
-  sourceSurface?: SourceSurface | null;
-  capturedAt?: string | null;
-}
+type ContextSection = ProjectContextSection;
 
 /* ─── Constants ─── */
-
-const memoryTypeBySection: Record<ContextSection, MemoryItemType> = {
-  decision: "decision",
-  constraint: "constraint",
-  task: "task",
-};
 
 const labelBySection: Record<ContextSection, string> = {
   decision: "Decisions",
@@ -37,60 +25,11 @@ const colorBySection: Record<ContextSection, string> = {
   task: "var(--relay-section-task)",
 };
 
-const hiddenKeyBySection: Record<
-  ContextSection,
-  "hiddenDecisions" | "hiddenConstraints" | "hiddenOpenTasks"
-> = {
-  decision: "hiddenDecisions",
-  constraint: "hiddenConstraints",
-  task: "hiddenOpenTasks",
-};
-
 const tabBySection: Record<ContextSection, string> = {
   decision: "decisions",
   constraint: "constraints",
   task: "tasks",
 };
-
-/* ─── Helpers ─── */
-
-function buildContextItems(
-  dashboard: ProjectDashboardDto,
-  section: ContextSection,
-): ContextItem[] {
-  const hidden =
-    dashboard.stateOverrides?.[hiddenKeyBySection[section]] ?? [];
-  const hiddenKeys = new Set(hidden.map((item) => item.toLowerCase()));
-
-  const derivedItems = (
-    section === "decision"
-      ? (dashboard.derivedProjectState?.decisions ?? [])
-      : section === "constraint"
-        ? (dashboard.derivedProjectState?.constraints ?? [])
-        : (dashboard.derivedProjectState?.openTasks ?? [])
-  )
-    .filter((item) => !hiddenKeys.has(item.toLowerCase()))
-    .map((text) => ({
-      key: `derived:${section}:${text}`,
-      section,
-      text,
-      source: "derived" as const,
-    }));
-
-  const manualItems = dashboard.memory
-    .filter((item) => item.type === memoryTypeBySection[section])
-    .map((item) => ({
-      key: `manual:${item.id}`,
-      section,
-      text: item.content,
-      source: "manual" as const,
-      memoryId: item.id,
-      sourceSurface: item.sourceSurface,
-      capturedAt: item.capturedAt,
-    }));
-
-  return [...manualItems, ...derivedItems];
-}
 
 /* ─── Component ─── */
 
@@ -108,7 +47,7 @@ export function DashboardGovernanceSummary({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
       {sections.map((section) => {
-        const items = buildContextItems(dashboard, section);
+        const items = buildProjectContextItems(dashboard, section);
         const preview = items.slice(0, 3);
         const overflow = items.length - 3;
 

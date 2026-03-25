@@ -2,7 +2,11 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { ProjectDashboardDto, ProjectStateStatusDto } from "@relay/shared";
+import {
+  type ProjectDashboardDto,
+  type ProjectStateStatusDto,
+} from "@relay/shared";
+import { getProjectContextCounts } from "@relay/shared/utils/project-context";
 import { RefreshCw, Pencil, Trash2 } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 
@@ -147,29 +151,7 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
   const statusReady = dashboard.stateStatus?.projectStateReady;
   const statusText = describeStatus(dashboard.stateStatus);
 
-  const sections = ["decision", "task", "constraint"] as const;
-  const totalContextItems = sections.reduce((acc, s) => {
-    const hidden =
-      dashboard.stateOverrides?.[
-        s === "decision"
-          ? "hiddenDecisions"
-          : s === "constraint"
-            ? "hiddenConstraints"
-            : "hiddenOpenTasks"
-      ] ?? [];
-    const hiddenKeys = new Set(hidden.map((i) => i.toLowerCase()));
-    const derived = (
-      s === "decision"
-        ? (dashboard.derivedProjectState?.decisions ?? [])
-        : s === "constraint"
-          ? (dashboard.derivedProjectState?.constraints ?? [])
-          : (dashboard.derivedProjectState?.openTasks ?? [])
-    ).filter((i) => !hiddenKeys.has(i.toLowerCase()));
-    const manual = dashboard.memory.filter(
-      (i) => i.type === s,
-    );
-    return acc + derived.length + manual.length;
-  }, 0);
+  const totalContextItems = getProjectContextCounts(dashboard).all;
 
   const totalChats = dashboard.distinctConversationCount;
   const latestPacket = dashboard.packets[0];

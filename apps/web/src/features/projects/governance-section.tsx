@@ -2,7 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { ProjectDashboardDto, MemoryItemType, SourceSurface } from "@relay/shared";
+import {
+  type MemoryItemType,
+  type ProjectContextItem,
+  type ProjectContextSection,
+  type ProjectDashboardDto,
+} from "@relay/shared";
+import { buildProjectContextItems } from "@relay/shared/utils/project-context";
 import {
   Pencil,
   Trash2,
@@ -17,32 +23,23 @@ import { relayClientFetch } from "@/lib/telemetry/fetch";
 
 /* ─── Types ─── */
 
-type ContextSection = "decision" | "constraint" | "task";
-
-interface ContextItem {
-  key: string;
-  section: ContextSection;
-  text: string;
-  source: "manual" | "derived";
-  memoryId?: string;
-  sourceSurface?: SourceSurface | null;
-  capturedAt?: string | null;
-}
+type ContextSection = ProjectContextSection;
+type ContextItem = ProjectContextItem;
 
 /* ─── Constants ─── */
 
 const ITEMS_PER_PAGE = 10;
 
-const memoryTypeBySection: Record<ContextSection, MemoryItemType> = {
-  decision: "decision",
-  constraint: "constraint",
-  task: "task",
-};
-
 const labelBySection: Record<ContextSection, string> = {
   decision: "Decisions",
   constraint: "Constraints",
   task: "Tasks",
+};
+
+const memoryTypeBySection: Record<ContextSection, MemoryItemType> = {
+  decision: "decision",
+  constraint: "constraint",
+  task: "task",
 };
 
 const colorBySection: Record<ContextSection, string> = {
@@ -59,46 +56,6 @@ const hiddenKeyBySection: Record<
   constraint: "hiddenConstraints",
   task: "hiddenOpenTasks",
 };
-
-/* ─── Helpers ─── */
-
-function buildContextItems(
-  dashboard: ProjectDashboardDto,
-  section: ContextSection,
-): ContextItem[] {
-  const hidden =
-    dashboard.stateOverrides?.[hiddenKeyBySection[section]] ?? [];
-  const hiddenKeys = new Set(hidden.map((item) => item.toLowerCase()));
-
-  const derivedItems = (
-    section === "decision"
-      ? (dashboard.derivedProjectState?.decisions ?? [])
-      : section === "constraint"
-        ? (dashboard.derivedProjectState?.constraints ?? [])
-        : (dashboard.derivedProjectState?.openTasks ?? [])
-  )
-    .filter((item) => !hiddenKeys.has(item.toLowerCase()))
-    .map((text) => ({
-      key: `derived:${section}:${text}`,
-      section,
-      text,
-      source: "derived" as const,
-    }));
-
-  const manualItems = dashboard.memory
-    .filter((item) => item.type === memoryTypeBySection[section])
-    .map((item) => ({
-      key: `manual:${item.id}`,
-      section,
-      text: item.content,
-      source: "manual" as const,
-      memoryId: item.id,
-      sourceSurface: item.sourceSurface,
-      capturedAt: item.capturedAt,
-    }));
-
-  return [...manualItems, ...derivedItems];
-}
 
 /* ─── Component ─── */
 
@@ -172,7 +129,13 @@ export function GovernanceSection({
       return;
     }
     const current =
-      dashboard.stateOverrides?.[hiddenKeyBySection[item.section]] ?? [];
+      dashboard.stateOverrides?.[
+        item.section === "decision"
+          ? "hiddenDecisions"
+          : item.section === "constraint"
+            ? "hiddenConstraints"
+            : "hiddenOpenTasks"
+      ] ?? [];
     runMutation(
       async () => {
         const res = await relayClientFetch(
@@ -286,7 +249,7 @@ export function GovernanceSection({
     <div className="space-y-3">
       <div className={cn("grid gap-3", sections.length === 1 ? "grid-cols-1" : "grid-cols-1 lg:grid-cols-3")}>
         {sections.map((section) => {
-          const items = buildContextItems(dashboard, section);
+          const items = buildProjectContextItems(dashboard, section);
           const page = contextPages[section];
           const totalPages = Math.max(
             1,

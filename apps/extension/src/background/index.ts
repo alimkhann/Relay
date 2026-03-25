@@ -1,7 +1,9 @@
 import iconUrl from "../../assets/icon.png";
 import { createFlowId } from "@relay/shared/utils/telemetry";
+import { buildProjectContextPreview, getProjectContextCounts } from "@relay/shared/utils/project-context";
 import { normalizeText, slugify } from "@relay/shared/utils/text";
 import type {
+  ProjectDashboardDto,
   ProjectStateStatusDto,
   RelayOnboardingState,
   SupportedPlatform,
@@ -109,53 +111,7 @@ interface ExtensionAuthSessionPayload {
   settings?: { settings?: Partial<RemoteSettingsPayload["settings"]> };
 }
 
-interface ProjectDashboardPayload {
-  stateStatus?: ProjectStateStatusDto;
-  projectState?: {
-    updatedAt?: string | null;
-    projectOverview?: string | null;
-    currentObjective?: string | null;
-    recentProgress?: string | null;
-    decisions?: string[];
-    constraints?: string[];
-    openTasks?: string[];
-  } | null;
-  derivedProjectState?: {
-    decisions?: string[];
-    constraints?: string[];
-    openTasks?: string[];
-  } | null;
-  stateOverrides?: {
-    hiddenDecisions?: string[];
-    hiddenConstraints?: string[];
-    hiddenOpenTasks?: string[];
-  } | null;
-  recentSessions?: Array<{
-    id: string;
-    url: string;
-    pageFingerprint?: string | null;
-    captureSignature?: string | null;
-    capturedAt?: string;
-    isArchived?: boolean;
-    archivedAt?: string | null;
-  }>;
-  sessionHistory?: Array<{
-    id: string;
-    url: string;
-    pageFingerprint?: string | null;
-    captureSignature?: string | null;
-    capturedAt?: string;
-    isArchived?: boolean;
-    archivedAt?: string | null;
-  }>;
-  memory?: Array<{
-    id: string;
-    type?: string;
-    content?: string;
-    updatedAt?: string;
-  }>;
-  packets?: Array<{ createdAt?: string | null }>;
-}
+type ProjectDashboardPayload = ProjectDashboardDto;
 
 interface RelayTabState {
   tabId: number;
@@ -442,10 +398,7 @@ function buildTrustMetadata(
       (left, right) => new Date(right).getTime() - new Date(left).getTime(),
     )[0] ?? null;
 
-  const savedContextCount =
-    (dashboard?.projectState?.decisions?.length ?? 0) +
-    (dashboard?.projectState?.constraints?.length ?? 0) +
-    (dashboard?.projectState?.openTasks?.length ?? 0);
+  const savedContextCount = dashboard ? getProjectContextCounts(dashboard).all : 0;
 
   return {
     updatedAt,
@@ -462,81 +415,11 @@ function buildDashboardContextPreview(
     return createEmptyContextPreview();
   }
 
-  const hiddenDecisions = new Set(
-    (dashboard.stateOverrides?.hiddenDecisions ?? []).map((item) =>
-      item.toLowerCase(),
-    ),
-  );
-  const hiddenConstraints = new Set(
-    (dashboard.stateOverrides?.hiddenConstraints ?? []).map((item) =>
-      item.toLowerCase(),
-    ),
-  );
-  const hiddenTasks = new Set(
-    (dashboard.stateOverrides?.hiddenOpenTasks ?? []).map((item) =>
-      item.toLowerCase(),
-    ),
-  );
-
-  const manualDecisions = (dashboard.memory ?? [])
-    .filter((item) => item.type === "decision" && item.content)
-    .map((item) => ({
-      key: `manual:decision:${item.id}`,
-      text: item.content ?? "",
-      source: "manual" as const,
-      memoryId: item.id,
-    }));
-  const manualConstraints = (dashboard.memory ?? [])
-    .filter((item) => item.type === "constraint" && item.content)
-    .map((item) => ({
-      key: `manual:constraint:${item.id}`,
-      text: item.content ?? "",
-      source: "manual" as const,
-      memoryId: item.id,
-    }));
-  const manualTasks = (dashboard.memory ?? [])
-    .filter((item) => item.type === "task" && item.content)
-    .map((item) => ({
-      key: `manual:task:${item.id}`,
-      text: item.content ?? "",
-      source: "manual" as const,
-      memoryId: item.id,
-    }));
-
-  const derivedDecisions = (dashboard.derivedProjectState?.decisions ?? [])
-    .filter((item) => !hiddenDecisions.has(item.toLowerCase()))
-    .map((text) => ({
-      key: `derived:decision:${text}`,
-      text,
-      source: "derived" as const,
-      memoryId: null,
-    }));
-  const derivedConstraints = (dashboard.derivedProjectState?.constraints ?? [])
-    .filter((item) => !hiddenConstraints.has(item.toLowerCase()))
-    .map((text) => ({
-      key: `derived:constraint:${text}`,
-      text,
-      source: "derived" as const,
-      memoryId: null,
-    }));
-  const derivedTasks = (dashboard.derivedProjectState?.openTasks ?? [])
-    .filter((item) => !hiddenTasks.has(item.toLowerCase()))
-    .map((text) => ({
-      key: `derived:task:${text}`,
-      text,
-      source: "derived" as const,
-      memoryId: null,
-    }));
-
-  return {
-    decisions: [...manualDecisions, ...derivedDecisions],
-    constraints: [...manualConstraints, ...derivedConstraints],
-    tasks: [...manualTasks, ...derivedTasks],
-  };
+  return buildProjectContextPreview(dashboard);
 }
 
 function findMatchingSession(
-  sessions: ProjectDashboardPayload["sessionHistory"],
+  sessions: ProjectDashboardDto["sessionHistory"],
   page: RelayPageState,
 ) {
   const candidates = sessions ?? [];
