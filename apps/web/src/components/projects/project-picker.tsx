@@ -73,22 +73,20 @@ export function ProjectPicker({
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Archive this project? You can restore it later.")) return;
+    if (!confirm("Delete this project? This cannot be undone.")) return;
     const flowId = createClientFlowId("project");
     await relayClientFetch(`/api/projects/${id}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
+      method: "DELETE",
       telemetry: {
         surface: "web-dashboard",
         area: "projects",
-        event: "project_picker.archive",
+        event: "project_picker.delete",
         flowId,
         context: {
           projectId: id,
         },
         logSuccess: true,
       },
-      body: JSON.stringify({ isArchived: true }),
     });
     if (id === currentId) {
       const remaining = projects.filter((p) => p.id !== id);

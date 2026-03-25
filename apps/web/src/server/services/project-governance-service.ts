@@ -92,6 +92,11 @@ export async function archiveProjectSession(
   }
 
   const updated = await repositories.sessions.archive(sessionId, userId, parsed.archived)
+
+  if (parsed.archived && session.sourceConversationId) {
+    await repositories.memory.archiveByConversationId(projectId, session.sourceConversationId)
+  }
+
   await repositories.bootstrapPackets.clearProject(projectId)
   await rebuildProjectState(userId, projectId)
   return updated

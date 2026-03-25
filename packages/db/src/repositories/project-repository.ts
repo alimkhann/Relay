@@ -109,6 +109,14 @@ export class ProjectRepository {
     return row ? toProjectRow(row as Record<string, unknown>) : null
   }
 
+  async hardDelete(id: string): Promise<boolean> {
+    const rows = await this.provider.query(
+      `delete from projects where id = $1 returning id`,
+      [id]
+    )
+    return rows.length > 0
+  }
+
   async update(id: string, patch: Partial<Pick<ProjectRow, "name" | "slug" | "description" | "isArchived">>): Promise<ProjectRow> {
     const rows = await this.provider.query(
       `update projects

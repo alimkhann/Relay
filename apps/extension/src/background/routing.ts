@@ -560,7 +560,7 @@ function resolveConfidence(
     return "high" as const
   }
 
-  if (top.score >= (top.phase === "bootstrap" ? 30 : 28)) {
+  if (top.score >= (top.phase === "bootstrap" ? 38 : 35)) {
     return "medium" as const
   }
 

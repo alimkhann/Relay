@@ -504,4 +504,19 @@ export class MemoryRepository {
     )
     return rows.length
   }
+
+  async archiveByConversationId(projectId: string, conversationId: string): Promise<number> {
+    const rows = await this.provider.query(
+      `update memory_items
+       set is_archived = true,
+           metadata = metadata || '{"archivedBy": "session_detached"}'::jsonb,
+           updated_at = now()
+       where project_id = $1
+         and source_conversation_id = $2
+         and is_archived = false
+       returning id`,
+      [projectId, conversationId]
+    )
+    return rows.length
+  }
 }

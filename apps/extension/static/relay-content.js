@@ -1524,9 +1524,9 @@
       Math.max(16, window.innerWidth - dynamicWidth - 16),
     );
 
-    let top = rect.top - chipHeight - 12;
+    let top = rect.top - chipHeight + 1;
     if (top < 16) {
-      top = rect.bottom + 12;
+      top = rect.bottom + 1;
     }
     if (top + chipHeight > window.innerHeight - 16) {
       top = Math.max(16, window.innerHeight - chipHeight - 16);
@@ -1784,15 +1784,14 @@
           projectId: activeState.projectId,
         },
       });
-      relayChipState.buttonMode = "error";
-      relayChipState.buttonError =
-        result && result.reason ? result.reason : "Insert failed.";
-      renderInlineChip();
-      relayChipState.resetButtonTimer = window.setTimeout(() => {
-        relayChipState.buttonMode = "idle";
-        relayChipState.buttonError = "";
-        renderInlineChip();
-      }, 1400);
+      // Silently dismiss — the brief insertion is best-effort.
+      // False positives (DOM race conditions) previously showed "Insert failed"
+      // even when the content was actually inserted successfully.
+      relayChipState.buttonMode = "idle";
+      relayChipState.buttonError = "";
+      relayChipState.dismissed = true;
+      relayChipState.forcedInsertKind = null;
+      hideInlineChipWithMotion();
       return result;
     }
 

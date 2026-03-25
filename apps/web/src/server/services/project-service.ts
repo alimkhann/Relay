@@ -162,3 +162,12 @@ export async function updateProjectForUser(userId: string, projectId: string, in
     isArchived: parsed.isArchived === false ? undefined : parsed.isArchived
   })
 }
+
+export async function deleteProjectForUser(userId: string, projectId: string) {
+  const repositories = createRepositoryBundle(userId)
+  const deleted = await repositories.projects.hardDelete(projectId)
+  if (!deleted) {
+    throw new BadRequestError("Project not found.")
+  }
+  console.info("[Relay] project.deleted", { userId, projectId })
+}

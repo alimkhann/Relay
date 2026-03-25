@@ -3,7 +3,7 @@ import { NextResponse } from "next/server"
 import { withApiAuth } from "@/server/http/api-route"
 import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
 import { consumeMcpReadQuota, consumeMcpWriteQuota } from "@/server/services/entitlement-service"
-import { getProjectDashboardForUser, updateProjectForUser } from "@/server/services/project-service"
+import { deleteProjectForUser, getProjectDashboardForUser, updateProjectForUser } from "@/server/services/project-service"
 
 export const GET = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   const viewer = await resolveViewer(request.headers.get("authorization"))
@@ -30,4 +30,15 @@ export const PATCH = withApiAuth(async (request: Request, { params }: { params: 
   }
   const project = await updateProjectForUser(viewer.userId, id, await request.json())
   return NextResponse.json({ project })
+})
+
+export const DELETE = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
+  const viewer = await resolveViewer(request.headers.get("authorization"))
+  const { id } = await params
+  requireViewerProject(viewer, id, "project:write")
+  if (viewer.mode === "mcp") {
+    await consumeMcpWriteQuota(viewer.userId)
+  }
+  await deleteProjectForUser(viewer.userId, id)
+  return NextResponse.json({ deleted: true })
 })

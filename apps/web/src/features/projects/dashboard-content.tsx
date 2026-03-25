@@ -354,9 +354,7 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
     runMutation(
       async () => {
         const res = await relayClientFetch(`/api/projects/${project.id}`, {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ isArchived: true }),
+          method: "DELETE",
         });
         if (!res.ok) {
           const payload = (await res.json().catch(() => ({}))) as {
