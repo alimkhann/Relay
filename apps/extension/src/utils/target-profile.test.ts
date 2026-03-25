@@ -18,4 +18,16 @@ describe("target profile resolution", () => {
   it("infers the default target for Codex", () => {
     expect(inferTargetProfile("codex")).toBe("codex_implementation")
   })
+
+  it("infers the correct target for Gemini", () => {
+    expect(inferTargetProfile("gemini")).toBe("gemini_exploration")
+  })
+
+  it("infers the correct target for Grok", () => {
+    expect(inferTargetProfile("grok")).toBe("grok_conversation")
+  })
+
+  it("infers the correct target for DeepSeek", () => {
+    expect(inferTargetProfile("deepseek")).toBe("deepseek_reasoning")
+  })
 })

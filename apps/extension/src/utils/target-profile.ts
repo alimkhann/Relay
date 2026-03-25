@@ -8,6 +8,12 @@ export function inferTargetProfile(platform?: string) {
       return "claude_code_build"
     case "codex":
       return "codex_implementation"
+    case "gemini":
+      return "gemini_exploration"
+    case "grok":
+      return "grok_conversation"
+    case "deepseek":
+      return "deepseek_reasoning"
     case "chatgpt":
     default:
       return "chatgpt_planning"

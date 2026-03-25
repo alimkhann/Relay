@@ -1524,9 +1524,9 @@
       Math.max(16, window.innerWidth - dynamicWidth - 16),
     );
 
-    let top = rect.top - chipHeight + 1;
+    let top = rect.top - chipHeight - 4;
     if (top < 16) {
-      top = rect.bottom + 1;
+      top = rect.bottom + 4;
     }
     if (top + chipHeight > window.innerHeight - 16) {
       top = Math.max(16, window.innerHeight - chipHeight - 16);
