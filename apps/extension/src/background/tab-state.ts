@@ -101,6 +101,7 @@ export function createEmptyAssociationToast(): RelayAssociationToastState {
     projectName: null,
     projectOptions: [],
     sessionId: null,
+    expiresAt: null,
     digestStatus: null,
     reason: null
   }

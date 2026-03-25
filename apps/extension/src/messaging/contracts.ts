@@ -92,6 +92,7 @@ export interface RelayAssociationToastState {
   projectName: string | null;
   projectOptions: RelayProjectOption[];
   sessionId: string | null;
+  expiresAt: number | null;
   digestStatus?: "analyzed" | "queued" | null;
   reason?: string | null;
 }

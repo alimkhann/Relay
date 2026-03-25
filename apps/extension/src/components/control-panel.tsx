@@ -127,6 +127,7 @@ const emptyActiveState: RelayActiveProjectState = {
     projectName: null,
     projectOptions: [],
     sessionId: null,
+    expiresAt: null,
     digestStatus: null,
     reason: null,
   },

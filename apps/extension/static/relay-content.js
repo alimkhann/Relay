@@ -1762,7 +1762,7 @@
       !toastState.mode ||
       !toastState.projectId ||
       !toastState.projectName ||
-      !toastState.expiresAt
+      toastState.expiresAt == null
     ) {
       return null;
     }
@@ -1777,6 +1777,8 @@
           : activeState.projectOptions || [],
       sessionId: toastState.sessionId || null,
       expiresAt: toastState.expiresAt,
+      digestStatus: toastState.digestStatus || null,
+      reason: toastState.reason || null,
     };
   }
 
@@ -1881,7 +1883,7 @@
       relayChipState.forcedInsertKind = null;
       hideInlineChipWithMotion();
       relayChipState.buttonMode = "idle";
-    }, 120);
+    }, 1200);
 
     emitInlineTelemetry({
       level: "info",
@@ -2191,12 +2193,8 @@
   }
 
   function renderAssociationToastTimer(payload) {
-    if (payload.mode !== "auto_save") {
-      return `
-        <span class="relay-association-toast__timer relay-association-toast__timer--static" aria-live="polite">
-          <span class="relay-association-toast__countdown">${formatToastCountdown(payload.expiresAt)}</span>
-        </span>
-      `;
+    if (payload.expiresAt <= 0) {
+      return "";
     }
 
     if (relayChipState.associationToast.paused) {
@@ -2321,32 +2319,34 @@
     delete root.dataset.pendingAction;
 
     const title =
-      payload.mode === "capture_result"
-        ? payload.digestStatus === "analyzed"
-          ? `Saved & analyzed`
-          : payload.digestStatus === "queued"
-            ? `Saved — analysis queued`
-            : `Saved`
-        : payload.mode === "confirmed"
-          ? `Saved to ${payload.projectName}`
-          : payload.mode === "auto_save"
-            ? `Saving to ${payload.projectName}`
-            : `Approve save to ${payload.projectName}`;
+      payload.mode === "saving"
+        ? `Saving to ${payload.projectName}`
+        : payload.mode === "done"
+          ? payload.digestStatus === "analyzed"
+            ? "Saved & analyzed"
+            : payload.digestStatus === "queued"
+              ? "Saved - analysis queued"
+              : `Saved to ${payload.projectName}`
+          : `Approve save to ${payload.projectName}`;
     const meta =
-      payload.mode === "capture_result"
-        ? payload.digestStatus === "analyzed"
-          ? "Chat captured and your project brief is being updated."
-          : payload.digestStatus === "queued"
-            ? "Chat captured. Analysis will run shortly."
-            : "Chat captured to your project."
-        : payload.mode === "confirmed"
-          ? "This chat was automatically captured."
-          : payload.mode === "auto_save"
-            ? "Relay is 100% sure about this chat. Cancel if this association is wrong."
-            : "Relay is not fully sure. Approve now or review it later in the sidebar.";
+      payload.mode === "saving"
+        ? payload.reason || `Saving this chat to ${payload.projectName}...`
+        : payload.mode === "done"
+          ? payload.digestStatus === "analyzed"
+            ? "Chat captured and your project brief is being updated."
+            : payload.digestStatus === "queued"
+              ? "Chat captured. Analysis will run shortly."
+              : "Chat captured to your project."
+          : payload.reason || "Relay is not fully sure. Approve now or review it later in the sidebar.";
+    const showActions = payload.mode === "ask";
+    const showDismiss = payload.mode !== "done";
+    const canSwitchProject =
+      payload.mode === "ask" &&
+      payload.projectOptions &&
+      payload.projectOptions.length > 1;
     const toastProjectSwitcherOpen = isProjectSwitcherOpen("toast");
     const titleMarkup =
-      payload.projectOptions && payload.projectOptions.length > 1
+      canSwitchProject
         ? `
           <div class="relay-association-toast__titleWrap">
             <button
@@ -2371,22 +2371,22 @@
 
     root.classList.toggle(
       "relay-association-toast--clickable",
-      payload.mode === "held_review",
+      false,
     );
     root.innerHTML = `
       <div class="relay-association-toast__header">
         ${titleMarkup}
-        <button class="relay-association-toast__dismiss" type="button" aria-label="Dismiss association toast">×</button>
+        ${
+          showDismiss
+            ? '<button class="relay-association-toast__dismiss" type="button" aria-label="Dismiss association toast">×</button>'
+            : ""
+        }
       </div>
       <p class="relay-association-toast__meta">${escapeHtml(meta)}</p>
       ${
-        payload.mode !== "confirmed" && payload.mode !== "capture_result"
+        showActions
           ? `<div class="relay-association-toast__actions">
-        ${
-          payload.mode === "auto_save"
-            ? '<button class="relay-association-toast__button" type="button" data-action="cancel">Cancel save</button>'
-            : '<button class="relay-association-toast__button relay-association-toast__button--primary" type="button" data-action="approve">Approve save</button><button class="relay-association-toast__button relay-association-toast__button--subtle" type="button" data-action="cancel">Not this chat</button>'
-        }
+        <button class="relay-association-toast__button relay-association-toast__button--primary" type="button" data-action="approve">Approve save</button><button class="relay-association-toast__button relay-association-toast__button--subtle" type="button" data-action="cancel">Not this chat</button>
         ${renderAssociationToastTimer(payload)}
       </div>`
           : ""
@@ -2394,12 +2394,6 @@
     `;
 
     root.onclick = null;
-    if (payload.mode === "held_review") {
-      root.onclick = () => {
-        sendRuntimeMessage({ type: "RELAY_OPEN_SIDE_PANEL" });
-        hideAssociationToast();
-      };
-    }
 
     const titleButton = root.querySelector(
       ".relay-association-toast__titleButton",
@@ -2478,7 +2472,9 @@
           return;
         }
 
-        hideAssociationToast();
+        if (action !== "approve") {
+          hideAssociationToast();
+        }
       });
     });
 
@@ -2490,6 +2486,11 @@
         event.preventDefault();
         event.stopPropagation();
         if (root.dataset.pendingAction) {
+          return;
+        }
+
+        if (payload.mode === "saving") {
+          hideAssociationToast();
           return;
         }
 

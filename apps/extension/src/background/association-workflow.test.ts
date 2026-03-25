@@ -6,6 +6,8 @@ import {
   buildAskToast,
   buildDoneToast,
   DONE_TOAST_DURATION_MS,
+  getSavingToastMinimumDelayMs,
+  MIN_AUTO_ASSOCIATION_SAVING_TOAST_MS,
   resolveAssociationProjectName,
   resolveAssociationToastAction,
 } from "./association-workflow";
@@ -70,6 +72,29 @@ describe("association workflow", () => {
     expect(toast.mode).toBe("done");
     expect(toast.digestStatus).toBe("analyzed");
     expect(toast.expiresAt).toBe(1000 + DONE_TOAST_DURATION_MS);
+  });
+
+  it("keeps the saving toast visible long enough to read", () => {
+    expect(
+      getSavingToastMinimumDelayMs({
+        shownAt: 1000,
+        now: 1000,
+      }),
+    ).toBe(MIN_AUTO_ASSOCIATION_SAVING_TOAST_MS);
+
+    expect(
+      getSavingToastMinimumDelayMs({
+        shownAt: 1000,
+        now: 1600,
+      }),
+    ).toBe(600);
+
+    expect(
+      getSavingToastMinimumDelayMs({
+        shownAt: 1000,
+        now: 2200,
+      }),
+    ).toBe(0);
   });
 
   it("falls back to the best available project name when cached project metadata is stale", () => {

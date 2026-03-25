@@ -4,7 +4,18 @@ import type {
   RelayProjectOption,
 } from "../messaging/contracts";
 
-export const DONE_TOAST_DURATION_MS = 2_000;
+export const DONE_TOAST_DURATION_MS = 3_500;
+export const MIN_AUTO_ASSOCIATION_SAVING_TOAST_MS = 1_200;
+
+export function getSavingToastMinimumDelayMs(input: {
+  shownAt: number;
+  now?: number;
+}) {
+  const now = input.now ?? Date.now();
+  const elapsed = Math.max(0, now - input.shownAt);
+
+  return Math.max(0, MIN_AUTO_ASSOCIATION_SAVING_TOAST_MS - elapsed);
+}
 
 export interface ResolveAssociationProjectNameInput {
   matchedProjectName?: string | null;

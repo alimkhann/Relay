@@ -46,6 +46,7 @@ import {
   buildSavingToast,
   buildAskToast,
   buildDoneToast,
+  getSavingToastMinimumDelayMs,
   resolveAssociationProjectName,
   resolveAssociationToastAction,
 } from "./association-workflow";
@@ -913,6 +914,7 @@ function setAssociationToastState(
     projectName: payload.projectName,
     projectOptions: payload.projectOptions,
     sessionId: payload.sessionId ?? null,
+    expiresAt: payload.expiresAt,
     digestStatus: payload.digestStatus ?? null,
     reason: payload.reason ?? null,
   };
@@ -2244,6 +2246,7 @@ async function captureObservedChange(
     let routingDecision: Awaited<ReturnType<typeof resolveAutoCaptureRouting>> | null =
       null;
     let autoAssociated = false;
+    let savingToastShownAt: number | null = null;
     const ignoredFromMemory = explicitProjectId
       ? false
       : await isIgnoredChatKey(chatKey);
@@ -2463,12 +2466,22 @@ async function captureObservedChange(
       await setEffectiveProjectTarget(state, projectId, projectName, {
         persist: false,
       });
-      // Show "saving" toast and capture immediately (no countdown)
+      // Show the saving toast before capture so users can register what happened.
       await showSavingToast(tabId, projectId, projectName);
+      savingToastShownAt = Date.now();
     }
 
     const result = await captureTab(projectId, tabId);
     if (result?.ok) {
+      if (savingToastShownAt !== null) {
+        const remainingDelay = getSavingToastMinimumDelayMs({
+          shownAt: savingToastShownAt,
+        });
+        if (remainingDelay > 0) {
+          await wait(remainingDelay);
+        }
+      }
+
       clearPendingAssociation(state);
       clearAssociationToast(state);
       const matchedProject =
@@ -2558,7 +2571,7 @@ async function captureObservedChange(
         scheduleDrain(projectId);
       }
 
-      // Show "done" toast (auto-dismisses after 2s)
+      // Show the success toast after the saving state has had time to register.
       const digestStatus =
         result.digestStrategy === "ai" ? "analyzed" as const
         : result.digestStrategy === "deferred" ? "queued" as const
@@ -2593,6 +2606,8 @@ async function captureObservedChange(
       };
     }
 
+    clearPendingAssociation(state, { clearChatAssociation: true });
+    clearAssociationToast(state);
     state.lastError = result?.reason ?? "Capture failed.";
     return result ?? { ok: false, reason: "Capture failed." };
   } finally {
