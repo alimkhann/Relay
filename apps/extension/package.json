@@ -28,7 +28,8 @@
       "activeTab",
       "sidePanel",
       "identity",
-      "scripting"
+      "scripting",
+      "offscreen"
     ],
     "host_permissions": [
       "https://chatgpt.com/*",
@@ -90,7 +91,9 @@
       {
         "resources": [
           "assets/relay_logo_white.png",
-          "static/network-intercept.js"
+          "static/network-intercept.js",
+          "static/theme-detector.html",
+          "static/theme-detector.js"
         ],
         "matches": [
           "https://chatgpt.com/*",

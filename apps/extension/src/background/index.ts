@@ -3894,8 +3894,32 @@ async function updateToolbarIcon(isDark: boolean) {
   }
 }
 
-const prefersDark = self.matchMedia("(prefers-color-scheme: dark)");
-void updateToolbarIcon(prefersDark.matches);
-prefersDark.addEventListener("change", (e) => {
-  void updateToolbarIcon(e.matches);
+// Theme detection via offscreen document (matchMedia unavailable in service workers)
+async function ensureThemeOffscreen() {
+  try {
+    const exists = await chrome.offscreen.hasDocument();
+    if (!exists) {
+      await chrome.offscreen.createDocument({
+        url: "static/theme-detector.html",
+        reasons: [chrome.offscreen.Reason.MATCH_MEDIA],
+        justification: "Detect system light/dark theme for toolbar icon",
+      });
+    }
+  } catch {
+    // Silently ignore — icon stays as default white
+  }
+}
+
+chrome.runtime.onMessage.addListener((msg: unknown) => {
+  if (
+    typeof msg === "object" &&
+    msg !== null &&
+    "type" in msg &&
+    (msg as { type: string }).type === "RELAY_THEME_CHANGED" &&
+    "isDark" in msg
+  ) {
+    void updateToolbarIcon((msg as { isDark: boolean }).isDark);
+  }
 });
+
+void ensureThemeOffscreen();
