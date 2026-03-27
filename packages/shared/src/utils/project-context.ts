@@ -1,5 +1,5 @@
 import type { MemoryItemType, SourceSurface } from "../types/database"
-import type { MemoryItemDto, ProjectDashboardDto } from "../types/project"
+import type { ProjectDashboardDto } from "../types/project"
 import { normalizeText } from "./text"
 
 export type ProjectContextSection = "decision" | "constraint" | "task"

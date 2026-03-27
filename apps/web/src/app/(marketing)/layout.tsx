@@ -55,15 +55,12 @@ export default function MarketingLayout({
   children: React.ReactNode
 }) {
   return (
-    <>
+    <div className="dark" style={{ colorScheme: "dark" }}>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      {/* Force dark mode for marketing pages regardless of user preference */}
-      <div className="dark" style={{ colorScheme: "dark" }}>
-        {children}
-      </div>
-    </>
+      {children}
+    </div>
   )
 }

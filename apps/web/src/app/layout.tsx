@@ -66,6 +66,9 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{
+  var p=location.pathname;
+  var isDash=p==="/dashboard"||p.startsWith("/dashboard/")||p.startsWith("/activity")||p.startsWith("/memory")||p.startsWith("/settings")||p.startsWith("/projects")||p.startsWith("/brief");
+  if(!isDash)return;
   var isLight=document.documentElement.classList.contains("light");
   if(!isLight&&!matchMedia("(prefers-color-scheme:light)").matches)return;
   var img=new Image();img.crossOrigin="anonymous";
