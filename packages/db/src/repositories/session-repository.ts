@@ -77,21 +77,49 @@ export class SessionRepository {
   }
 
   async getLatestComparable(projectId: string, platform: CapturePayload["platform"], url: string, pageFingerprint?: string | null): Promise<SourceSessionRow | null> {
-    // Gap 2: Archived sessions participate in dedup — removing is_archived filter
-    // prevents re-capture of content that was already saved then archived.
-    // Gap 3: Primary comparable key is (project_id, platform, url). Page fingerprint
-    // is used as a tiebreaker when multiple matches exist, not as a hard filter.
+    return this.getLatestComparableByIdentity(projectId, platform, {
+      url,
+      pageFingerprint,
+      sourceConversationId: null
+    })
+  }
+
+  async getLatestComparableByIdentity(
+    projectId: string,
+    platform: CapturePayload["platform"],
+    identity: {
+      url: string
+      pageFingerprint?: string | null
+      sourceConversationId?: string | null
+    }
+  ): Promise<SourceSessionRow | null> {
+    const canonicalConversationId = identity.sourceConversationId ?? identity.url
+
+    // Archived sessions participate in dedup so Relay does not re-capture
+    // content that was already saved and later archived. Conversation identity
+    // comes from source_conversation_id when available, with URL fallback for
+    // older rows and platforms that only expose stable URLs.
     const rows = await this.provider.query(
       `select *
        from source_sessions
        where project_id = $1
          and platform = $2
-         and url = $3
-       order by
-         case when coalesce(page_fingerprint, '') = coalesce($4, '') then 0 else 1 end,
-         captured_at desc
-       limit 1`,
-      [projectId, platform, url, pageFingerprint ?? null]
+          and (
+            coalesce(source_conversation_id, url) = $3
+            or url = $4
+          )
+        order by
+          case when coalesce(source_conversation_id, url) = $3 then 0 else 1 end,
+          case when coalesce(page_fingerprint, '') = coalesce($5, '') then 0 else 1 end,
+          captured_at desc
+        limit 1`,
+      [
+        projectId,
+        platform,
+        canonicalConversationId,
+        identity.url,
+        identity.pageFingerprint ?? null
+      ]
     )
 
     const row = rows[0]
@@ -113,17 +141,17 @@ export class SessionRepository {
     return row ? toSessionRow(row as Record<string, unknown>) : null
   }
 
-  /** Count distinct conversations (by URL) for a project — used for dashboard display. */
+  /** Count distinct conversations for a project using conversation identity when available. */
   async countDistinctConversations(
     projectId: string,
     input: { includeArchived?: boolean } = {}
   ): Promise<number> {
     const includeArchived = input.includeArchived ?? false
     const rows = await this.provider.query(
-      `select count(distinct url) as count
+      `select count(distinct coalesce(source_conversation_id, url)) as count
        from source_sessions
        where project_id = $1
-         and ($2::boolean or is_archived = false)`,
+          and ($2::boolean or is_archived = false)`,
       [projectId, includeArchived]
     )
 

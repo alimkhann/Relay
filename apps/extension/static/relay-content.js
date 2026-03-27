@@ -145,15 +145,17 @@
     return window.__relayAdapterRuntime || null;
   }
 
-  function computeSignature(turns, metadata, platform) {
+  function resolveCaptureIdentity(metadata, sourceConversationId) {
+    return sourceConversationId || metadata.pageFingerprint || metadata.url;
+  }
+
+  function computeSignature(turns, metadata, platform, sourceConversationId) {
     const payload = JSON.stringify({
       platform,
-      url: metadata.url,
-      pageFingerprint: metadata.pageFingerprint,
+      identity: resolveCaptureIdentity(metadata, sourceConversationId),
       turns: turns.map((turn) => ({
         role: turn.role,
-        content: turn.content,
-        turnIndex: turn.turnIndex,
+        content: normalizeText(turn.content),
       })),
     });
 
@@ -651,6 +653,7 @@
 
     const metadata = getPageMetadata();
     const turns = collectTurns(config, metadata);
+    const sanitizedTurns = sanitizeTurnsForCapture(turns);
     const promptTarget = findPrompt(config);
     const routeKind = inferRouteKind(config, metadata);
     const isFreshRoute = routeKind === "fresh";
@@ -680,6 +683,8 @@
       Date.now() - relayChipState.freshCandidateSince >=
         FRESH_CHAT_STABILIZE_MS;
 
+    const sourceConversationId = getConversationIdentity(config.platform, metadata);
+
     return {
       supported: true,
       platform: config.platform,
@@ -689,9 +694,14 @@
       domain: metadata.domain,
       pathname: metadata.pathname,
       pageFingerprint: metadata.pageFingerprint,
-      sourceConversationId: getConversationIdentity(config.platform, metadata),
+      sourceConversationId,
       turns: turns.length,
-      captureSignature: computeSignature(turns, metadata, config.platform),
+      captureSignature: computeSignature(
+        sanitizedTurns,
+        metadata,
+        config.platform,
+        sourceConversationId,
+      ),
       recentUserTurnText: getLatestMeaningfulUserTurnText(turns),
       recentRoutingText: buildRecentRoutingText(turns, metadata.title),
       fullVisibleRoutingText: buildFullVisibleRoutingText(
@@ -2896,6 +2906,10 @@
       const metadata = getPageMetadata();
       const rawTurns = collectTurns(config, metadata);
       const turns = sanitizeTurnsForCapture(rawTurns);
+      const sourceConversationId = getConversationIdentity(
+        config.platform,
+        metadata,
+      );
 
       sendResponse({
         ok: true,
@@ -2905,15 +2919,8 @@
             title: metadata.title,
             url: metadata.url,
             pageFingerprint: metadata.pageFingerprint,
-            sourceConversationId: getConversationIdentity(
-              config.platform,
-              metadata,
-            ),
-            captureSignature: computeSignature(
-              rawTurns,
-              metadata,
-              config.platform,
-            ),
+            sourceConversationId,
+            captureSignature: computeSignature(turns, metadata, config.platform, sourceConversationId),
             metadata: {
               domain: metadata.domain,
               pathname: metadata.pathname,

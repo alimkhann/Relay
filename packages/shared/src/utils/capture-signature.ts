@@ -3,10 +3,17 @@ import type { SupportedPlatform } from "../types/database"
 import { hashContent } from "./hashing"
 import { normalizeText } from "./text"
 
+function resolveCaptureIdentity(input: {
+  url: string
+  pageFingerprint?: string | null
+  sourceConversationId?: string | null
+}) {
+  return input.sourceConversationId ?? input.pageFingerprint ?? input.url
+}
+
 function normalizeTurns(turns: ParsedTurn[]) {
   return turns.map((turn) => ({
     role: turn.role,
-    turnIndex: turn.turnIndex,
     content: normalizeText(turn.content)
   }))
 }
@@ -15,13 +22,13 @@ export function buildCaptureSignature(input: {
   platform: SupportedPlatform
   url: string
   pageFingerprint?: string | null
+  sourceConversationId?: string | null
   turns: ParsedTurn[]
 }) {
   return hashContent(
     JSON.stringify({
       platform: input.platform,
-      url: input.url,
-      pageFingerprint: input.pageFingerprint ?? null,
+      identity: resolveCaptureIdentity(input),
       turns: normalizeTurns(input.turns)
     })
   )
@@ -38,6 +45,7 @@ export function withCaptureSignature(input: CapturePayload): CapturePayload {
           platform: input.platform,
           url: input.session.url,
           pageFingerprint: input.session.pageFingerprint,
+          sourceConversationId: input.session.sourceConversationId,
           turns: input.turns
         })
     }

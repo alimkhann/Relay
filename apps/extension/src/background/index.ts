@@ -403,7 +403,7 @@ function buildTrustMetadata(
   return {
     updatedAt,
     updatedLabel: formatUpdatedLabel(updatedAt),
-    recentChatCount: dashboard?.recentSessions?.length ?? 0,
+    recentChatCount: dashboard?.distinctConversationCount ?? 0,
     savedContextCount,
   };
 }

@@ -14,11 +14,14 @@ export async function saveCapture(userId: string, input: unknown) {
       title: parsed.session.title ?? null
     }
   })
-  const latestComparable = await repositories.sessions.getLatestComparable(
+  const latestComparable = await repositories.sessions.getLatestComparableByIdentity(
     normalizedInput.projectId,
     normalizedInput.platform,
-    normalizedInput.session.url,
-    normalizedInput.session.pageFingerprint
+    {
+      url: normalizedInput.session.url,
+      pageFingerprint: normalizedInput.session.pageFingerprint,
+      sourceConversationId: normalizedInput.session.sourceConversationId
+    }
   )
   const isDuplicateCapture = latestComparable?.captureSignature === normalizedInput.session.captureSignature
 

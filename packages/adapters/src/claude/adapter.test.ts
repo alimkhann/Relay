@@ -21,6 +21,25 @@ describe("ClaudeAdapter", () => {
     expect(adapter.findPromptInput(document)?.isContentEditable).toBe(true)
   })
 
+  it("ignores streaming containers that are not actual chat turns", () => {
+    document.body.innerHTML = `
+      <main>
+        <div data-testid="message-human">Why did Relay recapture this?</div>
+        <div data-is-streaming="true">Streaming shell that should not count as a turn.</div>
+        <div data-testid="message-assistant">Because the DOM shape kept changing.</div>
+      </main>
+    `
+
+    const adapter = new ClaudeAdapter()
+    const turns = adapter.extractVisibleTurns(document)
+
+    expect(turns).toHaveLength(2)
+    expect(turns.map((turn) => turn.content)).toEqual([
+      "Why did Relay recapture this?",
+      "Because the DOM shape kept changing.",
+    ])
+  })
+
   it("waits for delayed contenteditable updates before reporting failure", async () => {
     document.body.innerHTML = `
       <main></main>
