@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation"
 
 import { cn } from "@/lib/cn"
 
-const sectionGroups = [
+export const sectionGroups = [
   {
     label: "Getting Started",
     items: [

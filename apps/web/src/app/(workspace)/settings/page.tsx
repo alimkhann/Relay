@@ -39,7 +39,7 @@ export default async function SettingsPage({
     : "account"
 
   return (
-    <div className="flex gap-8">
+    <div className="flex flex-col md:flex-row gap-4 md:gap-8">
       <PageTelemetry
         surface="web-settings"
         area="page"
@@ -47,8 +47,8 @@ export default async function SettingsPage({
         message="Rendered the settings page."
         context={{ section }}
       />
-      <nav className="sticky top-0 w-44 shrink-0 pt-6">
-        <div className="flex flex-col gap-1">
+      <nav className="w-full md:w-44 md:shrink-0 md:sticky md:top-0 pt-2 md:pt-6">
+        <div className="flex md:flex-col gap-1 overflow-x-auto pb-2 md:pb-0 border-b md:border-b-0 border-[var(--relay-line)]">
           {navItems.map((item) => {
             const Icon = item.icon
             const href = item.key === "billing" && checkoutSuccess
@@ -60,7 +60,7 @@ export default async function SettingsPage({
                 key={item.key}
                 href={href}
                 className={[
-                  "flex items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-3 py-2 text-[13px] font-medium transition-colors",
+                  "flex shrink-0 whitespace-nowrap items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-3 py-2 text-[13px] font-medium transition-colors",
                   section === item.key
                     ? "bg-[var(--relay-soft)] text-[var(--relay-ink)]"
                     : "text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]",

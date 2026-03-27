@@ -28,7 +28,8 @@ export default function PlansDocsPage() {
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Plan comparison</h2>
-        <div className="overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
+        <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
+          <div className="overflow-x-auto">
           <table className="w-full text-[13px]">
             <thead>
               <tr className="border-b border-[var(--relay-line)]">
@@ -55,6 +56,7 @@ export default function PlansDocsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       </section>
 

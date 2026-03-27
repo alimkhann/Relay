@@ -17,9 +17,11 @@ interface NavItem {
 export function SidebarNav({
   currentProjectId,
   collapsed = false,
+  onNavigate,
 }: {
   currentProjectId?: string;
   collapsed?: boolean;
+  onNavigate?: () => void;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -144,6 +146,7 @@ export function SidebarNav({
             key={item.href}
             href={item.href}
             onMouseEnter={() => router.prefetch(item.href)}
+            onClick={onNavigate}
             className={sharedClassName}
           >
             <span className={iconClassName}>

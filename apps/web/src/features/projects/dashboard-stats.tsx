@@ -41,7 +41,7 @@ export function DashboardStats({
   const brief = briefDisplayMap[briefStatus];
 
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       {/* ---- Chats ---- */}
       <div className="border border-[var(--relay-line)] rounded-lg p-4 bg-[var(--relay-surface)]">
         <div className="flex items-center gap-3">
