@@ -200,14 +200,15 @@ export default function MachinePage() {
       </h2>
       <p style={{ fontSize: "0.85rem" }}>
         <strong style={{ color: "#ccc" }}>Free — $0/forever:</strong> Up to 2
-        active projects, Standard brief depth, MCP access (read), 7-day
-        history retention, Browser capture.
+        active projects, 6 AI analyses per project per day, 20 MCP reads + 5
+        writes per day, 200 captures per month, browser capture across
+        supported AI tools.
       </p>
       <p style={{ fontSize: "0.85rem" }}>
         <strong style={{ color: "#ccc" }}>Pro — $9/month ($90/year):</strong>{" "}
-        Unlimited projects, Deep brief with full history, Full MCP access
-        (read + write), 90-day history retention, All capture surfaces,
-        Handoff packs, Referral program.
+        Up to 10 active projects, 32 AI analyses per project per day, 200 MCP
+        reads + 50 writes per day, 2,000 captures per month, 500 memory items
+        per project, priority support.
       </p>
 
       <h2

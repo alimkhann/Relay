@@ -32,7 +32,7 @@ export default function ApiDocsPage() {
         { method: "GET", path: "/api/projects/:id/context/history", desc: "List generated context packets" },
         { method: "POST", path: "/api/projects/:id/bootstrap", desc: "Generate a full bootstrap brief" },
         { method: "GET", path: "/api/projects/:id/bootstrap/latest", desc: "Get the latest cached bootstrap brief" },
-        { method: "POST", path: "/api/projects/:id/handoff", desc: "Generate a handoff pack (Pro only)" },
+        { method: "POST", path: "/api/projects/:id/handoff", desc: "Generate a fresh-chat brief export (Pro only)" },
       ],
     },
     {

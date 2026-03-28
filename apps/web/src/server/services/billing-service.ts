@@ -48,7 +48,10 @@ export async function createPolarCheckoutForUser(user: {
 }, input: unknown) {
   const parsed = billingCheckoutSchema.parse(input)
   const currentEntitlements = await resolveViewerEntitlements(user.id)
-  if (currentEntitlements.isPro && (currentEntitlements.status === "active" || currentEntitlements.status === "trialing")) {
+  if (
+    currentEntitlements.isPro &&
+    (currentEntitlements.status === "active" || currentEntitlements.status === "trialing" || currentEntitlements.status === "past_due")
+  ) {
     throw new ForbiddenError("You already have an active Relay Pro subscription. Use the billing portal to manage it.")
   }
   const polar = getPolarClient()
@@ -186,7 +189,9 @@ export async function syncBillingStateFromCustomerState(payload: Record<string, 
   )
 
   const proSubscription = normalizedSubscriptions.find(
-    (subscription) => subscription.planKey === "pro" && (subscription.status === "active" || subscription.status === "trialing"),
+    (subscription) =>
+      subscription.planKey === "pro" &&
+      (subscription.status === "active" || subscription.status === "trialing" || subscription.status === "past_due"),
   )
 
   const entitlement = buildEntitlementRowFromPlan({

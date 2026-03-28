@@ -24,16 +24,16 @@ export async function sendWelcomeEmail(to: string, name: string | null) {
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 20px;">
         <h1 style="font-size: 24px; font-weight: 600; margin-bottom: 16px;">${greeting}, welcome to Relay!</h1>
         <p style="font-size: 16px; line-height: 1.5; color: #374151;">
-          Relay keeps your project context synchronized across ChatGPT, Claude, and Perplexity so every AI tool knows what you're working on.
+          Relay keeps your project brief ready across the AI tools you use, from browser chats to MCP-connected coding agents.
         </p>
         <p style="font-size: 16px; line-height: 1.5; color: #374151;">
-          Get started by setting up your first project:
+          Start by creating your first project, then connect Chrome whenever you are ready to capture context from supported AI chats.
         </p>
         <div style="margin: 24px 0;">
-          <a href="${dashboardUrl}" style="display: inline-block; background: #2563eb; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Open Dashboard</a>
+          <a href="${dashboardUrl}" style="display: inline-block; background: #182017; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Open Dashboard</a>
         </div>
         <p style="font-size: 14px; color: #6b7280;">
-          Need help? Check out the <a href="${docsUrl}" style="color: #2563eb;">setup wizard guide</a>.
+          Need help? Check out the <a href="${docsUrl}" style="color: #182017;">getting started guide</a>.
         </p>
       </div>
     `
@@ -52,10 +52,10 @@ export async function sendBetaInviteEmail(to: string, inviteLink: string) {
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 20px;">
         <h1 style="font-size: 24px; font-weight: 600; margin-bottom: 16px;">You're in!</h1>
         <p style="font-size: 16px; line-height: 1.5; color: #374151;">
-          You've been invited to the Relay closed beta. Relay keeps your project context synchronized across ChatGPT, Claude, Gemini, and more &mdash; so every AI tool knows what you're working on.
+          You've been invited to the Relay closed beta. Relay keeps your project brief ready across supported browser chats and MCP-connected coding agents.
         </p>
         <div style="margin: 24px 0;">
-          <a href="${inviteLink}" style="display: inline-block; background: #2563eb; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Accept Invite</a>
+          <a href="${inviteLink}" style="display: inline-block; background: #182017; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Accept Invite</a>
         </div>
         <p style="font-size: 14px; color: #6b7280;">
           This invite is just for you. If you have questions or feedback, reply to this email &mdash; we read everything.
@@ -111,7 +111,7 @@ export async function sendTrialExpiringEmail(to: string, daysLeft: number) {
           Upgrade now to keep your full project briefs, AI analysis, and unlimited context sync.
         </p>
         <div style="margin: 24px 0;">
-          <a href="${billingUrl}" style="display: inline-block; background: #2563eb; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Upgrade Now</a>
+          <a href="${billingUrl}" style="display: inline-block; background: #182017; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Upgrade Now</a>
         </div>
         <p style="font-size: 14px; color: #6b7280;">
           Your projects and data are safe either way &mdash; you just won't get AI-powered analysis on the free tier.
@@ -142,7 +142,7 @@ export async function sendAccountDeletedEmail(to: string, name: string | null) {
           If you change your mind, you can always create a new account:
         </p>
         <div style="margin: 24px 0;">
-          <a href="${signUpUrl}" style="display: inline-block; background: #2563eb; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Sign Up Again</a>
+          <a href="${signUpUrl}" style="display: inline-block; background: #182017; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Sign Up Again</a>
         </div>
         <p style="font-size: 14px; color: #6b7280;">
           Thanks for trying Relay. We wish you the best.
@@ -170,10 +170,10 @@ export async function sendBetaAccessGrantedEmail(to: string, name: string | null
           Congratulations &mdash; you're in! Your Relay beta access has been activated and you can start using it right away.
         </p>
         <p style="font-size: 16px; line-height: 1.5; color: #374151;">
-          Head to your dashboard to set up your first project, then install the Chrome extension to keep context synchronized across ChatGPT, Claude, Gemini, and more.
+          Head to your dashboard to set up your first project, then install the Chrome extension to keep context moving across supported AI chats and your coding tools.
         </p>
         <div style="margin: 24px 0;">
-          <a href="${dashboardUrl}" style="display: inline-block; background: #2563eb; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Open Dashboard</a>
+          <a href="${dashboardUrl}" style="display: inline-block; background: #182017; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Open Dashboard</a>
         </div>
         <p style="font-size: 14px; color: #6b7280;">
           Have feedback or run into issues? Reply to this email &mdash; we read everything.
@@ -198,13 +198,13 @@ export async function sendTrialStartedEmail(to: string, name: string | null, tri
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 20px;">
         <h1 style="font-size: 24px; font-weight: 600; margin-bottom: 16px;">${greeting}, your Pro trial is live!</h1>
         <p style="font-size: 16px; line-height: 1.5; color: #374151;">
-          Your ${trialDays}-day Relay Pro trial has started. You now have access to everything Pro includes: unlimited AI analysis, up to 10 projects, 365-day history, and handoff packs.
+          Your ${trialDays}-day Relay Pro trial has started. You now have access to higher daily limits, more project capacity, and more room for saved context.
         </p>
         <p style="font-size: 16px; line-height: 1.5; color: #374151;">
-          Make the most of your trial by heading to the dashboard and setting up your projects. Relay will keep your context synchronized across every AI tool you use.
+          Make the most of your trial by heading to the dashboard, setting up your projects, and connecting the tools you use most.
         </p>
         <div style="margin: 24px 0;">
-          <a href="${dashboardUrl}" style="display: inline-block; background: #2563eb; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Open Dashboard</a>
+          <a href="${dashboardUrl}" style="display: inline-block; background: #182017; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Open Dashboard</a>
         </div>
         <p style="font-size: 14px; color: #6b7280;">
           Your trial lasts ${trialDays} days. We'll send you a reminder before it ends.

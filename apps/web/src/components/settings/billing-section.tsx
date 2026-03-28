@@ -350,6 +350,29 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
         </FadeIn>
       ) : null}
 
+      {entitlements.status === "past_due" && entitlements.plan === "pro" ? (
+        <FadeIn>
+        <section className="overflow-hidden rounded-[var(--relay-radius)] border border-amber-500/20 bg-amber-500/5">
+          <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[14px] font-semibold text-[var(--relay-ink)]">Payment issue detected</p>
+              <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
+                Your Pro access is still on, but billing needs attention. Update your payment method in the customer portal to avoid interruption.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handlePortal()}
+              disabled={loading !== null}
+              className="shrink-0 rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
+            >
+              {loading === "portal" ? "Opening portal..." : "Fix billing"}
+            </button>
+          </div>
+        </section>
+        </FadeIn>
+      ) : null}
+
       {anyLimitReached && !entitlements.isPro ? (
         <section className="border border-[var(--relay-accent)]/20 rounded-lg px-4 py-3">
           <div className="flex items-center gap-3 justify-between">

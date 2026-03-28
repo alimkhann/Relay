@@ -100,11 +100,20 @@ function SettingsSection({
   )
 }
 
-function inferTokenType(label: string): { type: string; className: string } {
-  const lower = label.toLowerCase()
-  if (lower.includes("cli")) return { type: "CLI", className: "text-blue-500 bg-blue-500/10" }
-  if (lower.includes("mac") || lower.includes("mcp")) return { type: "MCP", className: "text-violet-500 bg-violet-500/10" }
-  return { type: "API", className: "text-[var(--relay-muted)] bg-[var(--relay-soft)]" }
+function inferTokenType(token: ExtensionApiTokenRow): { type: string; className: string } {
+  const label = token.deviceName.toLowerCase()
+
+  if (token.purpose === "cli_mcp") {
+    if (label.includes("wizard")) return { type: "Wizard", className: "text-violet-500 bg-violet-500/10" }
+    if (label.includes("cli")) return { type: "CLI", className: "text-blue-500 bg-blue-500/10" }
+    return { type: "CLI/MCP", className: "text-violet-500 bg-violet-500/10" }
+  }
+
+  if (label.includes("chrome") || label.includes("relay on")) {
+    return { type: "Extension", className: "text-emerald-600 bg-emerald-500/10" }
+  }
+
+  return { type: "Manual", className: "text-[var(--relay-muted)] bg-[var(--relay-soft)]" }
 }
 
 export function SettingsPreferences({
@@ -447,7 +456,7 @@ export function SettingsPreferences({
                         <div className="flex items-center gap-2">
                           <p className="truncate text-[13px] font-medium text-[var(--relay-ink)]">{token.deviceName}</p>
                           {(() => {
-                            const badge = inferTokenType(token.deviceName)
+                            const badge = inferTokenType(token)
                             return (
                               <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", badge.className)}>
                                 {badge.type}

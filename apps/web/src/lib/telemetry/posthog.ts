@@ -6,6 +6,11 @@ import posthog from "posthog-js"
 
 let initialized = false
 
+export const TELEMETRY_CONSENT_KEY = "relay-telemetry-consent"
+export const TELEMETRY_CONSENT_EVENT = "relay-telemetry-consent-changed"
+
+export type TelemetryConsent = "accepted" | "declined" | "unknown"
+
 function resolveBrowserEnvironment() {
   if (typeof window === "undefined") {
     return process.env.NODE_ENV ?? "development"
@@ -58,6 +63,38 @@ export function isPosthogEnabled() {
   return Boolean(getPosthogConfig())
 }
 
+export function getTelemetryConsent(): TelemetryConsent {
+  if (typeof window === "undefined") {
+    return "unknown"
+  }
+
+  const stored = window.localStorage.getItem(TELEMETRY_CONSENT_KEY)
+
+  if (stored === "accepted" || stored === "declined") {
+    return stored
+  }
+
+  return "unknown"
+}
+
+export function setTelemetryConsent(nextConsent: Exclude<TelemetryConsent, "unknown">) {
+  if (typeof window === "undefined") {
+    return
+  }
+
+  window.localStorage.setItem(TELEMETRY_CONSENT_KEY, nextConsent)
+
+  if (nextConsent === "declined") {
+    if (initialized) {
+      posthog.opt_out_capturing()
+    }
+  } else if (ensurePosthog()) {
+    posthog.opt_in_capturing()
+  }
+
+  window.dispatchEvent(new CustomEvent(TELEMETRY_CONSENT_EVENT, { detail: nextConsent }))
+}
+
 export function ensurePosthog() {
   if (typeof window === "undefined" || initialized) {
     return isPosthogEnabled()
@@ -65,6 +102,10 @@ export function ensurePosthog() {
 
   const config = getPosthogConfig()
   if (!config) {
+    return false
+  }
+
+  if (getTelemetryConsent() !== "accepted") {
     return false
   }
 

@@ -131,7 +131,7 @@ export async function assertProjectCreationAllowed(userId: string) {
 export async function assertHandoffEnabled(userId: string) {
   const entitlements = await resolveViewerEntitlements(userId)
   if (!entitlements.features.handoffPacks) {
-    throw new ForbiddenError("Handoff packs are available on Relay Pro.")
+    throw new ForbiddenError("Brief exports are available on Relay Pro.")
   }
 }
 

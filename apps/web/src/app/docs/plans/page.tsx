@@ -20,7 +20,7 @@ export default function PlansDocsPage() {
         <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] px-4 py-4">
           <ul className="space-y-2 text-[14px] text-[var(--relay-muted)]">
             <li>Browser capture across supported AI tools</li>
-            <li>Project briefs and continuity packets</li>
+            <li>Fresh-chat briefs and quick continuity packets</li>
             <li>Chrome extension and MCP access</li>
           </ul>
         </div>
@@ -41,12 +41,11 @@ export default function PlansDocsPage() {
             <tbody className="divide-y divide-[var(--relay-line)]">
               {[
                 { label: "Active projects", free: "2", pro: "10" },
-                { label: "History retention", free: "30 days", pro: "365 days" },
                 { label: "Captures / month", free: "200", pro: "2,000" },
                 { label: "AI analyses / day", free: "6 / project · 18 total", pro: "32 / project · 120 total" },
                 { label: "MCP reads / day", free: "20", pro: "200" },
                 { label: "MCP writes / day", free: "5", pro: "50" },
-                { label: "Handoff packs", free: "No", pro: "Yes" },
+                { label: "Memory items / project", free: "100", pro: "500" },
               ].map((row) => (
                 <tr key={row.label}>
                   <td className="px-4 py-3 text-[var(--relay-muted)]">{row.label}</td>
@@ -58,6 +57,11 @@ export default function PlansDocsPage() {
           </table>
           </div>
         </div>
+        <p className="text-[13px] text-[var(--relay-muted)]">
+          AI analyses have both a per-project limit and an overall per-account daily cap. That is why the billing screen can show
+          values like <span className="font-mono text-[var(--relay-ink)]">18 / day</span> even though the plan card says
+          <span className="font-mono text-[var(--relay-ink)]"> 6 / day per project</span>.
+        </p>
       </section>
 
       <section className="space-y-3">
