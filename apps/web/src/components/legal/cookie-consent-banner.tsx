@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -24,25 +24,30 @@ export function CookieConsentBanner() {
     setConsent(getTelemetryConsent())
   }, [])
 
-  const handleClickOutside = useCallback((e: MouseEvent) => {
-    if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
-      setIsExpanded(false)
-    }
-  }, [])
-
   useEffect(() => {
-    if (isExpanded) {
-      document.addEventListener("mousedown", handleClickOutside)
-      return () => document.removeEventListener("mousedown", handleClickOutside)
+    if (!isExpanded) return
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
+        setIsExpanded(false)
+      }
     }
-  }, [isExpanded, handleClickOutside])
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [isExpanded])
 
   if (!isPosthogEnabled() || consent !== "unknown") {
     return null
   }
 
   return (
-    <div ref={cardRef} className="fixed bottom-5 right-5 z-[90]">
+    <div
+      ref={cardRef}
+      className="fixed bottom-5 right-5 z-[90]"
+      onMouseEnter={() => setIsExpanded(true)}
+      onMouseLeave={() => setIsExpanded(false)}
+    >
       {!isExpanded ? (
         <button
           type="button"
