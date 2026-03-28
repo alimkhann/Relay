@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -13,6 +13,8 @@ import {
 
 export function CookieConsentBanner() {
   const [consent, setConsent] = useState<TelemetryConsent>("unknown")
+  const [isExpanded, setIsExpanded] = useState(false)
+  const cardRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!isPosthogEnabled()) {
@@ -22,47 +24,86 @@ export function CookieConsentBanner() {
     setConsent(getTelemetryConsent())
   }, [])
 
+  const handleClickOutside = useCallback((e: MouseEvent) => {
+    if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
+      setIsExpanded(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isExpanded) {
+      document.addEventListener("mousedown", handleClickOutside)
+      return () => document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [isExpanded, handleClickOutside])
+
   if (!isPosthogEnabled() || consent !== "unknown") {
     return null
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[90] px-4 pb-4 sm:px-6 sm:pb-6">
-      <div className="mx-auto flex max-w-3xl flex-col gap-4 rounded-[20px] border border-[var(--relay-line-strong)] bg-[var(--relay-surface)]/96 p-4 shadow-[var(--relay-shadow-lg)] backdrop-blur sm:flex-row sm:items-end sm:justify-between">
-        <div className="max-w-2xl">
-          <p className="text-sm font-semibold text-[var(--relay-ink)]">Minimal cookies</p>
-          <p className="mt-1 text-sm leading-6 text-[var(--relay-muted)]">
-            Relay uses optional PostHog cookies and local storage for analytics and client-side error tracking. Accept to help improve the app, or decline to keep browsing without PostHog cookies.
-            <span className="ml-1">
-              <Link href="/privacy" className="text-[var(--relay-ink)] underline underline-offset-2">
-                Privacy policy
-              </Link>
-            </span>
+    <div ref={cardRef} className="fixed bottom-5 right-5 z-[90]">
+      {!isExpanded ? (
+        <button
+          type="button"
+          aria-label="Cookie preferences"
+          onClick={() => setIsExpanded(true)}
+          className="flex h-12 w-12 items-center justify-center rounded-full border border-[var(--relay-line-strong)] bg-[var(--relay-surface)] text-xl shadow-[var(--relay-shadow-lg)] transition-transform duration-200 hover:scale-110 active:scale-95"
+        >
+          🍪
+        </button>
+      ) : (
+        <div className="w-[264px] origin-bottom-right animate-[cookie-expand_200ms_ease-out] rounded-2xl border border-[var(--relay-line-strong)] bg-[var(--relay-surface)] p-4 shadow-[var(--relay-shadow-lg)]">
+          <p className="text-sm font-semibold text-[var(--relay-ink)]">
+            🍪 Minimal cookies
           </p>
+          <p className="mt-1.5 text-xs leading-5 text-[var(--relay-muted)]">
+            Optional analytics &amp; error tracking to improve Relay.{" "}
+            <Link
+              href="/privacy"
+              className="text-[var(--relay-ink)] underline underline-offset-2"
+            >
+              Privacy
+            </Link>
+          </p>
+          <div className="mt-3 flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              className="flex-1"
+              onClick={() => {
+                setTelemetryConsent("declined")
+                setConsent("declined")
+              }}
+            >
+              Decline
+            </Button>
+            <Button
+              size="sm"
+              className="flex-1"
+              onClick={() => {
+                setTelemetryConsent("accepted")
+                setConsent("accepted")
+              }}
+            >
+              Accept
+            </Button>
+          </div>
         </div>
+      )}
 
-        <div className="flex shrink-0 gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              setTelemetryConsent("declined")
-              setConsent("declined")
-            }}
-          >
-            Decline
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              setTelemetryConsent("accepted")
-              setConsent("accepted")
-            }}
-          >
-            Accept
-          </Button>
-        </div>
-      </div>
+      <style jsx global>{`
+        @keyframes cookie-expand {
+          from {
+            opacity: 0;
+            transform: scale(0.85);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+      `}</style>
     </div>
   )
 }
