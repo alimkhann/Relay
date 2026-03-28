@@ -72,6 +72,24 @@ export function Footer() {
               Docs
             </a>
             <Link
+              href="/status"
+              className="text-sm text-white/25 hover:text-white/50 transition-colors"
+            >
+              Status
+            </Link>
+            <Link
+              href="/roadmap"
+              className="text-sm text-white/25 hover:text-white/50 transition-colors"
+            >
+              Roadmap
+            </Link>
+            <Link
+              href="/feedback"
+              className="text-sm text-white/25 hover:text-white/50 transition-colors"
+            >
+              Feedback
+            </Link>
+            <Link
               href="/terms"
               className="text-sm text-white/25 hover:text-white/50 transition-colors"
             >
