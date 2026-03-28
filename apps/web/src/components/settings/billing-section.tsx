@@ -245,6 +245,23 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
     })
   }, [anyLimitReached, dynamicNotice, entitlements.isPro, topUsagePressure])
 
+  useEffect(() => {
+    if (!checkoutSuccess || !entitlements.isPro) return
+
+    logClientEvent({
+      level: "info",
+      surface: "web-settings",
+      area: "billing",
+      event: "billing_checkout_succeeded",
+      message: "Returned from a successful billing checkout.",
+      context: {
+        plan: entitlements.plan,
+        status: entitlements.status,
+        period: entitlements.interval,
+      },
+    })
+  }, [checkoutSuccess, entitlements.interval, entitlements.isPro, entitlements.plan, entitlements.status])
+
   async function handleCheckout(interval: "month" | "year") {
     setLoading(interval)
     setError(null)

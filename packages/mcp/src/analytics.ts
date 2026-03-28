@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
+import { homedir } from "node:os"
 
 import { PostHog } from "posthog-node"
 
@@ -23,9 +24,22 @@ function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex")
 }
 
+function sanitizeException(error: unknown) {
+  const normalized = error instanceof Error ? error : new Error(String(error))
+  const nextStack = normalized.stack
+    ?.replaceAll(process.cwd(), "<cwd>")
+    .replaceAll(homedir(), "<home>")
+
+  return {
+    name: normalized.name || "Error",
+    message: normalized.message || String(error),
+    stack: nextStack ?? null,
+  }
+}
+
 export class RelayMcpAnalytics {
   private readonly client: PostHog | null
-  private distinctId: string | null = null
+  private distinctId: string | null
 
   constructor() {
     const config = getPosthogConfig()
@@ -36,6 +50,13 @@ export class RelayMcpAnalytics {
           flushInterval: 0,
         })
       : null
+
+    this.distinctId = this.client ? `relay-mcp:${randomUUID()}` : null
+    this.client?.register({
+      app_source: "relay-mcp",
+      app: "mcp",
+      environment: process.env.NODE_ENV ?? "development",
+    })
   }
 
   async identify(apiBase: string, token: string) {
@@ -67,9 +88,23 @@ export class RelayMcpAnalytics {
     this.client.capture({
       distinctId: this.distinctId,
       event,
+      properties,
+    })
+  }
+
+  captureException(error: unknown, properties: Record<string, string | number | boolean | null> = {}) {
+    if (!this.client || !this.distinctId) return
+
+    const normalizedError = sanitizeException(error)
+
+    this.client.capture({
+      distinctId: this.distinctId,
+      event: "$exception",
       properties: {
-        source: "relay-mcp",
         ...properties,
+        $exception_message: normalizedError.message,
+        $exception_stack_trace_raw: normalizedError.stack,
+        $exception_type: normalizedError.name,
       },
     })
   }

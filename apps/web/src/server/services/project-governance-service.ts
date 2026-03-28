@@ -3,6 +3,7 @@ import type { SessionDigestShape } from "@relay/shared"
 import { projectStateOverrideSchema, sessionArchiveSchema } from "@relay/shared"
 
 import { mergeDigestIntoState } from "./project-state-service"
+import { logServerEvent } from "@/server/logging/logger"
 
 async function requireProjectAccess(userId: string, projectId: string) {
   const repositories = createRepositoryBundle(userId)
@@ -46,8 +47,36 @@ export async function rebuildProjectState(userId: string, projectId: string) {
       objectiveHistory: nextState.objectiveHistory,
       dirty: true
     })
+
+    await logServerEvent({
+      level: "info",
+      surface: "web-api",
+      area: "projects",
+      event: "project_state.rebuilt",
+      message: "Rebuilt project state from session digests.",
+      userId,
+      projectId,
+      context: {
+        result: "rebuilt",
+        status: "ready",
+      },
+    })
   } else {
     await repositories.projectState.clear(projectId)
+
+    await logServerEvent({
+      level: "info",
+      surface: "web-api",
+      area: "projects",
+      event: "project_state.rebuilt",
+      message: "Cleared project state because no digests were available.",
+      userId,
+      projectId,
+      context: {
+        result: "cleared",
+        status: "empty",
+      },
+    })
   }
 
   await repositories.bootstrapPackets.clearProject(projectId)
@@ -71,6 +100,16 @@ export async function updateProjectStateOverrides(userId: string, projectId: str
   })
 
   await repositories.bootstrapPackets.clearProject(projectId)
+
+  await logServerEvent({
+    level: "info",
+    surface: "web-api",
+    area: "projects",
+    event: "project_state.overrides_updated",
+    message: "Updated project state overrides.",
+    userId,
+    projectId,
+  })
 
   return overrides
 }
@@ -99,6 +138,20 @@ export async function archiveProjectSession(
 
   await repositories.bootstrapPackets.clearProject(projectId)
   await rebuildProjectState(userId, projectId)
+
+  await logServerEvent({
+    level: "info",
+    surface: "web-api",
+    area: "projects",
+    event: parsed.archived ? "project_session.archived" : "project_session.restored",
+    message: parsed.archived ? "Archived a project session." : "Restored a project session.",
+    userId,
+    projectId,
+    context: {
+      status: parsed.archived ? "archived" : "active",
+    },
+  })
+
   return updated
 }
 

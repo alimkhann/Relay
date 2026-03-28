@@ -337,11 +337,28 @@ export class RelayClient {
       headers["Content-Type"] = "application/json"
     }
 
-    const response = await fetch(url, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined
-    })
+    let response: Response
+
+    try {
+      response = await fetch(url, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined
+      })
+    } catch (error) {
+      this.analytics?.capture("mcp_request_exception", {
+        project_id: this.workSession?.projectId ?? this.projectId ?? null,
+        success: false,
+        method,
+        path,
+      })
+      this.analytics?.captureException(error, {
+        project_id: this.workSession?.projectId ?? this.projectId ?? null,
+        method,
+        path,
+      })
+      throw error
+    }
 
     if (!response.ok) {
       if (response.status === 401 && this.refreshToken) {
@@ -363,6 +380,13 @@ export class RelayClient {
         } else if (retryAfter) {
           message += `\nTry again in ${retryAfter} seconds.`
         }
+        this.analytics?.capture("mcp_request_failed", {
+          project_id: this.workSession?.projectId ?? this.projectId ?? null,
+          success: false,
+          method,
+          path,
+          status: response.status,
+        })
         throw new Error(message)
       }
 
@@ -376,6 +400,15 @@ export class RelayClient {
           message += ` — ${text}`
         }
       }
+
+      this.analytics?.capture("mcp_request_failed", {
+        project_id: this.workSession?.projectId ?? this.projectId ?? null,
+        success: false,
+        method,
+        path,
+        status: response.status,
+      })
+
       throw new Error(message)
     }
 
@@ -447,6 +480,11 @@ export class RelayClient {
 
       if (!response.ok) {
         const text = await response.text().catch(() => "")
+        this.analytics?.capture("mcp_token_refresh_failed", {
+          project_id: this.workSession?.projectId ?? this.projectId ?? null,
+          success: false,
+          status: response.status,
+        })
         throw new Error(`Relay refresh failed: ${response.status} ${response.statusText}${text ? ` — ${text}` : ""}`)
       }
 

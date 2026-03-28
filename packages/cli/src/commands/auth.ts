@@ -43,6 +43,10 @@ export async function runAuthCommand(subcommand: string | null, options: { apiBa
       return
     }
     case "logout": {
+      const existing = await loadConfig()
+      if (existing) {
+        await options.analytics?.identify(existing.apiBase, existing.token)
+      }
       options.analytics?.capture("cli_auth_logged_out", { success: true })
       await clearConfig()
       success(`Cleared Relay credentials from ${pc.dim(getConfigPath())}`)

@@ -15,7 +15,6 @@ export default function GlobalError({
   useEffect(() => {
     const payload = {
       level: "error",
-      surface: "web-dashboard",
       area: "page",
       event: "app.error_boundary_triggered",
       message: error.message || "App route error boundary triggered.",

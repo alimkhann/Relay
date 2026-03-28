@@ -1,11 +1,15 @@
 "use client"
 
 import type { TelemetryEventInput, TelemetrySurface } from "@relay/shared/types/telemetry"
+import { shouldCapturePosthogException } from "@relay/shared/utils/posthog"
 import { sanitizeTelemetryEvent } from "@relay/shared/utils/telemetry"
+
+import { capturePosthogException } from "./posthog"
 
 function resolveClientErrorSurface(pathname: string): TelemetrySurface {
   if (pathname === "/") return "web-landing"
   if (pathname.startsWith("/sign-in")) return "web-auth"
+  if (pathname.startsWith("/settings")) return "web-settings"
   return "web-dashboard"
 }
 
@@ -25,6 +29,10 @@ export function reportClientError(
     surface: input.surface ?? resolveClientErrorSurface(window.location.pathname),
     url: input.url ?? window.location.pathname
   })
+
+  if (shouldCapturePosthogException(event)) {
+    capturePosthogException(event)
+  }
 
   void fetch("/api/client-errors", {
     method: "POST",

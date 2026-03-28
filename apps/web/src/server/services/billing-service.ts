@@ -7,6 +7,7 @@ import { billingCheckoutSchema, hashContent } from "@relay/shared"
 import { BILLING_RETURN_URL, BILLING_SUCCESS_URL, PLAN_PRODUCT_IDS } from "./billing-config"
 import { buildEntitlementRowFromPlan, resolveViewerEntitlements } from "./entitlement-service"
 import { ForbiddenError } from "@/server/http/errors"
+import { logServerEvent } from "@/server/logging/logger"
 
 function getPolarClient() {
   const accessToken = process.env["POLAR_ACCESS_TOKEN"]
@@ -75,6 +76,20 @@ export async function createPolarCheckoutForUser(user: {
     name: user.name ?? null,
   })
 
+  await logServerEvent({
+    level: "info",
+    surface: "web-api",
+    area: "billing",
+    event: "billing.checkout_created",
+    message: "Created a billing checkout session.",
+    userId: user.id,
+    context: {
+      interval: parsed.interval,
+      plan: "pro",
+      provider: "polar",
+    },
+  })
+
   return {
     checkoutUrl: checkout.url,
     checkoutId: checkout.id,
@@ -93,6 +108,19 @@ export async function createPolarPortalForUser(userId: string) {
   const session = await polar.customerSessions.create({
     externalCustomerId: customer.externalCustomerId,
     returnUrl: BILLING_RETURN_URL,
+  })
+
+  await logServerEvent({
+    level: "info",
+    surface: "web-api",
+    area: "billing",
+    event: "billing.portal_created",
+    message: "Created a billing portal session.",
+    userId,
+    context: {
+      provider: "polar",
+      plan: "pro",
+    },
   })
 
   return {
@@ -173,6 +201,21 @@ export async function syncBillingStateFromCustomerState(payload: Record<string, 
   })
 
   await repositories.entitlements.upsert(entitlement)
+
+  await logServerEvent({
+    level: "info",
+    surface: "web-api",
+    area: "billing",
+    event: "billing.subscription_state_synced",
+    message: "Synchronized billing state from Polar customer state.",
+    userId: externalCustomerId,
+    context: {
+      plan: entitlement.planKey,
+      status: entitlement.status,
+      provider: "polar",
+      interval: entitlement.interval,
+    },
+  })
 }
 
 export async function handlePolarWebhook(rawBody: string, headers: Headers) {
@@ -204,9 +247,36 @@ export async function handlePolarWebhook(rawBody: string, headers: Headers) {
       await syncBillingStateFromCustomerState(event as unknown as Record<string, unknown>)
     }
     await repositories.billingWebhookEvents.markProcessed(record.id)
+
+    await logServerEvent({
+      level: "info",
+      surface: "web-api",
+      area: "billing",
+      event: "billing.webhook_processed",
+      message: "Processed a Polar billing webhook.",
+      context: {
+        provider: "polar",
+        type: event.type,
+      },
+    })
+
     return { ok: true, duplicate: false }
   } catch (error) {
     await repositories.billingWebhookEvents.markFailed(record.id, error instanceof Error ? error.message : "Webhook processing failed")
+
+    await logServerEvent({
+      level: "error",
+      surface: "web-api",
+      area: "billing",
+      event: "billing.webhook_failed",
+      message: "Failed to process a Polar billing webhook.",
+      context: {
+        provider: "polar",
+        type: event.type,
+      },
+      error,
+    })
+
     throw error
   }
 }

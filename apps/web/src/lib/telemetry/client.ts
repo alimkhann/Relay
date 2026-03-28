@@ -8,6 +8,7 @@ import { capturePosthogTelemetry } from "./posthog"
 function resolveWebSurface(pathname: string): TelemetrySurface {
   if (pathname === "/") return "web-landing"
   if (pathname.startsWith("/sign-in")) return "web-auth"
+  if (pathname.startsWith("/settings")) return "web-settings"
   return "web-dashboard"
 }
 

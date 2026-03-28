@@ -5,11 +5,17 @@ import {
   uninstallSkillFile,
   uninstallUniversalSkillFile,
   clearConfig,
+  loadConfig,
   info,
   success
 } from "@relay/cli-core"
 
 export async function runUninstallCommand(options: { analytics?: RelayCliAnalytics }) {
+  const existing = await loadConfig()
+  if (existing) {
+    await options.analytics?.identify(existing.apiBase, existing.token)
+  }
+
   const ides = await detectIDEs()
   let removedCount = 0
 

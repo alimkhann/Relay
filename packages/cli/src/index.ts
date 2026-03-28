@@ -8,8 +8,9 @@ import { runStatusCommand } from "./commands/status"
 import { runUninstallCommand } from "./commands/uninstall"
 import { printHelp } from "./help"
 
+const analytics = new RelayCliAnalytics()
+
 async function main() {
-  const analytics = new RelayCliAnalytics()
   const parsed = parseArgs(process.argv.slice(2))
   const openBrowser = !hasFlag(parsed.flags, "no-browser")
 
@@ -68,7 +69,12 @@ async function main() {
   }
 }
 
-main().catch((error) => {
+main().catch(async (error) => {
+  analytics.captureException(error, {
+    command: process.argv[2] ?? "unknown",
+    subcommand: process.argv[3] ?? null,
+  })
+  await analytics.shutdown()
   console.error(error instanceof Error ? error.message : "Relay CLI failed")
   process.exit(1)
 })

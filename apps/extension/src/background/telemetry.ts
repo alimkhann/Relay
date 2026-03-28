@@ -1,5 +1,5 @@
 import type { TelemetryEventInput } from "@relay/shared/types/telemetry";
-import { buildPosthogEvent } from "@relay/shared/utils/posthog";
+import { buildPosthogEvent, buildPosthogExceptionProperties, shouldCapturePosthogException } from "@relay/shared/utils/posthog";
 import { sanitizeTelemetryEvent } from "@relay/shared/utils/telemetry";
 
 import { getRelaySession } from "../storage/session";
@@ -46,6 +46,19 @@ async function getDistinctId() {
   return getAnonymousDistinctId();
 }
 
+function getExtensionRuntimeProperties() {
+  const version = typeof chrome !== "undefined" && chrome.runtime?.getManifest
+    ? chrome.runtime.getManifest().version
+    : null;
+
+  return {
+    app_source: "relay-extension",
+    app: "extension",
+    app_version: version,
+    environment: process.env.NODE_ENV === "development" ? "development" : "production",
+  };
+}
+
 function queueBackgroundPosthog(input: TelemetryEventInput) {
   const config = getPosthogConfig();
   if (!config) {
@@ -67,8 +80,52 @@ function queueBackgroundPosthog(input: TelemetryEventInput) {
           event: payload.event,
           properties: {
             distinct_id: distinctId,
-            source: "relay-extension",
+            ...getExtensionRuntimeProperties(),
             ...payload.properties,
+          },
+        }),
+      });
+    } catch {
+      // Best-effort analytics only.
+    }
+  })();
+
+  pendingRequests.add(request);
+  void request.finally(() => {
+    pendingRequests.delete(request);
+  });
+}
+
+function queueBackgroundException(input: TelemetryEventInput) {
+  const config = getPosthogConfig();
+  if (!config || !shouldCapturePosthogException(input)) {
+    return;
+  }
+
+  const error = input.error as { message?: string | null; stack?: string | null; name?: string | null } | null;
+  if (!error?.message) {
+    return;
+  }
+
+  const request = (async () => {
+    try {
+      const distinctId = await getDistinctId();
+
+      await fetch(`${config.host}/capture/`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          api_key: config.key,
+          event: "$exception",
+          properties: {
+            distinct_id: distinctId,
+            ...getExtensionRuntimeProperties(),
+            ...buildPosthogExceptionProperties(input),
+            $exception_message: error.message,
+            $exception_stack_trace_raw: error.stack ?? null,
+            $exception_type: error.name ?? "Unknown",
           },
         }),
       });
@@ -112,6 +169,7 @@ export function recordBackgroundTelemetry(input: TelemetryEventInput) {
   const event = sanitizeTelemetryEvent(input);
   writeConsoleEvent(event);
   queueBackgroundPosthog(event);
+  queueBackgroundException(event);
 }
 
 export function initializeBackgroundTelemetry() {

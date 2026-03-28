@@ -33,4 +33,22 @@ describe("logClientEvent", () => {
       }
     })
   })
+
+  it("routes settings paths to the web-settings surface", () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {})
+    window.history.replaceState({}, "", "/settings?section=billing")
+
+    logClientEvent({
+      level: "info",
+      area: "billing",
+      event: "settings_viewed",
+      message: "Viewed settings.",
+    })
+
+    expect(infoSpy).toHaveBeenCalledTimes(1)
+    expect(infoSpy.mock.calls[0]?.[1]).toMatchObject({
+      surface: "web-settings",
+      url: "/settings",
+    })
+  })
 })

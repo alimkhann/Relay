@@ -1,5 +1,7 @@
 import type { TelemetryEventInput } from "@relay/shared"
-import { sanitizeTelemetryEvent } from "@relay/shared"
+import { buildPosthogExceptionProperties, sanitizeTelemetryEvent, shouldCapturePosthogException } from "@relay/shared"
+
+import { captureServerException, captureServerTelemetry } from "@/lib/telemetry/posthog-server"
 
 import { getRequestContext } from "./request-context"
 
@@ -36,6 +38,27 @@ function writeConsoleEvent(input: TelemetryEventInput) {
   console.info(prefix, event)
 }
 
+function shouldForwardServerEventToPosthog(input: TelemetryEventInput) {
+  return input.level !== "debug" && input.event !== "api.response"
+}
+
+function isClientReportedEvent(input: TelemetryEventInput) {
+  return input.context?.reportedVia === "client-report"
+}
+
 export async function logServerEvent(input: TelemetryEventInput) {
-  writeConsoleEvent(input)
+  const event = sanitizeTelemetryEvent(applyRequestContextDefaults(input))
+
+  writeConsoleEvent(event)
+
+  if (!isClientReportedEvent(event) && shouldForwardServerEventToPosthog(event)) {
+    captureServerTelemetry(event)
+  }
+
+  if (!isClientReportedEvent(event) && shouldCapturePosthogException(event) && event.event !== "api.exception") {
+    captureServerException(event.error ?? event.message, {
+      distinctId: event.userId,
+      properties: buildPosthogExceptionProperties(event),
+    })
+  }
 }

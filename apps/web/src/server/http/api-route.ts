@@ -201,6 +201,11 @@ export function withApiRoute<TArgs extends [Request, ...unknown[]]>(
           method: request.method,
           requestId: requestContext?.requestId ?? null,
           durationMs: Date.now() - startedAt,
+          properties: {
+            surface: "web-api",
+            area: "request",
+            event_name: "api_exception",
+          },
         })
 
         await logServerEvent({
