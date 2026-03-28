@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "relay": {
+      "command": "node",
+      "args": [
+        "/Users/alim/Developer/Projects/Apps/Relay/packages/mcp/dist/index.js"
+      ]
+    }
+  }
+}
