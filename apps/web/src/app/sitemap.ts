@@ -11,10 +11,7 @@ const routes = [
   "/docs/extension",
   "/docs/mcp",
   "/docs/plans",
-  "/feedback",
   "/privacy",
-  "/roadmap",
-  "/status",
   "/terms",
 ] as const
 
