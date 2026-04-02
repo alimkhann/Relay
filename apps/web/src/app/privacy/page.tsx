@@ -290,10 +290,10 @@ export default function PrivacyPage() {
               <p>
                 To exercise any of these rights, contact us at{" "}
                 <a
-                  href="mailto:alimkhan.ergebayev@gmail.com"
+                  href="mailto:support@onrelay.app"
                   className="text-gray-900 underline underline-offset-2"
                 >
-                  alimkhan.ergebayev@gmail.com
+                  support@onrelay.app
                 </a>
                 . We will respond to your request within 30 days.
               </p>
@@ -331,10 +331,10 @@ export default function PrivacyPage() {
             <p>
               For privacy-related questions or requests, contact us at{" "}
               <a
-                href="mailto:alimkhan.ergebayev@gmail.com"
+                href="mailto:support@onrelay.app"
                 className="text-gray-900 underline underline-offset-2"
               >
-                alimkhan.ergebayev@gmail.com
+                support@onrelay.app
               </a>
               .
             </p>

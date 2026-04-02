@@ -271,10 +271,10 @@ export default function TermsPage() {
             <p>
               If you have questions about these terms, contact us at{" "}
               <a
-                href="mailto:alimkhan.ergebayev@gmail.com"
+                href="mailto:support@onrelay.app"
                 className="text-gray-900 underline underline-offset-2"
               >
-                alimkhan.ergebayev@gmail.com
+                support@onrelay.app
               </a>
               .
             </p>

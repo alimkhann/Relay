@@ -17,7 +17,7 @@ export async function sendWelcomeEmail(to: string, name: string | null) {
   const docsUrl = "https://www.onrelay.app/docs/getting-started"
 
   await client.emails.send({
-    from: "Relay <support@onrelay.app>",
+    from: "Relay <noreply@onrelay.app>",
     to,
     subject: "Welcome to Relay",
     html: `
@@ -45,7 +45,7 @@ export async function sendBetaInviteEmail(to: string, inviteLink: string) {
   if (!client) return
 
   await client.emails.send({
-    from: "Relay <support@onrelay.app>",
+    from: "Relay <noreply@onrelay.app>",
     to,
     subject: "You're invited to the Relay closed beta",
     html: `
@@ -70,7 +70,7 @@ export async function sendWaitlistConfirmationEmail(to: string) {
   if (!client) return
 
   await client.emails.send({
-    from: "Relay <support@onrelay.app>",
+    from: "Relay <noreply@onrelay.app>",
     to,
     subject: "You're on the Relay waitlist",
     html: `
@@ -98,7 +98,7 @@ export async function sendTrialExpiringEmail(to: string, daysLeft: number) {
   const billingUrl = "https://www.onrelay.app/dashboard/billing"
 
   await client.emails.send({
-    from: "Relay <support@onrelay.app>",
+    from: "Relay <noreply@onrelay.app>",
     to,
     subject: `Your Relay trial ${urgency}`,
     html: `
@@ -129,7 +129,7 @@ export async function sendAccountDeletedEmail(to: string, name: string | null) {
   const signUpUrl = "https://www.onrelay.app/get-started"
 
   await client.emails.send({
-    from: "Relay <support@onrelay.app>",
+    from: "Relay <noreply@onrelay.app>",
     to,
     subject: "Your Relay account has been deleted",
     html: `
@@ -160,7 +160,7 @@ export async function sendBetaAccessGrantedEmail(to: string, name: string | null
   const dashboardUrl = "https://www.onrelay.app/dashboard"
 
   await client.emails.send({
-    from: "Relay <support@onrelay.app>",
+    from: "Relay <noreply@onrelay.app>",
     to,
     subject: "Your Relay beta access is ready",
     html: `
@@ -191,7 +191,7 @@ export async function sendTrialStartedEmail(to: string, name: string | null, tri
   const dashboardUrl = "https://www.onrelay.app/dashboard"
 
   await client.emails.send({
-    from: "Relay <support@onrelay.app>",
+    from: "Relay <noreply@onrelay.app>",
     to,
     subject: "Your Relay Pro trial has started",
     html: `
