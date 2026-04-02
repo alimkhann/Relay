@@ -35,8 +35,9 @@ Productivity
 | chatgpt.com, chat.openai.com | ChatGPT chat capture |
 | claude.ai | Claude chat capture |
 | gemini.google.com, aistudio.google.com | Gemini/AI Studio chat capture |
-| grok.com, x.com | Grok chat capture (Grok chat runs on both grok.com and x.com/i/grok) |
+| grok.com, x.com/i/grok | Grok chat capture |
 | perplexity.ai, www.perplexity.ai | Perplexity chat capture |
 | chat.deepseek.com | DeepSeek chat capture |
 | codex.openai.com | Codex chat capture |
-| onrelay.app, www.onrelay.app, t.onrelay.app | Relay API backend for authentication, data sync, and telemetry proxy |
+| onrelay.app, www.onrelay.app, t.onrelay.app | Relay web/API domains used for authentication, pairing, and data sync |
+| eu.i.posthog.com | PostHog endpoint used for product analytics and error tracking |

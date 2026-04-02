@@ -51,9 +51,9 @@ export default function PrivacyPage() {
                 <strong className="text-gray-900">Chat content:</strong> When
                 the Relay Chrome extension is active, connected, and capture is
                 enabled by you, we capture and store the <em>full text content</em> of your AI chat
-                sessions. This includes your messages to AI tools (ChatGPT,
-                Claude, Codex, Perplexity) and the AI's responses, including any
-                raw HTML content from the chat interface.
+                sessions. This includes your messages to AI tools (including ChatGPT,
+                Claude, Gemini, Grok, Codex, Perplexity, and DeepSeek) and the AI's responses,
+                along with associated raw HTML content from the chat interface.
               </p>
               <p>
                 <strong className="text-gray-900">Derived data:</strong> Relay
@@ -117,12 +117,13 @@ export default function PrivacyPage() {
             <h2 className="mb-3 text-lg font-semibold text-gray-900">
               5. Analytics
             </h2>
-            <p>
-              We use PostHog for privacy-respecting, aggregated analytics to
-              understand how the Service is used. Analytics data does not
-              include your chat content or personal data. No data is shared
-              with third-party advertisers.
-            </p>
+              <p>
+                We use PostHog for privacy-respecting, aggregated analytics and
+                error tracking to understand how the Service is used and to
+                diagnose failures. The extension may send telemetry directly to
+                PostHog. Analytics data does not include captured chat content,
+                and no data is shared with third-party advertisers.
+              </p>
           </section>
 
           <section>
@@ -166,11 +167,12 @@ export default function PrivacyPage() {
               8. Third-Party Services
             </h2>
             <p>
-              Relay integrates with Google OAuth for authentication. We do not
+              Relay integrates with Google OAuth for authentication and uses
+              PostHog for product analytics and error tracking. We do not
               control and are not responsible for the privacy practices of
-              Google or the AI tools you use (ChatGPT, Claude, Codex,
-              Perplexity). We recommend reviewing their respective privacy
-              policies.
+              Google, PostHog, or the AI tools you use (such as ChatGPT,
+              Claude, Gemini, Grok, Codex, Perplexity, and DeepSeek). We
+              recommend reviewing their respective privacy policies.
             </p>
           </section>
 

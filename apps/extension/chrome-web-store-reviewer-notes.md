@@ -10,7 +10,7 @@ Supported browser chat surfaces in the current build:
 - Claude (`claude.ai`)
 - Gemini and AI Studio (`gemini.google.com`, `aistudio.google.com`)
 - Perplexity (`perplexity.ai`, `www.perplexity.ai`)
-- Grok (`grok.com`, `x.com`)
+- Grok (`grok.com`, `x.com/i/grok`)
 - DeepSeek (`chat.deepseek.com`)
 - Codex (`codex.openai.com`)
 
@@ -18,6 +18,7 @@ Supported browser chat surfaces in the current build:
 
 - Relay only reads content on the supported domains listed above.
 - Relay captures chat context for the signed-in user while the extension is connected and capture is enabled.
+- Captured chat content can include the visible message text plus associated raw HTML markup from the supported chat interface so Relay can preserve structure and parse conversations more reliably.
 - Captured data is sent to the user's Relay account to generate and update project briefs.
 - The extension does not inject or execute remote code. All executable code is bundled with the extension package.
 
@@ -33,14 +34,14 @@ Supported browser chat surfaces in the current build:
 
 ## Host permissions
 
-Host permissions are restricted to supported AI chat domains plus Relay's own web/API domains used for authentication, sync, and telemetry proxying.
+Host permissions are restricted to supported AI chat domains, Relay's own web/API domains used for authentication and sync, and the PostHog endpoint (`eu.i.posthog.com`) used for analytics and error tracking.
 
 ## Data handling summary
 
 - Account data: email, name, avatar from Google sign-in.
 - Extension data: local auth/session state, selected project, preferences, onboarding state.
-- Captured content: supported AI chat text and related project context for the signed-in user.
-- Relay uses PostHog for product analytics and error tracking.
+- Captured content: supported AI chat text, associated raw HTML markup from the chat interface, and related project context for the signed-in user.
+- Relay uses PostHog for product analytics and error tracking, and the extension may send telemetry directly to PostHog in addition to Relay-owned domains used for authentication and sync.
 
 Public policy URLs:
 

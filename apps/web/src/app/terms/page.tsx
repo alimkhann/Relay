@@ -70,10 +70,11 @@ export default function TermsPage() {
                Relay captures and stores the full text content of AI chat
                sessions you conduct while the extension is active, connected,
                and capture is enabled by you.
-               This includes your messages to AI tools and the AI's responses.
+               This includes your messages to AI tools, the AI's responses,
+               and associated raw HTML markup from the chat interface.
               Relay also generates and stores derived content such as project
-              summaries, decisions, tasks, and constraints extracted from your
-              chats.
+               summaries, decisions, tasks, and constraints extracted from your
+               chats.
             </p>
           </section>
 
