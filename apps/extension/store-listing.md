@@ -2,15 +2,17 @@
 
 ## Short Description (132 chars max)
 
-Keep project context moving between ChatGPT, Claude, Gemini, Perplexity, Grok, DeepSeek, Codex, and MCP-connected agents.
+Stop repeating yourself to every AI. Relay keeps your project context synced across all your AI chats and IDE agents.
 
 ## Detailed Description
 
-Every time you switch between AI tools, you start from scratch. You re-explain your project, repeat past decisions, and lose the thread of what you were doing. If you bounce between ChatGPT, Claude, Gemini, Perplexity, Grok, DeepSeek, or Codex during the day, you know the pain of copy-pasting context between them.
+Every time you switch between AI tools, you start from scratch. You re-explain your project, repeat past decisions, and lose the thread of what you were doing.
 
-Relay fixes this. It adds a side panel to supported AI chat sites, captures project context while the extension is connected and capture is enabled, and keeps a living project brief ready for the next session. When you open a fresh chat, Relay can restore the latest brief so the AI already knows what you're working on, what you've decided, and what is next.
+Relay fixes this. It adds a side panel to supported AI chat sites, captures project context while the extension is connected and capture is enabled, and keeps a living project brief ready for the next session. When you open a fresh chat, Relay restores the latest brief so the AI already knows what you're working on, what you've decided, and what is next.
 
-How it works: Relay shows your project brief alongside supported AI chats, groups work into projects, and keeps that brief updated as your sessions evolve. For developers, Relay also works with MCP-connected IDE agents like Claude Code, Cursor, Windsurf, Codex, and more, so your coding agent can read and write the same project memory as your browser sessions. Built for developers, indie builders, and AI power users who rely on multiple AI tools every day.
+How it works: Relay shows your project brief alongside supported AI chats, groups work into projects, and keeps that brief updated as your sessions evolve. For developers, Relay also works with MCP-connected IDE agents so your coding agent can read and write the same project memory as your browser sessions.
+
+Supported AI chat sites: ChatGPT, Claude, Gemini, Grok, and Perplexity. Built for developers, indie builders, and AI power users who rely on multiple AI tools every day.
 
 ## Category
 
