@@ -69,7 +69,7 @@
   }
 
   function isGrokHost() {
-    return hostname === "grok.com" || (hostname === "x.com" && /\/i\/grok/.test(window.location.pathname));
+    return hostname === "grok.com";
   }
 
   function isDeepSeekHost() {

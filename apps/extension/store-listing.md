@@ -37,7 +37,7 @@ Productivity
 | chatgpt.com, chat.openai.com | ChatGPT chat capture |
 | claude.ai | Claude chat capture |
 | gemini.google.com, aistudio.google.com | Gemini/AI Studio chat capture |
-| grok.com, x.com/i/grok | Grok chat capture |
+| grok.com | Grok chat capture |
 | perplexity.ai, www.perplexity.ai | Perplexity chat capture |
 | chat.deepseek.com | DeepSeek chat capture |
 | codex.openai.com | Codex chat capture |

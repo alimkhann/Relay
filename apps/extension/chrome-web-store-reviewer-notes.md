@@ -10,7 +10,7 @@ Supported browser chat surfaces in the current build:
 - Claude (`claude.ai`)
 - Gemini and AI Studio (`gemini.google.com`, `aistudio.google.com`)
 - Perplexity (`perplexity.ai`, `www.perplexity.ai`)
-- Grok (`grok.com`, `x.com/i/grok`)
+- Grok (`grok.com`)
 - DeepSeek (`chat.deepseek.com`)
 - Codex (`codex.openai.com`)
 

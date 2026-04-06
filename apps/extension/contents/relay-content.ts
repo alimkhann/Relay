@@ -11,7 +11,6 @@ export const config: PlasmoCSConfig = {
     "https://gemini.google.com/*",
     "https://aistudio.google.com/*",
     "https://grok.com/*",
-    "https://x.com/i/grok*",
     "https://chat.deepseek.com/*"
   ],
   run_at: "document_end"

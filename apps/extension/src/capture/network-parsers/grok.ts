@@ -1,11 +1,10 @@
 /**
  * Grok network response parser.
  *
- * Grok runs on grok.com and x.com/i/grok. It uses a REST API
+ * Grok runs on grok.com. It uses a REST API
  * for conversation history, likely under patterns like:
  *   - GET /rest/app-chat/conversations/{id}
  *   - GET /api/conversations/{id}
- *   - GET /i/api/graphql/* (X/Twitter GraphQL variant)
  *
  * Response shape (expected):
  * {
