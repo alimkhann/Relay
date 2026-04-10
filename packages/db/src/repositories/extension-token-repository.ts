@@ -11,6 +11,7 @@ export class ExtensionTokenRepository {
       `select *
        from extension_api_tokens
        where user_id = $1
+         and revoked_at is null
        order by created_at desc`,
       [userId]
     )
@@ -76,5 +77,23 @@ export class ExtensionTokenRepository {
        where id = $1 and user_id = $2`,
       [id, userId]
     )
+  }
+
+  async revokeOthersByPurpose(
+    userId: string,
+    purpose: ExtensionApiTokenPurpose,
+    exceptId: string
+  ): Promise<number> {
+    const rows = await this.provider.query(
+      `update extension_api_tokens
+       set revoked_at = now()
+       where user_id = $1
+         and purpose = $2
+         and id <> $3
+         and revoked_at is null
+       returning id`,
+      [userId, purpose, exceptId]
+    )
+    return rows.length
   }
 }

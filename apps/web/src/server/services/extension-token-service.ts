@@ -10,14 +10,19 @@ function buildToken() {
 export async function createExtensionTokenForUser(userId: string, input: unknown) {
   const repositories = createRepositoryBundle(userId)
   const parsed = extensionTokenInputSchema.parse(input)
+  const purpose = parsed.purpose ?? "manual"
   const token = buildToken()
   const record = await repositories.extensionTokens.create({
     userId,
     deviceName: parsed.deviceName,
-    purpose: parsed.purpose ?? "manual",
+    purpose,
     tokenHash: hashContent(token),
     tokenPrefix: token.slice(0, 12)
   })
+
+  if (purpose !== "manual") {
+    await repositories.extensionTokens.revokeOthersByPurpose(userId, purpose, record.id)
+  }
 
   return {
     token,
