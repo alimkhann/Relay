@@ -535,3 +535,25 @@ export interface BillingWebhookEventRow {
   createdAt: string
   updatedAt: string
 }
+
+export type BillingWebhookRawDeliveryStatus =
+  | "received"
+  | "verified"
+  | "processed"
+  | "failed"
+  | "ignored"
+
+export interface BillingWebhookRawDeliveryRow {
+  id: string
+  provider: "polar"
+  polarEventId: string | null
+  polarEventType: string | null
+  headers: Record<string, unknown>
+  bodyHash: string | null
+  bodyLength: number | null
+  status: BillingWebhookRawDeliveryStatus
+  errorMessage: string | null
+  receivedAt: string
+  processedAt: string | null
+  updatedAt: string
+}

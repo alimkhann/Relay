@@ -1,4 +1,4 @@
-import type { ProjectStateStatusDto, RelayOnboardingState } from "@relay/shared"
+import type { ProjectStateStatusDto, RelayOnboardingState, UserEntitlementsDto } from "@relay/shared"
 
 import type {
   RelayActiveProjectState,
@@ -42,6 +42,7 @@ export interface BuildRelayActiveProjectStateInput {
   lastError?: string | null
   lastReconciliation?: { archivedCount: number; archivedItems: string[] } | null
   lastBudgetStatus?: { aiUsed: number; aiLimit: number; aiRemaining: number; plan: string } | null
+  entitlements?: UserEntitlementsDto | null
 }
 
 export interface AutoCaptureDecisionInput {
@@ -153,6 +154,7 @@ export function createEmptyActiveProjectState(
     },
     lastReconciliation: null,
     lastBudgetStatus: null,
+    entitlements: null,
     ...overrides
   }
 }
@@ -367,7 +369,8 @@ export function deriveRelayActiveProjectState(input: BuildRelayActiveProjectStat
     insertState: input.insertState,
     onboarding: input.onboarding,
     lastReconciliation: input.lastReconciliation ?? null,
-    lastBudgetStatus: input.lastBudgetStatus ?? null
+    lastBudgetStatus: input.lastBudgetStatus ?? null,
+    entitlements: input.entitlements ?? null
   }
 }
 

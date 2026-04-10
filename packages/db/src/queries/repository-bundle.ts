@@ -4,6 +4,7 @@ import { AiJobRunRepository } from "../repositories/ai-job-run-repository"
 import { BindingRepository } from "../repositories/binding-repository"
 import { BillingCustomerRepository } from "../repositories/billing-customer-repository"
 import { BillingWebhookEventRepository } from "../repositories/billing-webhook-event-repository"
+import { BillingWebhookRawDeliveryRepository } from "../repositories/billing-webhook-raw-delivery-repository"
 import { BootstrapPacketRepository } from "../repositories/bootstrap-packet-repository"
 import { ContextPacketRepository } from "../repositories/context-packet-repository"
 import { EventRepository } from "../repositories/event-repository"
@@ -36,6 +37,7 @@ export interface RepositoryBundle {
   provider: DatabaseProvider
   billingCustomers: BillingCustomerRepository
   billingWebhookEvents: BillingWebhookEventRepository
+  billingWebhookRawDeliveries: BillingWebhookRawDeliveryRepository
   profiles: ProfileRepository
   projects: ProjectRepository
   members: MemberRepository
@@ -78,6 +80,7 @@ export function createRepositoryBundle(
     provider,
     billingCustomers: new BillingCustomerRepository(provider),
     billingWebhookEvents: new BillingWebhookEventRepository(provider),
+    billingWebhookRawDeliveries: new BillingWebhookRawDeliveryRepository(provider),
     profiles: new ProfileRepository(provider),
     projects: new ProjectRepository(provider),
     members: new MemberRepository(provider),

@@ -1,6 +1,7 @@
 import type {
   RelayOnboardingState,
   TelemetryEventInput,
+  UserEntitlementsDto,
 } from "@relay/shared";
 
 export interface RelayProjectOption {
@@ -133,6 +134,7 @@ export interface RelayActiveProjectState {
   onboarding: RelayOnboardingState;
   lastReconciliation: { archivedCount: number; archivedItems: string[] } | null;
   lastBudgetStatus: { aiUsed: number; aiLimit: number; aiRemaining: number; plan: string } | null;
+  entitlements: UserEntitlementsDto | null;
 }
 
 export type RelayMessage =

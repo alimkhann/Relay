@@ -1,6 +1,8 @@
 import type {
   BillingCustomerRow,
   BillingWebhookEventRow,
+  BillingWebhookRawDeliveryRow,
+  BillingWebhookRawDeliveryStatus,
   EntitlementRow,
   SubscriptionRow,
   UsageCounterRow,
@@ -86,6 +88,25 @@ export function toBillingWebhookEventRow(record: Record<string, unknown>): Billi
     errorMessage: record.error_message ? String(record.error_message) : null,
     processedAt: record.processed_at ? String(record.processed_at) : null,
     createdAt: String(record.created_at),
+    updatedAt: String(record.updated_at),
+  }
+}
+
+export function toBillingWebhookRawDeliveryRow(
+  record: Record<string, unknown>,
+): BillingWebhookRawDeliveryRow {
+  return {
+    id: String(record.id),
+    provider: "polar",
+    polarEventId: record.polar_event_id ? String(record.polar_event_id) : null,
+    polarEventType: record.polar_event_type ? String(record.polar_event_type) : null,
+    headers: (record.headers as Record<string, unknown>) ?? {},
+    bodyHash: record.body_hash ? String(record.body_hash) : null,
+    bodyLength: record.body_length == null ? null : Number(record.body_length),
+    status: (record.status as BillingWebhookRawDeliveryStatus) ?? "received",
+    errorMessage: record.error_message ? String(record.error_message) : null,
+    receivedAt: String(record.received_at),
+    processedAt: record.processed_at ? String(record.processed_at) : null,
     updatedAt: String(record.updated_at),
   }
 }

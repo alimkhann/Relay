@@ -3,10 +3,12 @@ import { createFlowId } from "@relay/shared/utils/telemetry";
 import { buildProjectContextPreview, getProjectContextCounts } from "@relay/shared/utils/project-context";
 import { normalizeText, slugify } from "@relay/shared/utils/text";
 import type {
+  BillingStatusDto,
   ProjectDashboardDto,
   ProjectStateStatusDto,
   RelayOnboardingState,
   SupportedPlatform,
+  UserEntitlementsDto,
 } from "@relay/shared";
 
 import type {
@@ -212,11 +214,13 @@ let sessionDataCache: {
     projects: RelayProjectOption[];
     settings: RemoteSettingsPayload | null;
     onboarding: RelayOnboardingState;
+    entitlements: UserEntitlementsDto | null;
   };
   fetchedAt: number;
 } | null = null;
 
-const SESSION_CACHE_TTL_MS = 45_000;
+let authGraceUntil = 0;
+const SESSION_CACHE_TTL_MS = 15_000;
 const DASHBOARD_CACHE_TTL_MS = 20_000;
 const REMOTE_RETRY_DELAY_MS = 300;
 const REMOTE_RETRY_BACKOFF_MS = [5_000, 15_000];
@@ -270,9 +274,9 @@ async function requestGoogleIdentityTokens(input: {
   authUrl.searchParams.set("state", state);
 
   const callbackUrl = await chrome.identity.launchWebAuthFlow({
-    url: authUrl.toString(),
-    interactive: input.interactive,
-  });
+      url: authUrl.toString(),
+      interactive: input.interactive,
+    });
 
   if (!callbackUrl) {
     throw new Error("Google sign-in was cancelled.");
@@ -935,6 +939,7 @@ async function loadSessionData() {
       projects: [] as RelayProjectOption[],
       settings: null as RemoteSettingsPayload | null,
       onboarding: createPendingOnboardingState(),
+      entitlements: null as UserEntitlementsDto | null,
     };
   }
 
@@ -947,9 +952,13 @@ async function loadSessionData() {
   }
 
   try {
-    const sessionResponse = await retryRemote(() =>
-      relayFetch("/api/extension/session"),
-    );
+    // Fetch session + billing in parallel. Billing is a nice-to-have — if it
+    // fails the side panel still renders, it just assumes free until the next
+    // refresh cycle.
+    const [sessionResponse, billingResponse] = await Promise.all([
+      retryRemote(() => relayFetch("/api/extension/session")),
+      relayFetch("/api/billing/status").catch(() => null),
+    ]);
 
     if (!sessionResponse.ok) {
       const message = await readErrorResponse(
@@ -961,12 +970,23 @@ async function loadSessionData() {
         sessionResponse.status === 403 ||
         isAuthFailureMessage(message)
       ) {
+        if (Date.now() < authGraceUntil) {
+          console.log("[Relay BG] auth grace period active, skipping session reset after", sessionResponse.status);
+          return {
+            connected: session.connected,
+            projects: session.projectOptions,
+            settings: null as RemoteSettingsPayload | null,
+            onboarding: session.onboarding ?? createPendingOnboardingState(),
+            entitlements: null as UserEntitlementsDto | null,
+          };
+        }
         await resetStoredSession(message);
         return {
           connected: false,
           projects: [] as RelayProjectOption[],
           settings: null as RemoteSettingsPayload | null,
           onboarding: createPendingOnboardingState(),
+          entitlements: null as UserEntitlementsDto | null,
         };
       }
 
@@ -1042,11 +1062,22 @@ async function loadSessionData() {
       onboarding,
     });
 
+    let entitlements: UserEntitlementsDto | null = null;
+    if (billingResponse && billingResponse.ok) {
+      try {
+        const billingPayload = (await billingResponse.json()) as BillingStatusDto;
+        entitlements = billingPayload.entitlements ?? null;
+      } catch {
+        entitlements = null;
+      }
+    }
+
     const data = {
       connected: true,
       projects,
       settings: settingsPayload.settings,
       onboarding,
+      entitlements,
     };
 
     sessionDataCache = {
@@ -1374,6 +1405,7 @@ async function buildActiveProjectState(
     onboarding,
     lastReconciliation: state.lastReconciliation,
     lastBudgetStatus: state.lastBudgetStatus,
+    entitlements: sessionDataCache?.data.entitlements ?? null,
   });
 }
 
@@ -3078,6 +3110,7 @@ chrome.runtime.onMessage.addListener(
               payload,
               "Signed in with Google.",
             );
+            authGraceUntil = Date.now() + 5_000;
             const storedSession = await getRelaySession();
             console.log("[Relay BG] stored session after Google auth:", {
               connected: storedSession.connected,
@@ -3215,6 +3248,7 @@ chrome.runtime.onMessage.addListener(
               payload,
               "Signed in locally.",
             );
+            authGraceUntil = Date.now() + 5_000;
             sendResponse({ ok: true });
           } catch (cause) {
             recordBackgroundTelemetry({
@@ -3717,6 +3751,18 @@ chrome.runtime.onMessageExternal.addListener(
   ) => {
     void (async () => {
       try {
+        if (message?.type === "billing.refresh" || message?.type === "RELAY_BILLING_REFRESH") {
+          sessionDataCache = null;
+          dashboardCache.clear();
+          try {
+            await loadSessionData();
+          } catch {
+            // Ignored — next natural refresh will pick up the state.
+          }
+          sendResponse({ ok: true });
+          return;
+        }
+
         if (message?.type === "RELAY_SYNC_THEME") {
           const theme = message?.payload?.theme;
           if (theme !== "light" && theme !== "dark" && theme !== "system") {

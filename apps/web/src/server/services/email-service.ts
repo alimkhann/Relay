@@ -183,6 +183,83 @@ export async function sendBetaAccessGrantedEmail(to: string, name: string | null
   })
 }
 
+export async function sendWelcomeToProEmail(
+  to: string,
+  input: { name: string | null; interval: "month" | "year" | null; currentPeriodEnd: string | null },
+) {
+  const client = getResend()
+  if (!client) return
+
+  const greeting = input.name ? `Hi ${input.name}` : "Hi there"
+  const billingUrl = "https://www.onrelay.app/settings?section=billing"
+  const dashboardUrl = "https://www.onrelay.app/dashboard"
+  const intervalLabel = input.interval === "year" ? "yearly" : "monthly"
+  const renewalNote = input.currentPeriodEnd
+    ? `Your next ${intervalLabel} renewal is on ${new Date(input.currentPeriodEnd).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}.`
+    : `Your Pro subscription is active on the ${intervalLabel} plan.`
+
+  await client.emails.send({
+    from: "Relay <noreply@onrelay.app>",
+    to,
+    subject: "Welcome to Relay Pro",
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 20px;">
+        <h1 style="font-size: 24px; font-weight: 600; margin-bottom: 16px;">${greeting}, welcome to Relay Pro!</h1>
+        <p style="font-size: 16px; line-height: 1.5; color: #374151;">
+          Thanks for upgrading. Your account has been switched to the Pro plan with higher daily limits, more active projects, and unlimited handoff packs across ChatGPT, Claude, Gemini, Grok, and Perplexity.
+        </p>
+        <p style="font-size: 16px; line-height: 1.5; color: #374151;">
+          ${renewalNote} You can manage or cancel your subscription any time from the billing settings.
+        </p>
+        <div style="margin: 24px 0;">
+          <a href="${dashboardUrl}" style="display: inline-block; background: #182017; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500; margin-right: 8px;">Open Dashboard</a>
+          <a href="${billingUrl}" style="display: inline-block; color: #182017; padding: 12px 24px; text-decoration: none; font-weight: 500;">Manage Billing →</a>
+        </div>
+        <p style="font-size: 14px; color: #6b7280;">
+          Questions or feedback? Reply to this email &mdash; we read everything.
+        </p>
+      </div>
+    `,
+  })
+}
+
+export async function sendSubscriptionCanceledEmail(
+  to: string,
+  input: { name: string | null; currentPeriodEnd: string | null },
+) {
+  const client = getResend()
+  if (!client) return
+
+  const greeting = input.name ? `Hi ${input.name}` : "Hi there"
+  const billingUrl = "https://www.onrelay.app/settings?section=billing"
+  const endNote = input.currentPeriodEnd
+    ? `Your Pro features will remain active until ${new Date(input.currentPeriodEnd).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}, then your account will switch to the free plan.`
+    : `Your Pro features have ended and your account is now on the free plan.`
+
+  await client.emails.send({
+    from: "Relay <noreply@onrelay.app>",
+    to,
+    subject: "Your Relay Pro subscription has been canceled",
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 20px;">
+        <h1 style="font-size: 24px; font-weight: 600; margin-bottom: 16px;">${greeting},</h1>
+        <p style="font-size: 16px; line-height: 1.5; color: #374151;">
+          We've received the cancellation for your Relay Pro subscription. ${endNote}
+        </p>
+        <p style="font-size: 16px; line-height: 1.5; color: #374151;">
+          Your projects, memory items, and data stay put &mdash; you'll just fall back to the free plan's limits. You can resubscribe any time.
+        </p>
+        <div style="margin: 24px 0;">
+          <a href="${billingUrl}" style="display: inline-block; background: #182017; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Manage Billing</a>
+        </div>
+        <p style="font-size: 14px; color: #6b7280;">
+          If this was a mistake or you'd like to share feedback, reply to this email &mdash; we read everything.
+        </p>
+      </div>
+    `,
+  })
+}
+
 export async function sendTrialStartedEmail(to: string, name: string | null, trialDays: number) {
   const client = getResend()
   if (!client) return

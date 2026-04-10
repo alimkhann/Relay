@@ -146,6 +146,7 @@ const emptyActiveState: RelayActiveProjectState = {
   },
   lastReconciliation: null,
   lastBudgetStatus: null,
+  entitlements: null,
 };
 
 function isRelayActiveProjectState(
@@ -200,6 +201,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     useState<RelayActiveProjectState>(emptyActiveState);
   const [status, setStatus] = useState("Relay stays quiet until it is useful.");
   const [busy, setBusy] = useState(false);
+  const [authenticating, setAuthenticating] = useState(false);
   const [deviceName, setDeviceName] = useState("");
   const [projectSwitcherOpen, setProjectSwitcherOpen] = useState(false);
   const [associationAction, setAssociationAction] = useState<
@@ -560,6 +562,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   async function signInWithGoogle() {
     console.log("[Relay] signInWithGoogle called");
     setBusy(true);
+    setAuthenticating(true);
     setStatus("Signing in with Google…");
     const flowId = createExtensionFlowId("ext-auth");
     logExtensionEvent({
@@ -622,11 +625,13 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       );
     } finally {
       setBusy(false);
+      setAuthenticating(false);
     }
   }
 
   async function signInLocally() {
     setBusy(true);
+    setAuthenticating(true);
     setStatus("Signing in locally…");
     const flowId = createExtensionFlowId("ext-local-auth");
 
@@ -655,6 +660,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       );
     } finally {
       setBusy(false);
+      setAuthenticating(false);
     }
   }
 
@@ -1371,7 +1377,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         </div>
       ) : null}
 
-      {activeState.viewState === "disconnected" || !session?.connected ? (
+      {authenticating ? (
+        <section className={styles.panel}>
+          <p className={styles.copy}>Signing in…</p>
+        </section>
+      ) : activeState.viewState === "disconnected" || !session?.connected ? (
         /* ─── Connect state ─── */
         <section className={styles.panel}>
           <h2 className={styles.sectionTitle}>Sign in to Relay</h2>
@@ -1461,7 +1471,13 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               <button
                 className={styles.secondaryButton}
                 disabled={busy}
-                onClick={() => void openDashboard("/dashboard")}
+                onClick={() => {
+                  const params = new URLSearchParams();
+                  if (newProjectName.trim()) params.set("projectName", newProjectName.trim());
+                  if (newProjectDescription.trim()) params.set("projectDescription", newProjectDescription.trim());
+                  const query = params.toString();
+                  void openDashboard(query ? `/dashboard?${query}` : "/dashboard");
+                }}
               >
                 Finish in dashboard
               </button>
@@ -1525,6 +1541,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   <h2 className={styles.projectName}>
                     {activeState.projectName ?? "No project"}
                   </h2>
+                  {activeState.entitlements?.isPro ? (
+                    <span className={styles.proChip} aria-label="Pro plan">
+                      Pro
+                    </span>
+                  ) : null}
                   {activeState.projectOptions.length > 1 ? (
                     <svg
                       className={`${styles.projectChevron} ${projectSwitcherOpen ? styles.projectChevronOpen : ""}`}
@@ -1629,7 +1650,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 {activeState.lastBudgetStatus.aiRemaining === 0 ? (
                   <span>
                     AI analyses used up today — resets at midnight UTC
-                    {activeState.lastBudgetStatus.plan === "free" ? (
+                    {activeState.lastBudgetStatus.plan === "free" && !activeState.entitlements?.isPro ? (
                       <>
                         {" · "}
                         <a
@@ -1647,7 +1668,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   <span>
                     ⚡ {activeState.lastBudgetStatus.aiRemaining}/
                     {activeState.lastBudgetStatus.aiLimit} analyses today
-                    {activeState.lastBudgetStatus.plan === "free" ? (
+                    {activeState.lastBudgetStatus.plan === "free" && !activeState.entitlements?.isPro ? (
                       <>
                         {" · "}
                         <a

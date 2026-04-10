@@ -260,6 +260,21 @@
   line-height: 1.2;
 }
 
+.proChip {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
 .panelTopRow {
   display: flex;
   align-items: flex-start;
@@ -395,6 +410,13 @@
 .infoWrap:focus-within .tooltip {
   opacity: 1;
   transform: translateY(0);
+}
+
+.advancedButtons {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding-bottom: 8px;
 }
 
 /* ── Buttons ── */
@@ -761,7 +783,8 @@
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
   width: 100%;
   min-width: 0;
   border: 1px solid var(--line);
@@ -775,8 +798,13 @@
   appearance: none;
 }
 
+.field textarea {
+  resize: vertical;
+}
+
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
   border-color: var(--ink);
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.06);
 }

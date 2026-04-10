@@ -1,8 +1,9 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
-import { AlertCircle, Check } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { AlertCircle, Check, Loader2 } from "lucide-react"
 
 import type { BillingStatusDto } from "@relay/shared"
 
@@ -139,12 +140,20 @@ function PlanCard({
   )
 }
 
+const CHECKOUT_SYNC_MAX_ATTEMPTS = 10
+const CHECKOUT_SYNC_INTERVAL_MS = 5_000
+
 export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps) {
+  const router = useRouter()
   const { entitlements, usage } = billing
   const [yearly, setYearly] = useState(false)
-  const [loading, setLoading] = useState<"month" | "year" | "portal" | null>(null)
+  const [loading, setLoading] = useState<"month" | "year" | "portal" | "resync" | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showSuccess, setShowSuccess] = useState(true)
+  const [syncState, setSyncState] = useState<"idle" | "syncing" | "timed_out">(
+    checkoutSuccess && !entitlements.isPro ? "syncing" : "idle",
+  )
+  const syncAttemptsRef = useRef(0)
 
   const usageItems = useMemo<UsageItem[]>(
     () => [
@@ -245,6 +254,71 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
     })
   }, [anyLimitReached, dynamicNotice, entitlements.isPro, topUsagePressure])
 
+  // If webhook already landed before we got back from checkout, no sync needed.
+  useEffect(() => {
+    if (entitlements.isPro && syncState === "syncing") {
+      setSyncState("idle")
+    }
+  }, [entitlements.isPro, syncState])
+
+  // Poll for sync completion — webhook usually lands within a couple seconds,
+  // but Polar can take up to a minute on cold starts.
+  useEffect(() => {
+    if (syncState !== "syncing") return
+
+    const handle = window.setInterval(() => {
+      syncAttemptsRef.current += 1
+      if (entitlements.isPro) {
+        setSyncState("idle")
+        window.clearInterval(handle)
+        return
+      }
+      if (syncAttemptsRef.current >= CHECKOUT_SYNC_MAX_ATTEMPTS) {
+        setSyncState("timed_out")
+        window.clearInterval(handle)
+        logClientEvent({
+          level: "warn",
+          surface: "web-settings",
+          area: "billing",
+          event: "billing_checkout_sync_timeout",
+          message: "Billing state did not update within the expected window after checkout.",
+          context: { attempts: syncAttemptsRef.current },
+        })
+        return
+      }
+      router.refresh()
+    }, CHECKOUT_SYNC_INTERVAL_MS)
+
+    return () => window.clearInterval(handle)
+  }, [entitlements.isPro, router, syncState])
+
+  const handleResync = useCallback(async () => {
+    setLoading("resync")
+    setError(null)
+    try {
+      const res = await relayClientFetch("/api/billing/resync", {
+        method: "POST",
+        telemetry: {
+          surface: "web-settings",
+          area: "settings-billing",
+          event: "billing_resync_invoked",
+          logSuccess: true,
+        },
+      })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(data.error ?? "Could not resync billing state")
+      }
+      syncAttemptsRef.current = 0
+      setSyncState("syncing")
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong")
+    } finally {
+      setLoading(null)
+    }
+  }, [router])
+
   useEffect(() => {
     if (!checkoutSuccess || !entitlements.isPro) return
 
@@ -260,6 +334,28 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
         period: entitlements.interval,
       },
     })
+
+    // Ping the extension (if installed) to invalidate its session cache so
+    // entitlement-gated UI flips to Pro without waiting for the 15s TTL.
+    const extensionId = process.env.NEXT_PUBLIC_EXTENSION_ID
+    if (!extensionId) return
+    type RuntimeChrome = {
+      runtime?: {
+        sendMessage?: (id: string, message: { type: string }, cb?: (response?: unknown) => void) => void
+      }
+    }
+    const runtimeChrome = (typeof window !== "undefined"
+      ? (window as unknown as { chrome?: RuntimeChrome }).chrome
+      : undefined)
+    if (!runtimeChrome?.runtime?.sendMessage) return
+    try {
+      runtimeChrome.runtime.sendMessage(extensionId, { type: "billing.refresh" }, () => {
+        // Swallow chrome.runtime.lastError — the extension may not be installed.
+        void 0
+      })
+    } catch {
+      // No-op — extension not installed or sendMessage rejected.
+    }
   }, [checkoutSuccess, entitlements.interval, entitlements.isPro, entitlements.plan, entitlements.status])
 
   async function handleCheckout(interval: "month" | "year") {
@@ -327,7 +423,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
 
   return (
     <div className="space-y-4">
-      {checkoutSuccess && showSuccess ? (
+      {checkoutSuccess && entitlements.isPro && showSuccess ? (
         <FadeIn>
         <section className="overflow-hidden rounded-[var(--relay-radius)] border border-emerald-500/20 bg-emerald-500/5">
           <div className="flex items-start justify-between gap-3 px-5 py-4">
@@ -344,6 +440,50 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
               aria-label="Dismiss success message"
             >
               &times;
+            </button>
+          </div>
+        </section>
+        </FadeIn>
+      ) : null}
+
+      {checkoutSuccess && !entitlements.isPro && syncState === "syncing" ? (
+        <FadeIn>
+        <section className="overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
+          <div className="flex items-start gap-3 px-5 py-4">
+            <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-[var(--relay-muted)]" />
+            <div>
+              <p className="text-[14px] font-semibold text-[var(--relay-ink)]">Finalizing your upgrade…</p>
+              <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
+                Your payment succeeded. We&apos;re syncing your account — this usually takes a few seconds.
+              </p>
+            </div>
+          </div>
+        </section>
+        </FadeIn>
+      ) : null}
+
+      {checkoutSuccess && !entitlements.isPro && syncState === "timed_out" ? (
+        <FadeIn>
+        <section className="overflow-hidden rounded-[var(--relay-radius)] border border-amber-500/20 bg-amber-500/5">
+          <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-[14px] font-semibold text-[var(--relay-ink)]">Upgrade is taking longer than usual</p>
+              <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
+                Your payment succeeded but we haven&apos;t received confirmation from our billing provider yet. Try resyncing — if that
+                doesn&apos;t work, email{" "}
+                <a href="mailto:support@onrelay.app" className="font-medium text-[var(--relay-accent)] hover:opacity-80">
+                  support@onrelay.app
+                </a>
+                .
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleResync()}
+              disabled={loading !== null}
+              className="shrink-0 rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
+            >
+              {loading === "resync" ? "Retrying…" : "Retry sync"}
             </button>
           </div>
         </section>
