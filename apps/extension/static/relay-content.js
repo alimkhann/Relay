@@ -533,7 +533,13 @@
 
   const platformPromptSelectors = {
     chatgpt: ["#prompt-textarea", "div[contenteditable='true']", "textarea"],
-    codex: ["#prompt-textarea", "div[contenteditable='true']", "textarea"],
+    codex: [
+      "[data-type='unified-composer'] [contenteditable='true']",
+      "[data-type='unified-composer'] textarea",
+      "#prompt-textarea",
+      "div[contenteditable='true']",
+      "textarea",
+    ],
     claude: ["div[contenteditable='true']", "textarea"],
     perplexity: [
       "textarea[placeholder*='Ask']",
@@ -1578,14 +1584,25 @@
   // the whole list can be passed to element.closest() in one call.
   const containerSelectorTokens = {
     chatgpt: ["form"],
-    codex: ["form", "group/composer"],
+    codex: ["[data-type='unified-composer']", "group/composer", "form"],
     claude: ["fieldset", "form", "[class*='composer']", "[class*='Composer']"],
-    gemini: ["fieldset", "form", "[class*='input-area']", "rich-textarea"],
-    aistudio: ["prompt-box-container", "form", "[class*='input-wrapper']"],
-    perplexity: [
+    gemini: [
+      "input-area-v2",
+      "text-input-field",
+      "[class*='input-area']",
+      "rich-textarea",
       "form",
+    ],
+    aistudio: [
+      "ms-prompt-box",
+      "prompt-box-container",
+      "[class*='input-wrapper']",
+      "form",
+    ],
+    perplexity: [
       "[class*='ComposerContainer']",
       "[class*='query-input']",
+      "form",
     ],
     grok: ["query-bar", "form", "[class*='composer']"],
     deepseek: ["aaff8b8f", "form", "[class*='chat-input']"],
@@ -1638,10 +1655,26 @@
       .join(", ");
   }
 
+  function resolveChipPlatformKey(platform) {
+    // aistudio.google.com and gemini.google.com both map to platform="gemini"
+    // at the adapter level, but they have completely different composer DOM.
+    // Split them here so chip offsets and container selectors can differ.
+    if (
+      platform === "gemini" &&
+      typeof window !== "undefined" &&
+      window.location &&
+      window.location.hostname === "aistudio.google.com"
+    ) {
+      return "aistudio";
+    }
+    return platform;
+  }
+
   function findComposerContainer(element, platform) {
     // Walk up from the prompt element to find the full composer container
     // (includes attachments, toolbars, etc.) for accurate vertical positioning.
-    const selector = containerSelectorsBuilt[platform];
+    const key = resolveChipPlatformKey(platform);
+    const selector = containerSelectorsBuilt[key];
     if (selector) {
       try {
         const container = element.closest(selector);
@@ -1650,7 +1683,32 @@
         // Bad selector shouldn't crash positioning — fall through.
       }
     }
-    return element;
+
+    // Fallback: walk up from the prompt until we find an ancestor noticeably
+    // taller than the prompt itself — that's almost always the composer
+    // wrapper containing attachments / toolbars. Stops before we reach a
+    // full-page layout wrapper.
+    try {
+      const promptRect = element.getBoundingClientRect();
+      let node = element.parentElement;
+      let best = element;
+      let depth = 0;
+      while (node && depth < 10) {
+        const rect = node.getBoundingClientRect();
+        if (rect.width > window.innerWidth * 0.95) break;
+        if (
+          rect.height > promptRect.height + 24 &&
+          rect.top <= promptRect.top
+        ) {
+          best = node;
+        }
+        node = node.parentElement;
+        depth += 1;
+      }
+      return best;
+    } catch {
+      return element;
+    }
   }
 
   const DEFAULT_CHIP_OFFSETS = {
@@ -1659,7 +1717,7 @@
     claude: 0,
     perplexity: 0,
     gemini: -19,
-    aistudio: 0,
+    aistudio: 10,
     grok: 0,
     deepseek: 0,
   };
@@ -1708,9 +1766,10 @@
       Math.max(16, window.innerWidth - dynamicWidth - 16),
     );
 
+    const chipKey = resolveChipPlatformKey(config.platform);
     const vOffset =
-      (userChipOffsets && userChipOffsets[config.platform]) ??
-      DEFAULT_CHIP_OFFSETS[config.platform] ??
+      (userChipOffsets && userChipOffsets[chipKey]) ??
+      DEFAULT_CHIP_OFFSETS[chipKey] ??
       -4;
     let top = containerRect.top - chipHeight + vOffset;
     if (top < 16) {

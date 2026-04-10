@@ -17,7 +17,13 @@ function isCodexRoute(url: URL) {
 }
 
 function resolveRouteKind(pathname: string): PageRouteKind {
-  if (pathname === "/" || pathname === "/codex" || pathname === "/codex/") {
+  if (
+    pathname === "/" ||
+    pathname === "/codex" ||
+    pathname === "/codex/" ||
+    pathname === "/codex/new" ||
+    pathname === "/new"
+  ) {
     return "fresh"
   }
 
