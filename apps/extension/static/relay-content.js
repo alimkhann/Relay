@@ -1568,36 +1568,100 @@
     return Math.min(Math.max(value, min), max);
   }
 
+  // Per-platform composer-container tokens. Each token can be:
+  //  • a plain HTML tag name           ("form", "fieldset", "textarea")
+  //  • a custom element tag name       ("query-bar", "prompt-box-container")
+  //  • a bare class name               ("aaff8b8f" → ".aaff8b8f")
+  //  • a Tailwind group-name class     ("group/composer" → ".group\/composer")
+  //  • any raw CSS selector            ("[class*='composer']", "#chat")
+  // normalizeContainerToken() converts each into a valid CSS selector so
+  // the whole list can be passed to element.closest() in one call.
+  const containerSelectorTokens = {
+    chatgpt: ["form"],
+    codex: ["form", "group/composer"],
+    claude: ["fieldset", "form", "[class*='composer']", "[class*='Composer']"],
+    gemini: ["fieldset", "form", "[class*='input-area']", "rich-textarea"],
+    aistudio: ["prompt-box-container", "form", "[class*='input-wrapper']"],
+    perplexity: [
+      "form",
+      "[class*='ComposerContainer']",
+      "[class*='query-input']",
+    ],
+    grok: ["query-bar", "form", "[class*='composer']"],
+    deepseek: ["aaff8b8f", "form", "[class*='chat-input']"],
+  };
+
+  const HTML_TAG_NAMES = new Set([
+    "form",
+    "fieldset",
+    "div",
+    "section",
+    "header",
+    "footer",
+    "main",
+    "nav",
+    "aside",
+    "article",
+    "textarea",
+    "input",
+    "label",
+    "button",
+  ]);
+
+  function normalizeContainerToken(token) {
+    if (!token || typeof token !== "string") return "";
+    const trimmed = token.trim();
+    if (!trimmed) return "";
+
+    // Raw CSS selectors — anything with selector punctuation passes through.
+    if (/[\[\]#\.\>\s\*\:\,]/.test(trimmed)) return trimmed;
+
+    // Tailwind group-name syntax like "group/composer" → class selector.
+    if (trimmed.includes("/")) {
+      return "." + trimmed.replace(/\//g, "\\/");
+    }
+
+    // Hyphenated name → custom element tag (e.g. <prompt-box-container>).
+    // Non-hyphenated known HTML tags also pass through as element selectors.
+    if (trimmed.includes("-")) return trimmed;
+    if (HTML_TAG_NAMES.has(trimmed.toLowerCase())) return trimmed;
+
+    // Bare identifier falls back to a class selector.
+    return "." + trimmed;
+  }
+
+  const containerSelectorsBuilt = {};
+  for (const key of Object.keys(containerSelectorTokens)) {
+    containerSelectorsBuilt[key] = containerSelectorTokens[key]
+      .map(normalizeContainerToken)
+      .filter(Boolean)
+      .join(", ");
+  }
+
   function findComposerContainer(element, platform) {
     // Walk up from the prompt element to find the full composer container
     // (includes attachments, toolbars, etc.) for accurate vertical positioning.
-    const containerSelectors = {
-      chatgpt: "form",
-      codex: "form",
-      claude: "form, [class*='composer'], [class*='Composer']",
-      gemini: "form, [class*='input-area'], rich-textarea",
-      aistudio: "form, [class*='input-wrapper']",
-      perplexity: "form, [class*='ComposerContainer'], [class*='query-input']",
-      grok: "form, [class*='composer']",
-      deepseek: "form, [class*='chat-input']",
-    };
-    const selector = containerSelectors[platform];
+    const selector = containerSelectorsBuilt[platform];
     if (selector) {
-      const container = element.closest(selector);
-      if (container) return container;
+      try {
+        const container = element.closest(selector);
+        if (container) return container;
+      } catch {
+        // Bad selector shouldn't crash positioning — fall through.
+      }
     }
     return element;
   }
 
   const DEFAULT_CHIP_OFFSETS = {
-    chatgpt: -15,
-    codex: -15,
-    claude: -20,
-    perplexity: -16,
-    gemini: -21,
-    aistudio: -15,
+    chatgpt: -24,
+    codex: 0,
+    claude: 0,
+    perplexity: 0,
+    gemini: -19,
+    aistudio: 0,
     grok: 0,
-    deepseek: -1,
+    deepseek: 0,
   };
   let userChipOffsets = {};
   try {

@@ -97,14 +97,15 @@
 .header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
+  gap: 6px;
   padding: 4px 0;
 }
 
 .headerBrand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .logoMark {
@@ -152,15 +153,33 @@
 }
 
 .pageBadge {
-  font-size: 10px;
-  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   color: var(--ink);
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 2px 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  border-radius: 6px;
+  padding: 3px 7px;
+  line-height: 1;
+}
+
+.pageBadgeStatus {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.pageBadgeStatusFresh {
+  background: #22c55e;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.18);
+}
+
+.pageBadgeStatusContinuing {
+  background: var(--muted);
+  opacity: 0.55;
 }
 
 /* ── Panels ── */
@@ -1074,6 +1093,92 @@
 .dangerButton:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.settingsToggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.settingsToggleCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settingsToggleTitle {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.settingsToggleHint {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.settingsToggleInput {
+  appearance: none;
+  width: 30px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--line);
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 140ms ease;
+}
+
+.settingsToggleInput::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: #fff;
+  transition: transform 140ms ease;
+}
+
+.settingsToggleInput:checked {
+  background: var(--accent);
+}
+
+.settingsToggleInput:checked::after {
+  transform: translateX(12px);
+}
+
+.settingsToggleInput:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.platformList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.platformRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.platformRowLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink);
 }
 
 .settingsVersion {

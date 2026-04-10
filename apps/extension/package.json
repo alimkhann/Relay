@@ -11,6 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@lobehub/icons": "^5.0.1",
     "@relay/adapters": "workspace:*",
     "@relay/shared": "workspace:*",
     "plasmo": "^0.90.5",

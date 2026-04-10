@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 import { slugify } from "@relay/shared/utils/text";
+import { supportedPlatforms } from "@relay/shared/constants/platforms";
+import type { SupportedPlatform, UserSettingsRow } from "@relay/shared/types/database";
 
 import type { RelayActiveProjectState } from "../messaging/contracts";
 import { getActiveTab } from "../utils/browser";
@@ -26,6 +28,7 @@ import {
   logExtensionEvent,
 } from "../utils/telemetry";
 import relayIconUrl from "../../assets/icon.png";
+import { PlatformIcon, prettyPlatformName } from "./platform-icon";
 import styles from "./control-panel.module.css";
 
 interface ControlPanelProps {
@@ -231,6 +234,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     useState<RelayResolvedTheme>("dark");
   const [panelMode, setPanelMode] = useState<"main" | "settings">("main");
   const [signOutBusy, setSignOutBusy] = useState(false);
+  const [userSettings, setUserSettings] = useState<UserSettingsRow["settings"] | null>(null);
+  const [userSettingsBusy, setUserSettingsBusy] = useState(false);
   const activeStateRequestInFlight = useRef(false);
 
   function applyResolvedTheme(nextResolvedTheme: RelayResolvedTheme) {
@@ -249,6 +254,12 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       await refreshActiveProjectState();
     })();
   }, []);
+
+  useEffect(() => {
+    if (panelMode === "settings" && session?.connected && !userSettings) {
+      void loadUserSettings();
+    }
+  }, [panelMode, session?.connected]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -415,6 +426,55 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     if (nextSession.lastStatus) {
       setStatus(nextSession.lastStatus);
     }
+  }
+
+  async function loadUserSettings() {
+    try {
+      const response = await relayFetch("/api/settings");
+      if (!response.ok) return;
+      const data = (await response.json()) as { settings?: UserSettingsRow["settings"] };
+      if (data.settings) setUserSettings(data.settings);
+    } catch {
+      // Best-effort; settings view falls back to defaults.
+    }
+  }
+
+  async function patchUserSettings(patch: Partial<UserSettingsRow["settings"]>) {
+    if (userSettingsBusy) return;
+    const previous = userSettings;
+    setUserSettings((current) => (current ? { ...current, ...patch } : current));
+    setUserSettingsBusy(true);
+    try {
+      const response = await relayFetch("/api/settings", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!response.ok) {
+        setUserSettings(previous);
+        setStatus(await readErrorMessage(response, "Could not save settings."));
+        return;
+      }
+      const data = (await response.json()) as { settings?: UserSettingsRow["settings"] };
+      if (data.settings) setUserSettings(data.settings);
+      if (patch.autoCapture !== undefined) {
+        await setRelaySession({ autoCapture: patch.autoCapture });
+        await refreshLocalSession();
+      }
+    } catch (cause) {
+      setUserSettings(previous);
+      setStatus(cause instanceof Error ? cause.message : "Could not save settings.");
+    } finally {
+      setUserSettingsBusy(false);
+    }
+  }
+
+  async function togglePlatformEnabled(platform: SupportedPlatform, enabled: boolean) {
+    const current = userSettings?.enabledPlatforms ?? [...supportedPlatforms];
+    const next = enabled
+      ? Array.from(new Set([...current, platform]))
+      : current.filter((p) => p !== platform);
+    await patchUserSettings({ enabledPlatforms: next });
   }
 
   async function changeThemeMode(nextMode: RelayThemeMode) {
@@ -1386,13 +1446,27 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               alt="Relay"
             />
           </button>
+          {activeState.page.supported ? (
+            <span
+              className={styles.pageBadge}
+              title={`${prettyPlatformName(activeState.page.platform)}${
+                activeState.page.isFreshChat ? " · new chat" : " · continuing"
+              }`}
+            >
+              <PlatformIcon platform={activeState.page.platform} size={13} />
+              <span
+                className={`${styles.pageBadgeStatus} ${
+                  activeState.page.isFreshChat
+                    ? styles.pageBadgeStatusFresh
+                    : styles.pageBadgeStatusContinuing
+                }`}
+                aria-label={
+                  activeState.page.isFreshChat ? "New chat" : "Continuing chat"
+                }
+              />
+            </span>
+          ) : null}
         </div>
-        {activeState.page.supported ? (
-          <span className={styles.pageBadge}>
-            {activeState.page.platform}
-            {activeState.page.isFreshChat ? " · new chat" : ""}
-          </span>
-        ) : null}
         <div className={styles.headerActions}>
           {session?.connected ? (
             <button
@@ -1489,17 +1563,77 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           </div>
 
           <div className={styles.settingsGroup}>
-            <span className={styles.settingsLabel}>Account</span>
+            <span className={styles.settingsLabel}>Behavior</span>
+            <label className={styles.settingsToggleRow}>
+              <span className={styles.settingsToggleCopy}>
+                <span className={styles.settingsToggleTitle}>Auto-capture</span>
+                <span className={styles.settingsToggleHint}>
+                  Quietly capture useful turns as you chat.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                className={styles.settingsToggleInput}
+                checked={userSettings?.autoCapture ?? session?.autoCapture ?? true}
+                disabled={userSettingsBusy || !userSettings}
+                onChange={(event) =>
+                  void patchUserSettings({ autoCapture: event.target.checked })
+                }
+              />
+            </label>
+            <label className={styles.settingsToggleRow}>
+              <span className={styles.settingsToggleCopy}>
+                <span className={styles.settingsToggleTitle}>Show sidepanel on supported sites</span>
+                <span className={styles.settingsToggleHint}>
+                  Auto-open the Relay sidepanel when you visit a supported AI.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                className={styles.settingsToggleInput}
+                checked={userSettings?.showSidepanelOnSupportedSites ?? true}
+                disabled={userSettingsBusy || !userSettings}
+                onChange={(event) =>
+                  void patchUserSettings({
+                    showSidepanelOnSupportedSites: event.target.checked,
+                  })
+                }
+              />
+            </label>
+          </div>
+
+          <div className={styles.settingsGroup}>
+            <span className={styles.settingsLabel}>Platforms</span>
             <p className={styles.settingsHint}>
-              Manage projects, platforms, billing and profile in the dashboard.
+              Turn the inline chip and capture on or off per site.
             </p>
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={() => void openDashboard("/settings")}
-            >
-              Open dashboard settings
-            </button>
+            <div className={styles.platformList}>
+              {supportedPlatforms.map((platform) => {
+                const enabled =
+                  userSettings?.enabledPlatforms?.includes(platform) ?? true;
+                return (
+                  <label key={platform} className={styles.platformRow}>
+                    <span className={styles.platformRowLabel}>
+                      <PlatformIcon platform={platform} size={14} />
+                      <span>{prettyPlatformName(platform)}</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      className={styles.settingsToggleInput}
+                      checked={enabled}
+                      disabled={userSettingsBusy || !userSettings}
+                      onChange={(event) =>
+                        void togglePlatformEnabled(platform, event.target.checked)
+                      }
+                    />
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className={styles.settingsGroup}>
+            <span className={styles.settingsLabel}>Account</span>
             <button
               type="button"
               className={styles.dangerButton}
