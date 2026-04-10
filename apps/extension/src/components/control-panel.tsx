@@ -229,6 +229,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [themeMode, setThemeMode] = useState<RelayThemeMode>("system");
   const [resolvedTheme, setResolvedTheme] =
     useState<RelayResolvedTheme>("dark");
+  const [panelMode, setPanelMode] = useState<"main" | "settings">("main");
+  const [signOutBusy, setSignOutBusy] = useState(false);
   const activeStateRequestInFlight = useRef(false);
 
   function applyResolvedTheme(nextResolvedTheme: RelayResolvedTheme) {
@@ -412,6 +414,47 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     setSession(nextSession);
     if (nextSession.lastStatus) {
       setStatus(nextSession.lastStatus);
+    }
+  }
+
+  async function changeThemeMode(nextMode: RelayThemeMode) {
+    setThemeMode(nextMode);
+    applyResolvedTheme(resolveRelayThemeMode(nextMode));
+    try {
+      const { setRelayThemeMode } = await import("../storage/theme");
+      await setRelayThemeMode(nextMode);
+    } catch {
+      // Storage write best-effort; UI already updated.
+    }
+  }
+
+  async function handleSignOut() {
+    if (signOutBusy) return;
+    const confirmed = window.confirm("Sign out of Relay?");
+    if (!confirmed) return;
+
+    setSignOutBusy(true);
+    try {
+      const result = (await chrome.runtime.sendMessage({
+        type: "RELAY_SIGN_OUT",
+      })) as { ok?: boolean; reason?: string };
+
+      if (!result?.ok) {
+        setStatus(result?.reason ?? "Sign out failed.");
+        setSignOutBusy(false);
+        return;
+      }
+
+      setPanelMode("main");
+      await refreshLocalSession();
+      await refreshActiveProjectState();
+      setStatus("Signed out.");
+    } catch (cause) {
+      setStatus(
+        cause instanceof Error ? cause.message : "Sign out failed.",
+      );
+    } finally {
+      setSignOutBusy(false);
     }
   }
 
@@ -1350,6 +1393,50 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             {activeState.page.isFreshChat ? " · new chat" : ""}
           </span>
         ) : null}
+        <div className={styles.headerActions}>
+          {session?.connected ? (
+            <button
+              type="button"
+              className={styles.headerIconButton}
+              aria-label={panelMode === "settings" ? "Back" : "Settings"}
+              title={panelMode === "settings" ? "Back" : "Settings"}
+              onClick={() =>
+                setPanelMode((current) =>
+                  current === "settings" ? "main" : "settings",
+                )
+              }
+            >
+              {panelMode === "settings" ? (
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M9 3L5 7l4 4" />
+                </svg>
+              ) : (
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33h0a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z" />
+                </svg>
+              )}
+            </button>
+          ) : null}
+        </div>
       </header>
 
       {shouldShowAutoCapturePrompt ? (
@@ -1377,7 +1464,55 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         </div>
       ) : null}
 
-      {authenticating ? (
+      {panelMode === "settings" && session?.connected ? (
+        <section className={styles.panel}>
+          <h2 className={styles.sectionTitle}>Settings</h2>
+
+          <div className={styles.settingsGroup}>
+            <span className={styles.settingsLabel}>Appearance</span>
+            <div className={styles.themeOptions}>
+              {(["system", "light", "dark"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={
+                    themeMode === mode
+                      ? `${styles.themeOption} ${styles.themeOptionActive}`
+                      : styles.themeOption
+                  }
+                  onClick={() => void changeThemeMode(mode)}
+                >
+                  {mode === "system" ? "System" : mode === "light" ? "Light" : "Dark"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className={styles.settingsGroup}>
+            <span className={styles.settingsLabel}>Account</span>
+            <p className={styles.settingsHint}>
+              Manage projects, platforms, billing and profile in the dashboard.
+            </p>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => void openDashboard("/settings")}
+            >
+              Open dashboard settings
+            </button>
+            <button
+              type="button"
+              className={styles.dangerButton}
+              disabled={signOutBusy}
+              onClick={() => void handleSignOut()}
+            >
+              {signOutBusy ? "Signing out…" : "Sign out"}
+            </button>
+          </div>
+
+          <p className={styles.settingsVersion}>Relay · v0.1.1</p>
+        </section>
+      ) : authenticating ? (
         <section className={styles.panel}>
           <p className={styles.copy}>Signing in…</p>
         </section>

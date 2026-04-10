@@ -3351,6 +3351,26 @@ chrome.runtime.onMessage.addListener(
           return;
         }
 
+        if (message.type === "RELAY_SIGN_OUT") {
+          try {
+            await clearRelaySession();
+            if (chrome.storage?.local) {
+              await chrome.storage.local.remove([
+                "relay.routing.approvedAssociations",
+                "relay.routing.ignoredChatKeys",
+                "relay.routing.adjudications",
+              ]);
+            }
+            sendResponse({ ok: true });
+          } catch (cause) {
+            sendResponse({
+              ok: false,
+              reason: cause instanceof Error ? cause.message : "Sign out failed.",
+            });
+          }
+          return;
+        }
+
         if (message.type === "RELAY_PAGE_STATE_UPDATE" && sender.tab?.id) {
           updateTabPageState(sender.tab.id, message.payload);
           await broadcastActiveProjectState(sender.tab.id);
