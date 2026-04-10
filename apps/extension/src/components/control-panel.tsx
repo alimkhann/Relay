@@ -262,6 +262,19 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   }, [panelMode, session?.connected]);
 
   useEffect(() => {
+    if (!session?.connected) return;
+    const onFocus = () => {
+      if (panelMode === "settings") void loadUserSettings();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [session?.connected, panelMode]);
+
+  useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const handleChange = () => {
       if (themeMode === "system") {
@@ -1432,7 +1445,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     >
       {/* ─── Header ─── */}
       <header className={styles.header}>
-        <div className={styles.headerBrand}>
+        <div className={styles.headerSlotLeft}>
           <button
             type="button"
             className={styles.logoLink}
@@ -1446,28 +1459,21 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               alt="Relay"
             />
           </button>
+        </div>
+        <div className={styles.headerSlotCenter}>
           {activeState.page.supported ? (
             <span
               className={styles.pageBadge}
-              title={`${prettyPlatformName(activeState.page.platform)}${
-                activeState.page.isFreshChat ? " · new chat" : " · continuing"
-              }`}
+              title={prettyPlatformName(activeState.page.platform)}
             >
               <PlatformIcon platform={activeState.page.platform} size={13} />
-              <span
-                className={`${styles.pageBadgeStatus} ${
-                  activeState.page.isFreshChat
-                    ? styles.pageBadgeStatusFresh
-                    : styles.pageBadgeStatusContinuing
-                }`}
-                aria-label={
-                  activeState.page.isFreshChat ? "New chat" : "Continuing chat"
-                }
-              />
+              <span className={styles.pageBadgeLabel}>
+                {prettyPlatformName(activeState.page.platform)}
+              </span>
             </span>
           ) : null}
         </div>
-        <div className={styles.headerActions}>
+        <div className={styles.headerSlotRight}>
           {session?.connected ? (
             <button
               type="button"
@@ -1583,9 +1589,9 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             </label>
             <label className={styles.settingsToggleRow}>
               <span className={styles.settingsToggleCopy}>
-                <span className={styles.settingsToggleTitle}>Show sidepanel on supported sites</span>
+                <span className={styles.settingsToggleTitle}>Inline chip</span>
                 <span className={styles.settingsToggleHint}>
-                  Auto-open the Relay sidepanel when you visit a supported AI.
+                  Show a brief-insert chip on new chats.
                 </span>
               </span>
               <input
@@ -1782,16 +1788,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             {activeState.freshnessText ? (
               <span> · {activeState.freshnessText}</span>
             ) : null}
-          </div>
-        </section>
-      ) : activeState.viewState === "unsupported" ? (
-        <section className={styles.panel}>
-          <div>
-            <h2 className={styles.sectionTitle}>Open a supported AI chat</h2>
-            <p className={styles.copy}>
-              Relay is ready, but this tab is not one of the supported chat
-              surfaces yet.
-            </p>
           </div>
         </section>
       ) : (

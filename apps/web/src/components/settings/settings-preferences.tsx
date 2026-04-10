@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
+import { useEffect, useMemo, useState, useTransition } from "react"
 import type { ExtensionApiTokenRow, UserSettingsRow } from "@relay/shared"
 
 import ClaudeIcon from "@lobehub/icons/es/Claude"
@@ -135,6 +135,35 @@ export function SettingsPreferences({
   const { theme, setTheme } = useTheme()
 
   const latestToken = useMemo(() => tokens[0] ?? null, [tokens])
+
+  useEffect(() => {
+    let cancelled = false
+    const revalidate = async () => {
+      try {
+        const response = await relayClientFetch("/api/settings", {
+          telemetry: {
+            surface: "web-dashboard",
+            area: "settings",
+            event: "settings.revalidate",
+            flowId: createClientFlowId("settings"),
+          },
+        })
+        if (!response.ok) return
+        const data = (await response.json()) as { settings?: typeof initialSettings }
+        if (!cancelled && data.settings) setSettings(data.settings)
+      } catch {
+        // Best-effort revalidation; ignore transient failures.
+      }
+    }
+    const onFocus = () => void revalidate()
+    window.addEventListener("focus", onFocus)
+    document.addEventListener("visibilitychange", onFocus)
+    return () => {
+      cancelled = true
+      window.removeEventListener("focus", onFocus)
+      document.removeEventListener("visibilitychange", onFocus)
+    }
+  }, [initialSettings])
 
   function showToast(message: string, timeout = 2000) {
     setToast(message)
