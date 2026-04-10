@@ -1435,6 +1435,23 @@ async function broadcastThemeChange(theme: RelayThemeMode) {
   }
 }
 
+async function broadcastUserSettingsChange(
+  settings: RemoteSettingsPayload["settings"],
+) {
+  const message: RelayMessage = {
+    type: "RELAY_EXTENSION_USER_SETTINGS_CHANGED",
+    payload: { settings: settings as unknown as Record<string, unknown> },
+  };
+
+  void chrome.runtime.sendMessage(message).catch(() => undefined);
+
+  const tabs = await chrome.tabs.query({});
+  for (const tab of tabs) {
+    if (!tab.id) continue;
+    void chrome.tabs.sendMessage(tab.id, message).catch(() => undefined);
+  }
+}
+
 function scheduleRetry(tabId: number) {
   const state = getOrCreateTabState(tabId);
   if (state.retryTimer) return;
@@ -3747,6 +3764,34 @@ chrome.runtime.onMessageExternal.addListener(
 
           await setRelayThemeMode(theme);
           await broadcastThemeChange(theme);
+          sendResponse({ ok: true });
+          return;
+        }
+
+        if (message?.type === "RELAY_SYNC_USER_SETTINGS") {
+          const nextSettings = message?.payload?.settings as
+            | RemoteSettingsPayload["settings"]
+            | undefined;
+          if (!nextSettings || typeof nextSettings !== "object") {
+            sendResponse({ ok: false, reason: "Missing settings payload." });
+            return;
+          }
+
+          sessionDataCache = null;
+          if (typeof nextSettings.autoCapture === "boolean") {
+            await setRelaySession({ autoCapture: nextSettings.autoCapture });
+          }
+          await broadcastUserSettingsChange(nextSettings);
+
+          const tabs = await chrome.tabs.query({});
+          for (const tab of tabs) {
+            if (!tab.id) continue;
+            void syncTabRemoteState(tab.id, {
+              force: true,
+              reason: "settings_push",
+            });
+          }
+
           sendResponse({ ok: true });
           return;
         }

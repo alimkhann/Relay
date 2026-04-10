@@ -264,7 +264,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   useEffect(() => {
     if (!session?.connected) return;
     const onFocus = () => {
-      if (panelMode === "settings") void loadUserSettings();
+      void loadUserSettings();
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
@@ -272,7 +272,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onFocus);
     };
-  }, [session?.connected, panelMode]);
+  }, [session?.connected]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -338,6 +338,25 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             : "system";
         setThemeMode(nextTheme);
         applyResolvedTheme(resolveRelayThemeMode(nextTheme));
+        return;
+      }
+
+      if (
+        message &&
+        typeof message === "object" &&
+        "type" in message &&
+        message.type === "RELAY_EXTENSION_USER_SETTINGS_CHANGED" &&
+        "payload" in message &&
+        message.payload &&
+        typeof message.payload === "object" &&
+        "settings" in message.payload
+      ) {
+        const nextSettings = (
+          message.payload as { settings?: UserSettingsRow["settings"] }
+        ).settings;
+        if (nextSettings && typeof nextSettings === "object") {
+          setUserSettings(nextSettings);
+        }
         return;
       }
 
@@ -442,11 +461,14 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   }
 
   async function loadUserSettings() {
+    if (userSettingsBusy) return;
     try {
       const response = await relayFetch("/api/settings");
       if (!response.ok) return;
       const data = (await response.json()) as { settings?: UserSettingsRow["settings"] };
-      if (data.settings) setUserSettings(data.settings);
+      if (!data.settings || typeof data.settings !== "object") return;
+      if (userSettingsBusy) return;
+      setUserSettings(data.settings);
     } catch {
       // Best-effort; settings view falls back to defaults.
     }
@@ -1445,34 +1467,16 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     >
       {/* ─── Header ─── */}
       <header className={styles.header}>
-        <div className={styles.headerSlotLeft}>
-          <button
-            type="button"
-            className={styles.logoLink}
-            aria-label="Open dashboard"
-            title="Open dashboard"
-            onClick={() => void openDashboard(dashboardPath)}
-          >
-            <img
-              className={styles.logoMark}
-              src={relayIconUrl}
-              alt="Relay"
-            />
-          </button>
-        </div>
-        <div className={styles.headerSlotCenter}>
-          {activeState.page.supported ? (
-            <span
-              className={styles.pageBadge}
-              title={prettyPlatformName(activeState.page.platform)}
-            >
-              <PlatformIcon platform={activeState.page.platform} size={13} />
-              <span className={styles.pageBadgeLabel}>
-                {prettyPlatformName(activeState.page.platform)}
-              </span>
-            </span>
-          ) : null}
-        </div>
+        <button
+          type="button"
+          className={styles.logoLink}
+          aria-label="Open dashboard"
+          title="Open dashboard"
+          onClick={() => void openDashboard(dashboardPath)}
+        >
+          <img className={styles.logoMark} src={relayIconUrl} alt="Relay" />
+        </button>
+        <div className={styles.headerSpacer} />
         <div className={styles.headerSlotRight}>
           {session?.connected ? (
             <button
@@ -1589,9 +1593,9 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             </label>
             <label className={styles.settingsToggleRow}>
               <span className={styles.settingsToggleCopy}>
-                <span className={styles.settingsToggleTitle}>Inline chip</span>
+                <span className={styles.settingsToggleTitle}>Auto-show inline chip</span>
                 <span className={styles.settingsToggleHint}>
-                  Show a brief-insert chip on new chats.
+                  Show the chip automatically on new chats. When off, press ⌘⇧I (Ctrl+Shift+I) to summon it.
                 </span>
               </span>
               <input

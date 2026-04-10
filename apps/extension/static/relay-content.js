@@ -49,6 +49,7 @@
 
   const relayChipState = {
     dismissed: false,
+    forcedVisible: false,
     href: window.location.href,
     forcedInsertKind: null,
     projectSwitcherSurface: null,
@@ -1587,10 +1588,15 @@
     codex: ["[data-type='unified-composer']", "group/composer", "form"],
     claude: ["fieldset", "form", "[class*='composer']", "[class*='Composer']"],
     gemini: [
+      // closest() walks up from .ql-editor and returns the NEAREST ancestor
+      // matching any token. `rich-textarea` and the `text-input-field_*`
+      // wrappers at depth 1-4 are all the same size as the prompt itself
+      // and must NOT match — otherwise the chip ignores attachments.
+      // Use exact class selectors (leading dot) so the `text-input-field_*`
+      // substring classes don't trip us up.
       "input-area-v2",
-      "text-input-field",
-      "[class*='input-area']",
-      "rich-textarea",
+      ".input-area",
+      ".text-input-field",
       "form",
     ],
     aistudio: [
@@ -1717,7 +1723,7 @@
     claude: 0,
     perplexity: 0,
     gemini: -19,
-    aistudio: 10,
+    aistudio: 0,
     grok: 0,
     deepseek: 0,
   };
@@ -1799,8 +1805,11 @@
 
   function shouldRenderChip(activeState) {
     if (!isValidActiveProjectState(activeState)) return false;
-    if (!activeState.showCue || !activeState.page.supported) return false;
-    if (relayChipState.dismissed) return false;
+    if (!activeState.page.supported) return false;
+    if (!activeState.showCue && !relayChipState.forcedVisible) return false;
+    if (relayChipState.dismissed && !relayChipState.forcedVisible) return false;
+
+    if (relayChipState.forcedVisible) return true;
 
     return Boolean(
       activeState.page.isFreshChat ||
@@ -3025,6 +3034,7 @@
         });
         relayChipState.forcedInsertKind = null;
         relayChipState.dismissed = false;
+        relayChipState.forcedVisible = true;
         renderInlineChip();
         void sendRuntimeMessage({
           type: "RELAY_GET_ACTIVE_PROJECT_STATE",
@@ -3042,6 +3052,7 @@
 
       relayChipState.forcedInsertKind = "quick_continuity";
       relayChipState.dismissed = false;
+      relayChipState.forcedVisible = true;
       emitInlineTelemetry({
         level: "info",
         area: "shortcut",

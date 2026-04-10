@@ -17,12 +17,12 @@ export const GET = withApiAuth(async (request: Request) => {
     getBillingStatusForUser(viewer.userId),
   ])
   const hasConnectedExtension = tokens.some((token) => !token.revokedAt)
-  return NextResponse.json({ settings, hasConnectedExtension, onboarding, billing })
+  return NextResponse.json({ settings: settings.settings, hasConnectedExtension, onboarding, billing })
 })
 
 export const PATCH = withApiAuth(async (request: Request) => {
   const viewer = await resolveViewer(request.headers.get("authorization"))
   rejectMcpViewer(viewer)
-  const settings = await updateUserSettings(viewer.userId, await request.json())
-  return NextResponse.json({ settings })
+  const row = await updateUserSettings(viewer.userId, await request.json())
+  return NextResponse.json({ settings: row.settings })
 })

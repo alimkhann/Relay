@@ -15,6 +15,7 @@ import { deleteAccountAction } from "@/components/auth/delete-account-action"
 import { FadeIn } from "@/components/ui/fade-in"
 import { useTheme } from "@/components/theme-provider"
 import { cn } from "@/lib/cn"
+import { syncUserSettingsToExtension } from "@/lib/extension-settings-bridge"
 import { createClientFlowId } from "@/lib/telemetry/client"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
 
@@ -188,6 +189,8 @@ export function SettingsPreferences({
     if (!response.ok) {
       throw new Error("Save failed")
     }
+
+    void syncUserSettingsToExtension(nextSettings)
   }
 
   function update(nextSettings: typeof settings, message: string) {
@@ -351,8 +354,8 @@ export function SettingsPreferences({
               </div>
               <div className="flex items-center justify-between gap-4 px-5 py-3.5">
                 <div>
-                  <p className="text-[15px] font-medium text-[var(--relay-ink)]">Inline chip</p>
-                  <p className="mt-0.5 text-sm text-[var(--relay-muted)]">Show a brief-insert chip on new chats.</p>
+                  <p className="text-[15px] font-medium text-[var(--relay-ink)]">Auto-show inline chip</p>
+                  <p className="mt-0.5 text-sm text-[var(--relay-muted)]">Show the chip automatically on new chats. When off, press ⌘⇧I (Ctrl+Shift+I) to summon it.</p>
                 </div>
                 <Toggle
                   checked={settings.showSidepanelOnSupportedSites}
@@ -360,7 +363,7 @@ export function SettingsPreferences({
                   onChange={(on) =>
                     update(
                       { ...settings, showSidepanelOnSupportedSites: on },
-                      `Inline chip ${on ? "on" : "off"}`,
+                      `Auto-show inline chip ${on ? "on" : "off"}`,
                     )
                   }
                 />
