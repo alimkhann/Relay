@@ -1574,8 +1574,12 @@
     const containerSelectors = {
       chatgpt: "form",
       codex: "form",
-      claude: "form, [class*='composer']",
-      gemini: "form",
+      claude: "form, [class*='composer'], [class*='Composer']",
+      gemini: "form, [class*='input-area'], rich-textarea",
+      aistudio: "form, [class*='input-wrapper']",
+      perplexity: "form, [class*='ComposerContainer'], [class*='query-input']",
+      grok: "form, [class*='composer']",
+      deepseek: "form, [class*='chat-input']",
     };
     const selector = containerSelectors[platform];
     if (selector) {
@@ -1584,6 +1588,33 @@
     }
     return element;
   }
+
+  const DEFAULT_CHIP_OFFSETS = {
+    chatgpt: -15,
+    codex: -15,
+    claude: -20,
+    perplexity: -16,
+    gemini: -21,
+    aistudio: -15,
+    grok: 0,
+    deepseek: -1,
+  };
+  let userChipOffsets = {};
+  try {
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get(["relay.chipOffsets"], (stored) => {
+        if (stored && stored["relay.chipOffsets"]) {
+          userChipOffsets = stored["relay.chipOffsets"];
+        }
+      });
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== "local") return;
+        if (changes["relay.chipOffsets"]) {
+          userChipOffsets = changes["relay.chipOffsets"].newValue || {};
+        }
+      });
+    }
+  } catch {}
 
   function setChipPlacement(config, root) {
     const promptTarget = findPrompt(config);
@@ -1613,16 +1644,10 @@
       Math.max(16, window.innerWidth - dynamicWidth - 16),
     );
 
-    const chipVerticalOffset = {
-      chatgpt: -15,
-      codex: -15,
-      claude: -20,
-      perplexity: -16,
-      gemini: -21,
-      grok: 0,
-      deepseek: -1,
-    };
-    const vOffset = chipVerticalOffset[config.platform] ?? -4;
+    const vOffset =
+      (userChipOffsets && userChipOffsets[config.platform]) ??
+      DEFAULT_CHIP_OFFSETS[config.platform] ??
+      -4;
     let top = containerRect.top - chipHeight + vOffset;
     if (top < 16) {
       top = containerRect.bottom + Math.abs(vOffset);
