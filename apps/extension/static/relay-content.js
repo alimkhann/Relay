@@ -1722,7 +1722,7 @@
     codex: 0,
     claude: 0,
     perplexity: 0,
-    gemini: -19,
+    gemini: 0,
     aistudio: 0,
     grok: 0,
     deepseek: 0,
@@ -2100,6 +2100,7 @@
           : "Dismissed the inline chip.",
     });
     relayChipState.dismissed = true;
+    relayChipState.forcedVisible = false;
     relayChipState.forcedInsertKind = null;
     hideInlineChipWithMotion();
   }
@@ -2736,6 +2737,7 @@
     if (relayChipState.href !== nextHref) {
       relayChipState.href = nextHref;
       relayChipState.dismissed = false;
+      relayChipState.forcedVisible = false;
       relayChipState.forcedInsertKind = null;
       closeProjectSwitcher();
       relayChipState.buttonMode = "idle";

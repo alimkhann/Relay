@@ -20,9 +20,12 @@ export async function createExtensionTokenForUser(userId: string, input: unknown
     tokenPrefix: token.slice(0, 12)
   })
 
-  if (purpose !== "manual") {
-    await repositories.extensionTokens.revokeOthersByPurpose(userId, purpose, record.id)
-  }
+  await repositories.extensionTokens.revokeOlderDuplicates(
+    userId,
+    parsed.deviceName,
+    purpose,
+    record.id
+  )
 
   return {
     token,

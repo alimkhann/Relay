@@ -96,4 +96,24 @@ export class ExtensionTokenRepository {
     )
     return rows.length
   }
+
+  async revokeOlderDuplicates(
+    userId: string,
+    deviceName: string,
+    purpose: ExtensionApiTokenPurpose,
+    exceptId: string
+  ): Promise<number> {
+    const rows = await this.provider.query(
+      `update extension_api_tokens
+       set revoked_at = now()
+       where user_id = $1
+         and device_name = $2
+         and purpose = $3
+         and id <> $4
+         and revoked_at is null
+       returning id`,
+      [userId, deviceName, purpose, exceptId]
+    )
+    return rows.length
+  }
 }
