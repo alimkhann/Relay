@@ -9,11 +9,13 @@ import { saveContextSchema, saveContext } from "./save-context.js"
 import { manageMemorySchema, manageMemory } from "./manage-memory.js"
 import { updateProjectSchema, updateProject } from "./update-project.js"
 import { recallContextSchema, recallContext } from "./recall-context.js"
+import { z } from "zod"
 
 interface ToolRegistrationContext {
   client: RelayClient
   resolveProjectId: (explicitId?: string) => Promise<string>
   getCachedProjectId: () => string | null
+  setCachedProjectId: (projectId: string) => void
 }
 
 /**
@@ -21,18 +23,45 @@ interface ToolRegistrationContext {
  * Shared between local stdio and remote HTTP MCP servers.
  */
 export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
-  const { client, resolveProjectId, getCachedProjectId } = ctx
+  const { client, resolveProjectId, getCachedProjectId, setCachedProjectId } = ctx
 
   server.tool(
     "list_projects",
-    "List all Relay projects you have access to. Returns project IDs, names, and metadata. Call this first if you need to find a project ID.",
+    "List all Relay projects you have access to. Returns project IDs, names, slugs, and routing keywords. Call this first to find a project ID and to match the current working directory against project names/slugs/keywords before calling get_brief.",
     listProjectsSchema.shape,
     async () => listProjects(client)
   )
 
   server.tool(
+    "set_current_project",
+    "Switch the current Relay project for this MCP session. Use this when the user is clearly working on a different project than the cached/auto-detected one. The switch persists for the lifetime of the MCP server process. Call list_projects first to find the correct projectId.",
+    z.object({
+      projectId: z.string().uuid().describe("The ID of the project to switch to."),
+    }).shape,
+    async (args) => {
+      setCachedProjectId(args.projectId)
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ ok: true, projectId: args.projectId }, null, 2),
+          },
+        ],
+      }
+    }
+  )
+
+  server.tool(
     "get_brief",
-    "Fetch a project context brief from Relay. Returns a markdown document with project state, decisions, constraints, tasks, and key notes. Call this at the start of every coding session to restore project memory.",
+    `Fetch a project context brief from Relay. Returns a markdown document with project state, decisions, constraints, tasks, and key notes.
+
+IMPORTANT — before calling get_brief, always verify which project the user is working on:
+1. Call list_projects to see all available projects.
+2. Match the current working directory / git repository against the project names, slugs, and routing keywords.
+3. If the auto-detected or cached project is wrong, call set_current_project with the correct projectId.
+4. Only then call get_brief.
+
+Call this at the start of every coding session to restore project memory.`,
     getBriefSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)

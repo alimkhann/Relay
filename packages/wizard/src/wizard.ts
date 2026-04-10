@@ -100,25 +100,18 @@ export async function runWizardFlow(options: { apiBase?: string; openBrowser?: b
   const auth = await startAuthFlow(apiBase, { openBrowser: options.openBrowser })
   success("Authenticated successfully!")
 
-  // Step 2: Pick project
+  // Step 2: Resolve project for scoped token
+  // Relay now auto-detects the active project from the cwd/git remote at
+  // runtime (see packages/mcp/src/server.ts). We still need *a* project ID
+  // for the scoped token exchange, but we don't ask the user — we pick one
+  // silently (existing config first, then the most recently updated project)
+  // and rely on the MCP server + set_current_project tool to switch per-cwd.
   let projectId = existing?.projectId
   const projectClient = new RelayApiClient(auth.apiBase, auth.token)
   const projects = await listProjects(projectClient)
 
-  if (projects.length > 0) {
-    const selectedProjectId = await p.select({
-      message: "Choose the active Relay project for MCP access:",
-      options: projects.map((project) => ({
-        value: project.id,
-        label: project.name,
-        hint: project.slug
-      })),
-      initialValue: projectId ?? projects[0]?.id
-    })
-
-    if (!p.isCancel(selectedProjectId)) {
-      projectId = selectedProjectId as string
-    }
+  if (!projectId && projects.length > 0) {
+    projectId = projects[0]?.id
   }
 
   // Step 3: Get scoped MCP token

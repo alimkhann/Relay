@@ -25,14 +25,27 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
   // Cache for resolved project ID
   let cachedProjectId: string | null = config.projectId ?? null
   let projectDetectionAttemptedAt = 0
+  let lastDetectionCwd: string | null = null
+  let explicitSwitch = false
   const PROJECT_DETECTION_CACHE_MS = 5 * 60 * 1000
 
   async function resolveProjectId(explicitId?: string): Promise<string> {
     if (explicitId) return explicitId
+
+    // If the working directory changed between tool calls, invalidate the
+    // cache so we re-detect for the new project — unless the user has
+    // explicitly switched via set_current_project.
+    const currentCwd = process.cwd()
+    if (!explicitSwitch && lastDetectionCwd !== null && lastDetectionCwd !== currentCwd) {
+      cachedProjectId = null
+      projectDetectionAttemptedAt = 0
+    }
+
     if (cachedProjectId) return cachedProjectId
 
     if (Date.now() - projectDetectionAttemptedAt > PROJECT_DETECTION_CACHE_MS) {
       projectDetectionAttemptedAt = Date.now()
+      lastDetectionCwd = currentCwd
       try {
         const data = await client.get<ListProjectsResponse>("/api/projects")
         const candidates = data.projects.map((p) => ({
@@ -51,7 +64,7 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
     }
 
     throw new Error(
-      "Could not determine project. Provide a projectId argument, set RELAY_PROJECT_ID env var, or call list_projects to find your project ID."
+      "Could not determine project from the current working directory. Call list_projects to see your projects, then set_current_project to choose one — or pass projectId explicitly."
     )
   }
 
@@ -60,6 +73,12 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
     client,
     resolveProjectId,
     getCachedProjectId: () => cachedProjectId,
+    setCachedProjectId: (projectId: string) => {
+      cachedProjectId = projectId
+      explicitSwitch = true
+      lastDetectionCwd = process.cwd()
+      projectDetectionAttemptedAt = Date.now()
+    },
   })
 
   // --- Resources ---
