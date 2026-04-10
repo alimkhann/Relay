@@ -8,7 +8,6 @@ import * as Tooltip from "@radix-ui/react-tooltip";
 import { Settings, LogOut, CreditCard } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
-import { signOutAction } from "@/components/auth/sign-out-action";
 import { cn } from "@/lib/cn";
 
 interface AccountMenuProps {
@@ -124,7 +123,7 @@ export function AccountMenu({ name, email, collapsed = false }: AccountMenuProps
                   Billing
                 </Link>
                 <div className="mx-2.5 my-1 border-t border-[var(--relay-line)]" />
-                <form action={signOutAction}>
+                <form action="/auth/sign-out" method="POST">
                   <button
                     type="submit"
                     className="flex w-full items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-2.5 py-2 text-[13px] font-medium text-[var(--relay-danger)] transition-colors hover:bg-[var(--relay-soft)]"
