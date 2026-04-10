@@ -9,10 +9,10 @@ import { Button } from "@/components/ui/button"
 import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
 
-export function CreateProjectForm({ onSuccess }: { onSuccess?: () => void } = {}) {
+export function CreateProjectForm({ onSuccess, initialName = "", initialDescription = "" }: { onSuccess?: () => void; initialName?: string; initialDescription?: string } = {}) {
   const router = useRouter()
-  const [name, setName] = useState("")
-  const [description, setDescription] = useState("")
+  const [name, setName] = useState(initialName)
+  const [description, setDescription] = useState(initialDescription)
   const [pending, setPending] = useState(false)
   const [status, setStatus] = useState("Create a project once, then let Relay keep the next fresh chat ready.")
 

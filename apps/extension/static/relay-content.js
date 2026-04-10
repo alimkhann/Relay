@@ -1568,6 +1568,23 @@
     return Math.min(Math.max(value, min), max);
   }
 
+  function findComposerContainer(element, platform) {
+    // Walk up from the prompt element to find the full composer container
+    // (includes attachments, toolbars, etc.) for accurate vertical positioning.
+    const containerSelectors = {
+      chatgpt: "form",
+      codex: "form",
+      claude: "form, [class*='composer']",
+      gemini: "form",
+    };
+    const selector = containerSelectors[platform];
+    if (selector) {
+      const container = element.closest(selector);
+      if (container) return container;
+    }
+    return element;
+  }
+
   function setChipPlacement(config, root) {
     const promptTarget = findPrompt(config);
 
@@ -1581,6 +1598,8 @@
     }
 
     const rect = promptTarget.element.getBoundingClientRect();
+    const container = findComposerContainer(promptTarget.element, config.platform);
+    const containerRect = container.getBoundingClientRect();
     const dynamicWidth = clamp(
       rect.width,
       280,
@@ -1604,9 +1623,9 @@
       deepseek: -1,
     };
     const vOffset = chipVerticalOffset[config.platform] ?? -4;
-    let top = rect.top - chipHeight + vOffset;
+    let top = containerRect.top - chipHeight + vOffset;
     if (top < 16) {
-      top = rect.bottom + Math.abs(vOffset);
+      top = containerRect.bottom + Math.abs(vOffset);
     }
     if (top + chipHeight > window.innerHeight - 16) {
       top = Math.max(16, window.innerHeight - chipHeight - 16);

@@ -198,7 +198,12 @@ export async function getRelaySession() {
   const values = await localStorageArea.get(Object.values(keys).filter((key) => key !== keys.token))
   if (sessionStorageArea) {
     const sessionValues = await sessionStorageArea.get([keys.token])
-    values[keys.token] = sessionValues[keys.token]
+    if (sessionValues[keys.token]) {
+      values[keys.token] = sessionValues[keys.token]
+    } else {
+      const fallbackValues = await localStorageArea.get([keys.token])
+      values[keys.token] = fallbackValues[keys.token]
+    }
   } else {
     const fallbackValues = await localStorageArea.get([keys.token])
     values[keys.token] = fallbackValues[keys.token]

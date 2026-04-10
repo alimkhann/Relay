@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic"
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ project?: string }>
+  searchParams: Promise<{ project?: string; projectName?: string; projectDescription?: string }>
 }) {
   const viewer = await requirePageViewer("/dashboard")
   const projects = await listProjectsForUser(viewer.userId)
@@ -54,7 +54,10 @@ export default async function DashboardPage({
               Relay provides reliable, context-aware memory for your AI tools. Start by defining your first project boundary.
             </p>
           </header>
-          <CreateProjectForm />
+          <CreateProjectForm
+            initialName={(await searchParams).projectName ?? ""}
+            initialDescription={(await searchParams).projectDescription ?? ""}
+          />
         </section>
       </>
     )

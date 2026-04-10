@@ -2942,58 +2942,13 @@ chrome.runtime.onMessage.addListener(
 
         if (message.type === "RELAY_OPEN_DASHBOARD") {
           try {
-            const flowId = message.payload?.flowId ?? createFlowId("ext-dashboard");
             const session = await getRelaySession();
-            if (!session.token) {
-              sendResponse({ ok: false, reason: "Sign in to Relay first." });
-              return;
-            }
-
-            let googleTokens;
-            try {
-              googleTokens = await requestGoogleIdentityTokens({
-                interactive: false,
-                prompt: "none",
-              });
-            } catch {
-              googleTokens = await requestGoogleIdentityTokens({
-                interactive: true,
-                prompt: "select_account",
-              });
-            }
-
             const apiBase = resolveRelayApiBase({
               storedApiBase: session.apiBase,
             });
             const nextUrl = new URL(message.payload?.nextPath ?? "/dashboard", apiBase);
             nextUrl.searchParams.set("extensionId", chrome.runtime.id);
-            const response = await fetch(`${apiBase}/api/extension/browser-handoff/start`, {
-              method: "POST",
-              headers: {
-                "content-type": "application/json",
-                authorization: `Bearer ${session.token}`,
-                "x-relay-flow-id": flowId,
-              },
-              body: JSON.stringify({
-                googleAccessToken: googleTokens.accessToken,
-                googleIdToken: googleTokens.idToken,
-                nextPath: `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`,
-              }),
-            });
-
-            if (!response.ok) {
-              sendResponse({
-                ok: false,
-                reason: await readErrorResponse(
-                  response,
-                  "Failed to open the Relay dashboard.",
-                ),
-              });
-              return;
-            }
-
-            const payload = (await response.json()) as { url: string };
-            await chrome.tabs.create({ url: payload.url });
+            await chrome.tabs.create({ url: nextUrl.toString() });
             sendResponse({ ok: true });
           } catch (cause) {
             sendResponse({
