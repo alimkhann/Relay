@@ -1,6 +1,6 @@
 {
   "name": "@relay/extension",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -29,7 +29,9 @@
       "sidePanel",
       "identity",
       "scripting",
-      "offscreen"
+      "offscreen",
+      "contextMenus",
+      "notifications"
     ],
     "host_permissions": [
       "https://chatgpt.com/*",

@@ -2828,10 +2828,30 @@ async function insertProjectBrief(
   };
 }
 
+function registerRelayContextMenu() {
+  try {
+    chrome.contextMenus.removeAll(() => {
+      try {
+        chrome.contextMenus.create({
+          id: "relay-save-selection",
+          title: 'Save "%s" to Relay',
+          contexts: ["selection"],
+        });
+      } catch {
+        // Duplicate id from a racing register — safe to ignore.
+      }
+    });
+  } catch {
+    // contextMenus API unavailable — skip.
+  }
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel
     .setPanelBehavior({ openPanelOnActionClick: true })
     .catch(() => undefined);
+
+  registerRelayContextMenu();
 
   // Register MAIN world content script for network interception.
   // This must be done via scripting API because Plasmo doesn't support
@@ -2864,6 +2884,39 @@ chrome.runtime.onInstalled.addListener(() => {
         .catch(() => undefined);
     });
 });
+
+chrome.runtime.onStartup.addListener(() => {
+  registerRelayContextMenu();
+});
+
+// Also register at module load so that the service worker waking up
+// for a non-onStartup reason (e.g. external message) still has the menu.
+registerRelayContextMenu();
+
+chrome.contextMenus.onClicked.addListener(
+  (
+    info: {
+      menuItemId: string | number;
+      selectionText?: string;
+      pageUrl?: string;
+    },
+    tab: { id?: number; url?: string; title?: string } | undefined,
+  ) => {
+    void (async () => {
+      if (info.menuItemId !== "relay-save-selection") return;
+      if (!info.selectionText) return;
+      const pageUrl = info.pageUrl ?? tab?.url ?? null;
+      await handleSaveSelectionToRelay({
+        selectionText: info.selectionText,
+        pageUrl,
+        pageTitle: tab?.title ?? null,
+        platform: null,
+        tabId: tab?.id ?? null,
+        trigger: "context_menu",
+      });
+    })();
+  },
+);
 
 chrome.tabs.onUpdated.addListener(
   (tabId: number, changeInfo: { status?: string }) => {
@@ -2939,6 +2992,231 @@ chrome.commands?.onCommand.addListener((command: string) => {
     await insertProjectBrief(tab.id, undefined, "shortcut");
   })();
 });
+
+interface SaveSelectionParams {
+  selectionText: string;
+  pageUrl: string | null;
+  pageTitle: string | null;
+  platform: string | null;
+  extraMetadata?: Record<string, unknown>;
+  tabId: number | null;
+  projectIdOverride?: string | null;
+  trigger: "context_menu" | "pin_selection";
+}
+
+interface SaveSelectionResult {
+  ok: boolean;
+  reason?: string;
+  projectId?: string;
+  projectName?: string | null;
+}
+
+function clearActionBadgeLater(tabId: number | null) {
+  if (tabId === null) return;
+  setTimeout(() => {
+    try {
+      void chrome.action.setBadgeText({ text: "", tabId });
+    } catch {
+      // Tab may have closed — ignore.
+    }
+  }, 2000);
+}
+
+function notifyUser(title: string, message: string) {
+  try {
+    void chrome.notifications.create({
+      type: "basic",
+      iconUrl,
+      title,
+      message,
+    });
+  } catch {
+    // Notifications API may be unavailable in some contexts — silent fail.
+  }
+}
+
+async function resolveProjectNameFor(
+  projectId: string,
+): Promise<string | null> {
+  if (sessionDataCache?.data.projects) {
+    const hit = sessionDataCache.data.projects.find((p) => p.id === projectId);
+    if (hit?.name) return hit.name;
+  }
+  const session = await getRelaySession();
+  const fromSession = session.projectOptions?.find((p) => p.id === projectId);
+  return fromSession?.name ?? session.assumedProjectName ?? null;
+}
+
+async function handleSaveSelectionToRelay(
+  params: SaveSelectionParams,
+): Promise<SaveSelectionResult> {
+  const {
+    selectionText,
+    pageUrl,
+    pageTitle,
+    platform,
+    extraMetadata,
+    tabId,
+    projectIdOverride,
+    trigger,
+  } = params;
+
+  const trimmed = selectionText.trim();
+  if (!trimmed) {
+    return { ok: false, reason: "Select text in the page first." };
+  }
+
+  // Resolve projectId: override → tab state → last active session project.
+  let projectId = projectIdOverride ?? null;
+  if (!projectId && tabId !== null) {
+    projectId = getOrCreateTabState(tabId).projectId ?? null;
+  }
+  if (!projectId) {
+    const session = await getRelaySession();
+    projectId = session.projectId || null;
+  }
+
+  if (!projectId) {
+    if (tabId !== null) {
+      try {
+        void chrome.sidePanel.open({ tabId });
+      } catch {
+        // Opening the side panel can fail on unsupported contexts — ignore.
+      }
+    }
+    notifyUser(
+      "Relay",
+      "Pick a project in the Relay sidepanel, then try again.",
+    );
+    return { ok: false, reason: "Choose a project first." };
+  }
+
+  let hostname: string | null = null;
+  if (pageUrl) {
+    try {
+      hostname = new URL(pageUrl).hostname;
+    } catch {
+      hostname = null;
+    }
+  }
+
+  const titleSource = pageTitle ?? hostname ?? platform ?? "web";
+  const body = {
+    type: "note" as const,
+    pinned: true,
+    title: `Saved from ${titleSource}`,
+    content: trimmed,
+    metadata: {
+      ...(extraMetadata ?? {}),
+      sourceUrl: pageUrl,
+      sourceTitle: pageTitle,
+      hostname,
+      platform: platform ?? null,
+      capturedVia: trigger,
+    },
+  };
+
+  let response: Response;
+  try {
+    response = await relayFetch(`/api/projects/${projectId}/memory`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  } catch (cause) {
+    const reason =
+      cause instanceof Error ? cause.message : "Save to Relay failed.";
+    notifyUser("Relay — save failed", reason);
+    recordBackgroundTelemetry({
+      level: "error",
+      surface: "extension-background",
+      area: "memory",
+      event: "save_to_relay.failed",
+      message: reason,
+      projectId,
+      context: {
+        trigger,
+        hostname,
+        textLength: trimmed.length,
+      },
+      error: cause,
+    });
+    return { ok: false, reason };
+  }
+
+  if (!response.ok) {
+    const reason = await readErrorResponse(response, "Save to Relay failed.");
+    notifyUser("Relay — save failed", reason);
+    recordBackgroundTelemetry({
+      level: "error",
+      surface: "extension-background",
+      area: "memory",
+      event: "save_to_relay.failed",
+      message: reason,
+      projectId,
+      context: {
+        trigger,
+        hostname,
+        textLength: trimmed.length,
+        status: response.status,
+      },
+    });
+    return { ok: false, reason };
+  }
+
+  invalidateProjectCache(projectId);
+
+  // Only refresh tab state if this tab has an active Relay tab state
+  // (i.e. a supported AI site). Arbitrary webpages don't get tabStates entries.
+  if (tabId !== null && tabStates.has(tabId)) {
+    const state = getOrCreateTabState(tabId);
+    try {
+      await rememberProjectSelection(
+        projectId,
+        tabId,
+        state.page,
+        state.projectName,
+      );
+    } catch {
+      // Binding refresh is best-effort.
+    }
+    void syncTabRemoteState(tabId, {
+      force: true,
+      reason: "save_to_project",
+    });
+  }
+
+  if (tabId !== null) {
+    try {
+      void chrome.action.setBadgeBackgroundColor({ color: "#10b981", tabId });
+      void chrome.action.setBadgeText({ text: "✓", tabId });
+      clearActionBadgeLater(tabId);
+    } catch {
+      // Badge API can fail on some tabs — silent.
+    }
+  }
+
+  const projectName = await resolveProjectNameFor(projectId);
+  notifyUser(
+    "Saved to Relay",
+    projectName ? `→ ${projectName}` : "Selection pinned to your project.",
+  );
+
+  recordBackgroundTelemetry({
+    level: "info",
+    surface: "extension-background",
+    area: "memory",
+    event: "save_to_relay.succeeded",
+    message: `Saved selection to project ${projectId} via ${trigger}.`,
+    projectId,
+    context: {
+      trigger,
+      hostname,
+      textLength: trimmed.length,
+    },
+  });
+
+  return { ok: true, projectId, projectName };
+}
 
 chrome.runtime.onMessage.addListener(
   (
@@ -3596,13 +3874,6 @@ chrome.runtime.onMessage.addListener(
             });
           }
 
-          const projectId =
-            message.payload.projectId || getOrCreateTabState(tabId).projectId;
-          if (!projectId) {
-            sendResponse({ ok: false, reason: "Choose a project first." });
-            return;
-          }
-
           const selection = await chrome.tabs.sendMessage(tabId, {
             type: "RELAY_GET_SELECTION",
           });
@@ -3616,43 +3887,22 @@ chrome.runtime.onMessage.addListener(
             return;
           }
 
-          const response = await relayFetch(
-            `/api/projects/${projectId}/memory`,
-            {
-              method: "POST",
-              body: JSON.stringify({
-                type: "note",
-                pinned: true,
-                title: `Saved from ${selection.platform ?? "AI chat"}`,
-                content: selection.text,
-                metadata: selection.metadata ?? {},
-              }),
-            },
-          );
-
-          if (!response.ok) {
-            sendResponse({
-              ok: false,
-              reason: await readErrorResponse(
-                response,
-                "Save to project failed.",
-              ),
-            });
-            return;
-          }
-
-          await rememberProjectSelection(
-            projectId,
+          const result = await handleSaveSelectionToRelay({
+            selectionText: selection.text,
+            pageUrl: selection.metadata?.url ?? null,
+            pageTitle: selection.metadata?.title ?? null,
+            platform: selection.platform ?? state.page.platform ?? null,
+            extraMetadata: selection.metadata ?? undefined,
             tabId,
-            state.page,
-            state.projectName,
-          );
-          invalidateProjectCache(projectId);
-          await syncTabRemoteState(tabId, {
-            force: true,
-            reason: "save_to_project",
+            projectIdOverride: message.payload.projectId ?? null,
+            trigger: "pin_selection",
           });
-          sendResponse({ ok: true });
+
+          sendResponse(
+            result.ok
+              ? { ok: true }
+              : { ok: false, reason: result.reason ?? "Save to project failed." },
+          );
           return;
         }
 
