@@ -5,7 +5,6 @@ import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
 import { ThemeProvider } from "@/components/theme-provider";
-import { CookieConsentBanner } from "@/components/legal/cookie-consent-banner";
 import { GlobalTelemetryBootstrap } from "@/components/telemetry/global-telemetry-bootstrap";
 import { PostHogProvider } from "@/components/telemetry/posthog-provider";
 import { LogoPreloader } from "@/components/ui/logo-preloader";
@@ -92,7 +91,6 @@ export default function RootLayout({
             <GlobalTelemetryBootstrap />
             <LogoPreloader />
             {children}
-            <CookieConsentBanner />
           </ThemeProvider>
         </PostHogProvider>
         <Analytics />

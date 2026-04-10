@@ -93,7 +93,16 @@ export default function PrivacyPage() {
                 </strong>{" "}
                 We collect privacy-respecting analytics regarding how you
                 interact with the Service, including browser type, OS, and
-                approximate location data, to improve our services.
+                approximate location data, to improve our services. Analytics
+                tracking is enabled by default across the web dashboard,
+                browser extension, and MCP server. Contact{" "}
+                <a
+                  href="mailto:support@onrelay.app"
+                  className="underline hover:text-gray-700"
+                >
+                  support@onrelay.app
+                </a>{" "}
+                to request deletion of your analytics data.
               </p>
             </div>
           </section>
