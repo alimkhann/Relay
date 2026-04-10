@@ -146,6 +146,16 @@ export class McpTokenRepository {
     )
   }
 
+  async setProjectId(id: string, projectId: string): Promise<void> {
+    await this.provider.query(
+      `update mcp_tokens
+       set project_id = $2,
+           updated_at = now()
+       where id = $1`,
+      [id, projectId]
+    )
+  }
+
   async touch(id: string): Promise<void> {
     await this.provider.query(
       `update mcp_tokens

@@ -24,6 +24,7 @@ export interface Viewer {
   image?: string | null
   projectId?: string | null
   scopes?: McpTokenScope[]
+  mcpTokenId?: string | null
 }
 
 export type WebAuthIntent = "sign-in" | "sign-up"
@@ -107,7 +108,8 @@ export async function resolveViewer(authorizationHeader?: string | null): Promis
         name: null,
         image: null,
         projectId: mcpTokenRecord.projectId,
-        scopes: mcpTokenRecord.scopes
+        scopes: mcpTokenRecord.scopes,
+        mcpTokenId: mcpTokenRecord.id
       }
     }
 
@@ -123,7 +125,8 @@ export async function resolveViewer(authorizationHeader?: string | null): Promis
         name: null,
         image: null,
         projectId: expiredMcpToken.projectId,
-        scopes: expiredMcpToken.scopes
+        scopes: expiredMcpToken.scopes,
+        mcpTokenId: expiredMcpToken.id
       }
     }
 
