@@ -916,6 +916,92 @@
   border-left: 2px solid #34d399;
 }
 
+.contextSectionNotes {
+  border-left: 2px solid #f59e0b;
+}
+
+.noteItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--line);
+}
+
+.noteItem:first-of-type {
+  border-top: none;
+}
+
+.noteText {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-secondary, var(--ink));
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.noteFooter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.noteSourceChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--muted);
+  text-decoration: none;
+  max-width: 150px;
+  overflow: hidden;
+}
+
+.noteSourceChip img {
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.noteHostname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.noteTime {
+  font-variant-numeric: tabular-nums;
+}
+
+.noteDelete {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--faint);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0;
+}
+
+.noteDelete:hover:not(:disabled) {
+  color: var(--danger, #ef4444);
+}
+
+.noteDelete:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 /* ── Shiny text (inserting animation) ── */
 
 @keyframes shimmer {

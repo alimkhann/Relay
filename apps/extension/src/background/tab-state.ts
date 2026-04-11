@@ -79,7 +79,8 @@ export function createEmptyContextPreview(): RelayContextPreview {
   return {
     decisions: [],
     constraints: [],
-    tasks: []
+    tasks: [],
+    notes: []
   }
 }
 

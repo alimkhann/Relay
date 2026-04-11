@@ -418,7 +418,38 @@ function buildDashboardContextPreview(
     return createEmptyContextPreview();
   }
 
-  return buildProjectContextPreview(dashboard);
+  const base = buildProjectContextPreview(dashboard);
+  const notes = (dashboard.memory ?? [])
+    .filter((item) => item.type === "note" && item.pinned)
+    .sort((a, b) => {
+      const aTime = a.capturedAt ?? a.updatedAt;
+      const bTime = b.capturedAt ?? b.updatedAt;
+      return bTime.localeCompare(aTime);
+    })
+    .slice(0, 5)
+    .map((item) => {
+      let hostname: string | null = null;
+      if (item.sourceUrl) {
+        try {
+          hostname = new URL(item.sourceUrl).hostname.replace(/^www\./, "");
+        } catch {
+          hostname = null;
+        }
+      }
+      return {
+        key: `note:${item.id}`,
+        memoryId: item.id,
+        text: item.content,
+        sourceUrl: item.sourceUrl,
+        hostname,
+        capturedAt: item.capturedAt ?? item.updatedAt,
+      };
+    });
+
+  return {
+    ...base,
+    notes,
+  };
 }
 
 function findMatchingSession(
@@ -3271,6 +3302,17 @@ async function handleSaveSelectionToRelay(
       textLength: trimmed.length,
     },
   });
+
+  try {
+    void chrome.runtime
+      .sendMessage({
+        type: "RELAY_PROJECT_MEMORY_UPDATED",
+        payload: { projectId },
+      } satisfies RelayMessage)
+      .catch(() => undefined);
+  } catch {
+    // sidepanel may not be open; ignore
+  }
 
   return { ok: true, projectId };
 }

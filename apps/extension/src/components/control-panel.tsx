@@ -112,6 +112,7 @@ const emptyActiveState: RelayActiveProjectState = {
     decisions: [],
     constraints: [],
     tasks: [],
+    notes: [],
   },
   chatAssociation: {
     status: "none",
@@ -202,6 +203,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [session, setSession] = useState<RelaySessionState | null>(null);
   const [activeState, setActiveState] =
     useState<RelayActiveProjectState>(emptyActiveState);
+  const activeStateRef = useRef<RelayActiveProjectState>(emptyActiveState);
+  useEffect(() => {
+    activeStateRef.current = activeState;
+  }, [activeState]);
   const [status, setStatus] = useState("Relay stays quiet until it is useful.");
   const [busy, setBusy] = useState(false);
   const [authenticating, setAuthenticating] = useState(false);
@@ -338,6 +343,26 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             : "system";
         setThemeMode(nextTheme);
         applyResolvedTheme(resolveRelayThemeMode(nextTheme));
+        return;
+      }
+
+      if (
+        message &&
+        typeof message === "object" &&
+        "type" in message &&
+        message.type === "RELAY_PROJECT_MEMORY_UPDATED" &&
+        "payload" in message &&
+        message.payload &&
+        typeof message.payload === "object" &&
+        "projectId" in message.payload
+      ) {
+        const updatedProjectId = (message.payload as { projectId?: string }).projectId;
+        if (
+          updatedProjectId &&
+          updatedProjectId === activeStateRef.current?.projectId
+        ) {
+          void refreshActiveProjectState();
+        }
         return;
       }
 
@@ -1258,6 +1283,21 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     );
   }
 
+  async function removeNote(memoryId: string) {
+    await runBusyAction(
+      "Removing note…",
+      "Note removed.",
+      async () => {
+        const response = await relayFetch(`/api/memory/${memoryId}`, {
+          method: "DELETE",
+        });
+        if (!response.ok && response.status !== 204) {
+          throw new Error(await readErrorMessage(response, "Note removal failed."));
+        }
+      },
+    );
+  }
+
   function startEdit(item: ContextItem) {
     setEditingKey(item.key);
     setEditingText(item.text);
@@ -2090,7 +2130,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
             {/* ─── Tab content ─── */}
             {activeContextTab === "all" ? (
-              /* All tab: show 3-card layout (original view) */
+              /* All tab: 3-card layout + notes row */
+              <>
               <div className={styles.contextStack}>
                 {contextSections.map((section) => {
                   const items = activeState.contextPreview[section];
@@ -2198,6 +2239,29 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   );
                 })}
               </div>
+              <div className={`${styles.contextSection} ${styles.contextSectionNotes}`}>
+                <div className={styles.contextSectionHeader}>
+                  <span className={styles.contextLabel}>Notes</span>
+                  <span className={styles.contextTabCount}>
+                    {activeState.contextPreview.notes.length}
+                  </span>
+                </div>
+                {activeState.contextPreview.notes.length === 0 ? (
+                  <p className={styles.emptyHint}>
+                    Right-click any text on the web → Save to Relay.
+                  </p>
+                ) : (
+                  activeState.contextPreview.notes.map((note) => (
+                    <SidepanelNoteItem
+                      key={note.memoryId}
+                      note={note}
+                      busy={busy}
+                      onDelete={() => void removeNote(note.memoryId)}
+                    />
+                  ))
+                )}
+              </div>
+              </>
             ) : (
               /* Single-section tab: unified list with composer */
               (() => {
@@ -2295,5 +2359,64 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         </>
       )}
     </div>
+  );
+}
+
+function formatNoteRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const diffSec = Math.round((Date.now() - then) / 1000);
+  if (diffSec < 60) return "just now";
+  const mins = Math.round(diffSec / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
+
+interface SidepanelNoteItemProps {
+  note: RelayActiveProjectState["contextPreview"]["notes"][number];
+  busy: boolean;
+  onDelete: () => void;
+}
+
+function SidepanelNoteItem({ note, busy, onDelete }: SidepanelNoteItemProps) {
+  const favicon = note.hostname
+    ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(note.hostname)}&sz=32`
+    : null;
+
+  return (
+    <article className={styles.noteItem}>
+      <p className={styles.noteText}>{note.text}</p>
+      <footer className={styles.noteFooter}>
+        {note.sourceUrl && note.hostname ? (
+          <a
+            href={note.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.noteSourceChip}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {favicon ? (
+              <img src={favicon} alt="" width={12} height={12} />
+            ) : null}
+            <span className={styles.noteHostname}>{note.hostname}</span>
+          </a>
+        ) : null}
+        <time className={styles.noteTime} dateTime={note.capturedAt}>
+          {formatNoteRelativeTime(note.capturedAt)}
+        </time>
+        <button
+          type="button"
+          className={styles.noteDelete}
+          disabled={busy}
+          onClick={onDelete}
+          aria-label="Delete note"
+        >
+          Remove
+        </button>
+      </footer>
+    </article>
   );
 }

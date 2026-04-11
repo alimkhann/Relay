@@ -52,10 +52,20 @@ export interface RelayContextPreviewItem {
   memoryId?: string | null;
 }
 
+export interface RelayContextNoteItem {
+  key: string;
+  memoryId: string;
+  text: string;
+  sourceUrl: string | null;
+  hostname: string | null;
+  capturedAt: string;
+}
+
 export interface RelayContextPreview {
   decisions: RelayContextPreviewItem[];
   constraints: RelayContextPreviewItem[];
   tasks: RelayContextPreviewItem[];
+  notes: RelayContextNoteItem[];
 }
 
 export interface RelayChatAssociation {
@@ -236,6 +246,10 @@ export type RelayMessage =
   | {
       type: "RELAY_LOG_TELEMETRY";
       payload: TelemetryEventInput;
+    }
+  | {
+      type: "RELAY_PROJECT_MEMORY_UPDATED";
+      payload: { projectId: string };
     };
 
 export interface RelayPageState {
