@@ -20,6 +20,8 @@ import { DashboardMemoryCard } from "@/features/projects/dashboard-memory-card";
 import { DashboardBriefCard } from "@/features/projects/dashboard-brief-card";
 import { DashboardActivityCard } from "@/features/projects/dashboard-activity-card";
 import { DashboardGovernanceSummary } from "@/features/projects/dashboard-governance-summary";
+import { NotesSection } from "@/features/memory/notes-section";
+import { selectPinnedNotes } from "@/features/memory/notes-selector";
 import { cn } from "@/lib/cn";
 import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
@@ -576,6 +578,15 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
       {/* ─── Governance summary ─── */}
       <FadeIn delay={0.2}>
         <DashboardGovernanceSummary projectId={project.id} dashboard={dashboard} />
+      </FadeIn>
+
+      {/* ─── Pinned notes ─── */}
+      <FadeIn delay={0.25}>
+        <NotesSection
+          notes={selectPinnedNotes(dashboard.memory)}
+          variant="dashboard"
+          projectId={project.id}
+        />
       </FadeIn>
 
       {/* ─── Delete confirmation dialog ─── */}

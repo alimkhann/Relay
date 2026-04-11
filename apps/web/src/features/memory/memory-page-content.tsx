@@ -9,6 +9,8 @@ import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FadeIn } from "@/components/ui/fade-in";
 import { GovernanceSection } from "@/features/projects/governance-section";
+import { NotesSection } from "@/features/memory/notes-section";
+import { selectPinnedNotes } from "@/features/memory/notes-selector";
 import {
   buildProjectMemoryOverridePatch,
   deriveProjectMemoryDrafts,
@@ -302,6 +304,15 @@ export function MemoryPageContent({
           visibleSections={visibleSections}
         />
         </div>
+      </FadeIn>
+
+      {/* Pinned notes (full width below governance) */}
+      <FadeIn delay={0.2}>
+        <NotesSection
+          notes={selectPinnedNotes(dashboard.memory)}
+          variant="memory-page"
+          projectId={project.id}
+        />
       </FadeIn>
 
       {status && (
