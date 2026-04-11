@@ -36,6 +36,22 @@ pnpm db:local:count
 pnpm db:local:reset
 ```
 
+## Extension Google Auth
+
+Relay's extension sign-in uses `chrome.identity.launchWebAuthFlow()`. Google only accepts the exact redirect URI returned by `chrome.identity.getRedirectURL()`, which is tied to the extension ID.
+
+For any shared, zipped, or production build:
+
+1. Set `CRX_PUBLIC_KEY` for the extension build so the extension ID stays stable.
+2. Set `PLASMO_PUBLIC_CRX_GOOGLE_CLIENT_ID` to the Google OAuth client used by the extension.
+3. In Google Cloud Console, add the exact redirect URI for that extension ID to the OAuth client's authorized redirect URIs:
+
+```text
+https://<your-extension-id>.chromiumapp.org/
+```
+
+If you distribute unsigned test builds without a fixed `CRX_PUBLIC_KEY`, each install can get a different extension ID and Google sign-in will fail with `Error 400: redirect_uri_mismatch`.
+
 ## Tooling
 
 - Next.js App Router

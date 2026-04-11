@@ -1,6 +1,6 @@
 {
   "name": "@onrelay/mcp",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Relay MCP server for local AI coding tools",
   "license": "UNLICENSED",
   "type": "module",
@@ -14,10 +14,12 @@
     "url": "https://github.com/alimkhann/Relay/issues"
   },
   "bin": {
-    "relay-mcp": "./dist/index.js"
+    "relay-mcp": "./dist/index.js",
+    "relay-flush": "./dist/flush-cli.js"
   },
   "files": [
     "dist",
+    "skills",
     "README.md"
   ],
   "publishConfig": {

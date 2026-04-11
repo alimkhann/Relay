@@ -243,6 +243,52 @@ export class RelayClient {
     }
   }
 
+  /**
+   * Flush the active work session through Relay's digest + reconcile pipeline.
+   * This is the autonomous save path: structured state → digest → project
+   * state merge → conflict reconciliation → session closed.
+   *
+   * Safe to call repeatedly: a closed session is a no-op on the server.
+   */
+  async flushWorkSession(reason: "precompact" | "session_end" | "stop" | "explicit" = "explicit") {
+    if (!this.workSession) return
+    const { id, projectId } = this.workSession
+
+    try {
+      await this.post(`/api/projects/${projectId}/work-sessions/flush`, {
+        sessionId: id,
+        reason,
+        summaryShort: this.buildSummaryShort() ?? null,
+        structuredState: this.hasMeaningfulState() ? this.workSessionState : null,
+      })
+    } catch {
+      // Best-effort flush
+    } finally {
+      this.workSession = null
+      this.workSessionState = createEmptyAggregateState()
+    }
+  }
+
+  /**
+   * Sweep any open work sessions for this viewer+project — used by hook-driven
+   * flush where the caller may not have the session object in memory yet
+   * (e.g. `relay-flush` CLI invoked from Claude Code `PreCompact`).
+   */
+  async sweepOpenWorkSessions(projectId: string, options?: { idleMs?: number; reason?: string; limit?: number }) {
+    try {
+      return await this.post<{ flushedCount: number; skippedCount: number }>(
+        `/api/projects/${projectId}/work-sessions/flush`,
+        {
+          reason: options?.reason ?? "sweep",
+          idleMs: options?.idleMs ?? 0,
+          limit: options?.limit ?? 3,
+        },
+      )
+    } catch {
+      return { flushedCount: 0, skippedCount: 0 }
+    }
+  }
+
   private buildSummaryShort() {
     return (
       this.workSessionState.progress ??
@@ -305,7 +351,9 @@ export class RelayClient {
     this.hooksRegistered = true
 
     const shutdown = async (exitCode?: number) => {
-      await this.closeWorkSession()
+      // Prefer the flush pipeline (runs digest + reconcile before closing).
+      // Falls back gracefully on any error inside flushWorkSession.
+      await this.flushWorkSession("session_end")
       await this.analytics?.shutdown()
       if (typeof exitCode === "number") {
         process.exit(exitCode)

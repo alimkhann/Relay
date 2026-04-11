@@ -13,11 +13,7 @@ export const GET = withApiAuth(async (request: Request) => {
     await consumeMcpReadQuota(viewer.userId)
   }
   const projects = await listProjectsForUser(viewer.userId)
-  return NextResponse.json({
-    projects: viewer.mode === "mcp" && viewer.projectId
-      ? projects.filter((project) => project.id === viewer.projectId)
-      : projects
-  })
+  return NextResponse.json({ projects })
 })
 
 export const POST = withApiAuth(async (request: Request) => {

@@ -9,11 +9,28 @@ import {
   isSameTopic,
 } from "@relay/shared"
 
+import { emitMemoryEvent } from "./memory-service"
+
 export interface ReconciliationResult {
   archivedCount: number
   archivedItems: string[]
   disputedCount: number
   reaffirmedCount: number
+  supersedesEdges: number
+}
+
+function findSupersedingNewItem(
+  newItems: MemoryItemRow[] | undefined,
+  old: MemoryItemRow,
+): MemoryItemRow | undefined {
+  if (!newItems?.length) return undefined
+  return newItems.find(
+    (next) =>
+      next.type === old.type &&
+      !next.isArchived &&
+      next.id !== old.id &&
+      isSameTopic(next.content, old.content),
+  )
 }
 
 function buildTopicKey(item: MemoryItemRow, candidate: string) {
@@ -30,11 +47,15 @@ function mergeMetadata(item: MemoryItemRow, patch: Record<string, unknown>) {
 export async function reconcileAfterDigest(
   repositories: RepositoryBundle,
   projectId: string,
-  digest: SessionDigestShape
+  digest: SessionDigestShape,
+  options?: { newItems?: MemoryItemRow[]; userId?: string | null; sourceSurface?: string | null }
 ): Promise<ReconciliationResult> {
+  const actor = options?.userId ?? null
+  const surface = options?.sourceSurface ?? null
   const memoryItems = await repositories.memory.listByProject(projectId)
   const archivedItems: string[] = []
   const disputedItems = new Set<string>()
+  let supersedesEdges = 0
 
   const reconcilableTypes = new Set(["decision", "constraint", "task"])
   const candidates = memoryItems.filter(
@@ -64,6 +85,14 @@ export async function reconcileAfterDigest(
             }),
           })
           disputedItems.add(item.id)
+          void emitMemoryEvent(repositories, {
+            projectId,
+            memoryItemId: item.id,
+            eventType: "disputed",
+            sourceSurface: surface,
+            userId: actor,
+            payload: { type: item.type, disputedWith },
+          })
         }
       }
     }
@@ -88,6 +117,14 @@ export async function reconcileAfterDigest(
             }),
           })
           disputedItems.add(item.id)
+          void emitMemoryEvent(repositories, {
+            projectId,
+            memoryItemId: item.id,
+            eventType: "disputed",
+            sourceSurface: surface,
+            userId: actor,
+            payload: { type: item.type, disputedWith },
+          })
         }
       }
     }
@@ -108,6 +145,36 @@ export async function reconcileAfterDigest(
         }),
       })
       archivedItems.push(item.content)
+
+      // Wire memory_relations.supersedes: new item invalidates old. Lets
+      // hybridSearch's supersedes-aware filter hide the old item and the
+      // brief surface the newer fact with traceable provenance.
+      const superseder = findSupersedingNewItem(options?.newItems, item)
+      if (superseder) {
+        try {
+          await repositories.memory.addRelation(superseder.id, item.id, "supersedes", 0.85)
+          supersedesEdges += 1
+          void emitMemoryEvent(repositories, {
+            projectId,
+            memoryItemId: superseder.id,
+            eventType: "superseded",
+            sourceSurface: surface,
+            userId: actor,
+            payload: { type: item.type, targetId: item.id, confidence: 0.85 },
+          })
+        } catch {
+          // Relation already exists or source/target archived race — ignore.
+        }
+      }
+
+      void emitMemoryEvent(repositories, {
+        projectId,
+        memoryItemId: item.id,
+        eventType: "archived",
+        sourceSurface: surface,
+        userId: actor,
+        payload: { type: item.type, reason: "digest_replaced" },
+      })
     }
   }
 
@@ -128,6 +195,14 @@ export async function reconcileAfterDigest(
     if (reaffirmed) {
       await repositories.memory.reaffirm(item.id)
       reaffirmedCount += 1
+      void emitMemoryEvent(repositories, {
+        projectId,
+        memoryItemId: item.id,
+        eventType: "reaffirmed",
+        sourceSurface: surface,
+        userId: actor,
+        payload: { type: item.type },
+      })
     }
   }
 
@@ -136,5 +211,6 @@ export async function reconcileAfterDigest(
     archivedItems,
     disputedCount: disputedItems.size,
     reaffirmedCount,
+    supersedesEdges,
   }
 }

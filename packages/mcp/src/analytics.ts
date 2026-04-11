@@ -52,11 +52,13 @@ export class RelayMcpAnalytics {
       : null
 
     this.distinctId = this.client ? `relay-mcp:${randomUUID()}` : null
-    this.client?.register({
-      app_source: "relay-mcp",
-      app: "mcp",
-      environment: process.env.NODE_ENV ?? "development",
-    })
+    if (this.client) {
+      void this.client.register({
+        app_source: "relay-mcp",
+        app: "mcp",
+        environment: process.env.NODE_ENV ?? "development",
+      })
+    }
   }
 
   async identify(apiBase: string, token: string) {

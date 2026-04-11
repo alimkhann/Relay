@@ -1,6 +1,6 @@
 services:
   relay-postgres:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     container_name: relay-postgres-local
     restart: unless-stopped
     environment:

@@ -3,10 +3,11 @@ import type { AiJobRunRow, CreateMemoryItemInput, ProjectStateRow, SessionDigest
 import { buildCaptureSignature, DECAY_ARCHIVE_THRESHOLD, hasReplacementSignal, isSameTopic, normalizeText, truncateSentence } from "@relay/shared"
 
 import { reconcileAfterDigest } from "./context-reconciliation-service"
+import { decomposeBulletWithTraceability } from "./fact-extractor"
 import { runContinuityMaintenanceForProjectWithRepositories } from "./continuity-maintenance-service"
 import { resolveViewerEntitlements } from "./entitlement-service"
 import { describeGeminiError, GEMINI_MODELS, runGeminiJsonWithFallback, type GeminiStage } from "./gemini-service"
-import { embedAndRelateItems } from "./memory-service"
+import { embedAndRelateItems, emitMemoryEvent } from "./memory-service"
 import { mergeDigestIntoState } from "./project-state-service"
 import { resolveProjectAiBudget } from "./ai-budget-service"
 
@@ -574,7 +575,11 @@ async function persistDigestResult(
         session: input.session,
       })
 
-      const reconciliation = await reconcileAfterDigest(tx, input.projectId, input.digest)
+      const reconciliation = await reconcileAfterDigest(tx, input.projectId, input.digest, {
+        newItems: digestMemoryItems,
+        userId,
+        sourceSurface: (input.session.platform as string) ?? null,
+      })
       await runContinuityMaintenanceForProjectWithRepositories(tx, input.projectId)
 
       // Auto-cleanup: archive expired + decayed items, enforce memory budget
@@ -600,18 +605,35 @@ async function createMemoryItemsFromDigest(
     session: SourceSessionRow
   }
 ) {
-  const entries: Array<{ content: string; type: "decision" | "constraint" | "task" }> = []
-  for (const d of input.digest.newDecisions) entries.push({ content: d, type: "decision" })
-  for (const c of input.digest.newConstraints) entries.push({ content: c, type: "constraint" })
-  for (const t of input.digest.newTasks) entries.push({ content: t, type: "task" })
+  // Atomic fact decomposition (Mem0-lite): split each bullet into
+  // individually-embeddable atomic facts so the reconciler and hybrid search
+  // can match/supersede/rank each fact independently. Deterministic — no
+  // extra LLM spend.
+  const entries: Array<{ content: string; type: "decision" | "constraint" | "task"; parent: string | null }> = []
+  const pushDecomposed = (bullet: string, type: "decision" | "constraint" | "task") => {
+    const { parent, atoms } = decomposeBulletWithTraceability(bullet)
+    if (atoms.length > 1) {
+      for (const atom of atoms) entries.push({ content: atom, type, parent })
+    } else {
+      entries.push({ content: parent, type, parent: null })
+    }
+  }
+  for (const d of input.digest.newDecisions) pushDecomposed(d, "decision")
+  for (const c of input.digest.newConstraints) pushDecomposed(c, "constraint")
+  for (const t of input.digest.newTasks) pushDecomposed(t, "task")
 
   if (entries.length === 0) return []
 
   // Dedup: fetch existing memory items and check for topic-level matches
   const existing = await tx.memory.listByProject(input.projectId)
+  const intraBatchSeen = new Set<string>()
 
   const newItems: CreateMemoryItemInput[] = []
   for (const entry of entries) {
+    const intraKey = `${entry.type}:${entry.content.toLowerCase()}`
+    if (intraBatchSeen.has(intraKey)) continue
+    intraBatchSeen.add(intraKey)
+
     const sameTypeExisting = existing.filter((m) => m.type === entry.type && !m.isArchived)
     const topicMatch = sameTypeExisting.find((m) => isSameTopic(m.content, entry.content))
     if (topicMatch) {
@@ -619,6 +641,14 @@ async function createMemoryItemsFromDigest(
         await tx.memory.update(topicMatch.id, {
           isArchived: true,
           metadata: { ...(topicMatch.metadata ?? {}), archivedBy: "digest_replaced" },
+        })
+        void emitMemoryEvent(tx, {
+          projectId: input.projectId,
+          memoryItemId: topicMatch.id,
+          eventType: "archived",
+          sourceSurface: (input.session.platform as string) ?? null,
+          userId,
+          payload: { type: topicMatch.type, reason: "digest_replaced" },
         })
       } else {
         continue
@@ -634,8 +664,12 @@ async function createMemoryItemsFromDigest(
       sourceUrl: input.session.url ?? null,
       capturedAt: new Date().toISOString(),
       derivedFrom: [input.digestId],
-      metadata: { source: "digest", digestId: input.digestId },
-      tags: ["digest"],
+      metadata: {
+        source: "digest",
+        digestId: input.digestId,
+        ...(entry.parent ? { parentBullet: entry.parent, atomic: true } : {}),
+      },
+      tags: entry.parent ? ["digest", "atomic"] : ["digest"],
     })
   }
 

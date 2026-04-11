@@ -52,11 +52,13 @@ export class RelayCliAnalytics {
       : null
 
     this.distinctId = this.client ? `relay-cli:${randomUUID()}` : null
-    this.client?.register({
-      app_source: "relay-cli",
-      app: "cli",
-      environment: process.env.NODE_ENV ?? "development",
-    })
+    if (this.client) {
+      void this.client.register({
+        app_source: "relay-cli",
+        app: "cli",
+        environment: process.env.NODE_ENV ?? "development",
+      })
+    }
   }
 
   async identify(apiBase: string, token: string) {

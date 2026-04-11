@@ -254,6 +254,26 @@ export interface WorkSessionRow {
   updatedAt: string
 }
 
+export type MemoryEventType =
+  | "created"
+  | "updated"
+  | "archived"
+  | "reaffirmed"
+  | "superseded"
+  | "disputed"
+  | "restored"
+
+export interface MemoryEventRow {
+  id: string
+  projectId: string
+  memoryItemId: string | null
+  eventType: MemoryEventType
+  sourceSurface: string | null
+  userId: string | null
+  payload: Record<string, unknown>
+  createdAt: string
+}
+
 export interface WorkSessionEventRow {
   id: string
   workSessionId: string

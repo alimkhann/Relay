@@ -266,7 +266,7 @@ export class MemoryRepository {
        set embedding = case ${cases.join(" ")} end,
            embedding_model = case ${modelCases.join(" ")} end,
            updated_at = now()
-       where id = any($${paramIndex}::text[])`,
+       where id = any($${paramIndex}::uuid[])`,
       params
     )
   }
@@ -348,23 +348,61 @@ export class MemoryRepository {
     limit?: number
     types?: string[]
     tags?: string[]
+    /** Restrict to items captured within [from, to]. Either side may be omitted. */
+    dateRange?: { from?: string | null; to?: string | null }
+    /** Restrict to a specific source conversation (Claude/ChatGPT/Perplexity thread). */
+    sourceConversationId?: string | null
+    /** Restrict to specific capture surfaces (e.g. ["mcp", "chatgpt"]). */
+    surfaces?: string[]
+    /** When true, items with an incoming `supersedes` edge stay in the result. Defaults to false. */
+    includeSuperseded?: boolean
+    /** Recency half-life in days for the decay multiplier. Defaults to 30. */
+    recencyHalfLifeDays?: number
   }): Promise<SemanticSearchResult[]> {
     const limit = options?.limit ?? 20
     const threshold = options?.threshold ?? 0.5
+    const halfLifeDays = options?.recencyHalfLifeDays ?? 30
+    const includeSuperseded = options?.includeSuperseded === true
 
-    const typeFilter = options?.types?.length
-      ? `and type = ANY($5::text[])`
-      : ""
-    const tagFilter = options?.tags?.length
-      ? `and tags && $${options?.types?.length ? 6 : 5}::text[]`
-      : ""
-
+    // Build parameter list with a running counter so optional filters
+    // can be mixed and matched cleanly.
     const params: unknown[] = [projectId, query, JSON.stringify(queryEmbedding), threshold]
-    if (options?.types?.length) params.push(options.types)
-    if (options?.tags?.length) params.push(options.tags)
-    params.push(limit)
+    const addParam = (value: unknown) => {
+      params.push(value)
+      return `$${params.length}`
+    }
 
-    const limitParam = `$${params.length}`
+    const typeClause = options?.types?.length ? `and type = ANY(${addParam(options.types)}::text[])` : ""
+    const tagClause = options?.tags?.length ? `and tags && ${addParam(options.tags)}::text[]` : ""
+    const fromClause = options?.dateRange?.from
+      ? `and captured_at >= ${addParam(options.dateRange.from)}::timestamptz`
+      : ""
+    const toClause = options?.dateRange?.to
+      ? `and captured_at <= ${addParam(options.dateRange.to)}::timestamptz`
+      : ""
+    const convClause = options?.sourceConversationId
+      ? `and source_conversation_id = ${addParam(options.sourceConversationId)}`
+      : ""
+    const surfaceClause = options?.surfaces?.length
+      ? `and source_surface = ANY(${addParam(options.surfaces)}::text[])`
+      : ""
+    const filterSql = [typeClause, tagClause, fromClause, toClause, convClause, surfaceClause]
+      .filter(Boolean)
+      .join(" ")
+
+    const halfLifeParam = addParam(halfLifeDays)
+    const limitParam = addParam(limit)
+
+    // Decay multiplier: 2^(-ageDays / halfLife). `lastReaffirmedAt` refreshes the
+    // clock (Mem0-style reaffirmation), so a cited-recent item scores as fresh.
+    const decayExpr = `power(2.0, -1.0 * (extract(epoch from (now() - coalesce(m.last_reaffirmed_at, m.captured_at, m.created_at))) / 86400.0) / ${halfLifeParam}::float)`
+
+    const supersededFilter = includeSuperseded
+      ? ""
+      : `and not exists (
+           select 1 from memory_relations r
+           where r.target_id = m.id and r.relation_type = 'supersedes'
+         )`
 
     const rows = await this.provider.query(
       `with semantic as (
@@ -374,17 +412,17 @@ export class MemoryRepository {
            and is_archived = false
            and embedding is not null
            and 1 - (embedding <=> $3::vector) >= $4
-           ${typeFilter} ${tagFilter}
+           ${filterSql}
          order by embedding <=> $3::vector
          limit ${limitParam}
        ),
        lexical as (
-         select id, ts_rank(search_vector, plainto_tsquery('english', $2)) as score, 'lexical'::text as match_type
+         select id, ts_rank(search_vector, websearch_to_tsquery('english', $2)) as score, 'lexical'::text as match_type
          from memory_items
          where project_id = $1
            and is_archived = false
-           and search_vector @@ plainto_tsquery('english', $2)
-           ${typeFilter} ${tagFilter}
+           and search_vector @@ websearch_to_tsquery('english', $2)
+           ${filterSql}
          order by score desc
          limit ${limitParam}
        ),
@@ -393,12 +431,18 @@ export class MemoryRepository {
          from (select * from semantic union all select * from lexical) u
          group by id
        )
-       select ${prefixCols("m")}, c.score as similarity, c.match_type
+       select ${prefixCols("m")},
+              c.score as raw_score,
+              ${decayExpr} as recency_decay,
+              (c.score * ${decayExpr}) as similarity,
+              c.match_type
        from combined c
        join memory_items m on m.id = c.id
-       order by m.pinned desc, c.score desc
+       where true
+         ${supersededFilter}
+       order by m.pinned desc, similarity desc
        limit ${limitParam}`,
-      params
+      params,
     )
 
     return rows.map((record) => {
@@ -406,7 +450,7 @@ export class MemoryRepository {
       return {
         ...toMemoryRow(row),
         similarity: Number(row.similarity ?? 0),
-        matchType: (row.match_type as "semantic" | "lexical") ?? "semantic"
+        matchType: (row.match_type as "semantic" | "lexical") ?? "semantic",
       }
     })
   }

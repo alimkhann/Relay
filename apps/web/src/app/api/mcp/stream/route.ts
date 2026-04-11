@@ -4,7 +4,54 @@ import { z } from "zod"
 
 import { isAuthRequiredError, resolveViewer, type Viewer } from "@/server/policies/viewer"
 import { assertIpRateLimit } from "@/server/services/rate-limit-service"
+import { createRepositoryBundle } from "@relay/db"
+import { detectCrossSurfaceDrifts } from "@/server/services/drift-reconciler"
+import { sweepOpenWorkSessions } from "@/server/services/work-session-flush-service"
 import { RelayHttpMcpClient } from "./relay-http-mcp-client"
+
+/**
+ * Opportunistic sweep throttle. Per-user in-memory map of last sweep timestamp.
+ * Keeps the sweep cheap and bounded — at most one sweep per user per window.
+ * Map is process-local; a new edge/lambda instance gets a fresh map, which is
+ * fine: the sweep is idempotent and the worst case is "one extra sweep per
+ * cold start".
+ */
+const SWEEP_THROTTLE_MS = 30_000
+/** Sweep sessions that have been idle for at least this long. */
+const SWEEP_IDLE_MS = 10 * 60 * 1000
+/** Max sessions flushed per sweep — bounds the latency ceiling. */
+const SWEEP_MAX_SESSIONS = 3
+const lastSweepAt = new Map<string, number>()
+
+async function maybeSweepStaleSessions(viewer: Viewer): Promise<void> {
+  const key = viewer.userId
+  const now = Date.now()
+  const last = lastSweepAt.get(key) ?? 0
+  if (now - last < SWEEP_THROTTLE_MS) return
+  lastSweepAt.set(key, now)
+
+  try {
+    await sweepOpenWorkSessions(viewer.userId, {
+      projectId: viewer.projectId ?? null,
+      idleMs: SWEEP_IDLE_MS,
+      limit: SWEEP_MAX_SESSIONS,
+      reason: "sweep",
+    })
+  } catch {
+    // Sweep failures must not impact the caller's request.
+  }
+
+  // Cross-surface drift detection: piggyback on the sweep cadence so we pay
+  // one drift scan per user per throttle window, not per request.
+  if (viewer.projectId) {
+    try {
+      const repos = createRepositoryBundle(viewer.userId)
+      await detectCrossSurfaceDrifts(repos, viewer.projectId, { userId: viewer.userId })
+    } catch {
+      // Drift reconciler failures must not impact the caller's request.
+    }
+  }
+}
 
 async function resolveViewerFromRequest(request: Request): Promise<Viewer> {
   const authHeader = request.headers.get("authorization")
@@ -71,6 +118,10 @@ function registerHttpTools(
       }
       const { createRepositoryBundle } = await import("@relay/db")
       const repositories = createRepositoryBundle(viewer.userId)
+      const project = await repositories.projects.getById(args.projectId)
+      if (!project) {
+        throw new Error("Project not found or not accessible to the current MCP user.")
+      }
       await repositories.mcpTokens.setProjectId(viewer.mcpTokenId, args.projectId)
       return {
         content: [
@@ -177,7 +228,7 @@ Call this at the start of every coding session to restore project memory.`,
 
   server.tool(
     "context.save",
-    "Save a structured session summary with decisions, progress, next steps, and constraints. Call this at the end of a coding session.",
+    `Push a structured session snapshot into Relay and run it through the digest + reconcile pipeline. You do NOT need to call this at natural break points — Relay auto-flushes via Claude Code hooks (relay-flush), stdio shutdown, and an opportunistic server-side sweep that runs before every MCP request. Call explicitly only for an immediate checkpoint or when ending a session on a hookless client. Set finalize=false to record state without closing the session.`,
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
       summary: z.string().optional().describe("High-level session summary"),
@@ -186,13 +237,52 @@ Call this at the start of every coding session to restore project memory.`,
       nextSteps: z.array(z.string()).optional().describe("Tasks or next steps identified"),
       constraints: z.array(z.string()).optional().describe("Constraints discovered during the session"),
       notes: z.array(z.string()).optional().describe("General notes or observations"),
+      currentObjective: z.string().optional().describe("Current objective or focus for the project"),
+      relevantTools: z.array(z.string()).optional().describe("Tools, frameworks, or surfaces relevant to the session"),
+      touchedFiles: z.array(z.string()).optional().describe("Files materially touched during the session"),
+      finalize: z.boolean().optional().describe("When true (default), flush + close the work session after saving."),
     },
     { readOnlyHint: false, destructiveHint: false },
     async (args) => {
       const pid = await resolveProjectId(args.projectId)
       await client.saveContext(pid, args as Record<string, unknown>)
+      const finalized = args.finalize !== false
       return {
-        content: [{ type: "text" as const, text: "Context saved successfully." }]
+        content: [
+          {
+            type: "text" as const,
+            text: finalized
+              ? "Relay: session flushed through digest + reconcile pipeline."
+              : "Relay: checkpoint saved. Will flush on next finalize or hook trigger.",
+          },
+        ],
+      }
+    }
+  )
+
+  server.tool(
+    "context.checkpoint",
+    "Mid-session snapshot: identical payload to context.save but never closes the work session. Relay will flush automatically at the next hook/shutdown/sweep.",
+    {
+      projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
+      summary: z.string().optional().describe("High-level session summary"),
+      decisions: z.array(z.string()).optional().describe("Decisions made during the session"),
+      progress: z.string().optional().describe("Description of progress made"),
+      nextSteps: z.array(z.string()).optional().describe("Tasks or next steps identified"),
+      constraints: z.array(z.string()).optional().describe("Constraints discovered during the session"),
+      notes: z.array(z.string()).optional().describe("General notes or observations"),
+      currentObjective: z.string().optional().describe("Current objective or focus for the project"),
+      relevantTools: z.array(z.string()).optional().describe("Tools, frameworks, or surfaces relevant to the session"),
+      touchedFiles: z.array(z.string()).optional().describe("Files materially touched during the session"),
+    },
+    { readOnlyHint: false, destructiveHint: false },
+    async (args) => {
+      const pid = await resolveProjectId(args.projectId)
+      await client.saveContext(pid, { ...(args as Record<string, unknown>), finalize: false })
+      return {
+        content: [
+          { type: "text" as const, text: "Relay: checkpoint saved. Will flush on next hook/shutdown/sweep." },
+        ],
       }
     }
   )
@@ -212,6 +302,31 @@ Call this at the start of every coding session to restore project memory.`,
       await client.manageMemory(args as Record<string, unknown>)
       return {
         content: [{ type: "text" as const, text: `Memory item ${args.action}d successfully.` }]
+      }
+    }
+  )
+
+  server.tool(
+    "project.set_state",
+    "Upsert the high-level project state used for briefs and dashboard overview. Use this when bootstrapping or correcting canonical project context from an agent session. Omitted scalar fields stay unchanged; list fields merge uniquely unless replaceLists is true.",
+    {
+      projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
+      projectOverview: z.string().optional().describe("High-level description of what the project is."),
+      currentObjective: z.string().optional().describe("Current goal or focus area for the project."),
+      recentProgress: z.string().optional().describe("Recent progress worth carrying forward."),
+      stackDomain: z.string().optional().describe("Short stack or domain summary."),
+      decisions: z.array(z.string()).optional().describe("Durable project decisions to merge into state."),
+      constraints: z.array(z.string()).optional().describe("Constraints to merge into project state."),
+      openTasks: z.array(z.string()).optional().describe("Open tasks to merge into project state."),
+      relevantTools: z.array(z.string()).optional().describe("Relevant tools, platforms, or surfaces to merge into state."),
+      replaceLists: z.boolean().optional().describe("Replace list fields instead of merging them uniquely."),
+    },
+    { readOnlyHint: false, destructiveHint: false },
+    async (args) => {
+      const pid = await resolveProjectId(args.projectId)
+      const state = await client.setProjectState(pid, args as Record<string, unknown>)
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify({ state }, null, 2) }],
       }
     }
   )
@@ -325,6 +440,11 @@ async function handleMcpRequest(request: Request) {
     }
     throw error
   }
+
+  // Opportunistic sweep: flush stale open work sessions before this request
+  // runs so stale state from a prior crashed/orphaned session doesn't leak
+  // into the agent's view. Runs at most once per user per SWEEP_THROTTLE_MS.
+  await maybeSweepStaleSessions(viewer)
 
   const server = createHttpMcpServer(viewer)
 

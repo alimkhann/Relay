@@ -9,6 +9,7 @@ import { saveContextSchema, saveContext } from "./save-context.js"
 import { manageMemorySchema, manageMemory } from "./manage-memory.js"
 import { updateProjectSchema, updateProject } from "./update-project.js"
 import { recallContextSchema, recallContext } from "./recall-context.js"
+import { setProjectStateSchema, setProjectState } from "./set-project-state.js"
 import { z } from "zod"
 
 interface ToolRegistrationContext {
@@ -131,25 +132,25 @@ Call this at the start of every coding session to restore project memory.`,
 
   server.tool(
     "save_context",
-    "Save a structured coding session summary to Relay. Creates multiple memory items atomically from a session summary, decisions, progress, next steps, constraints, and notes. Call this before ending a session to preserve context for the next agent.",
+    `Push a structured session snapshot (summary, decisions, progress, constraints, next steps, notes) into Relay's active work session and run it through the digest + reconcile pipeline.
+
+You DO NOT need to call this at natural break points — Relay auto-flushes on Claude Code's PreCompact/SessionEnd/Stop hooks (via relay-flush), on stdio shutdown, and opportunistically on the server before any MCP request. Call it explicitly only when the agent or user wants an immediate checkpoint (e.g. "save this decision now") or when ending a session from a client without hooks.
+
+Set finalize=false to record state without closing the session — useful for mid-session snapshots. Default finalize=true flushes and closes.`,
     saveContextSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
-      const result = await saveContext(client, args, projectId)
-      await client.recordSessionMutation(projectId, {
-        eventType: "session_context_saved",
-        eventPayload: {
-          savedVia: "relay_save_context",
-        },
-        summary: args.summary,
-        progress: args.progress,
-        decisions: args.decisions,
-        constraints: args.constraints,
-        nextSteps: args.nextSteps,
-        notes: args.notes,
-      }).catch(() => {})
-      await client.closeWorkSession().catch(() => {})
-      return result
+      return saveContext(client, args, projectId)
+    }
+  )
+
+  server.tool(
+    "checkpoint_context",
+    "Mid-session snapshot: identical payload to save_context but never closes the work session. Use when you want the current decisions/progress persisted in the work session without triggering a full flush. Relay will flush automatically at the next hook/shutdown/sweep.",
+    saveContextSchema.shape,
+    async (args) => {
+      const projectId = await resolveProjectId(args.projectId)
+      return saveContext(client, { ...args, finalize: false }, projectId)
     }
   )
 
@@ -166,6 +167,30 @@ Call this at the start of every coding session to restore project memory.`,
           memoryId: args.memoryId,
         }).catch(() => undefined)
       }
+      return result
+    }
+  )
+
+  server.tool(
+    "set_project_state",
+    "Upsert the high-level project state used for briefs and dashboard overview. Use this when bootstrapping or correcting canonical project context from an agent session. Omitted scalar fields stay unchanged; list fields merge uniquely unless replaceLists is true.",
+    setProjectStateSchema.shape,
+    async (args) => {
+      const projectId = await resolveProjectId(args.projectId)
+      const result = await setProjectState(client, args, projectId)
+      await client.recordSessionMutation(projectId, {
+        eventType: "project_state_updated",
+        eventPayload: {
+          replaceLists: args.replaceLists ?? false,
+        },
+        summary: args.projectOverview,
+        currentObjective: args.currentObjective,
+        progress: args.recentProgress,
+        decisions: args.decisions,
+        constraints: args.constraints,
+        nextSteps: args.openTasks,
+        relevantTools: args.relevantTools,
+      }).catch(() => {})
       return result
     }
   )

@@ -1,9 +1,39 @@
 import { createRepositoryBundle, type RepositoryBundle } from "@relay/db"
-import type { CreateMemoryItemInput, MemoryItemRow } from "@relay/shared"
+import type { CreateMemoryItemInput, MemoryEventType, MemoryItemRow } from "@relay/shared"
 import { computeDecayScore, createMemoryItemSchema, DECAY_VISIBILITY_THRESHOLD, hasReplacementSignal, isSameTopic, updateMemoryItemSchema } from "@relay/shared"
 
 import { embedMemoryItem, embedMemoryItems, generateEmbedding } from "./embedding-service"
 import { detectRelations } from "./relation-service"
+
+/**
+ * Fire-and-forget memory event emit. Failures never propagate — events are
+ * audit/analytics, not the source of truth. Null userId means "unknown actor"
+ * (e.g. background job).
+ */
+export async function emitMemoryEvent(
+  repos: RepositoryBundle,
+  input: {
+    projectId: string
+    eventType: MemoryEventType
+    memoryItemId?: string | null
+    sourceSurface?: string | null
+    userId?: string | null
+    payload?: Record<string, unknown>
+  },
+): Promise<void> {
+  try {
+    await repos.memoryEvents.create({
+      projectId: input.projectId,
+      memoryItemId: input.memoryItemId ?? null,
+      eventType: input.eventType,
+      sourceSurface: input.sourceSurface ?? null,
+      userId: input.userId ?? null,
+      payload: input.payload ?? {},
+    })
+  } catch (error) {
+    console.error("[memory-service] emitMemoryEvent failed:", error instanceof Error ? error.message : error)
+  }
+}
 
 /** Fire-and-forget: generate embedding + detect relations for a new item */
 async function postCreateHook(item: MemoryItemRow, repos: ReturnType<typeof createRepositoryBundle>) {
@@ -63,6 +93,15 @@ export async function createMemoryItem(userId: string, input: unknown) {
   const item = await repositories.memory.create(userId, parsed)
   await repositories.bootstrapPackets.clearProject(parsed.projectId)
 
+  void emitMemoryEvent(repositories, {
+    projectId: item.projectId,
+    memoryItemId: item.id,
+    eventType: "created",
+    sourceSurface: item.sourceSurface,
+    userId,
+    payload: { type: item.type },
+  })
+
   // Async: generate embedding + detect relations (don't block response)
   void postCreateHook(item, repositories)
 
@@ -73,6 +112,17 @@ export async function createMemoryItemBatch(userId: string, projectId: string, i
   const repositories = createRepositoryBundle(userId)
   const created = await repositories.memory.createBatch(userId, items)
   await repositories.bootstrapPackets.clearProject(projectId)
+
+  for (const item of created) {
+    void emitMemoryEvent(repositories, {
+      projectId: item.projectId,
+      memoryItemId: item.id,
+      eventType: "created",
+      sourceSurface: item.sourceSurface,
+      userId,
+      payload: { type: item.type, batch: true },
+    })
+  }
 
   // Async: generate embeddings for all new items
   void embedMemoryItems(created, repositories).then(async () => {
@@ -123,6 +173,20 @@ export async function updateMemoryItem(userId: string, memoryId: string, input: 
   }
   const item = await repositories.memory.update(memoryId, parsed)
   await repositories.bootstrapPackets.clearProject(existing?.projectId ?? item.projectId)
+
+  const becameArchived = !existing?.isArchived && item.isArchived
+  void emitMemoryEvent(repositories, {
+    projectId: item.projectId,
+    memoryItemId: item.id,
+    eventType: becameArchived ? "archived" : "updated",
+    sourceSurface: item.sourceSurface,
+    userId,
+    payload: {
+      type: item.type,
+      fieldsChanged: Object.keys(parsed),
+    },
+  })
+
   return item
 }
 
@@ -135,5 +199,13 @@ export async function deleteMemoryItem(userId: string, memoryId: string, project
   await repositories.memory.remove(memoryId)
   if (existing?.projectId) {
     await repositories.bootstrapPackets.clearProject(existing.projectId)
+    void emitMemoryEvent(repositories, {
+      projectId: existing.projectId,
+      memoryItemId: memoryId,
+      eventType: "archived",
+      sourceSurface: existing.sourceSurface,
+      userId,
+      payload: { type: existing.type, reason: "deleted" },
+    })
   }
 }

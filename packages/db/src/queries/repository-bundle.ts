@@ -12,6 +12,7 @@ import { ExtensionConnectGrantRepository } from "../repositories/extension-conne
 import { EntitlementRepository } from "../repositories/entitlement-repository"
 import { ExtensionTokenRepository } from "../repositories/extension-token-repository"
 import { MemberRepository } from "../repositories/member-repository"
+import { MemoryEventRepository } from "../repositories/memory-event-repository"
 import { MemoryRepository } from "../repositories/memory-repository"
 import { McpAuthSessionRepository } from "../repositories/mcp-auth-session-repository"
 import { McpTokenRepository } from "../repositories/mcp-token-repository"
@@ -44,6 +45,7 @@ export interface RepositoryBundle {
   sessions: SessionRepository
   turns: TurnRepository
   memory: MemoryRepository
+  memoryEvents: MemoryEventRepository
   mcpAuthSessions: McpAuthSessionRepository
   mcpTokens: McpTokenRepository
   contextPackets: ContextPacketRepository
@@ -87,6 +89,7 @@ export function createRepositoryBundle(
     sessions: new SessionRepository(provider),
     turns: new TurnRepository(provider),
     memory: new MemoryRepository(provider),
+    memoryEvents: new MemoryEventRepository(provider),
     mcpAuthSessions: new McpAuthSessionRepository(provider),
     mcpTokens: new McpTokenRepository(provider),
     contextPackets: new ContextPacketRepository(provider),

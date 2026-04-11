@@ -130,6 +130,37 @@ export class WorkSessionRepository {
     return toWorkSessionRow(row as Record<string, unknown>)
   }
 
+  /**
+   * List active work sessions owned by a user that should be considered
+   * for opportunistic flushing. By default returns all active sessions.
+   * Pass `updatedBefore` to restrict to sessions idle before that cutoff.
+   */
+  async listOpenForUser(input: {
+    userId: string
+    projectId?: string | null
+    updatedBefore?: string | null
+    limit?: number
+  }): Promise<WorkSessionRow[]> {
+    const rows = await this.provider.query(
+      `select *
+       from work_sessions
+       where user_id = $1
+         and status = 'active'
+         and ($2::uuid is null or project_id = $2)
+         and ($3::timestamptz is null or updated_at < $3::timestamptz)
+       order by updated_at asc
+       limit coalesce($4::int, 10)`,
+      [
+        input.userId,
+        input.projectId ?? null,
+        input.updatedBefore ?? null,
+        input.limit ?? null,
+      ],
+    )
+
+    return rows.map((row) => toWorkSessionRow(row as Record<string, unknown>))
+  }
+
   async markStaleOlderThan(input: {
     projectId: string
     surface: WorkSessionRow["surface"]

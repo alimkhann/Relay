@@ -35,6 +35,39 @@ interface ControlPanelProps {
   compact?: boolean;
 }
 
+interface DriftPreview {
+  id: string;
+  type: string;
+  content: string;
+  winnerId: string | null;
+  surfaces: string[];
+}
+
+interface MemoryListResponseItem {
+  id: string;
+  type: string;
+  content: string;
+  metadata?: Record<string, unknown> | null;
+}
+
+function extractDrifts(items: MemoryListResponseItem[]): DriftPreview[] {
+  const out: DriftPreview[] = [];
+  for (const item of items) {
+    const meta = (item.metadata ?? {}) as Record<string, unknown>;
+    const status = meta.conflictStatus;
+    if (status !== "disputed" && status !== "contested") continue;
+    out.push({
+      id: item.id,
+      type: item.type,
+      content: item.content,
+      winnerId: typeof meta.driftWinnerId === "string" ? meta.driftWinnerId : null,
+      surfaces: Array.isArray(meta.driftSurfaces) ? (meta.driftSurfaces as string[]) : [],
+    });
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
 type ContextSection = "decisions" | "constraints" | "tasks";
 type ContextTab = "all" | ContextSection;
 type ContextItem = RelayActiveProjectState["contextPreview"][ContextSection][number];
@@ -241,6 +274,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [signOutBusy, setSignOutBusy] = useState(false);
   const [userSettings, setUserSettings] = useState<UserSettingsRow["settings"] | null>(null);
   const [userSettingsBusy, setUserSettingsBusy] = useState(false);
+  const [drifts, setDrifts] = useState<DriftPreview[]>([]);
   const activeStateRequestInFlight = useRef(false);
 
   function applyResolvedTheme(nextResolvedTheme: RelayResolvedTheme) {
@@ -427,6 +461,45 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       chrome.runtime.onMessage.removeListener(handleRuntimeMessage);
     };
   }, []);
+
+  useEffect(() => {
+    const projectId = activeState.projectId;
+    if (!projectId) {
+      setDrifts([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await relayFetch(`/api/projects/${projectId}/memory`);
+        if (!response.ok) return;
+        const data = (await response.json()) as { memory?: MemoryListResponseItem[] };
+        if (cancelled) return;
+        setDrifts(extractDrifts(data.memory ?? []));
+      } catch {
+        // drift fetch is best-effort
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeState.projectId]);
+
+  async function dismissDrift(memoryId: string) {
+    await runBusyAction(
+      "Dismissing drift…",
+      "Drift resolved.",
+      async () => {
+        const response = await relayFetch(`/api/memory/${memoryId}`, {
+          method: "DELETE",
+        });
+        if (!response.ok && response.status !== 204) {
+          throw new Error(await readErrorMessage(response, "Drift dismissal failed."));
+        }
+        setDrifts((current) => current.filter((d) => d.id !== memoryId));
+      },
+    );
+  }
 
   useEffect(() => {
     function handleError(event: ErrorEvent) {
@@ -2101,6 +2174,37 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 Quick edits here change the same carry-forward state the dashboard uses.
               </p>
             </div>
+
+            {drifts.length > 0 ? (
+              <div className={styles.driftBanner}>
+                <div className={styles.driftHeader}>
+                  <span className={styles.driftLabel}>Drifts ({drifts.length})</span>
+                  <span className={styles.driftHint}>Newer capture wins — dismiss old entry or keep both.</span>
+                </div>
+                {drifts.map((drift) => {
+                  const surfaceTag = drift.surfaces.length > 0 ? drift.surfaces.join(" vs ") : null;
+                  const winnerTag = drift.winnerId ? `newer=${drift.winnerId.slice(0, 8)}` : null;
+                  const tag = [winnerTag, surfaceTag].filter(Boolean).join(" • ");
+                  return (
+                    <div key={drift.id} className={styles.driftItem}>
+                      <div className={styles.driftItemBody}>
+                        <span className={styles.driftType}>{drift.type}</span>
+                        <p className={styles.driftText}>{drift.content}</p>
+                        {tag ? <span className={styles.driftMeta}>{tag}</span> : null}
+                      </div>
+                      <button
+                        className={styles.ghostButton}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void dismissDrift(drift.id)}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
 
             {/* ─── Subtabs ─── */}
             <div className={styles.contextTabs}>

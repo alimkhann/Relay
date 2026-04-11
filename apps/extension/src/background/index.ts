@@ -169,24 +169,32 @@ const tabStates = new Map<number, RelayTabState>();
 const DRAIN_DELAY_MS = 5 * 60 * 1000; // 5 minutes
 const pendingDrainProjects = new Set<string>();
 let drainTimerId: ReturnType<typeof setTimeout> | null = null;
+let drainInFlight = false;
 
 function scheduleDrain(projectId: string) {
   pendingDrainProjects.add(projectId);
-  if (drainTimerId !== null) return; // timer already running
+  // Skip if timer scheduled OR a drain cycle is currently running.
+  // Tail end of the drain cycle reschedules itself if new projects queued.
+  if (drainTimerId !== null || drainInFlight) return;
   drainTimerId = setTimeout(async () => {
     drainTimerId = null;
-    const projects = [...pendingDrainProjects];
-    pendingDrainProjects.clear();
-    for (const pid of projects) {
-      try {
-        await relayFetch(`/api/projects/${pid}/drain`, { method: "POST" });
-      } catch { /* non-fatal */ }
-    }
-    // If more deferred captures arrived during drain, restart timer
-    if (pendingDrainProjects.size > 0) {
-      const next = [...pendingDrainProjects];
+    drainInFlight = true;
+    try {
+      const projects = [...pendingDrainProjects];
       pendingDrainProjects.clear();
-      for (const pid of next) scheduleDrain(pid);
+      for (const pid of projects) {
+        try {
+          await relayFetch(`/api/projects/${pid}/drain`, { method: "POST" });
+        } catch { /* non-fatal */ }
+      }
+    } finally {
+      drainInFlight = false;
+      // If more deferred captures arrived during drain, restart timer
+      if (pendingDrainProjects.size > 0) {
+        const next = [...pendingDrainProjects];
+        pendingDrainProjects.clear();
+        for (const pid of next) scheduleDrain(pid);
+      }
     }
   }, DRAIN_DELAY_MS);
 }
@@ -222,7 +230,10 @@ let authGraceUntil = 0;
 const SESSION_CACHE_TTL_MS = 15_000;
 const DASHBOARD_CACHE_TTL_MS = 20_000;
 const REMOTE_RETRY_DELAY_MS = 300;
-const REMOTE_RETRY_BACKOFF_MS = [5_000, 15_000];
+// Exponential backoff schedule between retry attempts (3x growth).
+// 4 attempts total: initial + 3 retries at 300ms, 900ms, 2700ms.
+const REMOTE_RETRY_BACKOFF_MS = [300, 900, 2_700];
+const REMOTE_RETRY_MAX_ATTEMPTS = 4;
 
 initializeBackgroundTelemetry();
 
@@ -368,7 +379,7 @@ async function storeAuthenticatedExtensionSession(
 
 async function retryRemote<T>(
   task: () => Promise<T>,
-  attempts = 2,
+  attempts = REMOTE_RETRY_MAX_ATTEMPTS,
 ): Promise<T> {
   let lastError: unknown;
 
@@ -378,7 +389,11 @@ async function retryRemote<T>(
     } catch (cause) {
       lastError = cause;
       if (index < attempts - 1) {
-        await wait(REMOTE_RETRY_DELAY_MS);
+        const delay =
+          REMOTE_RETRY_BACKOFF_MS[index] ??
+          REMOTE_RETRY_BACKOFF_MS[REMOTE_RETRY_BACKOFF_MS.length - 1] ??
+          REMOTE_RETRY_DELAY_MS;
+        await wait(delay);
       }
     }
   }
@@ -2183,13 +2198,20 @@ async function captureObservedChange(
   } = {},
 ) {
   const state = getOrCreateTabState(tabId);
+  // Race guard: claim the tab synchronously before any await so a second
+  // captureObservedChange arriving mid-flight (e.g. from the DOM observer
+  // firing while a manual selection is still running) short-circuits
+  // instead of mutating shared tab state concurrently.
+  if (state.capturePending) {
+    return { ok: false, reason: "Capture already in progress for this tab." };
+  }
+  state.capturePending = true;
   let session = await getRelaySession();
   hydrateTabStateFromSession(state, session);
   const chatKey = buildAssociationKey(state.page);
   const manualSelection = Boolean(options.manualSelection);
   const skipAssociationToast = Boolean(options.skipAssociationToast);
   const previousAssociationProjectName = state.chatAssociation.projectName;
-  state.capturePending = true;
   await broadcastActiveProjectState(tabId);
 
   try {

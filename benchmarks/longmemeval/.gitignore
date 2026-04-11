@@ -1,0 +1,4 @@
+.cache/
+data/longmemeval_*.json
+node_modules/
+*.log

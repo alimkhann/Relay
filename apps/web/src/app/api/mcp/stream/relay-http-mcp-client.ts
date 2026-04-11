@@ -1,7 +1,10 @@
 import { createRepositoryBundle } from "@relay/db"
+import type { WorkSessionStructuredState } from "@relay/shared"
 
 import type { Viewer } from "@/server/policies/viewer"
 import { composeContextForProject } from "@/server/services/context-service"
+import { upsertProjectStateFromMcp } from "@/server/services/mcp-project-state-service"
+import { flushWorkSession } from "@/server/services/work-session-flush-service"
 
 /**
  * Server-side MCP client that calls repositories and services directly
@@ -62,6 +65,62 @@ export class RelayHttpMcpClient {
   }
 
   async saveContext(projectId: string, args: Record<string, unknown>) {
+    const summary = (args.summary as string | undefined) ?? null
+    const progress = (args.progress as string | undefined) ?? null
+    const decisions = (args.decisions as string[] | undefined) ?? []
+    const constraints = (args.constraints as string[] | undefined) ?? []
+    const nextSteps = (args.nextSteps as string[] | undefined) ?? []
+    const notes = (args.notes as string[] | undefined) ?? []
+    const relevantTools = (args.relevantTools as string[] | undefined) ?? []
+    const touchedFiles = (args.touchedFiles as string[] | undefined) ?? []
+    const currentObjective = (args.currentObjective as string | undefined) ?? null
+    const finalize = args.finalize !== false
+
+    const structuredState: WorkSessionStructuredState = {
+      summary,
+      progress,
+      currentObjective,
+      decisions,
+      constraints,
+      nextSteps,
+      notes,
+      relevantTools,
+      touchedFiles,
+      reaffirmedFacts: [],
+    }
+
+    // Primary path: run through digest + reconcile pipeline by opening a
+    // transient work session, attaching the structured state, then flushing.
+    try {
+      const repositories = createRepositoryBundle(this.viewer.userId)
+      const session = await repositories.workSessions.create({
+        projectId,
+        userId: this.viewer.userId,
+        surface: "mcp",
+        agentName: "mcp-http",
+        clientName: "relay-mcp-http",
+        associationMethod: "http_save_context",
+        associationConfidence: 0.9,
+      })
+
+      await repositories.workSessions.updateLatestState({
+        id: session.id,
+        latestSummary: progress ?? summary ?? currentObjective ?? decisions[0] ?? null,
+        latestStructuredState: structuredState as unknown as Record<string, unknown>,
+      })
+
+      await flushWorkSession(this.viewer.userId, projectId, {
+        sessionId: session.id,
+        reason: finalize ? "explicit" : "sweep",
+        summaryShort: progress ?? summary ?? null,
+        structuredState,
+      })
+      return
+    } catch {
+      // Fall through to legacy pass-through below.
+    }
+
+    // Fallback: raw memory items + mcp-state upsert (no digest/reconcile).
     const repositories = createRepositoryBundle(this.viewer.userId)
     const items: Array<{
       projectId: string
@@ -70,23 +129,42 @@ export class RelayHttpMcpClient {
       tags: string[]
     }> = []
 
-    const decisions = (args.decisions as string[]) ?? []
-    const constraints = (args.constraints as string[]) ?? []
-    const nextSteps = (args.nextSteps as string[]) ?? []
-    const notes = (args.notes as string[]) ?? []
-
     for (const d of decisions) items.push({ projectId, type: "decision", content: d, tags: [] })
     for (const c of constraints) items.push({ projectId, type: "constraint", content: c, tags: [] })
     for (const n of nextSteps) items.push({ projectId, type: "task", content: n, tags: [] })
     for (const n of notes) items.push({ projectId, type: "note", content: n, tags: [] })
 
-    if (args.summary) {
-      items.push({ projectId, type: "note", content: `Session summary: ${args.summary as string}`, tags: ["session-summary"] })
+    if (summary) {
+      items.push({ projectId, type: "note", content: `Session summary: ${summary}`, tags: ["session-summary"] })
     }
 
     if (items.length > 0) {
       await repositories.memory.createBatch(this.viewer.userId, items)
     }
+
+    await upsertProjectStateFromMcp(this.viewer.userId, projectId, {
+      recentProgress: progress ?? summary ?? undefined,
+      currentObjective: currentObjective ?? undefined,
+      decisions,
+      constraints,
+      openTasks: nextSteps,
+      relevantTools,
+      replaceLists: false,
+    })
+  }
+
+  async setProjectState(projectId: string, args: Record<string, unknown>) {
+    return upsertProjectStateFromMcp(this.viewer.userId, projectId, {
+      projectOverview: args.projectOverview as string | undefined,
+      currentObjective: args.currentObjective as string | undefined,
+      recentProgress: args.recentProgress as string | undefined,
+      stackDomain: args.stackDomain as string | undefined,
+      decisions: args.decisions as string[] | undefined,
+      constraints: args.constraints as string[] | undefined,
+      openTasks: args.openTasks as string[] | undefined,
+      relevantTools: args.relevantTools as string[] | undefined,
+      replaceLists: args.replaceLists as boolean | undefined,
+    })
   }
 
   async manageMemory(args: Record<string, unknown>) {

@@ -1240,3 +1240,68 @@
   text-align: center;
   opacity: 0.7;
 }
+
+.driftBanner {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  border-radius: var(--radius-sm);
+  background: rgba(234, 179, 8, 0.08);
+}
+
+.driftHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.driftLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #a16207;
+}
+
+.driftHint {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.driftItem {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(234, 179, 8, 0.25);
+}
+
+.driftItemBody {
+  display: grid;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.driftType {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.driftText {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-secondary);
+  word-break: break-word;
+}
+
+.driftMeta {
+  font-size: 10px;
+  color: var(--muted);
+}

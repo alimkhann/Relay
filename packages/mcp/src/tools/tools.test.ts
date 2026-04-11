@@ -231,11 +231,15 @@ describe("save_context", () => {
       "proj-1"
     )
 
-    // Single batch call
-    expect(client.post).toHaveBeenCalledTimes(1)
+    // Legacy path: batch call + mcp-state fallback
+    expect(client.post).toHaveBeenCalledTimes(2)
     expect(client.post).toHaveBeenCalledWith(
       "/api/projects/proj-1/memory/batch",
       expect.objectContaining({ items: expect.any(Array) })
+    )
+    expect(client.post).toHaveBeenCalledWith(
+      "/api/projects/proj-1/mcp-state",
+      expect.objectContaining({ replaceLists: false })
     )
     expect(result.content[0]!.text).toContain("Saved 6 context items")
   })
@@ -251,8 +255,8 @@ describe("save_context", () => {
       "proj-1"
     )
 
-    // 1 batch attempt + 1 sequential fallback
-    expect(postFn).toHaveBeenCalledTimes(2)
+    // 1 batch attempt (fail) + 1 sequential fallback + 1 mcp-state fallback
+    expect(postFn).toHaveBeenCalledTimes(3)
     expect(result.content[0]!.text).toContain("Saved 1 context items")
   })
 })

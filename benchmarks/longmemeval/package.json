@@ -1,0 +1,21 @@
+{
+  "name": "@relay/longmemeval-bench",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bench": "tsx run.ts"
+  },
+  "dependencies": {
+    "@relay/db": "workspace:*",
+    "@relay/shared": "workspace:*",
+    "openai": "^4.73.0",
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "@types/pg": "^8.18.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.2"
+  }
+}
