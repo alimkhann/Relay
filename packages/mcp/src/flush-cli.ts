@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * relay-flush — autonomous save hook entry point.
  *
