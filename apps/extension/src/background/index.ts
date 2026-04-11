@@ -1,4 +1,3 @@
-import iconUrl from "../../assets/icon.png";
 import { createFlowId } from "@relay/shared/utils/telemetry";
 import { buildProjectContextPreview, getProjectContextCounts } from "@relay/shared/utils/project-context";
 import { normalizeText, slugify } from "@relay/shared/utils/text";
@@ -2829,20 +2828,36 @@ async function insertProjectBrief(
 }
 
 function registerRelayContextMenu() {
+  if (!chrome.contextMenus) {
+    console.warn("[relay] contextMenus API unavailable");
+    return;
+  }
   try {
     chrome.contextMenus.removeAll(() => {
       try {
-        chrome.contextMenus.create({
-          id: "relay-save-selection",
-          title: 'Save "%s" to Relay',
-          contexts: ["selection"],
-        });
-      } catch {
-        // Duplicate id from a racing register — safe to ignore.
+        chrome.contextMenus.create(
+          {
+            id: "relay-save-selection",
+            title: 'Save "%s" to Relay',
+            contexts: ["selection"],
+          },
+          () => {
+            if (chrome.runtime.lastError) {
+              console.warn(
+                "[relay] contextMenus.create failed",
+                chrome.runtime.lastError.message,
+              );
+            } else {
+              console.info("[relay] contextMenus.create ok");
+            }
+          },
+        );
+      } catch (cause) {
+        console.warn("[relay] contextMenus.create threw", cause);
       }
     });
-  } catch {
-    // contextMenus API unavailable — skip.
+  } catch (cause) {
+    console.warn("[relay] contextMenus.removeAll threw", cause);
   }
 }
 
@@ -2902,18 +2917,37 @@ chrome.contextMenus.onClicked.addListener(
     },
     tab: { id?: number; url?: string; title?: string } | undefined,
   ) => {
+    console.info("[relay] contextMenus.onClicked", {
+      menuItemId: info.menuItemId,
+      hasSelection: Boolean(info.selectionText),
+      tabId: tab?.id,
+    });
     void (async () => {
-      if (info.menuItemId !== "relay-save-selection") return;
-      if (!info.selectionText) return;
-      const pageUrl = info.pageUrl ?? tab?.url ?? null;
-      await handleSaveSelectionToRelay({
-        selectionText: info.selectionText,
-        pageUrl,
-        pageTitle: tab?.title ?? null,
-        platform: null,
-        tabId: tab?.id ?? null,
-        trigger: "context_menu",
-      });
+      try {
+        if (info.menuItemId !== "relay-save-selection") return;
+        if (!info.selectionText || !tab?.id) {
+          console.warn("[relay] contextMenus.onClicked: missing selection or tab", {
+            hasSelection: Boolean(info.selectionText),
+            tabId: tab?.id,
+          });
+          return;
+        }
+        const pageUrl = info.pageUrl ?? tab.url ?? null;
+        await handleSaveSelectionToRelay({
+          selectionText: info.selectionText,
+          pageUrl,
+          pageTitle: tab.title ?? null,
+          platform: null,
+          tabId: tab.id,
+          trigger: "context_menu",
+        });
+      } catch (cause) {
+        console.error("[relay] contextMenus.onClicked: unhandled", cause);
+        await showFailureToastInTab(
+          tab?.id ?? null,
+          cause instanceof Error ? cause.message : "Relay save failed.",
+        );
+      }
     })();
   },
 );
@@ -3008,43 +3042,70 @@ interface SaveSelectionResult {
   ok: boolean;
   reason?: string;
   projectId?: string;
-  projectName?: string | null;
 }
 
-function clearActionBadgeLater(tabId: number | null) {
-  if (tabId === null) return;
+// Injected into an arbitrary page via chrome.scripting.executeScript.
+// Must be a standalone function — no closure over background-worker state.
+function relaySaveToastInPage(message: string) {
+  const HOST_ID = "relay-save-toast";
+  const existing = document.getElementById(HOST_ID);
+  if (existing) existing.remove();
+
+  const host = document.createElement("div");
+  host.id = HOST_ID;
+  host.style.cssText = [
+    "position:fixed",
+    "bottom:24px",
+    "right:24px",
+    "z-index:2147483647",
+    "max-width:340px",
+    "padding:12px 16px",
+    "border-radius:10px",
+    "background:#18181b",
+    "color:#fafafa",
+    "font:500 13px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+    "box-shadow:0 10px 32px rgba(0,0,0,0.35),0 0 0 1px rgba(255,255,255,0.08)",
+    "opacity:0",
+    "transform:translateY(8px)",
+    "transition:opacity 180ms ease,transform 180ms ease",
+    "pointer-events:none",
+  ].join(";");
+  host.textContent = `Relay — ${message}`;
+  document.documentElement.appendChild(host);
+
+  requestAnimationFrame(() => {
+    host.style.opacity = "1";
+    host.style.transform = "translateY(0)";
+  });
+
   setTimeout(() => {
-    try {
-      void chrome.action.setBadgeText({ text: "", tabId });
-    } catch {
-      // Tab may have closed — ignore.
-    }
-  }, 2000);
+    host.style.opacity = "0";
+    host.style.transform = "translateY(8px)";
+    setTimeout(() => host.remove(), 220);
+  }, 3800);
 }
 
-function notifyUser(title: string, message: string) {
+async function showFailureToastInTab(tabId: number | null, message: string) {
+  if (tabId === null) return;
   try {
-    void chrome.notifications.create({
-      type: "basic",
-      iconUrl,
-      title,
-      message,
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: relaySaveToastInPage,
+      args: [message],
     });
   } catch {
-    // Notifications API may be unavailable in some contexts — silent fail.
+    // Injection can fail on restricted pages (chrome://, extension pages,
+    // the Web Store, etc). Fall back to a runtime message for supported AI
+    // sites that already have the content script listening.
+    try {
+      await chrome.tabs.sendMessage(tabId, {
+        type: "RELAY_SHOW_SIMPLE_TOAST",
+        payload: { message },
+      });
+    } catch {
+      // Nothing we can do — surface only via the service-worker console.
+    }
   }
-}
-
-async function resolveProjectNameFor(
-  projectId: string,
-): Promise<string | null> {
-  if (sessionDataCache?.data.projects) {
-    const hit = sessionDataCache.data.projects.find((p) => p.id === projectId);
-    if (hit?.name) return hit.name;
-  }
-  const session = await getRelaySession();
-  const fromSession = session.projectOptions?.find((p) => p.id === projectId);
-  return fromSession?.name ?? session.assumedProjectName ?? null;
 }
 
 async function handleSaveSelectionToRelay(
@@ -3061,8 +3122,16 @@ async function handleSaveSelectionToRelay(
     trigger,
   } = params;
 
+  console.info("[relay] save_to_relay:start", {
+    trigger,
+    tabId,
+    pageUrl,
+    length: selectionText?.length ?? 0,
+  });
+
   const trimmed = selectionText.trim();
   if (!trimmed) {
+    await showFailureToastInTab(tabId, "Select text on the page first.");
     return { ok: false, reason: "Select text in the page first." };
   }
 
@@ -3084,8 +3153,8 @@ async function handleSaveSelectionToRelay(
         // Opening the side panel can fail on unsupported contexts — ignore.
       }
     }
-    notifyUser(
-      "Relay",
+    await showFailureToastInTab(
+      tabId,
       "Pick a project in the Relay sidepanel, then try again.",
     );
     return { ok: false, reason: "Choose a project first." };
@@ -3125,7 +3194,8 @@ async function handleSaveSelectionToRelay(
   } catch (cause) {
     const reason =
       cause instanceof Error ? cause.message : "Save to Relay failed.";
-    notifyUser("Relay — save failed", reason);
+    console.error("[relay] save_to_relay:network_error", cause);
+    await showFailureToastInTab(tabId, reason);
     recordBackgroundTelemetry({
       level: "error",
       surface: "extension-background",
@@ -3145,7 +3215,8 @@ async function handleSaveSelectionToRelay(
 
   if (!response.ok) {
     const reason = await readErrorResponse(response, "Save to Relay failed.");
-    notifyUser("Relay — save failed", reason);
+    console.error("[relay] save_to_relay:http_error", response.status, reason);
+    await showFailureToastInTab(tabId, reason);
     recordBackgroundTelemetry({
       level: "error",
       surface: "extension-background",
@@ -3185,21 +3256,7 @@ async function handleSaveSelectionToRelay(
     });
   }
 
-  if (tabId !== null) {
-    try {
-      void chrome.action.setBadgeBackgroundColor({ color: "#10b981", tabId });
-      void chrome.action.setBadgeText({ text: "✓", tabId });
-      clearActionBadgeLater(tabId);
-    } catch {
-      // Badge API can fail on some tabs — silent.
-    }
-  }
-
-  const projectName = await resolveProjectNameFor(projectId);
-  notifyUser(
-    "Saved to Relay",
-    projectName ? `→ ${projectName}` : "Selection pinned to your project.",
-  );
+  console.info("[relay] save_to_relay:ok", { projectId, trigger });
 
   recordBackgroundTelemetry({
     level: "info",
@@ -3215,7 +3272,7 @@ async function handleSaveSelectionToRelay(
     },
   });
 
-  return { ok: true, projectId, projectName };
+  return { ok: true, projectId };
 }
 
 chrome.runtime.onMessage.addListener(
@@ -4069,70 +4126,3 @@ chrome.runtime.onMessageExternal.addListener(
   },
 );
 
-// ── Theme-adaptive toolbar icon ──
-
-async function updateToolbarIcon(isDark: boolean) {
-  try {
-    const response = await fetch(iconUrl);
-    const blob = await response.blob();
-    const bitmap = await createImageBitmap(blob);
-    const sizes = [16, 32, 48, 128];
-    const imageData: Record<string, ImageData> = {};
-
-    for (const size of sizes) {
-      const canvas = new OffscreenCanvas(size, size);
-      const ctx = canvas.getContext("2d")!;
-      ctx.drawImage(bitmap, 0, 0, size, size);
-
-      if (!isDark) {
-        const data = ctx.getImageData(0, 0, size, size);
-        const pixels = data.data as Uint8ClampedArray;
-        for (let i = 0; i < pixels.length; i += 4) {
-          pixels[i]! = 255 - pixels[i]!;
-          pixels[i + 1]! = 255 - pixels[i + 1]!;
-          pixels[i + 2]! = 255 - pixels[i + 2]!;
-        }
-        ctx.putImageData(data, 0, 0);
-        imageData[String(size)] = data;
-      } else {
-        imageData[String(size)] = ctx.getImageData(0, 0, size, size);
-      }
-    }
-
-    await chrome.action.setIcon({
-      imageData: imageData as unknown as Record<string, ImageData>,
-    });
-  } catch {
-    // Silently ignore — toolbar icon stays as default
-  }
-}
-
-// Theme detection via offscreen document (matchMedia unavailable in service workers)
-async function ensureThemeOffscreen() {
-  try {
-    const exists = await chrome.offscreen.hasDocument();
-    if (!exists) {
-      await chrome.offscreen.createDocument({
-        url: "static/theme-detector.html",
-        reasons: [chrome.offscreen.Reason.MATCH_MEDIA],
-        justification: "Detect system light/dark theme for toolbar icon",
-      });
-    }
-  } catch {
-    // Silently ignore — icon stays as default white
-  }
-}
-
-chrome.runtime.onMessage.addListener((msg: unknown) => {
-  if (
-    typeof msg === "object" &&
-    msg !== null &&
-    "type" in msg &&
-    (msg as { type: string }).type === "RELAY_THEME_CHANGED" &&
-    "isDark" in msg
-  ) {
-    void updateToolbarIcon((msg as { isDark: boolean }).isDark);
-  }
-});
-
-void ensureThemeOffscreen();

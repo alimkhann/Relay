@@ -1,6 +1,6 @@
 {
   "name": "@relay/extension",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -29,9 +29,7 @@
       "sidePanel",
       "identity",
       "scripting",
-      "offscreen",
-      "contextMenus",
-      "notifications"
+      "contextMenus"
     ],
     "host_permissions": [
       "https://chatgpt.com/*",
@@ -91,9 +89,7 @@
       {
         "resources": [
           "assets/relay_logo_white.png",
-          "static/network-intercept.js",
-          "static/theme-detector.html",
-          "static/theme-detector.js"
+          "static/network-intercept.js"
         ],
         "matches": [
           "https://chatgpt.com/*",

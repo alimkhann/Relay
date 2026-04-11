@@ -2,7 +2,11 @@ import { NextResponse } from "next/server"
 
 import { withApiAuth } from "@/server/http/api-route"
 import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
-import { consumeMcpReadQuota, consumeMcpWriteQuota } from "@/server/services/entitlement-service"
+import {
+  consumeExtensionMemoryWriteQuota,
+  consumeMcpReadQuota,
+  consumeMcpWriteQuota,
+} from "@/server/services/entitlement-service"
 import { createMemoryItem, listProjectMemory } from "@/server/services/memory-service"
 
 export const GET = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
@@ -22,6 +26,8 @@ export const POST = withApiAuth(async (request: Request, { params }: { params: P
   requireViewerProject(viewer, id, "memory:write")
   if (viewer.mode === "mcp") {
     await consumeMcpWriteQuota(viewer.userId)
+  } else if (viewer.mode === "extension") {
+    await consumeExtensionMemoryWriteQuota(viewer.userId)
   }
   const body = await request.json()
   const item = await createMemoryItem(viewer.userId, { ...body, projectId: id })

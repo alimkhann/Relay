@@ -150,6 +150,23 @@ export async function consumeMcpWriteQuota(userId: string, amount = 1) {
   return consumeQuota(userId, "mcp_write_daily", "day", entitlements.limits.mcpWriteDaily, amount, entitlements.plan)
 }
 
+// Rate limit for explicit user-triggered memory writes from the extension
+// (sidepanel "Save to project" button + right-click "Save to Relay" context
+// menu). Kept in its own bucket so it doesn't compete with MCP write budget.
+// Free: 20/day, Pro: 200/day. These are deliberately generous — the goal is
+// to stop runaway automation, not to gate normal usage.
+const FREE_EXTENSION_MEMORY_WRITE_LIMIT = 20
+const PRO_EXTENSION_MEMORY_WRITE_LIMIT = 200
+
+export async function consumeExtensionMemoryWriteQuota(userId: string, amount = 1) {
+  const entitlements = await resolveViewerEntitlements(userId)
+  const limit =
+    entitlements.plan === "pro"
+      ? PRO_EXTENSION_MEMORY_WRITE_LIMIT
+      : FREE_EXTENSION_MEMORY_WRITE_LIMIT
+  return consumeQuota(userId, "extension_memory_write_daily", "day", limit, amount, entitlements.plan)
+}
+
 export async function consumeHandoffQuota(userId: string) {
   await assertHandoffEnabled(userId)
   const entitlements = await resolveViewerEntitlements(userId)
