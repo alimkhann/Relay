@@ -252,13 +252,114 @@ After analyzing all repos, synthesize answers to these questions:
 3. Can graph-based memory work with Neon Serverless Postgres, or does it require Neo4j/similar?
 4. What's the cost-per-query impact of each improvement tier?
 
+### H. Cost optimization and unit economics (CRITICAL — founder is bootstrapped, no funding)
+
+**Relay's current per-user cost profile:**
+
+AI services (Gemini API, pay-as-you-go):
+- **Embeddings:** `text-embedding-004` via Gemini API — runs on every memory item create/update
+- **Digest (AI analysis):** `gemini-3.1-flash-lite-preview` (fallback: `gemini-2.5-flash-lite`) — max 6K input / 1.2K output tokens per call
+- **Bootstrap (context assembly):** `gemini-3-flash-preview` (fallback: `gemini-2.5-flash`) — max 14K input / 2K output tokens per call
+- **Adjudication (conflict resolution):** `gemini-3.1-flash-lite-preview` — max 4K input / 500 output tokens per call
+
+Current rate limits per tier:
+
+| Limit | Free | Pro |
+|---|---|---|
+| Active projects | 2 | 10 |
+| History retention | 30 days | 365 days |
+| Captures/month | 200 | 2,000 |
+| MCP reads/day | 20 | 200 |
+| MCP writes/day | 5 | 50 |
+| AI analyses/project/day | 6 | 32 |
+| AI analyses/user/day | 18 | 120 |
+| Memory items/project | 100 | 500 |
+
+Free tier features: browser capture ✅, MCP read ✅, MCP write ✅, handoff packs ❌
+Pro tier: all features unlocked
+
+**Questions to answer:**
+
+1. **Cost-per-user modeling:** Given the limits above and Gemini pay-as-you-go pricing, what's the worst-case monthly cost per free user? Per pro user? Model for:
+   - Free user maxing out limits: 200 captures × embedding cost + 18 AI analyses/day × 30 days × digest cost + 20 MCP reads/day × 30 days × (embedding per query)
+   - Pro user maxing out limits: 2000 captures + 120 analyses/day × 30 + 200 reads/day × 30
+   - Average user (assume 30% of limits): calculate realistic monthly cost
+
+2. **Break-even analysis:** With 1000 users, 5% pro ($X/month — price TBD, currently using Polar for billing):
+   - 950 free users × worst-case cost = ?
+   - 50 pro users × revenue - pro cost = ?
+   - What pro price point makes this sustainable?
+   - Is the free tier too generous? Should limits be tightened?
+
+3. **Infrastructure cost comparison for the scenario:** 1000 users, 5% pro, Next.js fullstack app + Neon Postgres
+
+   **Option A: Vercel Hobby (free)**
+   - Serverless functions: 100GB-hrs/month, 100K invocations
+   - Bandwidth: 100GB
+   - Build minutes: 6000/month
+   - Concern: will 1000 users hit function invocation limits? MCP reads + captures + page loads add up
+   - Edge functions vs serverless for MCP streaming?
+
+   **Option B: Vercel Pro ($20/month)**
+   - 1000 GB-hrs, 1M invocations, 1TB bandwidth
+   - Cron jobs, analytics, team features
+   - Cost-efficient for the scale?
+
+   **Option C: Railway Hobby ($5/month)**
+   - $5 base + usage-based (vCPU, memory, network)
+   - Always-on container vs serverless — better for MCP persistent connections?
+   - How does pricing scale from 100 → 1000 → 10000 users?
+
+   **Option D: Railway Pro ($20/month)**
+   - Higher resource limits, team features
+   - Compare directly to Vercel Pro
+
+   **Option E: Hetzner VPS (~€4-8/month for CX22)**
+   - Cheapest raw compute
+   - BUT: requires Docker/nginx/SSL/CDN setup, monitoring, backups, CI/CD
+   - Founder is "terrible at devops" — factor in maintenance burden and risk
+   - What minimal Docker Compose setup would work? Is it worth the savings?
+   - CDN: Cloudflare free tier for static assets?
+
+   **Option F: Other platforms to consider**
+   - Coolify (self-hosted PaaS on Hetzner — Docker abstraction)
+   - Fly.io (container-based, pay-per-use, good for always-on)
+   - Render (simple deploys, free tier exists)
+   - SST/OpenNext on AWS (self-hosted Next.js, complex but cheap at scale)
+
+   For each option: estimate monthly cost at 1000 users, 5000 users, 10000 users. Factor in: compute, bandwidth, database (Neon stays regardless), cold start latency (matters for MCP), deployment complexity.
+
+4. **Neon database cost:** Currently on Launch tier. Model:
+   - Storage: how many GB at 1000 users × 100-500 memory items each?
+   - Compute: how many compute hours for the query pattern?
+   - Will RLS + pgvector queries be expensive at scale?
+   - Should we consider pgvector on Hetzner Postgres instead of Neon for cost?
+
+5. **Embedding cost optimization:**
+   - Gemini `text-embedding-004` pricing vs OpenAI `text-embedding-3-small` — which is cheaper per token?
+   - Could we batch embeddings more aggressively?
+   - Could we skip embedding for very short items (<10 words) and rely on lexical search?
+   - Are there free/local embedding models that are production-quality? (e.g., `nomic-embed-text`, `bge-small`, `all-MiniLM`)
+
+6. **AI analysis cost optimization:**
+   - Free users get 18 AI analyses/day = potentially 540/month. Is this too generous?
+   - Could we use a cheaper model for free tier (flash-lite) and better model for pro?
+   - Could some analyses be done client-side or deterministically (no LLM) to save cost?
+   - Relay already has deterministic fact extraction — what else could be made deterministic?
+
+7. **Feature gating review:**
+   - Is MCP write on free tier too generous? Other memory tools gate writes behind paid plans
+   - Should history retention be shorter than 30 days on free? (7 days?)
+   - 100 memory items/project on free — is this enough to be useful but not expensive?
+   - Should we add a "memory items total across all projects" limit for free?
+
 ---
 
 ## Output format
 
-Write findings to: `benchmarks/longmemeval/research/` directory (create it). One file per repo analyzed + one `SYNTHESIS.md` that answers the questions in section above and provides a prioritized implementation roadmap for reaching ≥85%.
+Write findings to: `benchmarks/longmemeval/research/` directory (create it). One file per repo analyzed + one `SYNTHESIS.md` that answers the retrieval questions above + one `COST_AND_INFRA.md` that answers section H with specific dollar amounts and recommendations.
 
-Prioritize by: (1) expected accuracy gain, (2) implementation difficulty, (3) cost impact on production retrieval latency.
+Prioritize by: (1) expected accuracy gain, (2) implementation difficulty, (3) cost impact on production retrieval latency, (4) unit economics sustainability.
 
 ---
 
@@ -266,7 +367,7 @@ Prioritize by: (1) expected accuracy gain, (2) implementation difficulty, (3) co
 
 ```
 User query
-  → embed with text-embedding-3-small (768d)
+  → embed with text-embedding-004 (Gemini, 768d)
   → SQL hybrid search:
       CTE 1: semantic — cosine similarity on pgvector `embedding` column
       CTE 2: lexical — websearch_to_tsquery on `search_vector` tsvector column
