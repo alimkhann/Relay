@@ -31,7 +31,16 @@ export async function retrieve(opts: {
     opts.projectId,
     opts.query,
     queryEmbedding,
-    { limit: opts.topK ?? 20, threshold: 0.3 },
+    {
+      limit: opts.topK ?? 20,
+      threshold: 0.3,
+      // Bench haystacks are anchored on real-world dates (often years old
+      // relative to "now"). Default recency decay (30d half-life) collapses
+      // every turn's score to near-zero and distorts ranking for knowledge-
+      // update and preference questions that target older sessions. Disable
+      // by pushing half-life way out.
+      recencyHalfLifeDays: 36500,
+    },
   )
   return results.map((row) => {
     const meta = (row.metadata ?? {}) as Record<string, unknown>
