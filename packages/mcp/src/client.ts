@@ -371,7 +371,7 @@ export class RelayClient {
     })
   }
 
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private async request<T>(method: string, path: string, body?: unknown, _attempt = 0): Promise<T> {
     await this.refreshIfNeeded()
 
     const url = `${this.baseUrl}${path}`
@@ -394,6 +394,11 @@ export class RelayClient {
         body: body !== undefined ? JSON.stringify(body) : undefined
       })
     } catch (error) {
+      // Network error — retry up to 2 times with backoff
+      if (_attempt < 2) {
+        await new Promise((r) => setTimeout(r, 1000 * 2 ** _attempt))
+        return this.request(method, path, body, _attempt + 1)
+      }
       this.analytics?.capture("mcp_request_exception", {
         project_id: this.workSession?.projectId ?? this.projectId ?? null,
         success: false,
@@ -411,7 +416,7 @@ export class RelayClient {
     if (!response.ok) {
       if (response.status === 401 && this.refreshToken) {
         await this.refreshAccessToken()
-        return this.request(method, path, body)
+        return this.request(method, path, body, 0)
       }
 
       if (response.status === 429) {
@@ -421,12 +426,22 @@ export class RelayClient {
           upgradeUrl?: string
           retryAfterSeconds?: number
         }
-        const retryAfter = response.headers.get("Retry-After")
+        const retryAfterHeader = response.headers.get("Retry-After")
+        const retryAfterSec = data.retryAfterSeconds ?? (retryAfterHeader ? parseInt(retryAfterHeader, 10) : 0)
+
+        // Retry up to 2 times if server says retry is short (< 30s)
+        if (_attempt < 2 && retryAfterSec > 0 && retryAfterSec < 30) {
+          await new Promise((r) => setTimeout(r, retryAfterSec * 1000))
+          return this.request(method, path, body, _attempt + 1)
+        }
+
         let message = data.error ?? "Rate limit exceeded."
-        if (data.plan !== "pro" && data.upgradeUrl) {
-          message += `\n\nUpgrade to Relay Pro: ${data.upgradeUrl}`
-        } else if (retryAfter) {
-          message += `\nTry again in ${retryAfter} seconds.`
+        if (retryAfterSec > 0) {
+          const resetAt = new Date(Date.now() + retryAfterSec * 1000)
+          message += `\nQuota resets at ${resetAt.toLocaleTimeString()} (in ${Math.ceil(retryAfterSec / 60)} min).`
+        }
+        if (data.plan && data.plan !== "pro" && data.upgradeUrl) {
+          message += `\nUpgrade for higher limits: ${data.upgradeUrl}`
         }
         this.analytics?.capture("mcp_request_failed", {
           project_id: this.workSession?.projectId ?? this.projectId ?? null,

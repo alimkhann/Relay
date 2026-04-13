@@ -21,9 +21,15 @@ function PricingCard({
   inView: boolean
   delay: number
 }) {
-  const isPro = "badge" in plan
-  const price = yearly ? plan.yearlyPrice : plan.monthlyPrice
-  const interval = plan.monthlyPrice === 0 ? "forever" : yearly ? "year" : "month"
+  const hasBadge = "badge" in plan
+  const isFeatured = hasBadge
+  // When yearly: show per-month equivalent (yearlyPrice / 12), not total
+  const price = plan.monthlyPrice === 0
+    ? 0
+    : yearly
+      ? Math.round(plan.yearlyPrice / 12)
+      : plan.monthlyPrice
+  const interval = plan.monthlyPrice === 0 ? "forever" : "month"
 
   return (
     <motion.div
@@ -32,15 +38,15 @@ function PricingCard({
       transition={{ duration: 0.5, delay, ease }}
       className={cn(
         "relative rounded-2xl border p-7 md:p-8 flex flex-col",
-        isPro
+        isFeatured
           ? "border-white/[0.12] bg-[#131313]"
           : "border-white/[0.07] bg-[#111]"
       )}
     >
       {/* Badge — top right */}
-      {isPro && (
+      {hasBadge && (
         <span className="absolute top-6 right-6 text-[10px] tracking-[0.15em] font-medium text-white/60 uppercase px-2.5 py-1 rounded-full bg-white/[0.06] border border-white/[0.1]">
-          {(plan as typeof PRICING.pro).badge}
+          {(plan as typeof PRICING.starter).badge}
         </span>
       )}
 
@@ -53,11 +59,10 @@ function PricingCard({
         <span className="text-sm text-white/35">
           / {interval}
         </span>
+        {yearly && plan.monthlyPrice > 0 && (
+          <span className="ml-1 text-xs text-emerald-400/60">-17%</span>
+        )}
       </div>
-
-      {isPro && yearly && (
-        <p className="mt-1.5 text-xs text-emerald-400/60">Save 15% yearly</p>
-      )}
 
       <p className="mt-2 text-sm text-white/40">{plan.description}</p>
 
@@ -68,7 +73,7 @@ function PricingCard({
               size={14}
               className={cn(
                 "shrink-0 mt-0.5",
-                isPro ? "text-white/50" : "text-white/50"
+                isFeatured ? "text-white/50" : "text-white/50"
               )}
               strokeWidth={2}
             />
@@ -78,17 +83,17 @@ function PricingCard({
       </ul>
 
       <Link
-        href={isPro ? "/get-started?upgrade=true" : "/get-started"}
+        href={isFeatured ? "/get-started?upgrade=true" : "/get-started"}
         onClick={() => {
-          trackMarketingEvent(isPro ? "billing_upgrade_clicked" : "get_started_clicked", {
-            source: isPro ? "pricing_pro" : "pricing_free",
+          trackMarketingEvent(isFeatured ? "billing_upgrade_clicked" : "get_started_clicked", {
+            source: isFeatured ? "pricing_pro" : "pricing_free",
             plan: plan.name.toLowerCase(),
             interval: yearly ? "year" : "month",
           })
         }}
         className={cn(
           "mt-8 inline-flex items-center justify-center gap-1.5 rounded-full px-6 py-3 text-sm font-medium transition-colors duration-200",
-          isPro
+          isFeatured
             ? "bg-white text-[#0a0a0a] hover:bg-white/90"
             : "border border-white/[0.15] text-white/70 hover:text-white hover:border-white/25"
         )}

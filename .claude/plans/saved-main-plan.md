@@ -129,9 +129,9 @@ Change `npx @onrelay/cli` → `npx @onrelay/wizard` in these files:
 
 ### Step 3B: Support Email Update
 
-Change `noreply@onrelay.app` → `support@onrelay.app` in:
+Change `support@onrelay.app` → `noreply@onrelay.app` in:
 - `apps/web/src/server/services/email-service.ts`
-- Any other email references
+- Any other email references -> `support@onrelay.app`
 
 ### Step 3C: Remove Stale "Frontend Design Workflow" Session
 

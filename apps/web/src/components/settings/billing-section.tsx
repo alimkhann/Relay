@@ -604,9 +604,9 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
             <PlanCard
               title="Starter"
               subtitle={PRICING.starter.description}
-              price={yearly ? `$${PRICING.starter.yearlyPrice}/yr` : `$${PRICING.starter.monthlyPrice}/mo`}
-              priceNote={yearly ? "Save 15% vs monthly" : undefined}
-              badge={entitlements.plan === "starter" ? "Current plan" : undefined}
+              price={yearly ? `$${Math.round(PRICING.starter.yearlyPrice / 12)}/mo` : `$${PRICING.starter.monthlyPrice}/mo`}
+              priceNote={yearly ? "Billed $120/yr · -17%" : undefined}
+              badge={entitlements.plan === "starter" ? "Current plan" : "RECOMMENDED"}
               features={[...PRICING.starter.features]}
               actions={
                 entitlements.plan === "starter" ? (
@@ -655,9 +655,9 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
             <PlanCard
               title="Pro"
               subtitle={entitlements.isTrialing ? "Trialing now" : PRICING.pro.description}
-              price={yearly ? `$${PRICING.pro.yearlyPrice}/yr` : `$${PRICING.pro.monthlyPrice}/mo`}
-              priceNote={yearly ? "Save 15% vs monthly" : undefined}
-              badge={entitlements.plan === "pro" ? "Current plan" : "RECOMMENDED"}
+              price={yearly ? `$${Math.round(PRICING.pro.yearlyPrice / 12)}/mo` : `$${PRICING.pro.monthlyPrice}/mo`}
+              priceNote={yearly ? "Billed $180/yr · -17%" : undefined}
+              badge={entitlements.plan === "pro" ? "Current plan" : undefined}
               tone="accent"
               features={[...PRICING.pro.features]}
               actions={

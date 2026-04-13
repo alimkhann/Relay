@@ -44,7 +44,13 @@
       "Bash(npx eslint:*)",
       "Bash(npx tsc:*)",
       "Bash(pnpm --filter @relay/web typecheck)",
-      "Bash(pnpm --filter @relay/web lint)"
+      "Bash(pnpm --filter @relay/web lint)",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_fill_form",
+      "mcp__playwright__browser_type",
+      "Bash(unzip -l /Users/alim/Developer/Projects/Apps/Relay/apps/extension/build/relay-extension-chrome-mv3-prod.zip)",
+      "mcp__Neon__run_sql",
+      "Bash(grep -E \"\\\\.\\(ts|sql\\)$\")"
     ]
   }
 }
