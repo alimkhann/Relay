@@ -18,7 +18,6 @@ export const PRICING = {
     name: "Starter",
     monthlyPrice: 12,
     yearlyPrice: 120,
-    badge: "MOST POPULAR",
     description: "For solo builders who live inside AI tools",
     cta: "Get Starter",
     ctaVariant: "primary" as const,

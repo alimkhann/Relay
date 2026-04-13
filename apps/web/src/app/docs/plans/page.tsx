@@ -84,10 +84,7 @@ export default function PlansDocsPage() {
             </ul>
           </div>
           <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] ring-1 ring-[var(--relay-accent)]/20 bg-[var(--relay-surface)] p-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-[14px] font-semibold text-[var(--relay-ink)]">{PRICING.starter.name}</h3>
-              <span className="text-[10px] font-semibold tracking-widest uppercase text-[var(--relay-accent)]">{PRICING.starter.badge}</span>
-            </div>
+            <h3 className="text-[14px] font-semibold text-[var(--relay-ink)]">{PRICING.starter.name}</h3>
             <p className="mt-1 text-[12px] text-[var(--relay-muted)]">{PRICING.starter.description}</p>
             <ul className="mt-3 space-y-2">
               {PRICING.starter.features.map((f) => (

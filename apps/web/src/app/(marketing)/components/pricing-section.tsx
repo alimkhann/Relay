@@ -21,8 +21,7 @@ function PricingCard({
   inView: boolean
   delay: number
 }) {
-  const hasBadge = "badge" in plan
-  const isFeatured = hasBadge
+  const isFeatured = plan.monthlyPrice > 0
   // When yearly: show per-month equivalent (yearlyPrice / 12), not total
   const price = plan.monthlyPrice === 0
     ? 0
@@ -43,13 +42,6 @@ function PricingCard({
           : "border-white/[0.07] bg-[#111]"
       )}
     >
-      {/* Badge — top right */}
-      {hasBadge && (
-        <span className="absolute top-6 right-6 text-[10px] tracking-[0.15em] font-medium text-white/60 uppercase px-2.5 py-1 rounded-full bg-white/[0.06] border border-white/[0.1]">
-          {(plan as typeof PRICING.starter).badge}
-        </span>
-      )}
-
       <h3 className="text-xl font-semibold text-white">{plan.name}</h3>
 
       <div className="mt-3 flex items-baseline gap-1">
@@ -169,7 +161,7 @@ export function PricingSection() {
             Yearly
           </span>
           <span className={cn("absolute left-[calc(50%+84px)] pl-2 text-[11px] font-medium transition-opacity whitespace-nowrap", yearly ? "text-emerald-400/60 opacity-100" : "opacity-0")}>
-            Save 15%
+            Save 17%
           </span>
         </motion.div>
 
