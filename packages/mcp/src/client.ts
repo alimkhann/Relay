@@ -388,13 +388,17 @@ export class RelayClient {
     let response: Response
 
     try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30_000)
       response = await fetch(url, {
         method,
         headers,
-        body: body !== undefined ? JSON.stringify(body) : undefined
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
       })
+      clearTimeout(timeoutId)
     } catch (error) {
-      // Network error — retry up to 2 times with backoff
+      // Timeout or network error — retry up to 2 times with backoff
       if (_attempt < 2) {
         await new Promise((r) => setTimeout(r, 1000 * 2 ** _attempt))
         return this.request(method, path, body, _attempt + 1)
@@ -502,14 +506,18 @@ export class RelayClient {
         throw new Error("Relay refresh token is missing.")
       }
 
+      const refreshAbort = new AbortController()
+      const refreshTimeout = setTimeout(() => refreshAbort.abort(), 15_000)
       let response = await fetch(`${this.baseUrl}/api/mcp/refresh`, {
         method: "POST",
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ refreshToken: this.refreshToken })
+        body: JSON.stringify({ refreshToken: this.refreshToken }),
+        signal: refreshAbort.signal,
       })
+      clearTimeout(refreshTimeout)
 
       // If refresh fails (token consumed externally), try re-reading config from disk
       // in case the wizard or another process wrote fresh tokens.
