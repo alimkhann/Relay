@@ -5,6 +5,7 @@ build
 dist
 coverage
 .playwright-cli
+.playwright-mcp
 playwright-report
 test-results
 *.tsbuildinfo

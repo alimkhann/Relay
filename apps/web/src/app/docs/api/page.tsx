@@ -58,7 +58,7 @@ export default function ApiDocsPage() {
         <h1 className="text-2xl font-bold text-[var(--relay-ink)]">API Reference</h1>
         <p className="mt-2 text-[15px] leading-relaxed text-[var(--relay-muted)]">
           Relay exposes a REST API for programmatic access. All endpoints require authentication
-          via a session cookie (web) or Bearer token (MCP/CLI).
+          via a session cookie (web) or Bearer token (MCP).
         </p>
       </div>
 

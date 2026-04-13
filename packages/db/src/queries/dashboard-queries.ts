@@ -117,6 +117,7 @@ export async function getProjectDashboard(repositories: RepositoryBundle, ownerI
       shouldMerge: digest.needsProjectStateMerge,
       createdAt: digest.createdAt
     })),
+    canon: [],
     memory: memory.map((item) => ({
       id: item.id,
       type: item.type,
@@ -124,6 +125,7 @@ export async function getProjectDashboard(repositories: RepositoryBundle, ownerI
       content: item.content,
       pinned: item.pinned,
       updatedAt: item.updatedAt,
+      metadata: item.metadata,
       sourceSurface: item.sourceSurface,
       sourceUrl: item.sourceUrl,
       capturedAt: item.capturedAt,

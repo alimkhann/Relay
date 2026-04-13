@@ -3,6 +3,7 @@ import type { AiJobRunRow, CreateMemoryItemInput, ProjectStateRow, SessionDigest
 import { buildCaptureSignature, DECAY_ARCHIVE_THRESHOLD, hasReplacementSignal, isSameTopic, normalizeText, truncateSentence } from "@relay/shared"
 
 import { reconcileAfterDigest } from "./context-reconciliation-service"
+import { observeAndReflectDigestWithRepositories } from "./canon-autonomy-service"
 import { decomposeBulletWithTraceability } from "./fact-extractor"
 import { runContinuityMaintenanceForProjectWithRepositories } from "./continuity-maintenance-service"
 import { resolveViewerEntitlements } from "./entitlement-service"
@@ -44,7 +45,7 @@ export interface DigestBudgetStatus {
   aiUsed: number
   aiLimit: number
   aiRemaining: number
-  plan: "free" | "pro"
+  plan: "free" | "starter" | "pro"
 }
 
 export interface DigestStrategyDecision {
@@ -575,12 +576,20 @@ async function persistDigestResult(
         session: input.session,
       })
 
-      const reconciliation = await reconcileAfterDigest(tx, input.projectId, input.digest, {
-        newItems: digestMemoryItems,
-        userId,
-        sourceSurface: (input.session.platform as string) ?? null,
-      })
-      await runContinuityMaintenanceForProjectWithRepositories(tx, input.projectId)
+        const reconciliation = await reconcileAfterDigest(tx, input.projectId, input.digest, {
+          newItems: digestMemoryItems,
+          userId,
+          sourceSurface: (input.session.platform as string) ?? null,
+        })
+        await observeAndReflectDigestWithRepositories(tx, userId, {
+          projectId: input.projectId,
+          digest: input.digest,
+          sourceId: digest.id,
+          sourceKind: "session_digest",
+          observedAt: digest.createdAt,
+          nextState,
+        })
+        await runContinuityMaintenanceForProjectWithRepositories(tx, input.projectId)
 
       // Auto-cleanup: archive expired + decayed items, enforce memory budget
       await tx.memory.archiveExpiredItems(input.projectId)

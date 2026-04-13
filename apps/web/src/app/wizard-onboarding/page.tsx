@@ -22,7 +22,7 @@ export default async function WizardOnboardingPage({ searchParams }: WizardOnboa
         <div className="text-center">
           <h1 className="text-lg font-semibold text-[var(--relay-ink)]">Relay Wizard</h1>
           <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
-            Connecting your terminal to Relay.
+            Connecting your tool to Relay.
           </p>
         </div>
 

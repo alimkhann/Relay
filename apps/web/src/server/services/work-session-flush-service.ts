@@ -7,6 +7,7 @@ import type {
   WorkSessionStructuredState,
 } from "@relay/shared"
 
+import { observeAndReflectDigestWithRepositories } from "./canon-autonomy-service"
 import { reconcileAfterDigest, type ReconciliationResult } from "./context-reconciliation-service"
 import { mergeDigestIntoState } from "./project-state-service"
 
@@ -100,6 +101,7 @@ async function runDigestAndReconcile(
   digest: SessionDigestShape,
   flushUserId: string,
   flushSurface: string | null,
+  workSessionId: string,
 ): Promise<{ nextState: ProjectStateRow; reconciliation: ReconciliationResult }> {
   const nextStateShape = mergeDigestIntoState(project, currentState, digest)
   const nextState = await tx.projectState.upsert({
@@ -120,6 +122,14 @@ async function runDigestAndReconcile(
   const reconciliation = await reconcileAfterDigest(tx, projectId, digest, {
     userId: flushUserId,
     sourceSurface: flushSurface,
+  })
+  await observeAndReflectDigestWithRepositories(tx, flushUserId, {
+    projectId,
+    digest,
+    sourceId: workSessionId,
+    sourceKind: "work_session",
+    observedAt: new Date().toISOString(),
+    nextState,
   })
   return { nextState, reconciliation }
 }
@@ -193,6 +203,7 @@ export async function flushWorkSession(
       digest,
       userId,
       session.surface,
+      session.id,
     )
 
     await tx.workSessionEvents.create({

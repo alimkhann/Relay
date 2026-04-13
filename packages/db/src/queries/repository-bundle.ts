@@ -6,6 +6,8 @@ import { BillingCustomerRepository } from "../repositories/billing-customer-repo
 import { BillingWebhookEventRepository } from "../repositories/billing-webhook-event-repository"
 import { BillingWebhookRawDeliveryRepository } from "../repositories/billing-webhook-raw-delivery-repository"
 import { BootstrapPacketRepository } from "../repositories/bootstrap-packet-repository"
+import { CanonEntryRepository } from "../repositories/canon-entry-repository"
+import { CanonEvidenceRepository } from "../repositories/canon-evidence-repository"
 import { ContextPacketRepository } from "../repositories/context-packet-repository"
 import { EventRepository } from "../repositories/event-repository"
 import { ExtensionConnectGrantRepository } from "../repositories/extension-connect-grant-repository"
@@ -18,6 +20,8 @@ import { McpAuthSessionRepository } from "../repositories/mcp-auth-session-repos
 import { McpTokenRepository } from "../repositories/mcp-token-repository"
 import { ProfileRepository } from "../repositories/profile-repository"
 import { ProjectRepository } from "../repositories/project-repository"
+import { ProjectSummarySnapshotRepository } from "../repositories/project-summary-snapshot-repository"
+import { ProjectSettingsRepository } from "../repositories/project-settings-repository"
 import { ProjectStateRepository } from "../repositories/project-state-repository"
 import { ProjectStateOverrideRepository } from "../repositories/project-state-override-repository"
 import { SessionRepository } from "../repositories/session-repository"
@@ -46,12 +50,16 @@ export interface RepositoryBundle {
   turns: TurnRepository
   memory: MemoryRepository
   memoryEvents: MemoryEventRepository
+  canonEntries: CanonEntryRepository
+  canonEvidence: CanonEvidenceRepository
   mcpAuthSessions: McpAuthSessionRepository
   mcpTokens: McpTokenRepository
   contextPackets: ContextPacketRepository
   sessionDigests: SessionDigestRepository
   projectState: ProjectStateRepository
+  projectSettings: ProjectSettingsRepository
   projectStateOverrides: ProjectStateOverrideRepository
+  projectSummarySnapshots: ProjectSummarySnapshotRepository
   bootstrapPackets: BootstrapPacketRepository
   entitlements: EntitlementRepository
   aiJobs: AiJobRunRepository
@@ -90,12 +98,16 @@ export function createRepositoryBundle(
     turns: new TurnRepository(provider),
     memory: new MemoryRepository(provider),
     memoryEvents: new MemoryEventRepository(provider),
+    canonEntries: new CanonEntryRepository(provider),
+    canonEvidence: new CanonEvidenceRepository(provider),
     mcpAuthSessions: new McpAuthSessionRepository(provider),
     mcpTokens: new McpTokenRepository(provider),
     contextPackets: new ContextPacketRepository(provider),
     sessionDigests: new SessionDigestRepository(provider),
     projectState: new ProjectStateRepository(provider),
+    projectSettings: new ProjectSettingsRepository(provider),
     projectStateOverrides: new ProjectStateOverrideRepository(provider),
+    projectSummarySnapshots: new ProjectSummarySnapshotRepository(provider),
     bootstrapPackets: new BootstrapPacketRepository(provider),
     entitlements: new EntitlementRepository(provider),
     aiJobs: new AiJobRunRepository(provider),

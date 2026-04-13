@@ -24,3 +24,9 @@ export interface HypothesisLine {
   question_id: string
   hypothesis: string
 }
+
+export interface SessionSummarySeed {
+  sessionId: string
+  sessionDate: string
+  content: string
+}

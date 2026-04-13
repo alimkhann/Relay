@@ -22,3 +22,15 @@ export const projectStateOverrideSchema = z.object({
 export const sessionArchiveSchema = z.object({
   archived: z.boolean().default(true)
 })
+
+export const projectSettingsSchema = z.object({
+  autonomyMode: z.enum(["conservative", "standard", "aggressive"]).default("standard"),
+  showTentativeUpdates: z.boolean().default(true),
+  includeTentativeUpdatesInPackets: z.boolean().default(true),
+  compactionMode: z.enum(["light", "standard", "aggressive"]).default("standard"),
+})
+
+export const updateProjectSettingsSchema = projectSettingsSchema.partial()
+
+export type ProjectSettingsInput = z.infer<typeof projectSettingsSchema>
+export type UpdateProjectSettingsInput = z.infer<typeof updateProjectSettingsSchema>

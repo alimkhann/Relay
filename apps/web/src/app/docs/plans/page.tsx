@@ -11,7 +11,7 @@ export default function PlansDocsPage() {
       <div>
         <h1 className="text-2xl font-bold text-[var(--relay-ink)]">Plans &amp; limits</h1>
         <p className="mt-2 text-[15px] leading-relaxed text-[var(--relay-muted)]">
-          Relay keeps the free plan generous for individuals and unlocks higher limits on Pro.
+          Three tiers: Free to explore, Starter for daily use, Pro for full autonomy.
         </p>
       </div>
 
@@ -20,7 +20,7 @@ export default function PlansDocsPage() {
         <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] px-4 py-4">
           <ul className="space-y-2 text-[14px] text-[var(--relay-muted)]">
             <li>Browser capture across supported AI tools</li>
-            <li>Fresh-chat briefs and quick continuity packets</li>
+            <li>Project canon and continuity packets</li>
             <li>Chrome extension and MCP access</li>
           </ul>
         </div>
@@ -35,21 +35,27 @@ export default function PlansDocsPage() {
               <tr className="border-b border-[var(--relay-line)]">
                 <th className="px-4 py-3 text-left font-semibold text-[var(--relay-ink)]">Limit</th>
                 <th className="px-4 py-3 text-right font-semibold text-[var(--relay-ink)]">Free</th>
+                <th className="px-4 py-3 text-right font-semibold text-[var(--relay-ink)]">Starter</th>
                 <th className="px-4 py-3 text-right font-semibold text-[var(--relay-ink)]">Pro</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--relay-line)]">
               {[
-                { label: "Active projects", free: "2", pro: "10" },
-                { label: "Captures / month", free: "200", pro: "2,000" },
-                { label: "AI analyses / day", free: "6 / project · 18 total", pro: "32 / project · 120 total" },
-                { label: "MCP reads / day", free: "20", pro: "200" },
-                { label: "MCP writes / day", free: "5", pro: "50" },
-                { label: "Memory items / project", free: "100", pro: "500" },
+                { label: "Active projects", free: "2", starter: "10", pro: "20" },
+                { label: "Captures / month", free: "100", starter: "1,200", pro: "3,000" },
+                { label: "Retention", free: "7 days", starter: "180 days", pro: "365 days" },
+                { label: "MCP basic reads / day", free: "12", starter: "200", pro: "500" },
+                { label: "MCP deep reads / day", free: "2", starter: "12", pro: "30" },
+                { label: "MCP writes / day", free: "1", starter: "15", pro: "40" },
+                { label: "AI analyses / day", free: "2 / proj · 4 total", starter: "8 / proj · 40 total", pro: "18 / proj · 90 total" },
+                { label: "Memory items / project", free: "150", starter: "1,500", pro: "4,000" },
+                { label: "Autonomous canon", free: "—", starter: "Yes", pro: "Yes" },
+                { label: "High-quality model", free: "—", starter: "—", pro: "Yes" },
               ].map((row) => (
                 <tr key={row.label}>
                   <td className="px-4 py-3 text-[var(--relay-muted)]">{row.label}</td>
                   <td className="px-4 py-3 text-right text-[var(--relay-muted)]">{row.free}</td>
+                  <td className="px-4 py-3 text-right text-[var(--relay-muted)]">{row.starter}</td>
                   <td className="px-4 py-3 text-right font-medium text-[var(--relay-ink)]">{row.pro}</td>
                 </tr>
               ))}
@@ -58,15 +64,13 @@ export default function PlansDocsPage() {
           </div>
         </div>
         <p className="text-[13px] text-[var(--relay-muted)]">
-          AI analyses have both a per-project limit and an overall per-account daily cap. That is why the billing screen can show
-          values like <span className="font-mono text-[var(--relay-ink)]">18 / day</span> even though the plan card says
-          <span className="font-mono text-[var(--relay-ink)]"> 6 / day per project</span>.
+          AI analyses have both a per-project limit and an overall per-account daily cap.
         </p>
       </section>
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Features</h2>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-4">
             <h3 className="text-[14px] font-semibold text-[var(--relay-ink)]">{PRICING.free.name}</h3>
             <p className="mt-1 text-[12px] text-[var(--relay-muted)]">{PRICING.free.description}</p>
@@ -74,6 +78,18 @@ export default function PlansDocsPage() {
               {PRICING.free.features.map((f) => (
                 <li key={f} className="flex items-start gap-2 text-[13px] text-[var(--relay-muted)]">
                   <Check className="h-3.5 w-3.5 text-[var(--relay-muted)] mt-0.5 shrink-0" />
+                  {f}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-4">
+            <h3 className="text-[14px] font-semibold text-[var(--relay-ink)]">{PRICING.starter.name}</h3>
+            <p className="mt-1 text-[12px] text-[var(--relay-muted)]">{PRICING.starter.description}</p>
+            <ul className="mt-3 space-y-2">
+              {PRICING.starter.features.map((f) => (
+                <li key={f} className="flex items-start gap-2 text-[13px] text-[var(--relay-muted)]">
+                  <Check className="h-3.5 w-3.5 text-emerald-500 mt-0.5 shrink-0" />
                   {f}
                 </li>
               ))}

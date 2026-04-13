@@ -9,32 +9,138 @@ export default function ConceptsDocsPage() {
       <div>
         <h1 className="text-2xl font-bold text-[var(--relay-ink)]">Concepts</h1>
         <p className="mt-2 text-[15px] leading-relaxed text-[var(--relay-muted)]">
-          Understanding how Relay organizes, scores, and delivers project context.
+          How Relay organizes, scores, and delivers project context across every AI tool you use.
         </p>
       </div>
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Projects</h2>
         <p className="text-[15px] text-[var(--relay-muted)]">
-          A <strong className="text-[var(--relay-ink)]">project</strong> is the top-level container in Relay. Each project has its own memory,
-          briefs, and work sessions. Think of it as one codebase, one initiative, or one product.
-          Free plans get 2 active projects; Pro gets 10.
+          A <strong className="text-[var(--relay-ink)]">project</strong> is the top-level container in Relay. Each project has its own canon,
+          memory, packets, and work sessions. Think of it as one codebase, one initiative, or one product.
+        </p>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">What is Project Canon?</h2>
+        <p className="text-[15px] text-[var(--relay-muted)]">
+          <strong className="text-[var(--relay-ink)]">Canon</strong> is your project&apos;s stable truth — the facts Relay is confident
+          about and uses to generate context packets. Canon entries are grouped by kind:
+        </p>
+        <div className="divide-y divide-[var(--relay-line)] rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
+          {[
+            { kind: "objective", desc: "What the project is trying to achieve right now." },
+            { kind: "decision", desc: "A choice that was made and should be respected." },
+            { kind: "constraint", desc: "A rule or limitation that must hold." },
+            { kind: "task", desc: "An open work item." },
+            { kind: "progress", desc: "Recent accomplishments or milestones." },
+            { kind: "architecture_fact", desc: "Structural knowledge about the codebase." },
+            { kind: "risk", desc: "Known risks or potential issues." },
+            { kind: "assumption", desc: "Something taken as true without proof." },
+          ].map((item) => (
+            <div key={item.kind} className="px-4 py-3">
+              <code className="text-[13px] font-mono font-medium text-[var(--relay-ink)]">{item.kind}</code>
+              <p className="mt-0.5 text-[13px] text-[var(--relay-muted)]">{item.desc}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-[15px] text-[var(--relay-muted)]">
+          Each entry has a status: <strong className="text-[var(--relay-ink)]">active</strong> (confirmed),{" "}
+          <strong className="text-[var(--relay-ink)]">tentative</strong> (low confidence, pending review),{" "}
+          <strong className="text-[var(--relay-ink)]">disputed</strong> (conflicting evidence),{" "}
+          <strong className="text-[var(--relay-ink)]">superseded</strong> (replaced by a newer entry),{" "}
+          <strong className="text-[var(--relay-ink)]">stale</strong> (no recent reaffirmation), or{" "}
+          <strong className="text-[var(--relay-ink)]">resolved</strong> (completed/closed).
+        </p>
+        <p className="text-[15px] text-[var(--relay-muted)]">
+          You can lock any entry to prevent Relay from modifying it automatically.
+        </p>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">How Relay decides what is true</h2>
+        <p className="text-[15px] text-[var(--relay-muted)]">
+          Relay builds canon through an <strong className="text-[var(--relay-ink)]">observe → reflect → promote</strong> cycle:
+        </p>
+        <ol className="list-decimal list-inside space-y-1.5 text-[15px] text-[var(--relay-muted)]">
+          <li><strong className="text-[var(--relay-ink)]">Observe</strong> — Each session digest is analyzed for facts that might be canon-worthy.</li>
+          <li><strong className="text-[var(--relay-ink)]">Reflect</strong> — Observed facts are compared against existing canon for conflicts or confirmation.</li>
+          <li><strong className="text-[var(--relay-ink)]">Promote or conflict</strong> — Strong evidence promotes tentative entries to active; contradictions flag disputes.</li>
+        </ol>
+        <p className="text-[15px] text-[var(--relay-muted)]">
+          Confidence scores, evidence count, and reaffirmation frequency determine promotion speed.
+          On aggressive autonomy, Relay promotes eagerly. On conservative, everything stays tentative until you lock it.
+        </p>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Current vs historical truth</h2>
+        <p className="text-[15px] text-[var(--relay-muted)]">
+          Canon entries have optional <code className="text-[var(--relay-ink)]">validFrom</code> and{" "}
+          <code className="text-[var(--relay-ink)]">validUntil</code> timestamps. Active entries represent current truth;
+          superseded entries represent what was true before.
+        </p>
+        <p className="text-[15px] text-[var(--relay-muted)]">
+          When you ask Relay &ldquo;what was the objective last week?&rdquo;, temporal retrieval checks historical canon
+          and superseded entries. Current queries use active canon only.
+        </p>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Why memory may be demoted or archived</h2>
+        <p className="text-[15px] text-[var(--relay-muted)]">
+          Raw memory items go through <strong className="text-[var(--relay-ink)]">compaction</strong>. When a fact graduates
+          into canon or gets absorbed by a summary snapshot, the original memory item is demoted to save retrieval budget.
+        </p>
+        <ul className="list-disc list-inside space-y-1.5 text-[15px] text-[var(--relay-muted)]">
+          <li><strong className="text-[var(--relay-ink)]">covered_by_canon</strong> — The fact is now a canon entry.</li>
+          <li><strong className="text-[var(--relay-ink)]">covered_by_summary</strong> — A project summary covers the same ground.</li>
+          <li><strong className="text-[var(--relay-ink)]">historical_only</strong> — Retained for provenance, not included in active retrieval.</li>
+          <li><strong className="text-[var(--relay-ink)]">completed</strong> — Task or note is done.</li>
+        </ul>
+        <p className="text-[15px] text-[var(--relay-muted)]">
+          Demoted items are never deleted — they remain available for historical queries and provenance tracking.
+          Compaction aggressiveness is controlled in project settings (light / standard / aggressive).
+        </p>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Browser packets vs agent packets</h2>
+        <p className="text-[15px] text-[var(--relay-muted)]">
+          Context packets are the formatted output Relay injects into your AI tools. There are two families:
+        </p>
+        <div className="divide-y divide-[var(--relay-line)] rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
+          {[
+            { mode: "Fresh chat bootstrap", desc: "Full project context for a new browser chat session. Includes canon, recent memory, and project state." },
+            { mode: "Quick continuity", desc: "Delta packet for continuing an existing browser session. Only what changed since last sync." },
+            { mode: "Agent full bootstrap", desc: "Deep context for MCP-connected agents (Claude Code, Cursor, etc.). Richer format with architecture facts and tool references." },
+            { mode: "Agent quick continuity", desc: "Lightweight delta for agents mid-session. Minimal token cost." },
+          ].map((item) => (
+            <div key={item.mode} className="px-4 py-3">
+              <p className="text-[13px] font-medium text-[var(--relay-ink)]">{item.mode}</p>
+              <p className="mt-0.5 text-[13px] text-[var(--relay-muted)]">{item.desc}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-[15px] text-[var(--relay-muted)]">
+          Packets are target-aware: the same canon produces different output for Claude Code vs. ChatGPT
+          based on token budgets and formatting conventions.
         </p>
       </section>
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Memory items</h2>
         <p className="text-[15px] text-[var(--relay-muted)]">
-          Memory items are the atomic units of project context. Each item has a type:
+          Memory items are the raw captured context from your sessions. Each has a type:
         </p>
         <div className="divide-y divide-[var(--relay-line)] rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
           {[
-            { type: "decision", desc: "A choice that was made and should be remembered (e.g. 'We use Neon Auth, not Supabase')." },
-            { type: "task", desc: "Something to be done or tracked (e.g. 'Add rate limiting to billing endpoints')." },
-            { type: "constraint", desc: "A rule or limitation that must be respected (e.g. 'No floating promises — ESLint enforced')." },
-            { type: "note", desc: "General context, observations, or knowledge worth preserving." },
-            { type: "requirement", desc: "A user or product requirement that shapes implementation." },
-            { type: "artifact", desc: "A reference to a file, URL, or other concrete artifact." },
+            { type: "decision", desc: "A choice that was made and should be remembered." },
+            { type: "task", desc: "Something to be done or tracked." },
+            { type: "constraint", desc: "A rule or limitation." },
+            { type: "note", desc: "General context or observations." },
+            { type: "requirement", desc: "A user or product requirement." },
+            { type: "artifact", desc: "A reference to a file, URL, or resource." },
           ].map((item) => (
             <div key={item.type} className="px-4 py-3">
               <code className="text-[13px] font-mono font-medium text-[var(--relay-ink)]">{item.type}</code>
@@ -43,57 +149,28 @@ export default function ConceptsDocsPage() {
           ))}
         </div>
         <p className="text-[15px] text-[var(--relay-muted)]">
-          Items can be tagged for search and pinned for priority inclusion in briefs.
+          Items are scored by decay (freshness + reaffirmation) and can be pinned for priority inclusion in packets.
+          Strong memory items graduate into canon entries over time.
         </p>
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Briefs</h2>
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Drift reconciliation</h2>
         <p className="text-[15px] text-[var(--relay-muted)]">
-          A <strong className="text-[var(--relay-ink)]">brief</strong> is a compiled snapshot of your project state, formatted for a specific
-          AI tool. Relay generates briefs in two modes:
+          When you work across multiple AI tools simultaneously, each surface may produce different claims about
+          the same topic. Relay&apos;s <strong className="text-[var(--relay-ink)]">drift reconciler</strong> detects when
+          facts from different surfaces contradict each other and flags them as disputes.
         </p>
-        <ul className="list-disc list-inside space-y-1.5 text-[15px] text-[var(--relay-muted)]">
-          <li><strong className="text-[var(--relay-ink)]">Fresh chat bootstrap</strong> — Full context for starting a brand-new session.</li>
-          <li><strong className="text-[var(--relay-ink)]">Quick continuity</strong> — A delta of what changed since your last sync.</li>
-        </ul>
         <p className="text-[15px] text-[var(--relay-muted)]">
-          Briefs are target-aware: the same project state produces different output for Claude Code
-          vs. ChatGPT based on token budgets and formatting conventions.
-        </p>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Work sessions</h2>
-        <p className="text-[15px] text-[var(--relay-muted)]">
-          A <strong className="text-[var(--relay-ink)]">work session</strong> represents a continuous period of interaction with
-          one tool. When you open a new coding session or chat, Relay tracks it as a work session
-          with checkpoints for meaningful state changes. Sessions are used to compute deltas and
-          provide continuity when you return.
-        </p>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Truth scoring</h2>
-        <p className="text-[15px] text-[var(--relay-muted)]">
-          Not all context is equal. Relay uses a multi-dimensional truth score that considers:
-        </p>
-        <ul className="list-disc list-inside space-y-1.5 text-[15px] text-[var(--relay-muted)]">
-          <li><strong className="text-[var(--relay-ink)]">Freshness</strong> — When the information was last updated or reaffirmed.</li>
-          <li><strong className="text-[var(--relay-ink)]">Authority</strong> — Where the information came from (user input &gt; AI suggestion).</li>
-          <li><strong className="text-[var(--relay-ink)]">Durability</strong> — Whether it&apos;s a stable decision or a tentative note.</li>
-          <li><strong className="text-[var(--relay-ink)]">Evidence</strong> — Whether it&apos;s backed by code, tests, or repeated confirmation.</li>
-          <li><strong className="text-[var(--relay-ink)]">Reaffirmation</strong> — How often the information has been validated across sessions.</li>
-        </ul>
-        <p className="text-[15px] text-[var(--relay-muted)]">
-          Higher-scored items get priority in briefs when token budgets are tight.
+          By default, the most recent surface &ldquo;wins&rdquo; for active status, but both perspectives are retained
+          for review.
         </p>
       </section>
 
       <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-soft)] px-5 py-4">
         <p className="text-[14px] font-medium text-[var(--relay-ink)]">Need pricing details?</p>
         <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
-          See <Link href="/docs/plans" className="text-[var(--relay-accent)] underline underline-offset-2">Plans &amp; limits</Link> for the full Free vs Pro comparison.
+          See <Link href="/docs/plans" className="text-[var(--relay-accent)] underline underline-offset-2">Plans &amp; limits</Link> for the full Free / Starter / Pro comparison.
         </p>
       </div>
 

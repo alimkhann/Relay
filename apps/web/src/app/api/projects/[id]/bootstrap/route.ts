@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { bootstrapRequestSchema } from "@relay/shared"
 
 import { withApiAuth } from "@/server/http/api-route"
 import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
@@ -11,10 +12,12 @@ export const POST = withApiAuth(async (request: Request, { params }: { params: P
   const viewer = await resolveViewer(request.headers.get("authorization"))
   const { id } = await params
   requireViewerProject(viewer, id, "brief:read")
-  if (viewer.mode === "mcp") {
-    await consumeMcpReadQuota(viewer.userId)
-  }
   const input = await request.json()
+  const parsed = bootstrapRequestSchema.parse(input)
+  if (viewer.mode === "mcp") {
+    const readMode = parsed.deep || parsed.packetMode === "agent_full_bootstrap" ? "deep" : "basic"
+    await consumeMcpReadQuota(viewer.userId, readMode)
+  }
   const result = await generateBootstrapForProject(viewer.userId, id, input)
   if (result.status === "ready" && input && typeof input === "object" && "syncSurface" in input && typeof input.syncSurface === "string") {
     await recordSyncMarkForUser(viewer.userId, id, input.syncSurface)

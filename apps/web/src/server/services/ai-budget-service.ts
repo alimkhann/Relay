@@ -1,18 +1,14 @@
-import type { ProjectAiBudgetDto } from "@relay/shared"
+import type { ProjectAiBudgetDto, UserEntitlementsDto } from "@relay/shared"
 import type { RepositoryBundle } from "@relay/db"
 
 import { resolveViewerEntitlements } from "./entitlement-service"
 
-const FREE_PLAN = {
-  plan: "free" as const,
-  dailyUserAiLimit: 18,
-  dailyProjectAiLimit: 6,
-}
-
-const PRO_PLAN = {
-  plan: "pro" as const,
-  dailyUserAiLimit: 120,
-  dailyProjectAiLimit: 32,
+function planBudgetFromEntitlements(entitlements: UserEntitlementsDto) {
+  return {
+    plan: entitlements.plan,
+    dailyUserAiLimit: entitlements.limits.aiAnalysesPerUserDaily,
+    dailyProjectAiLimit: entitlements.limits.aiAnalysesPerProjectDaily,
+  }
 }
 
 export async function resolveProjectAiBudget(
@@ -21,7 +17,7 @@ export async function resolveProjectAiBudget(
   projectId: string
 ): Promise<ProjectAiBudgetDto> {
   const entitlements = await resolveViewerEntitlements(userId)
-  const planConfig = entitlements.plan === "pro" ? PRO_PLAN : FREE_PLAN
+  const planConfig = planBudgetFromEntitlements(entitlements)
   const [dailyProjectAiUsed, dailyUserAiUsed] = await Promise.all([
     repositories.aiJobs.countRecentAiDigestRunsByProject(projectId),
     repositories.aiJobs.countRecentAiDigestRunsByUser(userId),

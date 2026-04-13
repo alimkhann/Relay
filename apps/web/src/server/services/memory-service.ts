@@ -3,6 +3,8 @@ import type { CreateMemoryItemInput, MemoryEventType, MemoryItemRow } from "@rel
 import { computeDecayScore, createMemoryItemSchema, DECAY_VISIBILITY_THRESHOLD, hasReplacementSignal, isSameTopic, updateMemoryItemSchema } from "@relay/shared"
 
 import { embedMemoryItem, embedMemoryItems, generateEmbedding } from "./embedding-service"
+import { decomposeQuery } from "./query-decomposition-service"
+import { buildCurrentPreviousHint, buildReasoningEvidenceTable, buildTemporalResolutionHint } from "./reasoning-assembly-service"
 import { detectRelations } from "./relation-service"
 
 /**
@@ -143,6 +145,7 @@ export async function createMemoryItemBatch(userId: string, projectId: string, i
 
 export async function searchMemoryItems(userId: string, projectId: string, query: string, options?: { types?: string[]; tags?: string[] }) {
   const repositories = createRepositoryBundle(userId)
+  const decomposition = decomposeQuery(query)
 
   let results: MemoryItemRow[]
 
@@ -150,7 +153,11 @@ export async function searchMemoryItems(userId: string, projectId: string, query
   try {
     const queryEmbedding = await generateEmbedding(`${query}`)
     if (queryEmbedding) {
-      results = await repositories.memory.hybridSearch(projectId, query, queryEmbedding, options)
+      results = await repositories.memory.hybridSearch(projectId, decomposition.normalizedQuery, queryEmbedding, {
+        ...options,
+        dateRange: decomposition.sourceDateRange,
+        includeSuperseded: decomposition.stateIntent === "historical",
+      })
     } else {
       results = await repositories.memory.search(projectId, query, options)
     }
@@ -159,9 +166,33 @@ export async function searchMemoryItems(userId: string, projectId: string, query
   }
 
   // Filter out fully decayed items
-  return results.filter((item) =>
+  const memoryResults = results.filter((item) =>
     computeDecayScore(item.type, item.updatedAt, item.lastReaffirmedAt, item.pinned) >= DECAY_VISIBILITY_THRESHOLD
   )
+
+  const canonResults = await repositories.canonEntries.searchByProject(projectId, decomposition.normalizedQuery, {
+    kinds: decomposition.canonKinds.length > 0 ? decomposition.canonKinds : undefined,
+    currentOnly: decomposition.stateIntent === "current",
+    historicalAt: decomposition.historicalAt,
+  })
+
+  const currentPreviousHint = buildCurrentPreviousHint(canonResults)
+  const evidenceTable = buildReasoningEvidenceTable({
+    query: decomposition,
+    canonResults,
+    memoryResults,
+    referenceDate: null,
+  })
+  const temporalHint = buildTemporalResolutionHint(evidenceTable)
+
+  return {
+    memoryResults,
+    canonResults,
+    queryAnalysis: decomposition,
+    evidenceTable,
+    currentPreviousHint,
+    temporalHint,
+  }
 }
 
 export async function updateMemoryItem(userId: string, memoryId: string, input: unknown, projectId?: string) {

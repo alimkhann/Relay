@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "bench": "tsx run.ts"
+    "bench": "tsx run.ts",
+    "preflight": "tsx src/preflight.ts"
   },
   "dependencies": {
     "@relay/db": "workspace:*",

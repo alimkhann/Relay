@@ -118,6 +118,7 @@ export interface BootstrapPacketResult extends Pick<BootstrapPacketRow, "content
 export interface BootstrapRequest {
   kind: BootstrapPacketKind
   targetProfileKey: string
+  packetMode?: "chat_new" | "chat_continue" | "agent_quick_continuity" | "agent_full_bootstrap"
   deep?: boolean
   since?: string
   syncSurface?: SyncSurface

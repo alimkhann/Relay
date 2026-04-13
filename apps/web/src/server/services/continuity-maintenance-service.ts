@@ -8,6 +8,7 @@ import {
 } from "@relay/shared"
 
 import { adjudicateGreyZoneConflict } from "./conflict-adjudication-service"
+import { deriveMemoryCompactionAction } from "./compaction-service"
 
 const BROWSER_SURFACES: WorkSessionRow["surface"][] = [
   "chatgpt",
@@ -56,12 +57,16 @@ async function runContinuityMaintenanceForProjectWithRepositories(
   repositories: RepositoryBundle,
   projectId: string,
 ): Promise<ContinuityMaintenanceResult> {
-  const [memoryItems, checkpoints] = await Promise.all([
+  const [memoryItems, checkpoints, canonEntries, summarySnapshots, projectState, projectSettings] = await Promise.all([
     repositories.memory.listByProject(projectId),
     repositories.workSessionCheckpoints.listRecentByProject(projectId, {
       limit: 20,
       surfaces: ["mcp", "cli", ...BROWSER_SURFACES],
     }),
+    repositories.canonEntries.listByProject(projectId, { statuses: ["active", "tentative", "disputed", "superseded"], limit: 200 }),
+    repositories.projectSummarySnapshots.listLatestByProject(projectId, { limit: 40 }),
+    repositories.projectState.getByProject(projectId),
+    repositories.projectSettings.getByProject(projectId),
   ])
 
   const reaffirmationTexts = checkpoints.flatMap((checkpoint) => {
@@ -224,6 +229,38 @@ async function runContinuityMaintenanceForProjectWithRepositories(
       surface,
       olderThan: staleBefore,
       clientName: "relay-extension",
+    })
+  }
+
+  for (const item of memoryItems) {
+    const action = deriveMemoryCompactionAction({
+      item,
+      canonEntries,
+      snapshots: summarySnapshots,
+      state: projectState,
+      compactionMode: projectSettings?.settings.compactionMode ?? "standard",
+    })
+
+    if (action.type === "keep") continue
+
+    const metadata = mergeMetadata(asMetadata(item), {
+      ...(action.metadata ?? {}),
+      compactionReason: action.reason ?? null,
+      compactedAt: new Date().toISOString(),
+    })
+
+    if (action.type === "archive") {
+      await repositories.memory.update(item.id, {
+        isArchived: true,
+        metadata: mergeMetadata(metadata, {
+          archivedReason: action.reason ?? "compaction",
+        }),
+      })
+      continue
+    }
+
+    await repositories.memory.update(item.id, {
+      metadata,
     })
   }
 

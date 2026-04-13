@@ -219,14 +219,18 @@ function deriveInsertButtonState(activeState: RelayActiveProjectState) {
 
   if (insertState.status === "error") {
     return {
-      label: insertState.message ?? "Insert project brief",
+      label: insertState.message ?? (activeState.insertKind === "quick_continuity" ? "Continue with context" : "Insert new context"),
       shimmering: false,
       disabled: !activeState.canInsert,
     };
   }
 
+  const label =
+    activeState.insertKind === "quick_continuity"
+      ? "Continue with context"
+      : "Insert new context";
   return {
-    label: "Insert project brief",
+    label,
     shimmering: false,
     disabled: !activeState.canInsert,
   };
@@ -2462,6 +2466,18 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
         </>
       )}
+
+      {/* Feedback link */}
+      <div style={{ padding: "12px 0 4px", textAlign: "center" }}>
+        <a
+          href="https://www.onrelay.app/settings?section=app"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ fontSize: 11, color: "var(--relay-muted, #888)", textDecoration: "none" }}
+        >
+          Send feedback
+        </a>
+      </div>
     </div>
   );
 }

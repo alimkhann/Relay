@@ -24,6 +24,6 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
   const types = typesParam ? typesParam.split(",").filter(Boolean) : undefined
   const tags = tagsParam ? tagsParam.split(",").filter(Boolean) : undefined
 
-  const results = await searchMemoryItems(viewer.userId, id, query, { types, tags })
-  return NextResponse.json({ results })
+  const { memoryResults, canonResults, queryAnalysis, evidenceTable, currentPreviousHint, temporalHint } = await searchMemoryItems(viewer.userId, id, query, { types, tags })
+  return NextResponse.json({ results: memoryResults, canon: canonResults, queryAnalysis, evidenceTable, currentPreviousHint, temporalHint })
 })

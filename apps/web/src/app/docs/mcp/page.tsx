@@ -16,7 +16,7 @@ export default function McpDocsPage() {
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Quick install</h2>
           <p className="text-[15px] text-[var(--relay-muted)]">
-            Run the CLI wizard to authenticate, install MCP config, and set up skill files:
+            Run the setup wizard to authenticate, install MCP config, and set up skill files:
           </p>
           <pre className="rounded-md bg-[var(--relay-soft)] border border-[var(--relay-line)] px-4 py-3 font-mono text-[13px] text-[var(--relay-ink)]">
             npx @onrelay/wizard

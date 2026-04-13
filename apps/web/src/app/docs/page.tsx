@@ -43,7 +43,7 @@ export default function DocsIndexPage() {
         <h1 className="text-2xl font-bold text-[var(--relay-ink)]">Relay Documentation</h1>
         <p className="mt-2 text-[15px] leading-relaxed text-[var(--relay-muted)]">
           Relay keeps your project context — decisions, tasks, constraints, and notes — synchronized across
-          every AI tool you use. Whether you work in ChatGPT, Claude, Cursor, or the terminal, Relay
+          every AI tool you use. Whether you work in ChatGPT, Claude, Cursor, or any AI coding tool, Relay
           makes sure each session starts with full context.
         </p>
       </div>

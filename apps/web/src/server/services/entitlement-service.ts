@@ -39,6 +39,7 @@ export async function resolveViewerEntitlements(userId: string): Promise<UserEnt
     plan: entitlement.planKey,
     status: entitlement.status,
     interval: entitlement.interval,
+    isPaid: entitlement.planKey !== "free",
     isPro: entitlement.planKey === "pro",
     isTrialing,
     trialEndsAt: entitlement.trialEndsAt,
@@ -48,6 +49,8 @@ export async function resolveViewerEntitlements(userId: string): Promise<UserEnt
       mcpRead: true,
       mcpWrite: true,
       handoffPacks: entitlement.handoffEnabled,
+      autonomousCanon: entitlement.planKey !== "free",
+      highQualityModel: entitlement.planKey === "pro",
     },
     limits,
   }
@@ -140,9 +143,18 @@ export async function consumeCaptureQuota(userId: string) {
   return consumeQuota(userId, "capture_monthly", "month", entitlements.limits.captureMonthly, 1, entitlements.plan)
 }
 
-export async function consumeMcpReadQuota(userId: string) {
+export async function consumeMcpBasicReadQuota(userId: string) {
   const entitlements = await resolveViewerEntitlements(userId)
   return consumeQuota(userId, "mcp_read_daily", "day", entitlements.limits.mcpReadDaily, 1, entitlements.plan)
+}
+
+export async function consumeMcpDeepReadQuota(userId: string) {
+  const entitlements = await resolveViewerEntitlements(userId)
+  return consumeQuota(userId, "mcp_deep_read_daily", "day", entitlements.limits.mcpDeepReadDaily, 1, entitlements.plan)
+}
+
+export async function consumeMcpReadQuota(userId: string, mode: "basic" | "deep" = "basic") {
+  return mode === "deep" ? consumeMcpDeepReadQuota(userId) : consumeMcpBasicReadQuota(userId)
 }
 
 export async function consumeMcpWriteQuota(userId: string, amount = 1) {
@@ -153,9 +165,9 @@ export async function consumeMcpWriteQuota(userId: string, amount = 1) {
 // Rate limit for explicit user-triggered memory writes from the extension
 // (sidepanel "Save to project" button + right-click "Save to Relay" context
 // menu). Kept in its own bucket so it doesn't compete with MCP write budget.
-// Free: 20/day, Pro: 200/day. These are deliberately generous — the goal is
-// to stop runaway automation, not to gate normal usage.
-const FREE_EXTENSION_MEMORY_WRITE_LIMIT = 20
+// Free is intentionally tight so users can see value without camping on the
+// free tier indefinitely.
+const FREE_EXTENSION_MEMORY_WRITE_LIMIT = 2
 const PRO_EXTENSION_MEMORY_WRITE_LIMIT = 200
 
 export async function consumeExtensionMemoryWriteQuota(userId: string, amount = 1) {
@@ -170,7 +182,7 @@ export async function consumeExtensionMemoryWriteQuota(userId: string, amount = 
 export async function consumeHandoffQuota(userId: string) {
   await assertHandoffEnabled(userId)
   const entitlements = await resolveViewerEntitlements(userId)
-  const limit = entitlements.plan === "pro" ? 200 : 0
+  const limit = entitlements.plan === "pro" ? 300 : entitlements.plan === "starter" ? 120 : 0
   return consumeQuota(userId, "handoff_monthly", "month", limit, 1, entitlements.plan)
 }
 
@@ -186,7 +198,7 @@ export async function consumeIpRateLimit(scopeKey: string, featureKey: string, p
 
 export function buildEntitlementRowFromPlan(input: {
   userId: string
-  plan: "free" | "pro"
+  plan: "free" | "starter" | "pro"
   status: UserEntitlementsDto["status"]
   interval: UserEntitlementsDto["interval"]
   providerCustomerId?: string | null
@@ -194,7 +206,7 @@ export function buildEntitlementRowFromPlan(input: {
   trialEndsAt?: string | null
   currentPeriodEnd?: string | null
 }) {
-  const limits = input.plan === "pro" ? getPlanLimits("pro") : FREE_LIMITS
+  const limits = input.plan === "free" ? FREE_LIMITS : getPlanLimits(input.plan)
   return {
     userId: input.userId,
     planKey: input.plan,
@@ -207,7 +219,7 @@ export function buildEntitlementRowFromPlan(input: {
     captureLimitMonthly: limits.captureMonthly,
     mcpReadLimitDaily: limits.mcpReadDaily,
     mcpWriteLimitDaily: limits.mcpWriteDaily,
-    handoffEnabled: input.plan === "pro",
+    handoffEnabled: input.plan !== "free",
     trialEndsAt: input.trialEndsAt ?? null,
     currentPeriodEnd: input.currentPeriodEnd ?? null,
     updatedAt: new Date().toISOString(),

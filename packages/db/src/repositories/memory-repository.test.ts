@@ -110,6 +110,17 @@ describe("MemoryRepository.hybridSearch SQL shape", () => {
     expect(calls[0]!.values).toContain(45)
   })
 
+  it("applies a compaction penalty for demoted memory in hybrid search ranking", async () => {
+    const { provider, calls } = makeFakeProvider([])
+    const repo = new MemoryRepository(provider)
+    await repo.hybridSearch("proj-1", query, embedding)
+    const sql = calls[0]!.text
+    expect(sql).toContain("metadata->>'compactionState'")
+    expect(sql).toContain("covered_by_canon")
+    expect(sql).toContain("covered_by_summary")
+    expect(sql).toContain("historical_only")
+  })
+
   it("defaults recency half-life to 30 days when not supplied", async () => {
     const { provider, calls } = makeFakeProvider([])
     const repo = new MemoryRepository(provider)

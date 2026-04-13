@@ -19,7 +19,7 @@ type NormalizedSubscriptionInput = {
   providerSubscriptionId: string
   providerCustomerId: string | null
   productId: string | null
-  planKey: "free" | "pro"
+  planKey: "free" | "starter" | "pro"
   status: BillingSubscriptionStatus
   interval: "month" | "year" | null
   cancelAtPeriodEnd: boolean
@@ -40,30 +40,30 @@ type PlanTransition =
   | "trial_canceled"
 
 function detectPlanTransition(
-  previous: { planKey: "free" | "pro"; status: BillingSubscriptionStatus } | null,
-  next: { planKey: "free" | "pro"; status: BillingSubscriptionStatus },
+  previous: { planKey: "free" | "starter" | "pro"; status: BillingSubscriptionStatus } | null,
+  next: { planKey: "free" | "starter" | "pro"; status: BillingSubscriptionStatus },
 ): PlanTransition {
   const prevPlan = previous?.planKey ?? "free"
   const prevStatus = previous?.status ?? "inactive"
 
   if (prevPlan === next.planKey && prevStatus === next.status) return "none"
 
-  if (prevPlan === "free" && next.planKey === "pro" && next.status === "trialing") {
+  if (prevPlan === "free" && next.planKey !== "free" && next.status === "trialing") {
     return "free_to_trial"
   }
-  if (prevPlan === "free" && next.planKey === "pro" && next.status === "active") {
+  if (prevPlan === "free" && next.planKey !== "free" && next.status === "active") {
     return "free_to_pro"
   }
-  if (prevPlan === "pro" && prevStatus === "trialing" && next.planKey === "pro" && next.status === "active") {
+  if (prevPlan !== "free" && prevStatus === "trialing" && next.planKey !== "free" && next.status === "active") {
     return "trial_to_pro"
   }
-  if (prevPlan === "pro" && prevStatus === "trialing" && next.planKey === "free") {
+  if (prevPlan !== "free" && prevStatus === "trialing" && next.planKey === "free") {
     return "trial_canceled"
   }
-  if (prevPlan === "pro" && prevStatus !== "past_due" && next.status === "past_due") {
+  if (prevPlan !== "free" && prevStatus !== "past_due" && next.status === "past_due") {
     return "pro_past_due"
   }
-  if (prevPlan === "pro" && next.planKey === "free") {
+  if (prevPlan !== "free" && next.planKey === "free") {
     return "pro_to_free"
   }
   return "none"
@@ -131,7 +131,7 @@ function pickProSubscription(subs: NormalizedSubscriptionInput[]): NormalizedSub
   return (
     subs.find(
       (s) =>
-        s.planKey === "pro" &&
+        s.planKey !== "free" &&
         (s.status === "active" || s.status === "trialing" || s.status === "past_due"),
     ) ?? null
   )
@@ -147,16 +147,19 @@ function getPolarClient() {
   return new Polar({ accessToken, server })
 }
 
-function resolveProductId(interval: "month" | "year") {
-  const productId = interval === "year" ? PLAN_PRODUCT_IDS.pro.year : PLAN_PRODUCT_IDS.pro.month
+function resolveProductId(plan: "starter" | "pro", interval: "month" | "year") {
+  const productId = interval === "year" ? PLAN_PRODUCT_IDS[plan].year : PLAN_PRODUCT_IDS[plan].month
   if (!productId) {
-    throw new Error(`Polar product ID for ${interval}ly Pro is not configured.`)
+    throw new Error(`Polar product ID for ${interval}ly ${plan} is not configured.`)
   }
   return productId
 }
 
 function derivePlanFromProductId(productId: string | null | undefined) {
   if (!productId) return "free" as const
+  if (productId === PLAN_PRODUCT_IDS.starter.month || productId === PLAN_PRODUCT_IDS.starter.year) {
+    return "starter" as const
+  }
   if (productId === PLAN_PRODUCT_IDS.pro.month || productId === PLAN_PRODUCT_IDS.pro.year) {
     return "pro" as const
   }
@@ -177,16 +180,16 @@ export async function createPolarCheckoutForUser(user: {
   const parsed = billingCheckoutSchema.parse(input)
   const currentEntitlements = await resolveViewerEntitlements(user.id)
   if (
-    currentEntitlements.isPro &&
+    currentEntitlements.isPaid &&
     (currentEntitlements.status === "active" || currentEntitlements.status === "trialing" || currentEntitlements.status === "past_due")
   ) {
-    throw new ForbiddenError("You already have an active Relay Pro subscription. Use the billing portal to manage it.")
+    throw new ForbiddenError("You already have an active Relay subscription. Use the billing portal to manage it.")
   }
   const polar = getPolarClient()
   const repositories = createRepositoryBundle(user.id)
 
   const checkout = await polar.checkouts.create({
-    products: [resolveProductId(parsed.interval)],
+    products: [resolveProductId(parsed.plan, parsed.interval)],
     customerEmail: user.email ?? undefined,
     customerName: user.name ?? undefined,
     externalCustomerId: user.id,
@@ -194,7 +197,7 @@ export async function createPolarCheckoutForUser(user: {
     returnUrl: BILLING_RETURN_URL,
     metadata: {
       relay_user_id: user.id,
-      plan: parsed.interval === "year" ? "pro_yearly" : "pro_monthly",
+      plan: `${parsed.plan}_${parsed.interval === "year" ? "yearly" : "monthly"}`,
     },
     trialInterval: "day",
     trialIntervalCount: 7,
@@ -216,7 +219,7 @@ export async function createPolarCheckoutForUser(user: {
     userId: user.id,
     context: {
       interval: parsed.interval,
-      plan: "pro",
+      plan: parsed.plan,
       provider: "polar",
     },
   })

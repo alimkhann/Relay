@@ -11,6 +11,7 @@ import type { DatabaseProvider } from "@relay/db"
 import { CostTracker } from "./src/cost"
 import { Embedder } from "./src/embed"
 import { ingestInstance } from "./src/ingest"
+import { runBenchmarkPreflight } from "./src/preflight"
 import { retrieve } from "./src/retrieve"
 import { answerQuestion } from "./src/answer"
 import type { LongMemEvalInstance } from "./src/types"
@@ -20,8 +21,12 @@ const __dirname = dirname(__filename)
 
 loadEnv(resolve(__dirname, ".env"))
 
-const DATASET_PATH = resolve(__dirname, "data/longmemeval_oracle.json")
-const HYPOTHESES_PATH = resolve(__dirname, "data/hypotheses.jsonl")
+const DATASET_PATH = process.env.DATASET_PATH
+  ? resolve(process.cwd(), process.env.DATASET_PATH)
+  : resolve(__dirname, "data/longmemeval_oracle.json")
+const HYPOTHESES_PATH = process.env.HYPOTHESES_PATH
+  ? resolve(process.cwd(), process.env.HYPOTHESES_PATH)
+  : resolve(__dirname, "data/hypotheses.jsonl")
 
 const CONFIG = {
   databaseUrl: required("DATABASE_URL"),
@@ -151,6 +156,22 @@ async function dropProject(pool: Pool, projectId: string) {
 }
 
 async function main() {
+  const repoRoot = resolve(__dirname, "../..")
+  const preflight = await runBenchmarkPreflight({
+    repoRoot,
+    benchmarkRoot: __dirname,
+    config: {
+      databaseUrl: CONFIG.databaseUrl,
+      userId: CONFIG.userId,
+      openaiKey: CONFIG.openaiKey,
+      dryRun: CONFIG.dryRun,
+    },
+    datasetPath: DATASET_PATH,
+  })
+  console.log(
+    `[preflight] mode=${preflight.executionMode} git=${preflight.gitSha ?? "unknown"} migration=${preflight.latestAppliedMigrationFile ?? "none"}`,
+  )
+
   const dataset = await loadDataset()
   const existing = loadExistingHypotheses()
   const pool = new Pool({ connectionString: CONFIG.databaseUrl, max: 4 })
@@ -193,7 +214,7 @@ async function main() {
     try {
       let hypothesis = ""
       await withProvider(async (provider) => {
-        const { items } = await ingestInstance({
+        const { items, summaries } = await ingestInstance({
           provider,
           userId: CONFIG.userId,
           projectId,
@@ -204,6 +225,7 @@ async function main() {
           provider,
           projectId,
           query: instance.question,
+          questionDate: instance.question_date,
           embedder,
           topK: CONFIG.topK,
         })
@@ -232,7 +254,7 @@ async function main() {
         })
         const preview = hypothesis.slice(0, 80).replace(/\n/g, " ")
         console.log(
-          `[${label}] items=${items} top=${chunks.length} spend=$${cost.summary().totalUsd.toFixed(4)} ${preview}`,
+          `[${label}] items=${items} summaries=${summaries} top=${chunks.length} spend=$${cost.summary().totalUsd.toFixed(4)} ${preview}`,
         )
       })
       appendHypothesis(instance.question_id, hypothesis)

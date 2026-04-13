@@ -6,6 +6,7 @@ import { DashboardContent } from "@/features/projects/dashboard-content"
 import { logServerEvent } from "@/server/logging/logger"
 import { requirePageViewer } from "@/server/policies/viewer"
 import { getResolvedOnboardingStateForUser } from "@/server/services/onboarding-service"
+import { listProjectCanon } from "@/server/services/project-canon-service"
 import {
   getProjectDashboardForUser,
   listProjectsForUser,
@@ -76,9 +77,12 @@ export default async function DashboardPage({
     redirect(`/dashboard?project=${currentProject.id}`)
   }
 
-  const dashboard = currentProject
-    ? await getProjectDashboardForUser(viewer.userId, currentProject.id)
-    : null
+  const [dashboard, canon] = currentProject
+    ? await Promise.all([
+        getProjectDashboardForUser(viewer.userId, currentProject.id),
+        listProjectCanon(viewer.userId, currentProject.id).catch(() => []),
+      ])
+    : [null, []]
 
   return (
     <>
@@ -103,6 +107,7 @@ export default async function DashboardPage({
               description: currentProject.description,
             }}
             dashboard={dashboard}
+            canon={canon}
           />
         </div>
       ) : null}

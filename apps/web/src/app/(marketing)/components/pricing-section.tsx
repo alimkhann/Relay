@@ -56,7 +56,7 @@ function PricingCard({
       </div>
 
       {isPro && yearly && (
-        <p className="mt-1.5 text-xs text-emerald-400/60">Save 17% yearly</p>
+        <p className="mt-1.5 text-xs text-emerald-400/60">Save 15% yearly</p>
       )}
 
       <p className="mt-2 text-sm text-white/40">{plan.description}</p>
@@ -164,13 +164,14 @@ export function PricingSection() {
             Yearly
           </span>
           <span className={cn("absolute left-[calc(50%+84px)] pl-2 text-[11px] font-medium transition-opacity whitespace-nowrap", yearly ? "text-emerald-400/60 opacity-100" : "opacity-0")}>
-            Save 17%
+            Save 15%
           </span>
         </motion.div>
 
         {/* Cards */}
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid md:grid-cols-3 gap-4">
           <PricingCard plan={PRICING.free} yearly={yearly} inView={inView} delay={0.15} />
+          <PricingCard plan={PRICING.starter} yearly={yearly} inView={inView} delay={0.2} />
           <PricingCard plan={PRICING.pro} yearly={yearly} inView={inView} delay={0.25} />
         </div>
 

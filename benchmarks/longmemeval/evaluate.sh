@@ -6,8 +6,8 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CACHE="$HERE/.cache"
 DATA="$HERE/data"
-HYPOS="$DATA/hypotheses.jsonl"
-DATASET="$DATA/longmemeval_oracle.json"
+HYPOS="${HYPOTHESES_PATH:-$DATA/hypotheses.jsonl}"
+DATASET="${DATASET_PATH:-$DATA/longmemeval_oracle.json}"
 
 if [[ ! -f "$HYPOS" ]]; then
   echo "hypotheses.jsonl not found — run the harness first" >&2

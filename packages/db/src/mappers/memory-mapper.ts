@@ -1,4 +1,4 @@
-import type { ContextPacketRow, MemoryItemRow, MemoryRelationRow, ProjectBindingRow, TargetProfileRow, UserSettingsRow } from "@relay/shared"
+import type { ContextPacketRow, MemoryItemRow, MemoryRelationRow, ProjectBindingRow, ProjectSettingsRow, TargetProfileRow, UserSettingsRow } from "@relay/shared"
 
 import { decryptTextIfNeeded } from "../utils/encrypted-text"
 
@@ -98,5 +98,19 @@ export function toSettingsRow(record: Record<string, unknown>): UserSettingsRow 
     },
     createdAt: String(record.created_at),
     updatedAt: String(record.updated_at)
+  }
+}
+
+export function toProjectSettingsRow(record: Record<string, unknown>): ProjectSettingsRow {
+  return {
+    projectId: String(record.project_id),
+    settings: (record.settings as ProjectSettingsRow["settings"]) ?? {
+      autonomyMode: "standard",
+      showTentativeUpdates: true,
+      includeTentativeUpdatesInPackets: true,
+      compactionMode: "standard",
+    },
+    createdAt: String(record.created_at),
+    updatedAt: String(record.updated_at),
   }
 }

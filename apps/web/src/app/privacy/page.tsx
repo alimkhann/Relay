@@ -118,8 +118,13 @@ export default function PrivacyPage() {
               </p>
               <ul className="list-disc space-y-1.5 pl-5">
                 <li>
-                  Generating and maintaining project briefs from your chat
-                  history
+                  Maintaining project canon (stable truth) and context packets
+                  from your chat history and MCP interactions
+                </li>
+                <li>
+                  Generating tentative updates that may be promoted to canon
+                  after review or automatic confidence checks — you can lock any
+                  canon entry to prevent automatic changes
                 </li>
                 <li>
                   Enabling context insertion into new AI chat sessions
@@ -127,6 +132,11 @@ export default function PrivacyPage() {
                 <li>
                   Displaying your project dashboard, activity feed, and saved
                   context
+                </li>
+                <li>
+                  Demoting or archiving raw memory items once they are covered
+                  by canon or summary snapshots — demoted items are retained for
+                  provenance and historical queries, not deleted
                 </li>
                 <li>
                   Authenticating your identity and managing your session

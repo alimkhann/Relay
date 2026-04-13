@@ -1,11 +1,38 @@
 import { createRepositoryBundle } from "@relay/db"
-import type { BootstrapPacketDto, BootstrapRequest, BootstrapPacketRow, MemoryItemRow, ProjectRow, ProjectStateRow, ProjectStateStatusDto, SessionDigestRow, TargetProfileRow, WorkSessionCheckpointWithSessionRow } from "@relay/shared"
+import type {
+  BootstrapPacketDto,
+  BootstrapRequest,
+  BootstrapPacketRow,
+  CanonEntryRow,
+  MemoryItemRow,
+  ProjectRow,
+  ProjectStateRow,
+  ProjectStateStatusDto,
+  ProjectSummarySnapshotRow,
+  SessionDigestRow,
+  TargetProfileRow,
+  WorkSessionCheckpointWithSessionRow,
+} from "@relay/shared"
 import { bootstrapRequestSchema, buildEffectiveProjectState, computeDecayScore, DECAY_VISIBILITY_THRESHOLD, hashContent, mergeGovernedList, normalizeText } from "@relay/shared"
 
 import { NotFoundError } from "@/server/http/errors"
+import { buildBootstrapCanonView } from "./canon-autonomy-service"
+import { resolveViewerEntitlements } from "./entitlement-service"
 import { GEMINI_MODELS, runGeminiJsonWithFallback } from "./gemini-service"
 import { getProjectStateStatus } from "./state-status-service"
 import { stripArrowNotation, truncateSentence, escapeMarkdownInline } from "@relay/shared"
+
+interface BootstrapCanonContext {
+  tentativeEntries: CanonEntryRow[]
+  latestProjectSummary: string | null
+  latestCurrentFocusSummary: string | null
+}
+
+interface BootstrapProjectSettingsContext {
+  includeTentativeUpdatesInPackets: boolean
+}
+
+type PacketMode = "chat_new" | "chat_continue" | "agent_quick_continuity" | "agent_full_bootstrap"
 
 interface BootstrapGenerationReady {
   status: "ready"
@@ -34,6 +61,63 @@ interface BootstrapModelShape {
   openTasks: string[]
   relevantTools: string[]
   firstAction: string | null
+}
+
+function inferPacketMode(profile: TargetProfileRow, kind: BootstrapRequest["kind"], requested?: PacketMode): PacketMode {
+  if (requested) return requested
+
+  const isAgent = profile.platform === "claude_code" || profile.platform === "codex"
+  if (isAgent) {
+    return kind === "quick_continuity" ? "agent_quick_continuity" : "agent_full_bootstrap"
+  }
+
+  return kind === "quick_continuity" ? "chat_continue" : "chat_new"
+}
+
+function trimList(items: string[], limit: number) {
+  return items.slice(0, limit)
+}
+
+function resolveReadMode(input: { deep?: boolean; packetMode: PacketMode }) {
+  if (input.deep) return "deep" as const
+  if (input.packetMode === "agent_full_bootstrap") return "deep" as const
+  return "basic" as const
+}
+
+function resolveBootstrapModelConfig(input: {
+  plan: "free" | "starter" | "pro"
+  packetMode: PacketMode
+  preferredRenderer: BootstrapPacketRow["renderer"]
+}) {
+  if (input.preferredRenderer !== "gemini") {
+    return {
+      renderer: "deterministic" as const,
+      primaryModel: "deterministic",
+      fallbackModel: "deterministic",
+    }
+  }
+
+  if (input.plan === "pro") {
+    return {
+      renderer: "gemini" as const,
+      primaryModel: GEMINI_MODELS.bootstrap.primary,
+      fallbackModel: GEMINI_MODELS.bootstrap.fallback,
+    }
+  }
+
+  if (input.plan === "starter") {
+    return {
+      renderer: "gemini" as const,
+      primaryModel: GEMINI_MODELS.bootstrap.fallback,
+      fallbackModel: GEMINI_MODELS.digest.fallback,
+    }
+  }
+
+  return {
+    renderer: "deterministic" as const,
+    primaryModel: "deterministic",
+    fallbackModel: "deterministic",
+  }
 }
 
 interface DigestSnapshotShape {
@@ -171,13 +255,17 @@ export function computeBootstrapInputHash(input: {
   digests: SessionDigestRow[]
   profile: TargetProfileRow
   kind: BootstrapRequest["kind"]
+  packetMode?: PacketMode
   since?: string
   memoryItemCount?: number
   memoryLatestUpdatedAt?: string | null
+  canonEntries?: CanonEntryRow[]
+  summarySnapshots?: ProjectSummarySnapshotRow[]
 }) {
   return hashContent(
     JSON.stringify({
       kind: input.kind,
+      packetMode: input.packetMode ?? null,
       since: input.since ?? null,
       profileKey: input.profile.key,
       projectDescription: input.project.description ?? null,
@@ -198,6 +286,19 @@ export function computeBootstrapInputHash(input: {
         createdAt: digest.createdAt,
         summaryShort: digest.summaryShort,
         structuredDigest: digest.structuredDigest,
+      })),
+      canonEntries: (input.canonEntries ?? []).slice(0, 16).map((entry) => ({
+        id: entry.id,
+        kind: entry.kind,
+        status: entry.status,
+        content: entry.content,
+        updatedAt: entry.updatedAt,
+      })),
+      summarySnapshots: (input.summarySnapshots ?? []).slice(0, 6).map((snapshot) => ({
+        id: snapshot.id,
+        kind: snapshot.kind,
+        content: snapshot.content,
+        createdAt: snapshot.createdAt,
       })),
       memoryItemCount: input.memoryItemCount ?? 0,
       memoryLatestUpdatedAt: input.memoryLatestUpdatedAt ?? null,
@@ -553,7 +654,7 @@ function buildContinuityDelta(
   }
 }
 
-function renderFreshChatMarkdown(shape: BootstrapModelShape, profile: TargetProfileRow, memoryItems: MemoryItemRow[]) {
+function renderChatNewMarkdown(shape: BootstrapModelShape, profile: TargetProfileRow, memoryItems: MemoryItemRow[]) {
   // Collapse near-duplicates before rendering
   const dedupedDecisions = mergeGovernedList([], shape.decisions, "decision")
   const dedupedConstraints = mergeGovernedList([], shape.constraints, "constraint")
@@ -601,7 +702,7 @@ function renderFreshChatMarkdown(shape: BootstrapModelShape, profile: TargetProf
   const result = lines.join("\n").trim()
   if (result.length / 4 > 3500) {
     // Truncate by removing notes and older decisions to stay within budget
-    return renderFreshChatMarkdown(
+    return renderChatNewMarkdown(
       { ...shape, decisions: shape.decisions.slice(0, 4) },
       profile,
       relevantNotes.slice(0, 2)
@@ -611,10 +712,12 @@ function renderFreshChatMarkdown(shape: BootstrapModelShape, profile: TargetProf
   return result
 }
 
-function renderContinuationMarkdown(
+function renderChatContinueMarkdown(
   shape: BootstrapModelShape,
   profile: TargetProfileRow,
   delta?: ContinuityDelta | null,
+  canonContext?: BootstrapCanonContext,
+  settings?: BootstrapProjectSettingsContext,
 ) {
   const lines = [`Continue this project in ${profile.name}.`, ""]
 
@@ -656,6 +759,75 @@ function renderContinuationMarkdown(
   appendListSection(lines, "Open Tasks", shape.openTasks.slice(0, 5))
   appendListSection(lines, "Constraints", shape.constraints.slice(0, 5))
 
+  if ((settings?.includeTentativeUpdatesInPackets ?? true) && canonContext?.tentativeEntries.length) {
+    appendListSection(
+      lines,
+      "Tentative Updates",
+      canonContext.tentativeEntries.slice(0, 3).map((entry) => entry.content),
+    )
+  }
+
+  return lines.join("\n").trim()
+}
+
+function renderAgentQuickMarkdown(
+  shape: BootstrapModelShape,
+  profile: TargetProfileRow,
+  delta?: ContinuityDelta | null,
+  canonContext?: BootstrapCanonContext,
+  settings?: BootstrapProjectSettingsContext,
+) {
+  const lines = [`Continue this project in ${profile.name}.`, ""]
+
+  appendTextSection(lines, "Current Objective", shape.currentObjective)
+  appendTextSection(lines, "Recent Progress", canonContext?.latestCurrentFocusSummary ?? shape.recentProgress)
+  appendListSection(lines, "Current Decisions", trimList(shape.decisions, 6))
+  appendListSection(lines, "Current Constraints", trimList(shape.constraints, 6))
+  appendListSection(lines, "Open Tasks", trimList(shape.openTasks, 6))
+  appendListSection(lines, "Relevant Tools", trimList(shape.relevantTools, 6))
+
+  if (delta) {
+    appendListSection(lines, "Recent Changes", trimList(delta.summaries, 4))
+  }
+
+  if ((settings?.includeTentativeUpdatesInPackets ?? true) && canonContext?.tentativeEntries.length) {
+    appendListSection(lines, "Tentative Updates", trimList(canonContext.tentativeEntries.map((entry) => entry.content), 4))
+  }
+
+  appendTextSection(lines, "Next Action", shape.firstAction)
+  return lines.join("\n").trim()
+}
+
+function renderAgentFullMarkdown(
+  shape: BootstrapModelShape,
+  profile: TargetProfileRow,
+  memoryItems: MemoryItemRow[],
+  canonContext?: BootstrapCanonContext,
+  settings?: BootstrapProjectSettingsContext,
+) {
+  const lines = [`Use this execution brief for ${profile.name}.`, ""]
+
+  appendTextSection(lines, "Project Overview", canonContext?.latestProjectSummary ?? shape.projectOverview)
+  appendTextSection(lines, "Current Objective", shape.currentObjective)
+  appendTextSection(lines, "Recent Progress", canonContext?.latestCurrentFocusSummary ?? shape.recentProgress)
+  appendListSection(lines, "Current Truths", trimList([...shape.decisions, ...shape.constraints], 8))
+  appendListSection(lines, "Open Tasks", trimList(shape.openTasks, 8))
+  appendListSection(lines, "Relevant Tools", trimList(shape.relevantTools, 8))
+
+  const relevantNotes = filterRelevantNotes(memoryItems)
+  if (relevantNotes.length > 0) {
+    lines.push("## Supporting Evidence")
+    for (const note of trimList(relevantNotes.map((note) => note.content), 5)) {
+      lines.push(`- ${escapeMarkdownInline(note)}`)
+    }
+    lines.push("")
+  }
+
+  if ((settings?.includeTentativeUpdatesInPackets ?? true) && canonContext?.tentativeEntries.length) {
+    appendListSection(lines, "Tentative Updates", trimList(canonContext.tentativeEntries.map((entry) => entry.content), 5))
+  }
+
+  appendTextSection(lines, "Next Action", shape.firstAction)
   return lines.join("\n").trim()
 }
 
@@ -664,11 +836,28 @@ export function renderBootstrapMarkdown(
   profile: TargetProfileRow,
   kind: BootstrapRequest["kind"],
   memoryItems: MemoryItemRow[] = [],
-  input: { delta?: ContinuityDelta | null } = {},
+  input: {
+    delta?: ContinuityDelta | null
+    canonContext?: BootstrapCanonContext
+    packetMode?: PacketMode
+    settings?: BootstrapProjectSettingsContext
+  } = {},
 ) {
-  return kind === "quick_continuity"
-    ? renderContinuationMarkdown(shape, profile, input.delta)
-    : renderFreshChatMarkdown(shape, profile, memoryItems)
+  const mode = input.packetMode ?? inferPacketMode(profile, kind)
+
+  if (mode === "chat_continue") {
+    return renderChatContinueMarkdown(shape, profile, input.delta, input.canonContext, input.settings)
+  }
+
+  if (mode === "agent_quick_continuity") {
+    return renderAgentQuickMarkdown(shape, profile, input.delta, input.canonContext, input.settings)
+  }
+
+  if (mode === "agent_full_bootstrap") {
+    return renderAgentFullMarkdown(shape, profile, memoryItems, input.canonContext, input.settings)
+  }
+
+  return renderChatNewMarkdown(shape, profile, memoryItems)
 }
 
 function describeJobStage(stage: string | null) {
@@ -692,33 +881,53 @@ function describeJobStage(stage: string | null) {
 async function generateGeminiBootstrap(input: {
   state: ProjectStateRow | null
   digests: SessionDigestRow[]
+  canonContext: BootstrapCanonContext
+  settings: BootstrapProjectSettingsContext
   profile: TargetProfileRow
   kind: BootstrapRequest["kind"]
+  packetMode: PacketMode
+  modelConfig: {
+    primaryModel: string
+    fallbackModel: string
+  }
 }) {
   const result = await runGeminiJsonWithFallback<BootstrapModelShape>({
-    primaryModel: GEMINI_MODELS.bootstrap.primary,
-    fallbackModel: GEMINI_MODELS.bootstrap.fallback,
+    primaryModel: input.modelConfig.primaryModel,
+    fallbackModel: input.modelConfig.fallbackModel,
     maxInputTokens: GEMINI_MODELS.bootstrap.maxInputTokens,
     maxOutputTokens: GEMINI_MODELS.bootstrap.maxOutputTokens,
     systemInstruction:
-      input.kind === "quick_continuity"
-        ? "You write short continuation briefs for ongoing AI chats. Return only JSON. Prefer immediate task continuity, recent progress, constraints, and the next action."
-        : "You write explanatory project briefs for fresh AI chats. Return only JSON. Prefer durable project state, clear tasks, and concise sections over transcript detail.",
+      input.packetMode === "agent_full_bootstrap"
+        ? "You write execution briefs for coding agents. Return only JSON. Prefer durable truths, operational tasks, constraints, relevant tools, and precise next actions."
+        : input.packetMode === "agent_quick_continuity"
+          ? "You write short operational continuity briefs for coding agents. Return only JSON. Prefer current objective, recent progress, tasks, constraints, and next action."
+          : input.kind === "quick_continuity"
+            ? "You write short continuation briefs for ongoing AI chats. Return only JSON. Prefer immediate task continuity, recent progress, constraints, and the next action."
+            : "You write explanatory project briefs for fresh AI chats. Return only JSON. Prefer durable project state, clear tasks, and concise sections over transcript detail.",
     prompt: [
       "Return a JSON object with these keys exactly:",
       "projectOverview, currentObjective, recentProgress, decisions, constraints, openTasks, relevantTools, firstAction.",
       "Do not include markdown in the JSON values.",
-      input.kind === "quick_continuity"
-        ? "Make this continuation brief short, immediate, and task-focused."
-        : "Make this fresh-chat brief explanatory enough that a new chat can continue without a re-brief.",
+      input.packetMode === "agent_full_bootstrap"
+        ? "Make this execution brief operational and source-aware for a coding agent."
+        : input.packetMode === "agent_quick_continuity"
+          ? "Make this continuity brief compact but operational for a coding agent."
+          : input.kind === "quick_continuity"
+            ? "Make this continuation brief short, immediate, and task-focused."
+            : "Make this fresh-chat brief explanatory enough that a new chat can continue without a re-brief.",
       `Target profile: ${input.profile.name}`,
       ...(input.state?.projectOverview ? [`Project overview: ${input.state.projectOverview}`] : []),
       ...(input.state?.currentObjective ? [`Current objective: ${input.state.currentObjective}`] : []),
       ...(input.state?.recentProgress ? [`Recent progress: ${input.state.recentProgress}`] : []),
+      ...(input.canonContext.latestProjectSummary ? [`Latest project summary: ${input.canonContext.latestProjectSummary}`] : []),
+      ...(input.canonContext.latestCurrentFocusSummary ? [`Latest current focus: ${input.canonContext.latestCurrentFocusSummary}`] : []),
       ...((input.state?.decisions ?? []).length ? [`Decisions: ${input.state!.decisions.join(" | ")}`] : []),
       ...((input.state?.constraints ?? []).length ? [`Constraints: ${input.state!.constraints.join(" | ")}`] : []),
       ...((input.state?.openTasks ?? []).length ? [`Open tasks: ${input.state!.openTasks.join(" | ")}`] : []),
       ...((input.state?.relevantTools ?? []).length ? [`Relevant tools: ${input.state!.relevantTools.join(" | ")}`] : []),
+      ...(input.settings.includeTentativeUpdatesInPackets && (input.canonContext.tentativeEntries ?? []).length
+        ? [`Tentative updates: ${input.canonContext.tentativeEntries.slice(0, 4).map((entry) => entry.content).join(" | ")}`]
+        : []),
       ...(() => {
         const summaries = input.digests
           .filter((digest) => !isLowSignalDigestSummary(digest.summaryShort))
@@ -776,7 +985,8 @@ export function shouldDeferBootstrapGeneration(state: ProjectStateRow | null, di
 export async function generateBootstrapForProject(userId: string, projectId: string, input: unknown): Promise<BootstrapGenerationResult> {
   const repositories = createRepositoryBundle(userId)
   const parsed = bootstrapRequestSchema.parse(input)
-  const [project, profile, rawState, digests, memoryItems, stateOverrides, workSessionContext] = await Promise.all([
+  const entitlements = await resolveViewerEntitlements(userId)
+  const [project, profile, rawState, digests, memoryItems, stateOverrides, workSessionContext, canonEntries, summarySnapshots, projectSettings] = await Promise.all([
     repositories.projects.getById(projectId),
     repositories.targetProfiles.getByKey(parsed.targetProfileKey),
     repositories.projectState.getByProject(projectId),
@@ -788,6 +998,9 @@ export async function generateBootstrapForProject(userId: string, projectId: str
       limit: 8,
       surfaces: ["mcp", "cli", "chatgpt", "claude", "gemini", "grok", "perplexity", "deepseek", "codex"],
     }),
+    repositories.canonEntries.listByProject(projectId, { statuses: ["active", "tentative", "disputed"], limit: 64 }),
+    repositories.projectSummarySnapshots.listLatestByProject(projectId, { limit: 12 }),
+    repositories.projectSettings.getByProject(projectId),
   ])
 
   if (!project) {
@@ -861,7 +1074,13 @@ export async function generateBootstrapForProject(userId: string, projectId: str
         updatedAt: effectiveStateDto.updatedAt
       }
     : null
-  const state = applyCheckpointSignalsToState(baseState, workSessionContext)
+  const stateWithCheckpoints = applyCheckpointSignalsToState(baseState, workSessionContext)
+  const canonContext = buildBootstrapCanonView(canonEntries, summarySnapshots, stateWithCheckpoints)
+  const state = canonContext.state
+  const settings: BootstrapProjectSettingsContext = {
+    includeTentativeUpdatesInPackets: projectSettings?.settings.includeTentativeUpdatesInPackets ?? true,
+  }
+  const packetMode = inferPacketMode(profile, parsed.kind, parsed.packetMode)
 
   const sinceTime = parsed.since ? new Date(parsed.since).getTime() : null
   const scopedDigests = sinceTime
@@ -889,7 +1108,11 @@ export async function generateBootstrapForProject(userId: string, projectId: str
       digests: scopedDigests,
       profile,
       kind: parsed.kind,
+      packetMode,
+      // packet mode affects packet content and cache reuse
       since: parsed.since,
+      canonEntries,
+      summarySnapshots,
       memoryItemCount: scopedMemoryItems.length,
       memoryLatestUpdatedAt: scopedMemoryItems[0]?.updatedAt ?? null,
     })
@@ -918,18 +1141,23 @@ export async function generateBootstrapForProject(userId: string, projectId: str
   }
 
   const preferredRenderer = inferRenderer(parsed, state)
+  const modelConfig = resolveBootstrapModelConfig({
+    plan: entitlements.plan,
+    packetMode,
+    preferredRenderer,
+  })
   const deterministic = deterministicBootstrap(state, scopedDigests, profile, parsed.kind)
 
   let shape = deterministic
-  let renderer: BootstrapPacketRow["renderer"] = "deterministic"
+  let renderer: BootstrapPacketRow["renderer"] = modelConfig.renderer
   let actualModel = "deterministic"
-  let primaryModel = preferredRenderer === "gemini" ? GEMINI_MODELS.bootstrap.primary : "deterministic"
+  let primaryModel = modelConfig.primaryModel
   let fallbackUsed = false
   let tokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
 
-  if (preferredRenderer === "gemini") {
+  if (modelConfig.renderer === "gemini") {
     try {
-      const generated = await generateGeminiBootstrap({ state, digests: scopedDigests, profile, kind: parsed.kind })
+      const generated = await generateGeminiBootstrap({ state, digests: scopedDigests, canonContext, settings, profile, kind: parsed.kind, packetMode, modelConfig })
       shape = generated.shape
       renderer = "gemini"
       actualModel = generated.actualModel
@@ -947,15 +1175,20 @@ export async function generateBootstrapForProject(userId: string, projectId: str
     kind: parsed.kind,
     content: renderBootstrapMarkdown(shape, profile, parsed.kind, scopedMemoryItems, {
       delta: continuityDelta,
+      canonContext,
+      packetMode,
+      settings,
     }),
-    structuredSnapshot: { ...shape },
+    structuredSnapshot: { ...shape, packetMode },
     renderer,
     generationMetadata: {
       input_hash: briefInputHash,
+      plan: entitlements.plan,
       primary_model: primaryModel,
       actual_model: actualModel,
       fallback_used: fallbackUsed,
-      token_usage: tokenUsage
+      token_usage: tokenUsage,
+      packet_mode: packetMode,
     },
     createdBy: userId
   })

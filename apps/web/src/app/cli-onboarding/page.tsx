@@ -20,7 +20,7 @@ export default async function CliOnboardingPage({ searchParams }: CliOnboardingP
     <div className="flex min-h-screen items-center justify-center bg-[var(--relay-bg)] px-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center">
-          <h1 className="text-lg font-semibold text-[var(--relay-ink)]">Relay CLI</h1>
+          <h1 className="text-lg font-semibold text-[var(--relay-ink)]">Relay Setup</h1>
           <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
             Authorize this device to connect to Relay.
           </p>

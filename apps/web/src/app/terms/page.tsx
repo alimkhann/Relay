@@ -52,12 +52,17 @@ export default function TermsPage() {
             <p>
               Relay is a productivity tool that captures context from your AI
               chat sessions (including but not limited to ChatGPT, Claude,
-              Gemini, Grok, Codex, Perplexity, and DeepSeek) and generates
-              project briefs you can insert into new chats. The Service
-              consists of a web dashboard, a Chrome browser extension, and
-              MCP-connected IDE agent integrations. Features may differ
-              between free and premium tiers, and we reserve the right to
-              modify features as the Service evolves.
+              Gemini, Grok, Codex, Perplexity, and DeepSeek) and
+              automatically maintains a project canon — the stable truth
+              about your project. Relay generates context packets you can
+              insert into new chats or receive via MCP. Canon entries may be
+              promoted tentatively and locked by you; memory items may be
+              demoted or archived once covered by canon or summaries (but are
+              never deleted). The Service consists of a web dashboard, a
+              Chrome browser extension, and MCP-connected IDE agent
+              integrations. Features may differ between Free, Starter, and
+              Pro tiers, and we reserve the right to modify features as the
+              Service evolves.
             </p>
           </section>
 

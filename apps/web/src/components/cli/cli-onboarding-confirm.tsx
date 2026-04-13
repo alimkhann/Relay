@@ -50,7 +50,7 @@ export function CliOnboardingConfirm({ sessionCode }: CliOnboardingConfirmProps)
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <p className="text-[15px] font-medium text-[var(--relay-ink)]">Connected! Return to your terminal.</p>
+        <p className="text-[15px] font-medium text-[var(--relay-ink)]">Connected! You can return to your tool.</p>
         <p className="text-[13px] text-[var(--relay-muted)]">You can close this tab.</p>
       </div>
     )
@@ -60,7 +60,7 @@ export function CliOnboardingConfirm({ sessionCode }: CliOnboardingConfirmProps)
     <div className="space-y-4">
       <div className="text-center">
         <p className="text-[13px] text-[var(--relay-muted)] mb-3">
-          Confirm this code matches what you see in your terminal:
+          Confirm this code matches what you see in your setup tool:
         </p>
         <div className="inline-block rounded-[var(--relay-radius)] bg-[var(--relay-soft)] border border-[var(--relay-line)] px-6 py-3">
           <span className="text-2xl font-mono font-bold tracking-widest text-[var(--relay-ink)]">

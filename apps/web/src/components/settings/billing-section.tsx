@@ -358,7 +358,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
     }
   }, [checkoutSuccess, entitlements.interval, entitlements.isPro, entitlements.plan, entitlements.status])
 
-  async function handleCheckout(interval: "month" | "year") {
+  async function handleCheckout(interval: "month" | "year", plan: "starter" | "pro" = "starter") {
     setLoading(interval)
     setError(null)
 
@@ -367,7 +367,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
       const res = await relayClientFetch("/api/billing/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ interval }),
+        body: JSON.stringify({ plan, interval }),
         telemetry: {
           surface: "web-settings",
           area: "settings-billing",
@@ -519,16 +519,16 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
             <div className="flex items-center gap-2.5">
               <AlertCircle className="h-4 w-4 shrink-0 text-[var(--relay-accent)]" />
               <p className="text-[13px] text-[var(--relay-ink)]">
-                You&apos;ve hit a plan limit. Upgrade to Pro to unlock higher quotas.
+                You&apos;ve hit a plan limit. Upgrade to unlock higher quotas.
               </p>
             </div>
             <button
               type="button"
-              onClick={() => void handleCheckout("month")}
+              onClick={() => void handleCheckout("month", "starter")}
               disabled={loading !== null}
               className="shrink-0 rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
             >
-              {loading === "month" ? "Starting..." : "Upgrade to Pro"}
+              {loading === "month" ? "Starting..." : "Upgrade"}
             </button>
           </div>
         </section>
@@ -575,7 +575,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
             </div>
           ) : null}
 
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+          <div className="grid gap-3 lg:grid-cols-3">
             <PlanCard
               title="Free"
               subtitle={PRICING.free.description}
@@ -602,10 +602,61 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
             />
 
             <PlanCard
+              title="Starter"
+              subtitle={PRICING.starter.description}
+              price={yearly ? `$${PRICING.starter.yearlyPrice}/yr` : `$${PRICING.starter.monthlyPrice}/mo`}
+              priceNote={yearly ? "Save 15% vs monthly" : undefined}
+              badge={entitlements.plan === "starter" ? "Current plan" : undefined}
+              features={[...PRICING.starter.features]}
+              actions={
+                entitlements.plan === "starter" ? (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => void handlePortal()}
+                      disabled={loading !== null}
+                      className="w-full rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
+                    >
+                      {loading === "portal" ? "Opening portal..." : "Manage subscription"}
+                    </button>
+                    <p className="text-[12px] text-[var(--relay-muted)]">
+                      {entitlements.currentPeriodEnd
+                        ? `Renews ${new Date(entitlements.currentPeriodEnd).toLocaleDateString()}. Cancel anytime.`
+                        : "Cancel anytime from the customer portal."}
+                    </p>
+                  </div>
+                ) : entitlements.isPaid ? (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => void handlePortal()}
+                      disabled={loading !== null}
+                      className="w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-4 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition hover:bg-[var(--relay-soft)] disabled:opacity-50"
+                    >
+                      {loading === "portal" ? "Opening portal..." : "Switch via portal"}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleCheckout(yearly ? "year" : "month", "starter")}
+                      disabled={loading !== null}
+                      className="w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition hover:bg-[var(--relay-soft)] disabled:opacity-50"
+                    >
+                      {loading ? "Starting..." : `Get Starter — ${yearly ? `$${PRICING.starter.yearlyPrice}/yr` : `$${PRICING.starter.monthlyPrice}/mo`}`}
+                    </button>
+                    <p className="text-[12px] text-[var(--relay-muted)]">7-day trial included. Cancel anytime.</p>
+                  </div>
+                )
+              }
+            />
+
+            <PlanCard
               title="Pro"
               subtitle={entitlements.isTrialing ? "Trialing now" : PRICING.pro.description}
               price={yearly ? `$${PRICING.pro.yearlyPrice}/yr` : `$${PRICING.pro.monthlyPrice}/mo`}
-              priceNote={yearly ? "Save 17% vs monthly" : undefined}
+              priceNote={yearly ? "Save 15% vs monthly" : undefined}
               badge={entitlements.plan === "pro" ? "Current plan" : "RECOMMENDED"}
               tone="accent"
               features={[...PRICING.pro.features]}
@@ -632,7 +683,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
                   <div className="space-y-2">
                     <button
                       type="button"
-                      onClick={() => void handleCheckout(yearly ? "year" : "month")}
+                      onClick={() => void handleCheckout(yearly ? "year" : "month", "pro")}
                       disabled={loading !== null}
                       className="w-full rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
                     >
@@ -669,11 +720,11 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
               <p className="text-[13px] text-[var(--relay-muted)]">{dynamicNotice}</p>
               <button
                 type="button"
-                onClick={() => void handleCheckout("month")}
+                onClick={() => void handleCheckout("month", "starter")}
                 disabled={loading !== null}
                 className="shrink-0 rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
               >
-                {loading === "month" ? "Starting..." : "Upgrade to Pro"}
+                {loading === "month" ? "Starting..." : "Upgrade"}
               </button>
             </div>
           </div>

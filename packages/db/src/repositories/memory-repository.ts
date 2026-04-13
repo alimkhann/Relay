@@ -7,6 +7,14 @@ import { encryptTextIfConfigured } from "../utils/encrypted-text"
 /** Columns to select for general memory queries — excludes the large `embedding` vector column */
 const MEMORY_COLS = `id, project_id, source_turn_id, type, title, content, pinned, is_archived, sort_order, tags, metadata, created_by, created_at, updated_at, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector, embedding_model, forget_after, last_reaffirmed_at`
 
+const compactionPenaltyExpr = (alias = "m") => `case ${alias}.metadata->>'compactionState'
+  when 'covered_by_canon' then 0.45
+  when 'covered_by_summary' then 0.65
+  when 'historical_only' then 0.40
+  when 'completed' then 0.30
+  else 1.0
+end`
+
 /** Same columns but prefixed with a table alias for JOINed queries */
 function prefixCols(alias: string) {
   return MEMORY_COLS.split(", ").map((c) => `${alias}.${c}`).join(", ")
@@ -202,7 +210,7 @@ export class MemoryRepository {
     params.push(limit)
 
     const rows = await this.provider.query(
-      `select ${MEMORY_COLS}, ts_rank(search_vector, plainto_tsquery('english', $2)) as rank
+      `select ${MEMORY_COLS}, ts_rank(search_vector, plainto_tsquery('english', $2)) * ${compactionPenaltyExpr("memory_items")} as rank
        from memory_items
        where ${conditions.join(" and ")}
        order by pinned desc, rank desc
@@ -431,12 +439,13 @@ export class MemoryRepository {
          from (select * from semantic union all select * from lexical) u
          group by id
        )
-       select ${prefixCols("m")},
-              c.score as raw_score,
-              ${decayExpr} as recency_decay,
-              (c.score * ${decayExpr}) as similarity,
-              c.match_type
-       from combined c
+        select ${prefixCols("m")},
+               c.score as raw_score,
+               ${decayExpr} as recency_decay,
+               ${compactionPenaltyExpr("m")} as compaction_penalty,
+               (c.score * ${decayExpr} * ${compactionPenaltyExpr("m")}) as similarity,
+               c.match_type
+        from combined c
        join memory_items m on m.id = c.id
        where true
          ${supersededFilter}

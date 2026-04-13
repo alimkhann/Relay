@@ -105,8 +105,8 @@ function inferTokenType(token: ExtensionApiTokenRow): { type: string; className:
 
   if (token.purpose === "cli_mcp") {
     if (label.includes("wizard")) return { type: "Wizard", className: "text-violet-500 bg-violet-500/10" }
-    if (label.includes("cli")) return { type: "CLI", className: "text-blue-500 bg-blue-500/10" }
-    return { type: "CLI/MCP", className: "text-violet-500 bg-violet-500/10" }
+    if (label.includes("cli")) return { type: "MCP", className: "text-blue-500 bg-blue-500/10" }
+    return { type: "MCP", className: "text-violet-500 bg-violet-500/10" }
   }
 
   if (label.includes("chrome") || label.includes("relay on")) {
@@ -423,7 +423,7 @@ export function SettingsPreferences({
           </FadeIn>
 
           <FadeIn delay={0.05}>
-          <SettingsSection id="settings-api-tokens" title="API tokens" description="Create tokens for Relay MCP, the CLI, or manual integrations.">
+          <SettingsSection id="settings-api-tokens" title="API tokens" description="Create tokens for Relay MCP or manual integrations.">
             <div className="space-y-4 px-5 py-4">
               <div className="flex flex-col gap-2 sm:flex-row">
                 <input

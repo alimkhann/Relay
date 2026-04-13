@@ -1,4 +1,4 @@
-export type BillingPlanKey = "free" | "pro"
+export type BillingPlanKey = "free" | "starter" | "pro"
 export type BillingInterval = "month" | "year" | null
 export type BillingSubscriptionStatus = "inactive" | "trialing" | "active" | "past_due" | "canceled"
 
@@ -7,6 +7,7 @@ export interface EntitlementLimitsDto {
   historyRetentionDays: number
   captureMonthly: number
   mcpReadDaily: number
+  mcpDeepReadDaily: number
   mcpWriteDaily: number
   aiAnalysesPerProjectDaily: number
   aiAnalysesPerUserDaily: number
@@ -17,6 +18,7 @@ export interface UserEntitlementsDto {
   plan: BillingPlanKey
   status: BillingSubscriptionStatus
   interval: BillingInterval
+  isPaid: boolean
   isPro: boolean
   isTrialing: boolean
   trialEndsAt: string | null
@@ -26,6 +28,8 @@ export interface UserEntitlementsDto {
     mcpRead: boolean
     mcpWrite: boolean
     handoffPacks: boolean
+    autonomousCanon: boolean
+    highQualityModel: boolean
   }
   limits: EntitlementLimitsDto
 }
