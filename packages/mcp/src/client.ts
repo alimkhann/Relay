@@ -541,6 +541,20 @@ export class RelayClient {
         }
       }
 
+      // Retry 429 on refresh up to 3 times with backoff
+      if (response.status === 429) {
+        for (let attempt = 0; attempt < 3 && response.status === 429; attempt++) {
+          const retryAfter = response.headers.get("Retry-After")
+          const waitSec = retryAfter ? Math.min(parseInt(retryAfter, 10) || 2, 10) : 2 * (attempt + 1)
+          await new Promise((r) => setTimeout(r, waitSec * 1000))
+          response = await fetch(`${this.baseUrl}/api/mcp/refresh`, {
+            method: "POST",
+            headers: { Accept: "application/json", "Content-Type": "application/json" },
+            body: JSON.stringify({ refreshToken: this.refreshToken })
+          })
+        }
+      }
+
       if (!response.ok) {
         const text = await response.text().catch(() => "")
         this.analytics?.capture("mcp_token_refresh_failed", {
