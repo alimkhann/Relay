@@ -20,7 +20,7 @@ export default function PlansDocsPage() {
         <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] px-4 py-4">
           <ul className="space-y-2 text-[14px] text-[var(--relay-muted)]">
             <li>Browser capture across supported AI tools</li>
-            <li>Project canon and continuity packets</li>
+            <li>Project context and continuity briefs</li>
             <li>Chrome extension and MCP access</li>
           </ul>
         </div>
@@ -49,7 +49,7 @@ export default function PlansDocsPage() {
                 { label: "MCP writes / day", free: "1", starter: "15", pro: "40" },
                 { label: "AI analyses / day", free: "2 / proj · 4 total", starter: "8 / proj · 40 total", pro: "18 / proj · 90 total" },
                 { label: "Memory items / project", free: "150", starter: "1,500", pro: "4,000" },
-                { label: "Autonomous canon", free: "—", starter: "Yes", pro: "Yes" },
+                { label: "Autonomous context", free: "—", starter: "Yes", pro: "Yes" },
                 { label: "High-quality model", free: "—", starter: "—", pro: "Yes" },
               ].map((row) => (
                 <tr key={row.label}>

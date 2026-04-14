@@ -27,7 +27,7 @@ interface SettingsPreferencesProps {
   viewer?: { displayName: string | null; email: string | null }
 }
 
-const EXTENSION_VERSION = "0.1.0"
+const EXTENSION_VERSION = "0.3.0"
 const CHROME_WEB_STORE_URL = "https://chromewebstore.google.com/search/Relay"
 
 const platformOptions = [

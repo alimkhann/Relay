@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { FadeIn } from "@/components/ui/fade-in";
 import { CockpitGrid } from "@/components/dashboard/cockpit-cards";
 import { DashboardMemoryCard } from "@/features/projects/dashboard-memory-card";
-import { DashboardBriefCard } from "@/features/projects/dashboard-brief-card";
 import { DashboardActivityCard } from "@/features/projects/dashboard-activity-card";
 import { NotesSection } from "@/features/memory/notes-section";
 import { selectPinnedNotes } from "@/features/memory/notes-selector";
@@ -25,7 +24,6 @@ import { cn } from "@/lib/cn";
 import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
 import {
   buildProjectMemoryOverridePatch,
   deriveProjectMemoryDrafts,
@@ -534,46 +532,29 @@ export function DashboardContent({ project, dashboard, canon = [] }: DashboardCo
         />
       </FadeIn>
 
-      {/* ─── State editor + brief ─── */}
+      {/* ─── State editor ─── */}
       <FadeIn delay={0.1}>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          <DashboardMemoryCard
-            projectId={project.id}
-            overview={overview}
-            objective={objective}
-            progress={progress}
-            editingMemory={editingMemory}
-            setEditingMemory={setEditingMemory}
-            onSave={saveStateOverrides}
-            onOverviewChange={setOverview}
-            onObjectiveChange={setObjective}
-            onProgressChange={setProgress}
-            pending={pending}
-          />
-          <DashboardBriefCard
-            projectId={project.id}
-            packets={dashboard.packets}
-            onRegenerate={regenerateBriefs}
-            pending={pending}
-          />
-        </div>
+        <DashboardMemoryCard
+          projectId={project.id}
+          overview={overview}
+          objective={objective}
+          progress={progress}
+          editingMemory={editingMemory}
+          setEditingMemory={setEditingMemory}
+          onSave={saveStateOverrides}
+          onOverviewChange={setOverview}
+          onObjectiveChange={setObjective}
+          onProgressChange={setProgress}
+          pending={pending}
+        />
       </FadeIn>
 
-      {/* ─── Recent activity + deep link ─── */}
+      {/* ─── Recent activity ─── */}
       <FadeIn delay={0.15}>
-        <div className="space-y-3">
-          <DashboardActivityCard
-            sessions={groupedSessions.slice(0, 5)}
-            totalChats={totalChats}
-          />
-          <Link
-            href={`/projects/${project.id}`}
-            className="inline-flex items-center gap-1 text-[12px] font-medium text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
-          >
-            Open project cockpit — canon, timeline, memory, packets
-            <ArrowRight className="h-3 w-3" />
-          </Link>
-        </div>
+        <DashboardActivityCard
+          sessions={groupedSessions.slice(0, 5)}
+          totalChats={totalChats}
+        />
       </FadeIn>
 
       {/* ─── Pinned notes ─── */}

@@ -50,7 +50,7 @@ export async function AppShell({
         />
 
         <SidebarMainArea>
-          <div className="p-8 lg:p-12">
+          <div className="mx-auto max-w-6xl p-8 lg:p-12">
             {children}
           </div>
         </SidebarMainArea>

@@ -2,7 +2,6 @@ import { notFound } from "next/navigation"
 
 import { AppShell } from "@/components/layout/app-shell"
 import { MemoryList } from "@/components/memory/memory-list"
-import { ProjectTabs } from "@/components/projects/project-tabs"
 import { requirePageViewer, syncViewerProfile } from "@/server/policies/viewer"
 import { getProjectDashboardForUser } from "@/server/services/project-service"
 
@@ -18,12 +17,11 @@ export default async function ProjectMemoryPage({ params }: { params: Promise<{ 
 
   return (
     <AppShell account={{ name: viewer.name, email: viewer.email }}>
-      <section className="space-y-6">
-        <ProjectTabs
-          projectId={projectId}
-          projectName={dashboard.project.name}
-          active="memory"
-        />
+      <section className="space-y-5">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--relay-muted)]">Memory</p>
+          <h1 className="mt-2 text-4xl font-semibold tracking-[-0.04em] text-[var(--relay-ink)]">{dashboard.project.name}</h1>
+        </div>
         <MemoryList items={dashboard.memory} />
       </section>
     </AppShell>

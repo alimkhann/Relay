@@ -11,7 +11,7 @@ export const PRICING = {
       "12 MCP reads / day",
       "7-day capture retention",
       "Browser capture across supported AI tools",
-      "Basic canon + continuity packets",
+      "Basic context briefs",
     ],
   },
   starter: {
@@ -25,8 +25,8 @@ export const PRICING = {
       "Up to 10 active projects",
       "200 reads + 12 deep reads / day",
       "180-day retention, 1,200 captures / mo",
-      "Autonomous canon + standard compaction",
-      "Quick-continuity + full-bootstrap packets",
+      "Autonomous context updates",
+      "Full + continuity briefs",
     ],
   },
   pro: {

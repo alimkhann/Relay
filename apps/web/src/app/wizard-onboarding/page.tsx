@@ -20,9 +20,9 @@ export default async function WizardOnboardingPage({ searchParams }: WizardOnboa
     <div className="flex min-h-screen items-center justify-center bg-[var(--relay-bg)] px-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center">
-          <h1 className="text-lg font-semibold text-[var(--relay-ink)]">Relay Wizard</h1>
+          <h1 className="text-lg font-semibold text-[var(--relay-ink)]">Connect to Relay</h1>
           <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
-            Connecting your tool to Relay.
+            Authorize this tool to access your Relay account.
           </p>
         </div>
 

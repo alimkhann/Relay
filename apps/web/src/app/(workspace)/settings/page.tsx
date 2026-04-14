@@ -1,6 +1,7 @@
 import { SettingsPreferences } from "@/components/settings/settings-preferences"
 import { SettingsContent } from "@/components/settings/settings-content"
 import { BillingSection } from "@/components/settings/billing-section"
+import { ProjectSettingsForm } from "@/components/projects/project-settings-form"
 import { FeaturebaseTrigger } from "@/components/feedback/featurebase-trigger"
 import { PageTelemetry } from "@/components/telemetry/page-telemetry"
 import Link from "next/link"
@@ -8,13 +9,17 @@ import { requirePageViewer } from "@/server/policies/viewer"
 import { listExtensionTokensForUser } from "@/server/services/extension-token-service"
 import { getUserSettings } from "@/server/services/settings-service"
 import { getBillingStatusForUser } from "@/server/services/entitlement-service"
-import { CreditCard, Sliders, Puzzle, User } from "lucide-react"
+import { getProjectSettings } from "@/server/services/project-settings-service"
+import { listProjectsForUser } from "@/server/services/project-service"
+import { getResolvedOnboardingStateForUser } from "@/server/services/onboarding-service"
+import { CreditCard, Sliders, Puzzle, User, Wrench } from "lucide-react"
 
 export const dynamic = "force-dynamic"
 
 const navItems = [
   { key: "account", label: "Account", icon: User },
   { key: "app", label: "App", icon: Sliders },
+  { key: "project", label: "Project", icon: Wrench },
   { key: "integrations", label: "Integrations", icon: Puzzle },
   { key: "billing", label: "Billing & Usage", icon: CreditCard },
 ] as const
@@ -35,9 +40,17 @@ export default async function SettingsPage({
   const activeTokens = tokens.filter((token) => !token.revokedAt)
   const checkoutSuccess = params.checkout === "success"
   const sectionParam = typeof params.section === "string" ? params.section : "account"
-  const section = ["account", "app", "integrations", "billing"].includes(sectionParam)
-    ? (sectionParam as "account" | "app" | "integrations" | "billing")
+  const section = ["account", "app", "project", "integrations", "billing"].includes(sectionParam)
+    ? (sectionParam as "account" | "app" | "project" | "integrations" | "billing")
     : "account"
+
+  // Resolve current project for project settings tab
+  const projects = await listProjectsForUser(viewer.userId)
+  const onboarding = await getResolvedOnboardingStateForUser(viewer.userId, { projects })
+  const currentProject = projects.find((p) => p.id === onboarding.completedProjectId) ?? projects[0] ?? null
+  const projectSettings = currentProject
+    ? await getProjectSettings(viewer.userId, currentProject.id)
+    : null
 
   return (
     <div className="flex flex-col md:flex-row gap-4 md:gap-8">
@@ -79,6 +92,16 @@ export default async function SettingsPage({
         <SettingsContent section={section}>
           {section === "billing" ? (
             <BillingSection billing={billing} checkoutSuccess={checkoutSuccess} />
+          ) : section === "project" && currentProject && projectSettings ? (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-lg font-semibold text-[var(--relay-ink)]">{currentProject.name}</h2>
+                <p className="mt-1 text-[13px] text-[var(--relay-muted)]">Configure how Relay manages this project.</p>
+              </div>
+              <ProjectSettingsForm projectId={currentProject.id} initial={projectSettings} />
+            </div>
+          ) : section === "project" ? (
+            <p className="text-[13px] text-[var(--relay-muted)]">Create a project first to configure project settings.</p>
           ) : (
             <SettingsPreferences
               initialSettings={settings.settings}

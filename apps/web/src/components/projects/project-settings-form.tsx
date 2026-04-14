@@ -13,17 +13,17 @@ const AUTONOMY_OPTIONS: {
   {
     value: "conservative",
     label: "Conservative",
-    hint: "Relay will only surface high-confidence canon. Tentative updates stay hidden until you lock them.",
+    hint: "Relay will only surface high-confidence context. Pending updates stay hidden until you lock them.",
   },
   {
     value: "standard",
     label: "Standard",
-    hint: "Balanced default. Tentative updates visible; canon auto-promotes when evidence is strong.",
+    hint: "Balanced default. Pending updates visible; context auto-promotes when evidence is strong.",
   },
   {
     value: "aggressive",
     label: "Aggressive",
-    hint: "Relay auto-promotes canon eagerly, folds tentative updates into packets by default.",
+    hint: "Relay auto-promotes context eagerly, folds pending updates into briefs by default.",
   },
 ]
 
@@ -33,8 +33,8 @@ const COMPACTION_OPTIONS: {
   hint: string
 }[] = [
   { value: "light", label: "Light", hint: "Keep most raw memory; demote only obvious duplicates." },
-  { value: "standard", label: "Standard", hint: "Demote memory once canon or summary covers it." },
-  { value: "aggressive", label: "Aggressive", hint: "Demote early; rely on canon + summary for retrieval." },
+  { value: "standard", label: "Standard", hint: "Demote memory once context or summary covers it." },
+  { value: "aggressive", label: "Aggressive", hint: "Demote early; rely on context + summary for retrieval." },
 ]
 
 export function ProjectSettingsForm({
@@ -78,7 +78,7 @@ export function ProjectSettingsForm({
         <header>
           <h2 className="text-sm font-semibold text-[var(--relay-ink)]">Autonomy</h2>
           <p className="text-[13px] text-[var(--relay-muted)]">
-            How aggressively Relay maintains canon on your behalf.
+            How aggressively Relay maintains context on your behalf.
           </p>
         </header>
         <div className="grid gap-2">
@@ -98,18 +98,18 @@ export function ProjectSettingsForm({
 
       <section className="space-y-3">
         <header>
-          <h2 className="text-sm font-semibold text-[var(--relay-ink)]">Tentative updates</h2>
+          <h2 className="text-sm font-semibold text-[var(--relay-ink)]">Pending updates</h2>
           <p className="text-[13px] text-[var(--relay-muted)]">
-            Control whether low-confidence canon is shown or folded into generated packets.
+            Control whether low-confidence context is shown or folded into generated briefs.
           </p>
         </header>
         <ToggleRow
-          label="Show tentative updates in dashboard"
+          label="Show pending updates in dashboard"
           checked={settings.showTentativeUpdates}
           onChange={(checked) => patch({ showTentativeUpdates: checked })}
         />
         <ToggleRow
-          label="Include tentative updates in packets"
+          label="Include pending updates in briefs"
           checked={settings.includeTentativeUpdatesInPackets}
           onChange={(checked) => patch({ includeTentativeUpdatesInPackets: checked })}
         />
@@ -119,7 +119,7 @@ export function ProjectSettingsForm({
         <header>
           <h2 className="text-sm font-semibold text-[var(--relay-ink)]">Compaction</h2>
           <p className="text-[13px] text-[var(--relay-muted)]">
-            How aggressively raw memory is demoted once canon or summaries cover it.
+            How aggressively raw memory is demoted once context or summaries cover it.
           </p>
         </header>
         <div className="grid gap-2">

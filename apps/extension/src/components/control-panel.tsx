@@ -1771,7 +1771,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             </button>
           </div>
 
-          <p className={styles.settingsVersion}>Relay · v0.1.1</p>
+          <p className={styles.settingsVersion}>Relay · v{chrome?.runtime?.getManifest?.()?.version ?? "0.3.0"}</p>
         </section>
       ) : authenticating ? (
         <section className={styles.panel}>
@@ -2011,6 +2011,25 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             >
               Save to project
             </button>
+
+            {/* Digest status banner */}
+            {activeState.capturePending || activeState.remoteStatus === "loading" ? (
+              <div
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  background: "var(--relay-soft, #f5f5f7)",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: "var(--relay-muted, #888)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <span className={styles.shimmerText}>Updating your brief…</span>
+              </div>
+            ) : null}
 
             {/* Trust line */}
             <div className={styles.trustLine}>
