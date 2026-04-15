@@ -9,6 +9,8 @@ export interface RelayConfig {
   refreshToken?: string
   accessTokenExpiresAt?: string
   refreshTokenExpiresAt?: string
+  /** CLI token kept as fallback when the scoped MCP token is rejected. */
+  fallbackToken?: string
 }
 
 interface ConfigFile {
@@ -43,13 +45,17 @@ export async function loadConfig(): Promise<RelayConfig> {
     )
   }
 
+  // Keep the CLI token as a fallback when the scoped MCP token is rejected
+  const fallbackToken = file.token && file.token !== token ? file.token : undefined
+
   return {
     apiBase: process.env["RELAY_API_BASE"] ?? file.apiBase ?? DEFAULT_API_BASE,
     token,
     projectId: process.env["RELAY_PROJECT_ID"] ?? file.projectId,
     refreshToken: file.refreshToken,
     accessTokenExpiresAt: file.accessTokenExpiresAt,
-    refreshTokenExpiresAt: file.refreshTokenExpiresAt
+    refreshTokenExpiresAt: file.refreshTokenExpiresAt,
+    fallbackToken,
   }
 }
 

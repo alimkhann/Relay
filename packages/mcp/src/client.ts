@@ -64,11 +64,15 @@ export class RelayClient {
   private hooksRegistered = false
   private workSessionDisabled = false
   private refreshPromise: Promise<void> | null = null
+  private refreshFailed = false
   private readonly analytics?: RelayMcpAnalytics
+
+  private readonly fallbackToken?: string
 
   constructor(config: RelayConfig, analytics?: RelayMcpAnalytics) {
     this.baseUrl = config.apiBase.replace(/\/+$/, "")
     this.token = config.token
+    this.fallbackToken = config.fallbackToken
     this.refreshToken = config.refreshToken
     this.accessTokenExpiresAt = config.accessTokenExpiresAt
     this.projectId = config.projectId
@@ -88,7 +92,7 @@ export class RelayClient {
     return this.request("PATCH", path, body)
   }
 
-  async delete(path: string): Promise<void> {
+  async delete(path: string, _retried = false): Promise<void> {
     await this.refreshIfNeeded()
 
     const url = `${this.baseUrl}${path}`
@@ -96,9 +100,21 @@ export class RelayClient {
       method: "DELETE",
       headers: { "Authorization": `Bearer ${this.token}` }
     })
-    if (response.status === 401 && this.refreshToken) {
-      await this.refreshAccessToken()
-      return this.delete(path)
+    if (response.status === 401 && !_retried) {
+      if (this.fallbackToken && this.token !== this.fallbackToken) {
+        this.token = this.fallbackToken
+        this.refreshToken = undefined
+        this.accessTokenExpiresAt = undefined
+        return this.delete(path, true)
+      }
+      if (this.refreshToken && !this.refreshFailed) {
+        await this.refreshAccessToken()
+        return this.delete(path, true)
+      }
+      throw new Error("Relay authentication expired. Run 'npx @onrelay/wizard' to re-authenticate.")
+    }
+    if (response.status === 401) {
+      throw new Error("Relay authentication expired. Run 'npx @onrelay/wizard' to re-authenticate.")
     }
     if (!response.ok) {
       const text = await response.text().catch(() => "")
@@ -418,7 +434,17 @@ export class RelayClient {
     }
 
     if (!response.ok) {
-      if (response.status === 401 && this.refreshToken) {
+      if (response.status === 401) {
+        // Try fallback CLI token before refresh/re-auth
+        if (this.fallbackToken && this.token !== this.fallbackToken && _attempt === 0) {
+          this.token = this.fallbackToken
+          this.refreshToken = undefined
+          this.accessTokenExpiresAt = undefined
+          return this.request(method, path, body, 1)
+        }
+        if (this.refreshFailed || !this.refreshToken) {
+          throw new Error("Relay authentication expired. Run 'npx @onrelay/wizard' to re-authenticate.")
+        }
         await this.refreshAccessToken()
         return this.request(method, path, body, 0)
       }
@@ -483,6 +509,10 @@ export class RelayClient {
   }
 
   private async refreshIfNeeded() {
+    if (this.refreshFailed) {
+      throw new Error("Relay authentication expired. Run 'npx @onrelay/wizard' to re-authenticate.")
+    }
+
     if (!this.refreshToken || !this.accessTokenExpiresAt) {
       return
     }
@@ -565,12 +595,14 @@ export class RelayClient {
 
       if (!response.ok) {
         const text = await response.text().catch(() => "")
+        this.refreshFailed = true
+        this.refreshToken = undefined
         this.analytics?.capture("mcp_token_refresh_failed", {
           project_id: this.workSession?.projectId ?? this.projectId ?? null,
           success: false,
           status: response.status,
         })
-        throw new Error(`Relay refresh failed: ${response.status} ${response.statusText}${text ? ` — ${text}` : ""}`)
+        throw new Error("Relay authentication expired. Run 'npx @onrelay/wizard' to re-authenticate.")
       }
 
       const data = await response.json() as {
