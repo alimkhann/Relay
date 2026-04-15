@@ -133,8 +133,23 @@ function SidebarContent({
       {/* Navigation */}
       <SidebarNav currentProjectId={currentProjectId} collapsed={collapsed} onNavigate={onNavigate} />
 
+      {/* Feedback */}
+      <div className="mt-auto px-2 pb-2">
+        <a
+          href="https://relay.featurebase.app"
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn(
+            "flex items-center rounded-[var(--relay-radius-sm)] text-[13px] font-medium transition-colors text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]",
+            collapsed ? "justify-center p-2" : "gap-2.5 px-2.5 py-1.5",
+          )}
+        >
+          {!collapsed && <span>Feedback</span>}
+        </a>
+      </div>
+
       {/* Account menu */}
-      <div className="mt-auto border-t border-[var(--relay-line)] pt-4">
+      <div className="border-t border-[var(--relay-line)] pt-4">
         {user ? (
           <AccountMenu
             name={user.name}

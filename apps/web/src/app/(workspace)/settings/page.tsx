@@ -2,7 +2,6 @@ import { SettingsPreferences } from "@/components/settings/settings-preferences"
 import { SettingsContent } from "@/components/settings/settings-content"
 import { BillingSection } from "@/components/settings/billing-section"
 import { ProjectSettingsForm } from "@/components/projects/project-settings-form"
-import { FeaturebaseTrigger } from "@/components/feedback/featurebase-trigger"
 import { PageTelemetry } from "@/components/telemetry/page-telemetry"
 import Link from "next/link"
 import { requirePageViewer } from "@/server/policies/viewer"
@@ -113,21 +112,6 @@ export default async function SettingsPage({
           )}
         </SettingsContent>
 
-        <div className="mt-10 flex items-center gap-4 border-t border-[var(--relay-line)] pt-6">
-          <FeaturebaseTrigger
-            kind="feature"
-            className="text-[13px] font-medium text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
-          >
-            Feature requests
-          </FeaturebaseTrigger>
-          <span className="text-[var(--relay-line)]">|</span>
-          <FeaturebaseTrigger
-            kind="bug"
-            className="text-[13px] font-medium text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
-          >
-            Report a bug
-          </FeaturebaseTrigger>
-        </div>
       </div>
     </div>
   )

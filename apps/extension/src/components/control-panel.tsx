@@ -1916,7 +1916,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               disabled={busy || insertButtonState.disabled}
               onClick={() => void insertProjectBrief()}
             >
-              {busy || insertButtonState.shimmering ? (
+              {insertButtonState.shimmering ? (
                 <span className={styles.shimmerText}>Inserting…</span>
               ) : (
                 insertButtonState.label
@@ -2358,6 +2358,18 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
         </>
       )}
+
+      {/* Feedback */}
+      <div className={styles.feedbackRow}>
+        <a
+          href="https://relay.featurebase.app"
+          target="_blank"
+          rel="noopener noreferrer"
+          className={styles.feedbackLink}
+        >
+          Feedback
+        </a>
+      </div>
     </div>
   );
 }
