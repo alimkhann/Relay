@@ -3,27 +3,28 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  type CanonEntryDto,
   type ProjectDashboardDto,
   type ProjectStateStatusDto,
 } from "@relay/shared";
-import { RefreshCw, Pencil, Trash2, MessageSquare } from "lucide-react";
+import { getProjectContextCounts } from "@relay/shared/utils/project-context";
+import { RefreshCw, Pencil, Trash2 } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 
 import { motion, AnimatePresence } from "motion/react";
 
 import { Button } from "@/components/ui/button";
 import { FadeIn } from "@/components/ui/fade-in";
-import { CockpitGrid } from "@/components/dashboard/cockpit-cards";
+import { DashboardStats } from "@/features/projects/dashboard-stats";
+import { DashboardAnalyticsBar } from "@/features/projects/dashboard-analytics-bar";
 import { DashboardMemoryCard } from "@/features/projects/dashboard-memory-card";
+import { DashboardBriefCard } from "@/features/projects/dashboard-brief-card";
 import { DashboardActivityCard } from "@/features/projects/dashboard-activity-card";
+import { DashboardGovernanceSummary } from "@/features/projects/dashboard-governance-summary";
 import { NotesSection } from "@/features/memory/notes-section";
 import { selectPinnedNotes } from "@/features/memory/notes-selector";
-import { FeaturebaseTrigger } from "@/components/feedback/featurebase-trigger";
 import { cn } from "@/lib/cn";
 import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
-import Link from "next/link";
 import {
   buildProjectMemoryOverridePatch,
   deriveProjectMemoryDrafts,
@@ -98,10 +99,9 @@ function groupSessionsByConversation(
 interface DashboardContentProps {
   project: { id: string; name: string; description?: string | null };
   dashboard: ProjectDashboardDto;
-  canon?: CanonEntryDto[];
 }
 
-export function DashboardContent({ project, dashboard, canon = [] }: DashboardContentProps) {
+export function DashboardContent({ project, dashboard }: DashboardContentProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
@@ -153,8 +153,15 @@ export function DashboardContent({ project, dashboard, canon = [] }: DashboardCo
   const statusReady = dashboard.stateStatus?.projectStateReady;
   const statusText = describeStatus(dashboard.stateStatus);
 
+  const totalContextItems = getProjectContextCounts(dashboard).all;
+
   const totalChats = dashboard.distinctConversationCount;
   const latestPacket = dashboard.packets[0];
+
+  const briefStatus = latestPacket ? "ready" as const : "none" as const;
+  const briefGeneratedAt = latestPacket
+    ? (dashboard.packets[0]?.createdAt ?? null)
+    : null;
 
   const groupedSessions = groupSessionsByConversation(dashboard.sessionHistory);
 
@@ -501,13 +508,6 @@ export function DashboardContent({ project, dashboard, canon = [] }: DashboardCo
               <RefreshCw className="h-3 w-3" />
               Rebuild
             </Button>
-            <FeaturebaseTrigger
-              kind="feedback"
-              className="inline-flex h-7 items-center gap-1.5 rounded-[var(--relay-radius-sm)] px-2 text-xs font-medium text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
-            >
-              <MessageSquare className="h-3 w-3" />
-              Feedback
-            </FeaturebaseTrigger>
             <Button
               variant="ghost"
               size="sm"
@@ -521,35 +521,53 @@ export function DashboardContent({ project, dashboard, canon = [] }: DashboardCo
         </div>
       </FadeIn>
 
-      {/* ─── Cockpit grid ─── */}
+      {/* ─── Stats row ─── */}
       <FadeIn delay={0.05}>
-        <CockpitGrid
-          projectId={project.id}
-          canon={canon}
-          packets={dashboard.packets}
-          memory={dashboard.memory}
-          aiBudget={dashboard.aiBudget}
+        <DashboardStats
+          totalChats={totalChats}
+          totalContextItems={totalContextItems}
+          briefStatus={briefStatus}
+          briefGeneratedAt={briefGeneratedAt}
         />
       </FadeIn>
 
-      {/* ─── State editor ─── */}
+      {/* ─── Analytics bar ─── */}
+      <FadeIn delay={0.07}>
+        <DashboardAnalyticsBar
+          sessions={dashboard.sessionHistory.map((s) => ({
+            platform: s.platform,
+            capturedAt: s.capturedAt,
+          }))}
+          digestConfidenceScores={[]}
+        />
+      </FadeIn>
+
+      {/* ─── 2-column: Memory + Brief ─── */}
       <FadeIn delay={0.1}>
-        <DashboardMemoryCard
-          projectId={project.id}
-          overview={overview}
-          objective={objective}
-          progress={progress}
-          editingMemory={editingMemory}
-          setEditingMemory={setEditingMemory}
-          onSave={saveStateOverrides}
-          onOverviewChange={setOverview}
-          onObjectiveChange={setObjective}
-          onProgressChange={setProgress}
-          pending={pending}
-        />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <DashboardMemoryCard
+            projectId={project.id}
+            overview={overview}
+            objective={objective}
+            progress={progress}
+            editingMemory={editingMemory}
+            setEditingMemory={setEditingMemory}
+            onSave={saveStateOverrides}
+            onOverviewChange={setOverview}
+            onObjectiveChange={setObjective}
+            onProgressChange={setProgress}
+            pending={pending}
+          />
+          <DashboardBriefCard
+            projectId={project.id}
+            packets={dashboard.packets}
+            onRegenerate={regenerateBriefs}
+            pending={pending}
+          />
+        </div>
       </FadeIn>
 
-      {/* ─── Recent activity ─── */}
+      {/* ─── Recent Activity ─── */}
       <FadeIn delay={0.15}>
         <DashboardActivityCard
           sessions={groupedSessions.slice(0, 5)}
@@ -557,8 +575,13 @@ export function DashboardContent({ project, dashboard, canon = [] }: DashboardCo
         />
       </FadeIn>
 
-      {/* ─── Pinned notes ─── */}
+      {/* ─── Governance summary ─── */}
       <FadeIn delay={0.2}>
+        <DashboardGovernanceSummary projectId={project.id} dashboard={dashboard} />
+      </FadeIn>
+
+      {/* ─── Pinned notes ─── */}
+      <FadeIn delay={0.25}>
         <NotesSection
           notes={selectPinnedNotes(dashboard.memory)}
           variant="dashboard"

@@ -998,9 +998,9 @@ export async function generateBootstrapForProject(userId: string, projectId: str
       limit: 8,
       surfaces: ["mcp", "cli", "chatgpt", "claude", "gemini", "grok", "perplexity", "deepseek", "codex"],
     }),
-    repositories.canonEntries.listByProject(projectId, { statuses: ["active", "tentative", "disputed"], limit: 64 }),
-    repositories.projectSummarySnapshots.listLatestByProject(projectId, { limit: 12 }),
-    repositories.projectSettings.getByProject(projectId),
+    repositories.canonEntries.listByProject(projectId, { statuses: ["active", "tentative", "disputed"], limit: 64 }).catch(() => []),
+    repositories.projectSummarySnapshots.listLatestByProject(projectId, { limit: 12 }).catch(() => []),
+    repositories.projectSettings.getByProject(projectId).catch(() => null),
   ])
 
   if (!project) {

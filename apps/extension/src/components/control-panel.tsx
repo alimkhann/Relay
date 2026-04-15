@@ -35,39 +35,6 @@ interface ControlPanelProps {
   compact?: boolean;
 }
 
-interface DriftPreview {
-  id: string;
-  type: string;
-  content: string;
-  winnerId: string | null;
-  surfaces: string[];
-}
-
-interface MemoryListResponseItem {
-  id: string;
-  type: string;
-  content: string;
-  metadata?: Record<string, unknown> | null;
-}
-
-function extractDrifts(items: MemoryListResponseItem[]): DriftPreview[] {
-  const out: DriftPreview[] = [];
-  for (const item of items) {
-    const meta = (item.metadata ?? {}) as Record<string, unknown>;
-    const status = meta.conflictStatus;
-    if (status !== "disputed" && status !== "contested") continue;
-    out.push({
-      id: item.id,
-      type: item.type,
-      content: item.content,
-      winnerId: typeof meta.driftWinnerId === "string" ? meta.driftWinnerId : null,
-      surfaces: Array.isArray(meta.driftSurfaces) ? (meta.driftSurfaces as string[]) : [],
-    });
-    if (out.length >= 3) break;
-  }
-  return out;
-}
-
 type ContextSection = "decisions" | "constraints" | "tasks";
 type ContextTab = "all" | ContextSection;
 type ContextItem = RelayActiveProjectState["contextPreview"][ContextSection][number];
@@ -219,18 +186,14 @@ function deriveInsertButtonState(activeState: RelayActiveProjectState) {
 
   if (insertState.status === "error") {
     return {
-      label: insertState.message ?? (activeState.insertKind === "quick_continuity" ? "Continue with context" : "Insert new context"),
+      label: insertState.message ?? "Insert project brief",
       shimmering: false,
       disabled: !activeState.canInsert,
     };
   }
 
-  const label =
-    activeState.insertKind === "quick_continuity"
-      ? "Continue with context"
-      : "Insert new context";
   return {
-    label,
+    label: "Insert project brief",
     shimmering: false,
     disabled: !activeState.canInsert,
   };
@@ -278,7 +241,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [signOutBusy, setSignOutBusy] = useState(false);
   const [userSettings, setUserSettings] = useState<UserSettingsRow["settings"] | null>(null);
   const [userSettingsBusy, setUserSettingsBusy] = useState(false);
-  const [drifts, setDrifts] = useState<DriftPreview[]>([]);
   const activeStateRequestInFlight = useRef(false);
 
   function applyResolvedTheme(nextResolvedTheme: RelayResolvedTheme) {
@@ -465,45 +427,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       chrome.runtime.onMessage.removeListener(handleRuntimeMessage);
     };
   }, []);
-
-  useEffect(() => {
-    const projectId = activeState.projectId;
-    if (!projectId) {
-      setDrifts([]);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const response = await relayFetch(`/api/projects/${projectId}/memory`);
-        if (!response.ok) return;
-        const data = (await response.json()) as { memory?: MemoryListResponseItem[] };
-        if (cancelled) return;
-        setDrifts(extractDrifts(data.memory ?? []));
-      } catch {
-        // drift fetch is best-effort
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeState.projectId]);
-
-  async function dismissDrift(memoryId: string) {
-    await runBusyAction(
-      "Dismissing drift…",
-      "Drift resolved.",
-      async () => {
-        const response = await relayFetch(`/api/memory/${memoryId}`, {
-          method: "DELETE",
-        });
-        if (!response.ok && response.status !== 204) {
-          throw new Error(await readErrorMessage(response, "Drift dismissal failed."));
-        }
-        setDrifts((current) => current.filter((d) => d.id !== memoryId));
-      },
-    );
-  }
 
   useEffect(() => {
     function handleError(event: ErrorEvent) {
@@ -2012,25 +1935,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               Save to project
             </button>
 
-            {/* Digest status banner */}
-            {activeState.capturePending || activeState.remoteStatus === "loading" ? (
-              <div
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  background: "var(--relay-soft, #f5f5f7)",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  color: "var(--relay-muted, #888)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                <span className={styles.shimmerText}>Updating your brief…</span>
-              </div>
-            ) : null}
-
             {/* Trust line */}
             <div className={styles.trustLine}>
               {activeState.trust.recentChatCount > 0 ||
@@ -2197,37 +2101,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 Quick edits here change the same carry-forward state the dashboard uses.
               </p>
             </div>
-
-            {drifts.length > 0 ? (
-              <div className={styles.driftBanner}>
-                <div className={styles.driftHeader}>
-                  <span className={styles.driftLabel}>Drifts ({drifts.length})</span>
-                  <span className={styles.driftHint}>Newer capture wins — dismiss old entry or keep both.</span>
-                </div>
-                {drifts.map((drift) => {
-                  const surfaceTag = drift.surfaces.length > 0 ? drift.surfaces.join(" vs ") : null;
-                  const winnerTag = drift.winnerId ? `newer=${drift.winnerId.slice(0, 8)}` : null;
-                  const tag = [winnerTag, surfaceTag].filter(Boolean).join(" • ");
-                  return (
-                    <div key={drift.id} className={styles.driftItem}>
-                      <div className={styles.driftItemBody}>
-                        <span className={styles.driftType}>{drift.type}</span>
-                        <p className={styles.driftText}>{drift.content}</p>
-                        {tag ? <span className={styles.driftMeta}>{tag}</span> : null}
-                      </div>
-                      <button
-                        className={styles.ghostButton}
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void dismissDrift(drift.id)}
-                      >
-                        Dismiss
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
 
             {/* ─── Subtabs ─── */}
             <div className={styles.contextTabs}>
@@ -2485,18 +2358,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
         </>
       )}
-
-      {/* Feedback link */}
-      <div style={{ padding: "12px 0 4px", textAlign: "center" }}>
-        <a
-          href="https://www.onrelay.app/settings?section=app"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ fontSize: 11, color: "var(--relay-muted, #888)", textDecoration: "none" }}
-        >
-          Send feedback
-        </a>
-      </div>
     </div>
   );
 }
