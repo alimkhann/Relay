@@ -56,6 +56,8 @@
     observationTimer: null,
     stabilityRecheckTimer: null,
     lastMeaningfulMutationAt: Date.now(),
+    lastContentChangeAt: Date.now(),
+    lastContentStabilityKey: "",
     freshCandidateSince: 0,
     lastPageStateKey: "",
     pageState: null,
@@ -676,21 +678,43 @@
       relayChipState.freshCandidateSince = Date.now();
     }
 
-    const timeSinceLastMutation =
-      Date.now() - relayChipState.lastMeaningfulMutationAt;
     const recentlyStoppedStreaming =
       relayChipState.streamingEndedAt > 0 &&
       Date.now() - relayChipState.streamingEndedAt < PAGE_STABLE_MS;
     const stabilityThreshold = recentlyStoppedStreaming
       ? POST_STREAMING_STABLE_MS
       : PAGE_STABLE_MS;
-    const isStable = timeSinceLastMutation >= stabilityThreshold;
     const isFreshChat =
       candidateFresh &&
       Date.now() - relayChipState.freshCandidateSince >=
         FRESH_CHAT_STABILIZE_MS;
 
     const sourceConversationId = getConversationIdentity(config.platform, metadata);
+    const isStreaming = hasStreamingActivity(config);
+    const captureSignature = computeSignature(
+      sanitizedTurns,
+      metadata,
+      config.platform,
+      sourceConversationId,
+    );
+    const contentStabilityKey = JSON.stringify({
+      platform: config.platform,
+      routeKind,
+      url: metadata.url,
+      sourceConversationId,
+      turns: turns.length,
+      captureSignature,
+      promptReady,
+      isFreshRoute,
+      isStreaming,
+    });
+
+    if (relayChipState.lastContentStabilityKey !== contentStabilityKey) {
+      relayChipState.lastContentStabilityKey = contentStabilityKey;
+      relayChipState.lastContentChangeAt = Date.now();
+    }
+    const timeSinceLastContentChange =
+      Date.now() - relayChipState.lastContentChangeAt;
 
     return {
       supported: true,
@@ -703,12 +727,7 @@
       pageFingerprint: metadata.pageFingerprint,
       sourceConversationId,
       turns: turns.length,
-      captureSignature: computeSignature(
-        sanitizedTurns,
-        metadata,
-        config.platform,
-        sourceConversationId,
-      ),
+      captureSignature,
       recentUserTurnText: getLatestMeaningfulUserTurnText(turns),
       recentRoutingText: buildRecentRoutingText(turns, metadata.title),
       fullVisibleRoutingText: buildFullVisibleRoutingText(
@@ -718,8 +737,8 @@
       promptReady,
       isFreshRoute,
       isFreshChat,
-      isStable,
-      isStreaming: hasStreamingActivity(config),
+      isStable: timeSinceLastContentChange >= stabilityThreshold,
+      isStreaming,
     };
   }
 
