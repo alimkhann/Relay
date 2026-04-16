@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { FileDown } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { ProjectDashboardDto } from "@relay/shared";
 
@@ -24,15 +23,11 @@ function kindLabel(kind: string): string {
 interface DashboardBriefCardProps {
   projectId: string;
   packets: ProjectDashboardDto["packets"];
-  onRegenerate: () => void;
-  pending: boolean;
 }
 
 export function DashboardBriefCard({
   projectId,
   packets,
-  onRegenerate,
-  pending,
 }: DashboardBriefCardProps) {
   const briefUrl = `/brief?project=${projectId}`;
 
@@ -40,22 +35,15 @@ export function DashboardBriefCard({
     <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-[var(--relay-line)]">
+        <span className="text-xs font-medium text-[var(--relay-ink)]">
+          Project Brief
+        </span>
         <Link
           href={briefUrl}
-          className="flex items-center gap-1.5 text-sm font-medium text-[var(--relay-ink)] hover:text-[var(--relay-accent)]"
+          className="text-[11px] text-[var(--relay-accent)] hover:underline"
         >
-          <FileDown className="h-4 w-4" />
-          Project Brief
+          View all &rarr;
         </Link>
-
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={pending}
-          onClick={onRegenerate}
-        >
-          {pending ? "Regenerating…" : "Regenerate"}
-        </Button>
       </div>
 
       {/* Body */}
@@ -82,19 +70,12 @@ export function DashboardBriefCard({
                 {packets[0].content}
               </p>
             )}
-
-            <Link
-              href={briefUrl}
-              className="inline-block text-[11px] text-[var(--relay-accent)] hover:underline"
-            >
-              View all &rarr;
-            </Link>
           </div>
         ) : (
           <EmptyState
             icon={<FileDown className="h-5 w-5" />}
             title="No briefs yet"
-            description="Generate a brief to sync context across your AI tools."
+            description="Relay will generate a brief after your first chat capture."
             className="py-6"
           />
         )}

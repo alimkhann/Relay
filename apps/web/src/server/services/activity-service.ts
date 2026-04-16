@@ -77,7 +77,11 @@ export function buildActivityFeed(
     }
   })
 
-  entries.sort((a, b) => (b.timestamp > a.timestamp ? 1 : -1))
+  // Group by project, then sort by recency within each project
+  entries.sort((a, b) => {
+    if (a.projectName !== b.projectName) return a.projectName.localeCompare(b.projectName)
+    return b.timestamp > a.timestamp ? 1 : -1
+  })
   return entries.slice(0, 50)
 }
 

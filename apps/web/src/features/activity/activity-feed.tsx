@@ -37,24 +37,13 @@ function platformLabel(platform: string): string {
 
 type FilterTab = "all" | "captures" | "digests";
 
-function dayLabel(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today.getTime() - 86400000);
-  const entryDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
-  if (entryDate.getTime() === today.getTime()) return "TODAY";
-  if (entryDate.getTime() === yesterday.getTime()) return "YESTERDAY";
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" }).toUpperCase();
-}
-
-function groupByDay<T extends { timestamp: string }>(items: T[]): Array<{ label: string; items: T[] }> {
+function groupByProject<T extends { projectName: string }>(items: T[]): Array<{ label: string; items: T[] }> {
   const groups: Array<{ label: string; items: T[] }> = [];
   let currentLabel = "";
 
   for (const item of items) {
-    const label = dayLabel(item.timestamp);
+    const label = item.projectName;
     if (label !== currentLabel) {
       currentLabel = label;
       groups.push({ label, items: [] });
@@ -77,7 +66,7 @@ export function ActivityFeed({ feed }: { feed: ActivityEntry[] }) {
     return feed.filter((e) => e.kind === "digest");
   }, [feed, filter]);
 
-  const dayGroups = useMemo(() => groupByDay(filteredFeed), [filteredFeed]);
+  const projectGroups = useMemo(() => groupByProject(filteredFeed), [filteredFeed]);
 
   function toggleSessionArchive(
     projectId: string,
@@ -146,10 +135,10 @@ export function ActivityFeed({ feed }: { feed: ActivityEntry[] }) {
       </div>
 
       <div className="space-y-4">
-        {dayGroups.map((group) => (
+        {projectGroups.map((group) => (
           <div key={group.label}>
             <div className="sticky top-0 z-10 bg-[var(--relay-bg)] py-1.5">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--relay-muted)]">
+              <span className="text-[12px] font-semibold tracking-tight text-[var(--relay-ink)]">
                 {group.label}
               </span>
             </div>
@@ -174,9 +163,6 @@ export function ActivityFeed({ feed }: { feed: ActivityEntry[] }) {
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--relay-muted)]">
-                          {entry.projectName}
-                        </span>
                         <span className="text-[10px] text-[var(--relay-faint)]">
                           {entry.kind === "capture" ? "Capture" : "Digest"}
                         </span>

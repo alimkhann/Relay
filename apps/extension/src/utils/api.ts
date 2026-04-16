@@ -25,14 +25,23 @@ export async function readRateLimitError(response: Response): Promise<RateLimitE
   }
 }
 
+const DEFAULT_FETCH_TIMEOUT_MS = 15_000
+
 export async function relayFetch(path: string, init?: RequestInit) {
   const session = await getRelaySession()
-  return fetch(`${session.apiBase}${path}`, {
-    ...init,
-    headers: {
-      "content-type": "application/json",
-      ...(session.token ? { authorization: `Bearer ${session.token}` } : {}),
-      ...(init?.headers ?? {})
-    }
-  })
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_FETCH_TIMEOUT_MS)
+  try {
+    return await fetch(`${session.apiBase}${path}`, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        "content-type": "application/json",
+        ...(session.token ? { authorization: `Bearer ${session.token}` } : {}),
+        ...(init?.headers ?? {})
+      }
+    })
+  } finally {
+    clearTimeout(timeoutId)
+  }
 }

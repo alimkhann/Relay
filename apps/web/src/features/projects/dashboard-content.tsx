@@ -1,16 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import {
-  type ProjectDashboardDto,
-  type ProjectStateStatusDto,
-} from "@relay/shared";
+import type { ProjectDashboardDto } from "@relay/shared";
 import { getProjectContextCounts } from "@relay/shared/utils/project-context";
-import { RefreshCw, Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, MoreHorizontal } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 
 import { Button } from "@/components/ui/button";
 import { FadeIn } from "@/components/ui/fade-in";
@@ -20,28 +18,10 @@ import { DashboardMemoryCard } from "@/features/projects/dashboard-memory-card";
 import { DashboardBriefCard } from "@/features/projects/dashboard-brief-card";
 import { DashboardActivityCard } from "@/features/projects/dashboard-activity-card";
 import { DashboardGovernanceSummary } from "@/features/projects/dashboard-governance-summary";
-import { NotesSection } from "@/features/memory/notes-section";
-import { selectPinnedNotes } from "@/features/memory/notes-selector";
-import { cn } from "@/lib/cn";
-import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client";
+import { logClientEvent } from "@/lib/telemetry/client";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
-import {
-  buildProjectMemoryOverridePatch,
-  deriveProjectMemoryDrafts,
-} from "@/features/projects/project-memory-state";
 
 /* ─── Helpers ─── */
-
-function describeStatus(status: ProjectStateStatusDto | undefined) {
-  if (!status) return "Waiting for the first chat.";
-  if (status.projectStateReady) return "Ready";
-  if (status.digestStatus === "running" || status.digestStatus === "pending")
-    return "Updating…";
-  if (status.digestStatus === "timed_out") return "Retrying…";
-  if (status.digestStatus === "failed")
-    return status.digestErrorMessage ?? "Needs another chat";
-  return status.rawCapturePresent ? "Preparing…" : "Waiting for first chat";
-}
 
 interface GroupedSession {
   conversationId: string;
@@ -105,11 +85,8 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
-  const [editingMemory, setEditingMemory] = useState(false);
   const [editingProject, setEditingProject] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [headerHovered, setHeaderHovered] = useState(false);
-  const nameInputRef = useRef<HTMLInputElement>(null);
   const [projectNameDraft, setProjectNameDraft] = useState(project.name);
   const [projectDescriptionDraft, setProjectDescriptionDraft] = useState(
     project.description ?? "",
@@ -118,15 +95,6 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
     name: project.name,
     description: project.description ?? "",
   });
-  const initialDrafts = deriveProjectMemoryDrafts({
-    dashboard,
-    fallbackOverview: project.description,
-  });
-  const memoryDraftResetKey = JSON.stringify(initialDrafts);
-  const [overview, setOverview] = useState(initialDrafts.overview);
-  const [objective, setObjective] = useState(initialDrafts.objective);
-  const [progress, setProgress] = useState(initialDrafts.progress);
-
   useEffect(() => {
     setProjectMeta({
       name: project.name,
@@ -135,23 +103,11 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
     setProjectNameDraft(project.name);
     setProjectDescriptionDraft(project.description ?? "");
     setEditingProject(false);
-    const nextDrafts = deriveProjectMemoryDrafts({
-      dashboard,
-      fallbackOverview: project.description,
-    });
-    setOverview(nextDrafts.overview);
-    setObjective(nextDrafts.objective);
-    setProgress(nextDrafts.progress);
-    setEditingMemory(false);
   }, [
     project.id,
     project.name,
     project.description,
-    memoryDraftResetKey,
   ]);
-
-  const statusReady = dashboard.stateStatus?.projectStateReady;
-  const statusText = describeStatus(dashboard.stateStatus);
 
   const totalContextItems = getProjectContextCounts(dashboard).all;
 
@@ -197,83 +153,6 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
         }
       })();
     });
-  }
-
-  function rebuildState() {
-    runMutation(
-      async () => {
-        const res = await relayClientFetch(
-          `/api/projects/${project.id}/state`,
-          { method: "POST" },
-        );
-        if (!res.ok) throw new Error("Rebuild failed.");
-      },
-      "Rebuilding…",
-      "State rebuilt.",
-    );
-  }
-
-  function regenerateBriefs() {
-    const targetProfileKey =
-      latestPacket?.targetProfileKey ?? "chatgpt_planning";
-    const kind = latestPacket?.kind ?? "fresh_chat_bootstrap";
-    const flowId = createClientFlowId("brief");
-    runMutation(
-      async () => {
-        const res = await relayClientFetch(
-          `/api/projects/${project.id}/bootstrap`,
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            telemetry: {
-              surface: "web-dashboard",
-              area: "briefs",
-              event: "brief_generated",
-              flowId,
-              logSuccess: true,
-            },
-            body: JSON.stringify({
-              targetProfileKey,
-              kind,
-              deep: kind === "fresh_chat_bootstrap",
-            }),
-          },
-        );
-        if (!res.ok) throw new Error("Regeneration failed.");
-      },
-      "Regenerating brief…",
-      "Brief regenerated.",
-    );
-  }
-
-  function saveStateOverrides() {
-    const payload = buildProjectMemoryOverridePatch(
-      { overview, objective, progress },
-      initialDrafts,
-    );
-
-    if (!payload) {
-      setEditingMemory(false);
-      setStatus("No memory changes to save.");
-      return;
-    }
-
-    runMutation(
-      async () => {
-        const res = await relayClientFetch(
-          `/api/projects/${project.id}/state`,
-          {
-            method: "PATCH",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(payload),
-          },
-        );
-        if (!res.ok) throw new Error("Save failed.");
-        setEditingMemory(false);
-      },
-      "Saving…",
-      "Saved.",
-    );
   }
 
   function saveProjectMetadata() {
@@ -363,7 +242,6 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
               <div className="space-y-3 max-w-2xl">
                 <div className="flex flex-wrap items-center gap-2">
                   <input
-                    ref={nameInputRef}
                     className="text-xl font-semibold tracking-tight text-[var(--relay-ink)] bg-transparent border-b-2 border-[var(--relay-accent)] outline-none w-full max-w-md py-0.5"
                     value={projectNameDraft}
                     onChange={(event) =>
@@ -381,24 +259,6 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
                       }
                     }}
                   />
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium",
-                      statusReady
-                        ? "bg-[var(--relay-success)]/10 text-[var(--relay-success)]"
-                        : "bg-[var(--relay-warning)]/10 text-[var(--relay-warning)]",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "h-1.5 w-1.5 rounded-full",
-                        statusReady
-                          ? "bg-[var(--relay-success)]"
-                          : "bg-[var(--relay-warning)]",
-                      )}
-                    />
-                    {statusText}
-                  </span>
                 </div>
                 <textarea
                   className="w-full min-h-[60px] rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] px-2.5 py-1.5 text-[13px] leading-relaxed text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)] resize-none"
@@ -444,51 +304,9 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
               </div>
             ) : (
               <>
-                <div className="flex flex-wrap items-center gap-2">
-                  <div
-                    className="flex items-center gap-2 rounded-[var(--relay-radius-sm)] pr-1"
-                    onMouseEnter={() => setHeaderHovered(true)}
-                    onMouseLeave={() => setHeaderHovered(false)}
-                  >
-                    <h1 className="text-xl font-semibold tracking-tight text-[var(--relay-ink)]">
-                      {projectMeta.name}
-                    </h1>
-                    <AnimatePresence>
-                      {headerHovered && (
-                        <motion.button
-                          type="button"
-                          onClick={() => setEditingProject(true)}
-                          className="inline-flex h-7 items-center gap-1 rounded-[var(--relay-radius-sm)] px-2 text-[11px] font-medium text-[var(--relay-muted)] overflow-hidden whitespace-nowrap hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--relay-accent)]"
-                          initial={{ width: 0, opacity: 0 }}
-                          animate={{ width: "auto", opacity: 1 }}
-                          exit={{ width: 0, opacity: 0 }}
-                          transition={{ duration: 0.15 }}
-                        >
-                          <Pencil className="h-3 w-3 shrink-0" />
-                          <span>Edit</span>
-                        </motion.button>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium",
-                      statusReady
-                        ? "bg-[var(--relay-success)]/10 text-[var(--relay-success)]"
-                        : "bg-[var(--relay-warning)]/10 text-[var(--relay-warning)]",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "h-1.5 w-1.5 rounded-full",
-                        statusReady
-                          ? "bg-[var(--relay-success)]"
-                          : "bg-[var(--relay-warning)]",
-                      )}
-                    />
-                    {statusText}
-                  </span>
-                </div>
+                <h1 className="text-xl font-semibold tracking-tight text-[var(--relay-ink)]">
+                  {projectMeta.name}
+                </h1>
                 {projectMeta.description ? (
                   <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--relay-muted)] max-w-2xl">
                     {projectMeta.description}
@@ -498,25 +316,39 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={pending}
-              onClick={rebuildState}
-              className="h-7 text-xs gap-1.5"
-            >
-              <RefreshCw className="h-3 w-3" />
-              Rebuild
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={pending}
-              onClick={() => setDeleteDialogOpen(true)}
-              className="h-7 w-7 p-0 text-[var(--relay-muted)] hover:text-red-500"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  align="end"
+                  sideOffset={4}
+                  className="z-50 min-w-[140px] rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-1 shadow-[var(--relay-shadow-lg)]"
+                >
+                  <DropdownMenu.Item
+                    className="flex items-center gap-2 rounded-[var(--relay-radius-sm)] px-2.5 py-1.5 text-[12px] text-[var(--relay-ink)] outline-none cursor-pointer hover:bg-[var(--relay-soft)]"
+                    onSelect={() => setEditingProject(true)}
+                  >
+                    <Pencil className="h-3 w-3" />
+                    Edit project
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    className="flex items-center gap-2 rounded-[var(--relay-radius-sm)] px-2.5 py-1.5 text-[12px] text-red-500 outline-none cursor-pointer hover:bg-red-500/10"
+                    onSelect={() => setDeleteDialogOpen(true)}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Delete project
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
           </div>
         </div>
       </FadeIn>
@@ -547,22 +379,13 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <DashboardMemoryCard
             projectId={project.id}
-            overview={overview}
-            objective={objective}
-            progress={progress}
-            editingMemory={editingMemory}
-            setEditingMemory={setEditingMemory}
-            onSave={saveStateOverrides}
-            onOverviewChange={setOverview}
-            onObjectiveChange={setObjective}
-            onProgressChange={setProgress}
-            pending={pending}
+            overview={dashboard.projectState?.projectOverview ?? project.description ?? ""}
+            objective={dashboard.projectState?.currentObjective ?? ""}
+            progress={dashboard.projectState?.recentProgress ?? ""}
           />
           <DashboardBriefCard
             projectId={project.id}
             packets={dashboard.packets}
-            onRegenerate={regenerateBriefs}
-            pending={pending}
           />
         </div>
       </FadeIn>
@@ -578,15 +401,6 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
       {/* ─── Governance summary ─── */}
       <FadeIn delay={0.2}>
         <DashboardGovernanceSummary projectId={project.id} dashboard={dashboard} />
-      </FadeIn>
-
-      {/* ─── Pinned notes ─── */}
-      <FadeIn delay={0.25}>
-        <NotesSection
-          notes={selectPinnedNotes(dashboard.memory)}
-          variant="dashboard"
-          projectId={project.id}
-        />
       </FadeIn>
 
       {/* ─── Delete confirmation dialog ─── */}

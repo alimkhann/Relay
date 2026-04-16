@@ -2242,9 +2242,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               <div className={`${styles.contextSection} ${styles.contextSectionNotes}`}>
                 <div className={styles.contextSectionHeader}>
                   <span className={styles.contextLabel}>Notes</span>
-                  <span className={styles.contextTabCount}>
-                    {activeState.contextPreview.notes.length}
-                  </span>
                 </div>
                 {activeState.contextPreview.notes.length === 0 ? (
                   <p className={styles.emptyHint}>
@@ -2359,17 +2356,19 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         </>
       )}
 
-      {/* Feedback */}
-      <div className={styles.feedbackRow}>
-        <a
-          href="https://relay.featurebase.app"
-          target="_blank"
-          rel="noopener noreferrer"
-          className={styles.feedbackLink}
-        >
-          Feedback
-        </a>
-      </div>
+      {/* Feedback — only show when signed in */}
+      {session?.connected ? (
+        <div className={styles.feedbackRow}>
+          <a
+            href="https://relay.featurebase.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.feedbackLink}
+          >
+            Feedback
+          </a>
+        </div>
+      ) : null}
     </div>
   );
 }
