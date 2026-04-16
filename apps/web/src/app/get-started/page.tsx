@@ -4,7 +4,19 @@ import { buildSignInHref, resolveAuthenticatedAppPath, resolveOptionalViewer } f
 
 export const dynamic = "force-dynamic"
 
-export default async function GetStartedPage() {
+export default async function GetStartedPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
   const viewer = await resolveOptionalViewer()
-  redirect(viewer ? resolveAuthenticatedAppPath("/dashboard") : buildSignInHref("/dashboard", { intent: "sign-up" }))
+  const params = await searchParams
+  const upgrade = params.upgrade === "true"
+  const destination = upgrade ? "/settings?section=billing" : "/dashboard"
+
+  redirect(
+    viewer
+      ? resolveAuthenticatedAppPath(destination)
+      : buildSignInHref(destination, { intent: "sign-up" }),
+  )
 }

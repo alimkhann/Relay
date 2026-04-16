@@ -2,17 +2,34 @@
 
 ## Short Description (132 chars max)
 
-Stop repeating yourself to every AI. Relay keeps your project context synced across all your AI chats and IDE agents.
+Keep project context ready across ChatGPT, Claude, Gemini, Perplexity, Grok, and your IDE agents without repeating yourself.
 
 ## Detailed Description
 
-Every time you switch between AI tools, you start from scratch. You re-explain your project, repeat past decisions, and lose the thread of what you were doing.
+Every time you switch between AI tools, you lose context. You repeat your project goals, re-explain past decisions, and waste turns getting the model back on track.
 
-Relay fixes this. It adds a side panel to supported AI chat sites, captures project context while the extension is connected and capture is enabled, and keeps a living project brief ready for the next session. When you open a fresh chat, Relay restores the latest brief so the AI already knows what you're working on, what you've decided, and what is next.
+Relay fixes that. It adds a side panel to supported AI chats, saves meaningful chats into projects, and keeps the same project memory available across the browser and MCP-connected coding agents.
 
-How it works: Relay shows your project brief alongside supported AI chats, groups work into projects, and keeps that brief updated as your sessions evolve. For developers, Relay also works with MCP-connected IDE agents so your coding agent can read and write the same project memory as your browser sessions.
+How Relay works today:
 
-Supported AI chat sites: ChatGPT, Claude, Gemini, Grok, and Perplexity. Built for developers, indie builders, and AI power users who rely on multiple AI tools every day.
+- Capture and organize AI chats into projects from the side panel
+- Keep project context ready beside supported AI chats
+- Insert the latest project brief into a fresh chat with one click from the inline chip or side panel
+- Save notes from anywhere on the web by highlighting text and using Save to Relay
+- Review pinned decisions, tasks, constraints, and notes inside the extension
+- Sync the same project memory with MCP-connected IDE agents
+
+Supported AI chat sites: ChatGPT, Claude, Gemini, Grok, Perplexity, DeepSeek, and Codex.
+
+Built for developers, indie builders, and AI power users who work across multiple AI tools every day.
+
+## What’s New in 0.3.0
+
+- Faster and more reliable automatic chat association
+- Better existing-chat capture on ChatGPT project conversations
+- Cleaner settings inside the extension
+- Save notes from any webpage into the active project
+- Improved toast flow and project-status visibility while captures are processing
 
 ## Category
 
@@ -22,24 +39,23 @@ Productivity
 
 | Permission | Justification |
 |---|---|
-| `storage` | Persist auth tokens, user preferences, and cached project state locally |
-| `tabs` | Detect which AI chat tool the user has open to activate the correct adapter |
-| `activeTab` | Read chat content from the active tab on supported AI platforms only |
-| `sidePanel` | Primary UI — project context panel shown alongside AI chats |
-| `identity` | Chrome Identity API for Google sign-in authentication |
-| `scripting` | Inject content scripts to observe DOM changes on supported AI sites |
-| `offscreen` | Run a minimal offscreen document for theme detection because service workers cannot use `matchMedia` |
+| `storage` | Store auth state, user preferences, cached project state, and capture dedupe state locally |
+| `tabs` | Detect the active supported AI tab and keep side panel state in sync with it |
+| `activeTab` | Read chat content only from the currently active supported AI page |
+| `sidePanel` | Primary Relay UI shown alongside supported AI chats |
+| `identity` | Chrome Identity API for Google sign-in |
+| `scripting` | Inject content scripts on supported AI sites to read chats and insert project briefs |
+| `contextMenus` | Save highlighted text from any webpage into Relay via right-click |
 
 ## Host Permission Justifications (for CWS reviewer)
 
 | Domain | Reason |
 |---|---|
-| chatgpt.com, chat.openai.com | ChatGPT chat capture |
-| claude.ai | Claude chat capture |
-| gemini.google.com, aistudio.google.com | Gemini/AI Studio chat capture |
-| grok.com | Grok chat capture |
-| perplexity.ai, www.perplexity.ai | Perplexity chat capture |
-| chat.deepseek.com | DeepSeek chat capture |
-| codex.openai.com | Codex chat capture |
-| onrelay.app, www.onrelay.app, t.onrelay.app | Relay web/API domains used for authentication, pairing, and data sync |
-| eu.i.posthog.com | PostHog endpoint used for product analytics and error tracking |
+| chatgpt.com, chat.openai.com | ChatGPT chat capture and brief insertion |
+| claude.ai | Claude chat capture and brief insertion |
+| gemini.google.com, aistudio.google.com | Gemini / AI Studio chat capture and brief insertion |
+| grok.com | Grok chat capture and brief insertion |
+| perplexity.ai, www.perplexity.ai | Perplexity chat capture and brief insertion |
+| chat.deepseek.com | DeepSeek chat capture and brief insertion |
+| codex.openai.com | Codex chat capture and brief insertion |
+| onrelay.app, www.onrelay.app, t.onrelay.app | Relay authentication, API sync, and billing flows |

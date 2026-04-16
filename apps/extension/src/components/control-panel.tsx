@@ -63,6 +63,8 @@ const hiddenFieldBySection = {
   tasks: "hiddenOpenTasks",
 } as const;
 
+const BILLING_UPGRADE_URL = "https://www.onrelay.app/get-started?upgrade=true";
+
 async function readErrorMessage(response: Response, fallback: string) {
   try {
     const payload = (await response.json()) as { error?: string; message?: string };
@@ -1959,16 +1961,18 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 {activeState.lastBudgetStatus.aiRemaining === 0 ? (
                   <span>
                     AI analyses used up today — resets at midnight UTC
-                    {activeState.lastBudgetStatus.plan === "free" && !activeState.entitlements?.isPro ? (
+                    {!activeState.entitlements?.isPro ? (
                       <>
                         {" · "}
                         <a
-                          href="https://www.onrelay.app/pricing"
+                          href={BILLING_UPGRADE_URL}
                           target="_blank"
                           rel="noopener noreferrer"
                           className={styles.upgradeLink}
                         >
-                          Upgrade for 32/project · 120/day
+                          {activeState.lastBudgetStatus.plan === "free"
+                            ? "Upgrade for 32/project · 120/day"
+                            : "Upgrade for higher limits"}
                         </a>
                       </>
                     ) : null}
@@ -1977,11 +1981,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   <span>
                     ⚡ {activeState.lastBudgetStatus.aiRemaining}/
                     {activeState.lastBudgetStatus.aiLimit} analyses today
-                    {activeState.lastBudgetStatus.plan === "free" && !activeState.entitlements?.isPro ? (
+                    {!activeState.entitlements?.isPro ? (
                       <>
                         {" · "}
                         <a
-                          href="https://www.onrelay.app/pricing"
+                          href={BILLING_UPGRADE_URL}
                           target="_blank"
                           rel="noopener noreferrer"
                           className={styles.upgradeLink}

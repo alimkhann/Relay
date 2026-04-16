@@ -1,6 +1,7 @@
 import { createRepositoryBundle } from "@relay/db"
 import { capturePayloadSchema, withCaptureSignature } from "@relay/shared"
 
+import { resolveProjectAiBudget } from "./ai-budget-service"
 import { decideDigestStrategy, enqueueDigestJob, runDigestJobInline } from "./digest-service"
 import { getProjectStateStatus } from "./state-status-service"
 
@@ -84,6 +85,13 @@ export async function saveCapture(userId: string, input: unknown) {
       })
       jobId = job.id
       digestOutcome = await runDigestJobInline(repositories, userId, job)
+      const refreshedBudget = await resolveProjectAiBudget(repositories, userId, normalizedInput.projectId)
+      budgetStatus = {
+        aiUsed: refreshedBudget.dailyProjectAiUsed,
+        aiLimit: refreshedBudget.dailyProjectAiLimit,
+        aiRemaining: refreshedBudget.dailyProjectAiRemaining,
+        plan: refreshedBudget.plan,
+      }
       console.info("[capture-service] inline digest outcome", {
         projectId: normalizedInput.projectId,
         sessionId: session.id,

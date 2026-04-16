@@ -12,8 +12,8 @@ vi.mock("next/navigation", () => ({
 }))
 
 vi.mock("@/server/policies/viewer", () => ({
-  buildSignInHref: () => "/sign-in?next=%2Fdashboard&intent=sign-up",
-  resolveAuthenticatedAppPath: () => "/dashboard",
+  buildSignInHref: (next: string) => `/sign-in?next=${encodeURIComponent(next)}&intent=sign-up`,
+  resolveAuthenticatedAppPath: (next: string) => next,
   resolveOptionalViewer: resolveOptionalViewerMock
 }))
 
@@ -27,7 +27,7 @@ describe("GetStartedPage", () => {
   })
 
   it("redirects anonymous users to signup intent login", async () => {
-    await expect(GetStartedPage()).rejects.toThrow(
+    await expect(GetStartedPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
       "REDIRECT:/sign-in?next=%2Fdashboard&intent=sign-up",
     )
   })
@@ -38,6 +38,12 @@ describe("GetStartedPage", () => {
       mode: "session"
     } as any)
 
-    await expect(GetStartedPage()).rejects.toThrow("REDIRECT:/dashboard")
+    await expect(GetStartedPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("REDIRECT:/dashboard")
+  })
+
+  it("redirects upgrade intent to billing settings", async () => {
+    await expect(
+      GetStartedPage({ searchParams: Promise.resolve({ upgrade: "true" }) }),
+    ).rejects.toThrow("REDIRECT:/sign-in?next=%2Fsettings%3Fsection%3Dbilling&intent=sign-up")
   })
 })

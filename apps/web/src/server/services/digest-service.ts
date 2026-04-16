@@ -17,7 +17,7 @@ interface DigestModelShape extends SessionDigestShape {
 }
 
 const DIGEST_JOB_TIMEOUT_MINUTES = 5
-const DIGEST_INLINE_TIMEOUT_MS = 20_000
+const DIGEST_INLINE_TIMEOUT_MS = 45_000
 const DIGEST_FALLBACK_PLANNED = true
 
 type DigestJobStage = "queued" | "deferred" | GeminiStage | "merge_state" | "completed" | "failed" | "timed_out"

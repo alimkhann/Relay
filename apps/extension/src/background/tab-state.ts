@@ -321,8 +321,11 @@ export function deriveRelayActiveProjectState(input: BuildRelayActiveProjectStat
       status = "ready"
       message = "Ready for this chat"
       canInsert = input.page.promptReady !== false
-    } else if (input.stateStatus?.digestStatus === "failed" || input.stateStatus?.digestStatus === "timed_out") {
+    } else if (input.stateStatus?.digestStatus === "failed") {
       message = "Project brief unavailable"
+    } else if (input.stateStatus?.digestStatus === "timed_out") {
+      status = "updating"
+      message = "Updating your project brief"
     } else if (input.capturePending || input.remoteStatus === "loading" || activeDigest || input.stateStatus?.rawCapturePresent) {
       status = "updating"
       message = "Updating your project brief"
@@ -333,8 +336,11 @@ export function deriveRelayActiveProjectState(input: BuildRelayActiveProjectStat
     status = "ready"
     message = "Ready for this chat"
     canInsert = input.page.promptReady !== false
-  } else if (input.stateStatus?.digestStatus === "failed" || input.stateStatus?.digestStatus === "timed_out") {
+  } else if (input.stateStatus?.digestStatus === "failed") {
     message = "Project brief unavailable"
+  } else if (input.stateStatus?.digestStatus === "timed_out") {
+    status = "updating"
+    message = "Updating your project brief"
   } else if (input.capturePending || input.remoteStatus === "loading" || activeDigest || input.stateStatus?.rawCapturePresent) {
     status = "updating"
     message = "Updating your project brief"
