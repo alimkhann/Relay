@@ -1,5 +1,7 @@
 import type { CliAuthSessionRow } from "@relay/shared"
 
+import { toTimestamp } from "./timestamp"
+
 export function toCliAuthSessionRow(record: Record<string, unknown>): CliAuthSessionRow {
   return {
     id: String(record.id),
@@ -10,8 +12,8 @@ export function toCliAuthSessionRow(record: Record<string, unknown>): CliAuthSes
     deviceName: String(record.device_name),
     status: String(record.status) as CliAuthSessionRow["status"],
     apiToken: record.api_token ? String(record.api_token) : null,
-    expiresAt: String(record.expires_at),
-    confirmedAt: record.confirmed_at ? String(record.confirmed_at) : null,
-    createdAt: String(record.created_at)
+    expiresAt: toTimestamp(record.expires_at),
+    confirmedAt: record.confirmed_at ? toTimestamp(record.confirmed_at) : null,
+    createdAt: toTimestamp(record.created_at)
   }
 }

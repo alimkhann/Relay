@@ -5,6 +5,8 @@ import type {
   WorkSessionRow,
 } from "@relay/shared"
 
+import { toTimestamp } from "./timestamp"
+
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return value.flatMap((item) => {
@@ -29,14 +31,14 @@ export function toWorkSessionRow(record: Record<string, unknown>): WorkSessionRo
       record.association_confidence === null || record.association_confidence === undefined
         ? null
         : Number(record.association_confidence),
-    baseSyncMarkAt: record.base_sync_mark_at ? String(record.base_sync_mark_at) : null,
+    baseSyncMarkAt: record.base_sync_mark_at ? toTimestamp(record.base_sync_mark_at) : null,
     latestSummary: record.latest_summary ? String(record.latest_summary) : null,
     latestStructuredState: (record.latest_structured_state as Record<string, unknown>) ?? {},
     status: record.status as WorkSessionRow["status"],
-    startedAt: String(record.started_at),
-    endedAt: record.ended_at ? String(record.ended_at) : null,
-    createdAt: String(record.created_at),
-    updatedAt: String(record.updated_at),
+    startedAt: toTimestamp(record.started_at),
+    endedAt: record.ended_at ? toTimestamp(record.ended_at) : null,
+    createdAt: toTimestamp(record.created_at),
+    updatedAt: toTimestamp(record.updated_at),
   }
 }
 
@@ -51,7 +53,7 @@ export function toWorkSessionEventRow(record: Record<string, unknown>): WorkSess
     sourceSurface: record.source_surface as WorkSessionEventRow["sourceSurface"],
     sourceUrl: record.source_url ? String(record.source_url) : null,
     sourceThreadId: record.source_thread_id ? String(record.source_thread_id) : null,
-    createdAt: String(record.created_at),
+    createdAt: toTimestamp(record.created_at),
   }
 }
 
@@ -65,7 +67,7 @@ export function toWorkSessionCheckpointRow(record: Record<string, unknown>): Wor
     structuredState: (record.structured_state as Record<string, unknown>) ?? {},
     sourceEventIds: toStringArray(record.source_event_ids),
     confidence: record.confidence === null || record.confidence === undefined ? null : Number(record.confidence),
-    createdAt: String(record.created_at),
+    createdAt: toTimestamp(record.created_at),
   }
 }
 
@@ -83,7 +85,7 @@ export function toWorkSessionCheckpointWithSessionRow(
         ? null
         : Number(record.association_confidence),
     sessionStatus: record.session_status as WorkSessionCheckpointWithSessionRow["sessionStatus"],
-    sessionStartedAt: String(record.session_started_at),
-    sessionEndedAt: record.session_ended_at ? String(record.session_ended_at) : null,
+    sessionStartedAt: toTimestamp(record.session_started_at),
+    sessionEndedAt: record.session_ended_at ? toTimestamp(record.session_ended_at) : null,
   }
 }

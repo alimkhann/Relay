@@ -1142,8 +1142,8 @@ async function loadSessionData() {
     let entitlements: UserEntitlementsDto | null = null;
     if (billingResponse && billingResponse.ok) {
       try {
-        const billingPayload = (await billingResponse.json()) as BillingStatusDto;
-        entitlements = billingPayload.entitlements ?? null;
+        const billingPayload = (await billingResponse.json()) as { billing: BillingStatusDto };
+        entitlements = billingPayload.billing?.entitlements ?? null;
       } catch {
         entitlements = null;
       }

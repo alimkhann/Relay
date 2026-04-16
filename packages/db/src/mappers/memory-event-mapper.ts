@@ -1,5 +1,7 @@
 import type { MemoryEventRow, MemoryEventType } from "@relay/shared"
 
+import { toTimestamp } from "./timestamp"
+
 export function toMemoryEventRow(record: Record<string, unknown>): MemoryEventRow {
   return {
     id: String(record.id),
@@ -9,6 +11,6 @@ export function toMemoryEventRow(record: Record<string, unknown>): MemoryEventRo
     sourceSurface: record.source_surface ? String(record.source_surface) : null,
     userId: record.user_id ? String(record.user_id) : null,
     payload: (record.payload as Record<string, unknown>) ?? {},
-    createdAt: String(record.created_at),
+    createdAt: toTimestamp(record.created_at),
   }
 }

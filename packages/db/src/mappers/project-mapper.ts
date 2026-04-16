@@ -1,5 +1,7 @@
 import type { ProjectRow } from "@relay/shared"
 
+import { toTimestamp } from "./timestamp"
+
 export function toProjectRow(record: Record<string, unknown>): ProjectRow {
   return {
     id: String(record.id),
@@ -8,8 +10,8 @@ export function toProjectRow(record: Record<string, unknown>): ProjectRow {
     slug: String(record.slug),
     description: record.description ? String(record.description) : null,
     isArchived: Boolean(record.is_archived),
-    createdAt: String(record.created_at),
-    updatedAt: String(record.updated_at)
+    createdAt: toTimestamp(record.created_at),
+    updatedAt: toTimestamp(record.updated_at)
   }
 }
 

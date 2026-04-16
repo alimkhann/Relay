@@ -1,6 +1,7 @@
 import type { SourceSessionRow, SourceTurnRow } from "@relay/shared"
 
 import { decryptTextIfNeeded } from "../utils/encrypted-text"
+import { toTimestamp } from "./timestamp"
 
 export function toSessionRow(record: Record<string, unknown>): SourceSessionRow {
   return {
@@ -16,10 +17,10 @@ export function toSessionRow(record: Record<string, unknown>): SourceSessionRow 
     sourceConversationId: record.source_conversation_id ? String(record.source_conversation_id) : null,
     metadata: (record.metadata as Record<string, unknown>) ?? {},
     isArchived: Boolean(record.is_archived),
-    archivedAt: record.archived_at ? String(record.archived_at) : null,
+    archivedAt: record.archived_at ? toTimestamp(record.archived_at) : null,
     archivedBy: record.archived_by ? String(record.archived_by) : null,
-    capturedAt: String(record.captured_at),
-    createdAt: String(record.created_at)
+    capturedAt: toTimestamp(record.captured_at),
+    createdAt: toTimestamp(record.created_at)
   }
 }
 
@@ -33,6 +34,6 @@ export function toTurnRow(record: Record<string, unknown>): SourceTurnRow {
     contentHash: String(record.content_hash),
     rawHtml: record.raw_html ? decryptTextIfNeeded(String(record.raw_html)) : null,
     metadata: (record.metadata as Record<string, unknown>) ?? {},
-    createdAt: String(record.created_at)
+    createdAt: toTimestamp(record.created_at)
   }
 }

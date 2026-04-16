@@ -8,6 +8,7 @@ import type {
 } from "@relay/shared"
 
 import { decryptTextIfNeeded, decryptJsonbIfNeeded } from "../utils/encrypted-text"
+import { toTimestamp } from "./timestamp"
 
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
@@ -32,9 +33,9 @@ export function toSessionDigestRow(record: Record<string, unknown>): SessionDige
     confidence: Number(record.confidence ?? 0),
     importanceScore: Number(record.importance_score ?? 0),
     needsProjectStateMerge: Boolean(record.needs_project_state_merge),
-    mergedAt: record.merged_at ? String(record.merged_at) : null,
+    mergedAt: record.merged_at ? toTimestamp(record.merged_at) : null,
     createdBy: String(record.created_by),
-    createdAt: String(record.created_at)
+    createdAt: toTimestamp(record.created_at)
   }
 }
 
@@ -50,10 +51,10 @@ export function toProjectStateRow(record: Record<string, unknown>): ProjectState
     openTasks: toStringArray(decryptJsonbIfNeeded(record.open_tasks)),
     relevantTools: toStringArray(decryptJsonbIfNeeded(record.relevant_tools)),
     objectiveHistory: Array.isArray(decryptJsonbIfNeeded(record.objective_history)) ? decryptJsonbIfNeeded(record.objective_history) as ProjectStateRow["objectiveHistory"] : [],
-    lastBootstrapAt: record.last_bootstrap_at ? String(record.last_bootstrap_at) : null,
+    lastBootstrapAt: record.last_bootstrap_at ? toTimestamp(record.last_bootstrap_at) : null,
     dirty: Boolean(record.dirty),
-    createdAt: String(record.created_at),
-    updatedAt: String(record.updated_at)
+    createdAt: toTimestamp(record.created_at),
+    updatedAt: toTimestamp(record.updated_at)
   }
 }
 
@@ -66,8 +67,8 @@ export function toProjectStateOverrideRow(record: Record<string, unknown>): Proj
     hiddenDecisions: toStringArray(record.hidden_decisions),
     hiddenConstraints: toStringArray(record.hidden_constraints),
     hiddenOpenTasks: toStringArray(record.hidden_open_tasks),
-    createdAt: String(record.created_at),
-    updatedAt: String(record.updated_at)
+    createdAt: toTimestamp(record.created_at),
+    updatedAt: toTimestamp(record.updated_at)
   }
 }
 
@@ -82,7 +83,7 @@ export function toBootstrapPacketRow(record: Record<string, unknown>): Bootstrap
     renderer: record.renderer as BootstrapPacketRow["renderer"],
     generationMetadata: (record.generation_metadata as Record<string, unknown>) ?? {},
     createdBy: String(record.created_by),
-    createdAt: String(record.created_at)
+    createdAt: toTimestamp(record.created_at)
   }
 }
 
@@ -102,10 +103,10 @@ export function toAiJobRunRow(record: Record<string, unknown>): AiJobRunRow {
     errorClass: record.error_class ? String(record.error_class) : null,
     errorMessage: record.error_message ? String(record.error_message) : null,
     attempts: Number(record.attempts ?? 0),
-    startedAt: record.started_at ? String(record.started_at) : null,
-    completedAt: record.completed_at ? String(record.completed_at) : null,
-    createdAt: String(record.created_at),
-    updatedAt: String(record.updated_at)
+    startedAt: record.started_at ? toTimestamp(record.started_at) : null,
+    completedAt: record.completed_at ? toTimestamp(record.completed_at) : null,
+    createdAt: toTimestamp(record.created_at),
+    updatedAt: toTimestamp(record.updated_at)
   }
 }
 
@@ -117,8 +118,8 @@ export function toExtensionConnectGrantRow(record: Record<string, unknown>): Ext
     grantHash: String(record.grant_hash),
     grantPrefix: String(record.grant_prefix),
     apiBase: String(record.api_base),
-    expiresAt: String(record.expires_at),
-    consumedAt: record.consumed_at ? String(record.consumed_at) : null,
-    createdAt: String(record.created_at)
+    expiresAt: toTimestamp(record.expires_at),
+    consumedAt: record.consumed_at ? toTimestamp(record.consumed_at) : null,
+    createdAt: toTimestamp(record.created_at)
   }
 }

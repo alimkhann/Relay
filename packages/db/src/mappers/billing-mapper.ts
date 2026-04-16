@@ -8,6 +8,8 @@ import type {
   UsageCounterRow,
 } from "@relay/shared"
 
+import { toTimestamp } from "./timestamp"
+
 export function toBillingCustomerRow(record: Record<string, unknown>): BillingCustomerRow {
   return {
     userId: String(record.user_id),
@@ -16,9 +18,9 @@ export function toBillingCustomerRow(record: Record<string, unknown>): BillingCu
     externalCustomerId: String(record.external_customer_id),
     email: record.email ? String(record.email) : null,
     name: record.name ? String(record.name) : null,
-    trialClaimedAt: record.trial_claimed_at ? String(record.trial_claimed_at) : null,
-    createdAt: String(record.created_at),
-    updatedAt: String(record.updated_at),
+    trialClaimedAt: record.trial_claimed_at ? toTimestamp(record.trial_claimed_at) : null,
+    createdAt: toTimestamp(record.created_at),
+    updatedAt: toTimestamp(record.updated_at),
   }
 }
 
@@ -34,13 +36,13 @@ export function toSubscriptionRow(record: Record<string, unknown>): Subscription
     status: (record.status as SubscriptionRow["status"]) ?? "inactive",
     interval: (record.interval as SubscriptionRow["interval"]) ?? null,
     cancelAtPeriodEnd: Boolean(record.cancel_at_period_end),
-    currentPeriodStart: record.current_period_start ? String(record.current_period_start) : null,
-    currentPeriodEnd: record.current_period_end ? String(record.current_period_end) : null,
-    trialStartsAt: record.trial_starts_at ? String(record.trial_starts_at) : null,
-    trialEndsAt: record.trial_ends_at ? String(record.trial_ends_at) : null,
+    currentPeriodStart: record.current_period_start ? toTimestamp(record.current_period_start) : null,
+    currentPeriodEnd: record.current_period_end ? toTimestamp(record.current_period_end) : null,
+    trialStartsAt: record.trial_starts_at ? toTimestamp(record.trial_starts_at) : null,
+    trialEndsAt: record.trial_ends_at ? toTimestamp(record.trial_ends_at) : null,
     raw: (record.raw as Record<string, unknown>) ?? {},
-    createdAt: String(record.created_at),
-    updatedAt: String(record.updated_at),
+    createdAt: toTimestamp(record.created_at),
+    updatedAt: toTimestamp(record.updated_at),
   }
 }
 
@@ -58,9 +60,9 @@ export function toEntitlementRow(record: Record<string, unknown>): EntitlementRo
     mcpReadLimitDaily: Number(record.mcp_read_limit_daily ?? 0),
     mcpWriteLimitDaily: Number(record.mcp_write_limit_daily ?? 0),
     handoffEnabled: Boolean(record.handoff_enabled),
-    trialEndsAt: record.trial_ends_at ? String(record.trial_ends_at) : null,
-    currentPeriodEnd: record.current_period_end ? String(record.current_period_end) : null,
-    updatedAt: String(record.updated_at),
+    trialEndsAt: record.trial_ends_at ? toTimestamp(record.trial_ends_at) : null,
+    currentPeriodEnd: record.current_period_end ? toTimestamp(record.current_period_end) : null,
+    updatedAt: toTimestamp(record.updated_at),
   }
 }
 
@@ -70,10 +72,10 @@ export function toUsageCounterRow(record: Record<string, unknown>): UsageCounter
     scopeKey: String(record.scope_key),
     featureKey: String(record.feature_key),
     windowKey: String(record.window_key),
-    windowStart: String(record.window_start),
-    windowEnd: String(record.window_end),
+    windowStart: toTimestamp(record.window_start),
+    windowEnd: toTimestamp(record.window_end),
     count: Number(record.count ?? 0),
-    updatedAt: String(record.updated_at),
+    updatedAt: toTimestamp(record.updated_at),
   }
 }
 
@@ -86,9 +88,9 @@ export function toBillingWebhookEventRow(record: Record<string, unknown>): Billi
     payload: (record.payload as Record<string, unknown>) ?? {},
     status: (record.status as BillingWebhookEventRow["status"]) ?? "pending",
     errorMessage: record.error_message ? String(record.error_message) : null,
-    processedAt: record.processed_at ? String(record.processed_at) : null,
-    createdAt: String(record.created_at),
-    updatedAt: String(record.updated_at),
+    processedAt: record.processed_at ? toTimestamp(record.processed_at) : null,
+    createdAt: toTimestamp(record.created_at),
+    updatedAt: toTimestamp(record.updated_at),
   }
 }
 
@@ -105,8 +107,8 @@ export function toBillingWebhookRawDeliveryRow(
     bodyLength: record.body_length == null ? null : Number(record.body_length),
     status: (record.status as BillingWebhookRawDeliveryStatus) ?? "received",
     errorMessage: record.error_message ? String(record.error_message) : null,
-    receivedAt: String(record.received_at),
-    processedAt: record.processed_at ? String(record.processed_at) : null,
-    updatedAt: String(record.updated_at),
+    receivedAt: toTimestamp(record.received_at),
+    processedAt: record.processed_at ? toTimestamp(record.processed_at) : null,
+    updatedAt: toTimestamp(record.updated_at),
   }
 }
