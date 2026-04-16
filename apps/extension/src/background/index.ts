@@ -1642,10 +1642,23 @@ async function syncTabRemoteState(
     });
     await scheduleAutoCapture(tabId, { immediate: true });
   } catch (cause) {
+    console.warn("[Relay BG] syncTabRemoteState failed", {
+      reason: options.reason ?? "unknown",
+      message: cause instanceof Error ? cause.message : "Failed to fetch",
+      requestKey,
+      projectId: state.projectId,
+      page: {
+        supported: state.page.supported,
+        pathname: state.page.pathname ?? null,
+        title: state.page.title ?? null,
+        turns: state.page.turns ?? 0,
+        signature: state.page.captureSignature?.slice(0, 16) ?? null,
+      },
+    });
     state.lastError =
       cause instanceof Error ? cause.message : "Failed to fetch";
     state.remoteStatus =
-      state.lastSuccessfulSyncAt || state.projectId || state.stateStatus
+      state.lastSuccessfulSyncAt
         ? "stale"
         : "unavailable";
     scheduleRetry(tabId);
@@ -1858,7 +1871,7 @@ function logRoutingDecision(
   state: RelayTabState,
   decision: RelayRoutingDecision,
 ) {
-  console.info("[Relay BG] routing", {
+  console.warn("[Relay BG] routing", {
     stage,
     mode: decision.mode,
     confidence: decision.confidence,
@@ -1881,6 +1894,31 @@ function logRoutingDecision(
       score: candidate.score,
       reasons: candidate.reasons,
     })),
+  });
+}
+
+function logAutoCaptureGate(
+  reason: string,
+  state: RelayTabState,
+  sessionProjectOptionsCount: number,
+) {
+  console.warn("[Relay BG] auto-capture blocked", {
+    reason,
+    associationStatus: state.chatAssociation.status,
+    associationSuppressed: state.associationSuppressed,
+    supported: state.page.supported,
+    promptReady: state.page.promptReady,
+    isFreshChat: state.page.isFreshChat,
+    isStable: state.page.isStable,
+    isStreaming: state.page.isStreaming,
+    turns: state.page.turns ?? 0,
+    captureSignature: state.page.captureSignature?.slice(0, 16) ?? null,
+    lastCapturedSignature: state.lastCapturedSignature?.slice(0, 16) ?? null,
+    lastRoutedSignature: state.lastRoutedSignature?.slice(0, 16) ?? null,
+    capturePending: state.capturePending,
+    projectOptions: state.projectOptions.length,
+    sessionProjectOptions: sessionProjectOptionsCount,
+    remoteStatus: state.remoteStatus,
   });
 }
 
@@ -2772,8 +2810,40 @@ async function scheduleAutoCapture(
     projectOptionsCount: state.projectOptions.length,
     sessionProjectOptionsCount: session.projectOptions.length,
   };
+  let routingBlockedReason: string | null = null;
+  if (state.associationSuppressed) {
+    routingBlockedReason = "association_suppressed";
+  } else if (state.chatAssociation.status !== "none") {
+    routingBlockedReason = `association_${state.chatAssociation.status}`;
+  } else if (state.page.captureSignature && state.page.captureSignature === state.lastRoutedSignature) {
+    routingBlockedReason = "already_routed_signature";
+  } else if (!state.page.supported) {
+    routingBlockedReason = "unsupported_page";
+  } else if (state.page.isFreshChat) {
+    routingBlockedReason = "fresh_chat";
+  } else if (!state.page.isStable) {
+    routingBlockedReason = "page_unstable";
+  } else if (state.page.isStreaming) {
+    routingBlockedReason = "page_streaming";
+  } else if ((state.page.turns ?? 0) === 0) {
+    routingBlockedReason = "no_turns";
+  } else if (!state.page.captureSignature) {
+    routingBlockedReason = "missing_signature";
+  } else if (state.capturePending) {
+    routingBlockedReason = "capture_pending";
+  } else if (state.projectOptions.length === 0 && session.projectOptions.length === 0) {
+    routingBlockedReason = "no_projects";
+  }
+
   const routingResult = shouldScheduleAutoCaptureRouting(routingInput);
   if (!routingResult) {
+    if (state.page.supported && (state.page.turns ?? 0) > 0) {
+      logAutoCaptureGate(
+        routingBlockedReason ?? "unknown",
+        state,
+        session.projectOptions.length,
+      );
+    }
     return;
   }
 
@@ -3870,6 +3940,19 @@ chrome.runtime.onMessage.addListener(
         }
 
         if (message.type === "RELAY_PAGE_STATE_UPDATE" && sender.tab?.id) {
+          console.warn("[Relay BG] page state update", {
+            tabId: sender.tab.id,
+            supported: message.payload.supported,
+            platform: message.payload.platform ?? null,
+            pathname: message.payload.pathname ?? null,
+            title: message.payload.title ?? null,
+            turns: message.payload.turns ?? 0,
+            promptReady: message.payload.promptReady ?? null,
+            isFreshChat: message.payload.isFreshChat ?? null,
+            isStable: message.payload.isStable ?? null,
+            isStreaming: message.payload.isStreaming ?? null,
+            signature: message.payload.captureSignature?.slice(0, 16) ?? null,
+          });
           updateTabPageState(sender.tab.id, message.payload);
           await broadcastActiveProjectState(sender.tab.id);
           void syncTabRemoteState(sender.tab.id, {
