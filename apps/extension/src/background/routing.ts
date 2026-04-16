@@ -15,6 +15,14 @@ export interface RelayRoutingDecision {
   candidateProjectName: string | null
   score: number
   reasons: string[]
+  diagnostics: {
+    phase: "bootstrap" | "context-aware" | "none"
+    scoreGap: number
+    explicitNameSignal: boolean
+    wholeChatExactMention: boolean
+    highConfidenceEligible: boolean
+    signalCategories: Array<"name" | "title" | "description" | "context" | "binding" | "association">
+  }
   topCandidates: Array<{
     projectId: string
     projectName: string
@@ -560,6 +568,14 @@ function resolveConfidence(
     return "high" as const
   }
 
+  if (
+    (top.explicitNameSignal || top.wholeChatExactMention) &&
+    top.score >= (top.phase === "bootstrap" ? 24 : 22) &&
+    scoreGap >= (top.phase === "bootstrap" ? 6 : 5)
+  ) {
+    return "medium" as const
+  }
+
   if (top.score >= (top.phase === "bootstrap" ? 38 : 35)) {
     return "medium" as const
   }
@@ -576,6 +592,14 @@ export function evaluateProjectRouting(input: EvaluateProjectRoutingInput): Rela
       candidateProjectName: null,
       score: 0,
       reasons: ["No supported project routing signal was available."],
+      diagnostics: {
+        phase: "none",
+        scoreGap: 0,
+        explicitNameSignal: false,
+        wholeChatExactMention: false,
+        highConfidenceEligible: false,
+        signalCategories: [],
+      },
       topCandidates: [],
     }
   }
@@ -594,11 +618,20 @@ export function evaluateProjectRouting(input: EvaluateProjectRoutingInput): Rela
       candidateProjectName: null,
       score: 0,
       reasons: ["No project candidates were available."],
+      diagnostics: {
+        phase: "none",
+        scoreGap: 0,
+        explicitNameSignal: false,
+        wholeChatExactMention: false,
+        highConfidenceEligible: false,
+        signalCategories: [],
+      },
       topCandidates: [],
     }
   }
 
   const confidence = resolveConfidence(top, runnerUp?.score ?? 0, input)
+  const scoreGap = top.score - (runnerUp?.score ?? 0)
 
   return {
     mode: confidence === "high" ? "auto-save" : confidence === "medium" ? "hold" : "ignore",
@@ -607,6 +640,14 @@ export function evaluateProjectRouting(input: EvaluateProjectRoutingInput): Rela
     candidateProjectName: confidence === "low" ? null : top.projectName,
     score: top.score,
     reasons: top.reasons.slice(0, 4),
+    diagnostics: {
+      phase: top.phase,
+      scoreGap,
+      explicitNameSignal: top.explicitNameSignal,
+      wholeChatExactMention: top.wholeChatExactMention,
+      highConfidenceEligible: top.highConfidenceEligible,
+      signalCategories: Array.from(top.signalCategories),
+    },
     topCandidates: candidates.slice(0, 3).map((candidate) => ({
       projectId: candidate.projectId,
       projectName: candidate.projectName,

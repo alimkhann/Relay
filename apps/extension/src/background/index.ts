@@ -1640,7 +1640,6 @@ async function syncTabRemoteState(
       projectOptions: projects,
       onboarding,
     });
-
     await scheduleAutoCapture(tabId, { immediate: true });
   } catch (cause) {
     state.lastError =
@@ -1739,6 +1738,7 @@ async function captureTab(projectId: string, tabId: number) {
     turns: payload.turns?.length ?? result.capture.turns?.length ?? 0,
     digestQueued: Boolean(payload.digestQueued),
     digestStrategy: (payload.digestStrategy ?? "skip") as "ai" | "deferred" | "skip",
+    digestOutcome: payload.digestOutcome ?? null,
     budgetStatus: payload.budgetStatus ?? null,
     stateStatus: payload.stateStatus ?? null,
     reconciliation: payload.reconciliation ?? null,
@@ -1853,6 +1853,37 @@ function shouldRequestAssociationAdjudication(decision: RelayRoutingDecision) {
   return false;
 }
 
+function logRoutingDecision(
+  stage: string,
+  state: RelayTabState,
+  decision: RelayRoutingDecision,
+) {
+  console.info("[Relay BG] routing", {
+    stage,
+    mode: decision.mode,
+    confidence: decision.confidence,
+    candidateProjectId: decision.candidateProjectId,
+    candidateProjectName: decision.candidateProjectName,
+    score: decision.score,
+    reasons: decision.reasons,
+    diagnostics: decision.diagnostics,
+    page: {
+      title: state.page.title ?? null,
+      pathname: state.page.pathname ?? null,
+      turns: state.page.turns ?? 0,
+      stable: state.page.isStable,
+      streaming: state.page.isStreaming,
+      signature: state.page.captureSignature?.slice(0, 16) ?? null,
+    },
+    topCandidates: decision.topCandidates.map((candidate) => ({
+      projectId: candidate.projectId,
+      projectName: candidate.projectName,
+      score: candidate.score,
+      reasons: candidate.reasons,
+    })),
+  });
+}
+
 async function adjudicateAssociationRouting(
   state: RelayTabState,
   decision: RelayRoutingDecision,
@@ -1861,7 +1892,7 @@ async function adjudicateAssociationRouting(
   const captureSignature = state.page.captureSignature ?? null;
   const cached = await readAssociationAdjudication(chatKey, captureSignature);
   if (cached) {
-    return {
+    const cachedDecision = {
       mode: cached.decision,
       confidence: cached.confidence,
       candidateProjectId: cached.projectId,
@@ -1869,8 +1900,12 @@ async function adjudicateAssociationRouting(
         state.projectOptions.find((project) => project.id === cached.projectId)?.name ?? null,
       score: decision.score,
       reasons: cached.reasons,
+      diagnostics: decision.diagnostics,
       topCandidates: decision.topCandidates,
     } satisfies RelayRoutingDecision;
+
+    logRoutingDecision("adjudicated_cached", state, cachedDecision);
+    return cachedDecision;
   }
 
   const response = await relayFetch("/api/extension/association", {
@@ -1915,9 +1950,12 @@ async function adjudicateAssociationRouting(
   }
 
   const topCandidateId = decision.topCandidates[0]?.projectId ?? null;
+  const explicitSignalOverride =
+    decision.diagnostics.explicitNameSignal ||
+    decision.diagnostics.wholeChatExactMention;
   const allowAutoSave =
     result.decision === "auto-save" &&
-    decision.confidence !== "low" &&
+    (decision.confidence !== "low" || explicitSignalOverride) &&
     result.confidence === "high" &&
     Boolean(result.candidateProjectId) &&
     result.candidateProjectId === topCandidateId;
@@ -1929,8 +1967,11 @@ async function adjudicateAssociationRouting(
     candidateProjectName: allowAutoSave || result.decision === "hold" ? result.candidateProjectName : null,
     score: decision.score,
     reasons: result.reasons.length ? result.reasons : decision.reasons,
+    diagnostics: decision.diagnostics,
     topCandidates: decision.topCandidates,
   };
+
+  logRoutingDecision("adjudicated", state, normalized);
 
   await rememberAssociationAdjudication({
     key: chatKey,
@@ -1959,6 +2000,14 @@ async function resolveAutoCaptureRouting(
       candidateProjectName: null,
       score: 0,
       reasons: ["This chat was already dismissed from automatic capture."],
+      diagnostics: {
+        phase: "none",
+        scoreGap: 0,
+        explicitNameSignal: false,
+        wholeChatExactMention: false,
+        highConfidenceEligible: false,
+        signalCategories: [],
+      },
       topCandidates: [],
     };
   }
@@ -1974,13 +2023,22 @@ async function resolveAutoCaptureRouting(
     approvedAssociations
   });
 
+  logRoutingDecision("heuristic", state, heuristicDecision);
+
   if (!shouldRequestAssociationAdjudication(heuristicDecision)) {
     return heuristicDecision;
   }
 
   try {
     return await adjudicateAssociationRouting(state, heuristicDecision);
-  } catch {
+  } catch (error) {
+    console.warn("[Relay BG] association adjudication failed", {
+      message: error instanceof Error ? error.message : "Unknown error",
+      candidateProjectId: heuristicDecision.candidateProjectId,
+      candidateProjectName: heuristicDecision.candidateProjectName,
+      score: heuristicDecision.score,
+      diagnostics: heuristicDecision.diagnostics,
+    });
     return heuristicDecision;
   }
 }
@@ -2380,16 +2438,27 @@ async function captureObservedChange(
         };
 
         if (routingDecision.mode === "ignore") {
+          const ignoredReason = routingDecision.reasons[0]
+            ? `${routingDecision.reasons[0]} Manually associate this chat if Relay should keep it.`
+            : "Relay will ignore this chat until you manually associate it.";
           clearPendingAssociation(state, { clearChatAssociation: true });
           clearAssociationToast(state);
           state.associationSuppressed = false;
           state.lastRoutedSignature = state.page.captureSignature ?? chatKey;
-          state.chatAssociation = createEmptyChatAssociation();
+          state.chatAssociation = {
+            status: "ignored",
+            projectId: null,
+            projectName: null,
+            sessionId: null,
+            reason: ignoredReason,
+            capturedAt: null,
+          };
+          logRoutingDecision("ignored", state, routingDecision);
           return {
             ok: true,
-            ignored: false,
+            ignored: true,
             captured: false,
-            reason: routingDecision.reasons[0] ?? "Ignored this chat.",
+            reason: ignoredReason,
           };
         }
 
@@ -2555,9 +2624,22 @@ async function captureObservedChange(
         scheduleDrain(projectId);
       }
 
+      if (
+        result.digestStrategy === "ai" &&
+        result.digestOutcome &&
+        result.digestOutcome.status !== "completed"
+      ) {
+        console.warn("[Relay BG] inline digest did not complete", {
+          projectId,
+          sessionId: result.sessionId ?? null,
+          digestOutcome: result.digestOutcome,
+        });
+      }
+
       // Show the success toast after the saving state has had time to register.
       const digestStatus =
-        result.digestStrategy === "ai" ? "analyzed" as const
+        result.digestStrategy === "ai" && result.digestOutcome?.status === "completed"
+          ? "analyzed" as const
         : result.digestStrategy === "deferred" ? "queued" as const
         : null;
       const { toast: doneToast } = buildDoneToast({
@@ -2679,19 +2761,19 @@ async function scheduleAutoCapture(
     return;
   }
 
-  if (
-    !shouldScheduleAutoCaptureRouting({
-      page: state.page,
-      capturePending: state.capturePending,
-      lastCapturedSignature: state.lastCapturedSignature,
-      lastCapturedTurns: state.lastCapturedTurns,
-      lastRoutedSignature: state.lastRoutedSignature,
-      associationStatus: state.chatAssociation.status,
-      associationSuppressed: state.associationSuppressed,
-      projectOptionsCount: state.projectOptions.length,
-      sessionProjectOptionsCount: session.projectOptions.length,
-    })
-  ) {
+  const routingInput = {
+    page: state.page,
+    capturePending: state.capturePending,
+    lastCapturedSignature: state.lastCapturedSignature,
+    lastCapturedTurns: state.lastCapturedTurns,
+    lastRoutedSignature: state.lastRoutedSignature,
+    associationStatus: state.chatAssociation.status,
+    associationSuppressed: state.associationSuppressed,
+    projectOptionsCount: state.projectOptions.length,
+    sessionProjectOptionsCount: session.projectOptions.length,
+  };
+  const routingResult = shouldScheduleAutoCaptureRouting(routingInput);
+  if (!routingResult) {
     return;
   }
 
@@ -4189,4 +4271,3 @@ chrome.runtime.onMessageExternal.addListener(
     return true;
   },
 );
-

@@ -213,6 +213,53 @@ describe("evaluateProjectRouting", () => {
     expect(result.candidateProjectId).toBe("project_relay")
   })
 
+  it("does not silently ignore chats with an exact project-name mention", () => {
+    const result = evaluateProjectRouting({
+      page: {
+        supported: true,
+        platform: "chatgpt",
+        pathname: "/c/relay-review",
+        title: "Logo refinement",
+        recentRoutingText:
+          "Logo refinement\nassistant: For Relay, keep the extension branding abstract and reduce the visible R shape.\nuser: make it flatter and more transparent.",
+        recentUserTurnText: "make it flatter and more transparent.",
+      },
+      projects: [
+        {
+          id: "project_relay",
+          name: "Relay",
+          slug: "relay",
+          memoryCount: 0,
+          sessionCount: 0,
+          routingContext: {
+            hasMeaningfulContext: false,
+            keywords: [],
+          },
+        },
+        {
+          id: "project_other",
+          name: "Sunnad",
+          slug: "sunnad",
+          memoryCount: 0,
+          sessionCount: 0,
+          routingContext: {
+            hasMeaningfulContext: false,
+            keywords: [],
+          },
+        },
+      ],
+      selectedProjectId: "project_other",
+      lastTabProjectId: "project_other",
+      boundProject: null,
+      approvedAssociations: [],
+    })
+
+    expect(result.mode).toBe("hold")
+    expect(result.confidence).toBe("medium")
+    expect(result.candidateProjectId).toBe("project_relay")
+    expect(result.diagnostics.explicitNameSignal).toBe(true)
+  })
+
   it("uses project description overlap to route a fresh project without prior context", () => {
     const result = evaluateProjectRouting({
       page: {

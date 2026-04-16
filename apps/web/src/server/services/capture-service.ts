@@ -59,6 +59,14 @@ export async function saveCapture(userId: string, input: unknown) {
   let jobId: string | null = null
   let digestStrategy: "skip" | "ai" | "deferred" = "skip"
   let budgetStatus: { aiUsed: number; aiLimit: number; aiRemaining: number; plan: "free" | "starter" | "pro" } | null = null
+  let digestOutcome:
+    | {
+        status: "completed" | "failed" | "timed_out"
+        digestId: string | null
+        memoryItemsCreated: number
+        errorMessage?: string | null
+      }
+    | null = null
 
   if (shouldQueueDigest && normalizedInput.session.captureSignature) {
     const decision = await decideDigestStrategy(repositories, userId, {
@@ -75,7 +83,13 @@ export async function saveCapture(userId: string, input: unknown) {
         captureSignature: normalizedInput.session.captureSignature
       })
       jobId = job.id
-      await runDigestJobInline(repositories, userId, job)
+      digestOutcome = await runDigestJobInline(repositories, userId, job)
+      console.info("[capture-service] inline digest outcome", {
+        projectId: normalizedInput.projectId,
+        sessionId: session.id,
+        jobId,
+        digestOutcome,
+      })
     } else if (decision.strategy === "deferred") {
       const job = await enqueueDigestJob(userId, {
         projectId: normalizedInput.projectId,
@@ -95,6 +109,7 @@ export async function saveCapture(userId: string, input: unknown) {
     digestQueued: digestStrategy !== "skip",
     digestStrategy,
     aiJobId: jobId,
+    digestOutcome,
     budgetStatus,
     stateStatus
   }

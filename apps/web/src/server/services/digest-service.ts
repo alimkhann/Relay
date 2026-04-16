@@ -39,6 +39,13 @@ interface DigestGenerationResult {
   }
 }
 
+export interface DigestJobOutcome {
+  status: "completed" | "failed" | "timed_out"
+  digestId: string | null
+  memoryItemsCreated: number
+  errorMessage?: string | null
+}
+
 export type DigestExecutionStrategy = "skip" | "ai" | "deferred"
 
 export interface DigestBudgetStatus {
@@ -699,7 +706,7 @@ async function runDigestJobInternal(
   userId: string,
   job: AiJobRunRow,
   timeoutMs = DIGEST_INLINE_TIMEOUT_MS
-) {
+): Promise<DigestJobOutcome> {
   let currentModel: string | null = null
   let currentFallbackUsed = false
   let lastGeminiStage: GeminiStage | null = null
@@ -758,7 +765,12 @@ async function runDigestJobInternal(
           reason: "Digest already exists for this signature."
         })
       })
-      return
+      return {
+        status: "completed",
+        digestId: existingDigest.id,
+        memoryItemsCreated: 0,
+        errorMessage: null,
+      }
     }
 
     const generation = await generateDigestWithOptions(session, turns, projectState, project.description, {
@@ -812,6 +824,13 @@ async function runDigestJobInternal(
         summaryShort: digest.summaryShort
       })
     })
+
+    return {
+      status: "completed",
+      digestId: digest.id,
+      memoryItemsCreated: digestMemoryItems?.length ?? 0,
+      errorMessage: null,
+    }
   } catch (error) {
     const geminiError = describeGeminiError(error)
     const failureMessage = geminiError?.message ?? (error instanceof Error ? error.message : "Digest job failed.")
@@ -831,7 +850,12 @@ async function runDigestJobInternal(
           lastGeminiStage
         })
       })
-      return
+      return {
+        status: "timed_out",
+        digestId: null,
+        memoryItemsCreated: 0,
+        errorMessage: failureMessage,
+      }
     }
 
     await repositories.aiJobs.markFailed(job.id, {
@@ -848,6 +872,13 @@ async function runDigestJobInternal(
         lastGeminiStage
       })
     })
+
+    return {
+      status: "failed",
+      digestId: null,
+      memoryItemsCreated: 0,
+      errorMessage: failureMessage,
+    }
   } finally {
     clearTimeout(timeoutHandle)
   }
@@ -859,7 +890,7 @@ export async function runDigestJobInline(
   job: AiJobRunRow,
   timeoutMs = DIGEST_INLINE_TIMEOUT_MS
 ) {
-  await runDigestJobInternal(repositories, userId, job, timeoutMs)
+  return await runDigestJobInternal(repositories, userId, job, timeoutMs)
 }
 
 export async function runBatchDigestForProject(
