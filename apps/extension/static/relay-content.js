@@ -1741,7 +1741,7 @@
   }
 
   const DEFAULT_CHIP_OFFSETS = {
-    chatgpt: -24,
+    chatgpt: 0,
     codex: 0,
     claude: 0,
     perplexity: 0,

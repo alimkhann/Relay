@@ -258,6 +258,25 @@ function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const CAPTURE_TAB_MESSAGE_TIMEOUT_MS = 8_000;
+const AUTO_CAPTURE_GRACE_MS = 400;
+
+async function sendTabMessageWithTimeout<T>(
+  tabId: number,
+  message: RelayMessage,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  return await Promise.race([
+    chrome.tabs.sendMessage(tabId, message) as Promise<T>,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`${label} timed out after ${timeoutMs}ms.`));
+      }, timeoutMs);
+    }),
+  ]);
+}
+
 function createOAuthNonce() {
   return crypto.randomUUID();
 }
@@ -1718,21 +1737,53 @@ function updateTabPageState(tabId: number, page: RelayPageState) {
 }
 
 async function captureTab(projectId: string, tabId: number) {
-  const result = await chrome.tabs.sendMessage(tabId, {
-    type: "RELAY_CAPTURE_VISIBLE",
-    payload: { projectId, tabId },
+  const startedAt = Date.now();
+  console.warn("[Relay BG] capture start", {
+    tabId,
+    projectId,
+    timeoutMs: CAPTURE_TAB_MESSAGE_TIMEOUT_MS,
+  });
+
+  const result = await sendTabMessageWithTimeout<any>(
+    tabId,
+    {
+      type: "RELAY_CAPTURE_VISIBLE",
+      payload: { projectId, tabId },
+    },
+    CAPTURE_TAB_MESSAGE_TIMEOUT_MS,
+    "RELAY_CAPTURE_VISIBLE",
+  );
+
+  console.warn("[Relay BG] capture content response", {
+    tabId,
+    projectId,
+    ok: result?.ok ?? false,
+    reason: result?.reason ?? null,
+    turns: result?.capture?.turns?.length ?? 0,
+    signature: result?.capture?.session.captureSignature ?? null,
+    sourceConversationId: result?.capture?.session.sourceConversationId ?? null,
+    durationMs: Date.now() - startedAt,
   });
 
   if (!result?.ok || !result.capture) {
     return result ?? { ok: false, reason: "Capture failed." };
   }
 
+  const fetchStartedAt = Date.now();
   const response = await relayFetch("/api/captures", {
     method: "POST",
     body: JSON.stringify({
       projectId,
       ...result.capture,
     }),
+  });
+
+  console.warn("[Relay BG] capture api response", {
+    tabId,
+    projectId,
+    ok: response.ok,
+    status: response.status,
+    durationMs: Date.now() - fetchStartedAt,
   });
 
   if (!response.ok) {
@@ -2291,6 +2342,7 @@ async function captureObservedChange(
   options: {
     manualSelection?: boolean;
     skipAssociationToast?: boolean;
+    autoCapture?: boolean;
   } = {},
 ) {
   const state = getOrCreateTabState(tabId);
@@ -2307,10 +2359,54 @@ async function captureObservedChange(
   const chatKey = buildAssociationKey(state.page);
   const manualSelection = Boolean(options.manualSelection);
   const skipAssociationToast = Boolean(options.skipAssociationToast);
+  const autoCapture = Boolean(options.autoCapture);
   const previousAssociationProjectName = state.chatAssociation.projectName;
+  console.warn("[Relay BG] captureObservedChange start", {
+    tabId,
+    explicitProjectId: explicitProjectId ?? null,
+    autoCapture,
+    manualSelection,
+    skipAssociationToast,
+    turns: state.page.turns ?? 0,
+    signature: state.page.captureSignature ?? null,
+    stable: state.page.isStable,
+    streaming: state.page.isStreaming,
+    remoteStatus: state.remoteStatus,
+  });
   await broadcastActiveProjectState(tabId);
 
   try {
+    if (autoCapture) {
+      await wait(AUTO_CAPTURE_GRACE_MS);
+      await requestPageStateFromTab(tabId);
+
+      const latestState = getOrCreateTabState(tabId);
+      const stillEligible = shouldScheduleAutoCapture({
+        page: latestState.page,
+        capturePending: false,
+        lastCapturedSignature: latestState.lastCapturedSignature,
+        lastCapturedTurns: latestState.lastCapturedTurns,
+      });
+
+      console.warn("[Relay BG] auto-capture recheck", {
+        tabId,
+        eligible: stillEligible,
+        turns: latestState.page.turns ?? 0,
+        signature: latestState.page.captureSignature ?? null,
+        stable: latestState.page.isStable,
+        streaming: latestState.page.isStreaming,
+      });
+
+      if (!stillEligible) {
+        return {
+          ok: true,
+          deferred: true,
+          captured: false,
+          reason: "Auto-capture is waiting for the chat to settle.",
+        };
+      }
+    }
+
     if (!session.connected || !session.token || (!explicitProjectId && !session.autoCapture)) {
       return { ok: false, reason: "Auto-capture is not ready." };
     }
@@ -2851,16 +2947,16 @@ async function scheduleAutoCapture(
     return;
   }
 
-  state.capturePending = true;
-  void broadcastActiveProjectState(tabId);
+  console.warn("[Relay BG] auto-capture scheduled", {
+    tabId,
+    immediate: Boolean(options.immediate),
+    turns: state.page.turns ?? 0,
+    signature: state.page.captureSignature ?? null,
+    remoteStatus: state.remoteStatus,
+    graceMs: options.immediate ? AUTO_CAPTURE_GRACE_MS : 500,
+  });
 
-  state.captureTimer = setTimeout(
-    () => {
-      state.captureTimer = null;
-      void captureObservedChange(tabId);
-    },
-    options.immediate ? 0 : 120,
-  );
+  void captureObservedChange(tabId, undefined, { autoCapture: true });
 }
 
 async function insertProjectBrief(
