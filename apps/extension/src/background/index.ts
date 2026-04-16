@@ -260,6 +260,7 @@ function wait(ms: number) {
 
 const CAPTURE_TAB_MESSAGE_TIMEOUT_MS = 8_000;
 const AUTO_CAPTURE_GRACE_MS = 400;
+const CAPTURE_API_TIMEOUT_MS = 45_000;
 
 async function sendTabMessageWithTimeout<T>(
   tabId: number,
@@ -1770,13 +1771,39 @@ async function captureTab(projectId: string, tabId: number) {
   }
 
   const fetchStartedAt = Date.now();
-  const response = await relayFetch("/api/captures", {
-    method: "POST",
-    body: JSON.stringify({
+  let response: Response;
+  try {
+    response = await relayFetch(
+      "/api/captures",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          projectId,
+          ...result.capture,
+        }),
+      },
+      { timeoutMs: CAPTURE_API_TIMEOUT_MS },
+    );
+  } catch (cause) {
+    const isAbort = cause instanceof DOMException && cause.name === "AbortError";
+    const reason = isAbort
+      ? `Capture request timed out after ${CAPTURE_API_TIMEOUT_MS}ms.`
+      : cause instanceof Error
+        ? cause.message
+        : "Capture request failed.";
+
+    console.warn("[Relay BG] capture api failed", {
+      tabId,
       projectId,
-      ...result.capture,
-    }),
-  });
+      reason,
+      durationMs: Date.now() - fetchStartedAt,
+    });
+
+    return {
+      ok: false,
+      reason,
+    };
+  }
 
   console.warn("[Relay BG] capture api response", {
     tabId,

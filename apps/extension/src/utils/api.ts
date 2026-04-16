@@ -27,10 +27,15 @@ export async function readRateLimitError(response: Response): Promise<RateLimitE
 
 const DEFAULT_FETCH_TIMEOUT_MS = 15_000
 
-export async function relayFetch(path: string, init?: RequestInit) {
+export interface RelayFetchOptions {
+  timeoutMs?: number
+}
+
+export async function relayFetch(path: string, init?: RequestInit, options?: RelayFetchOptions) {
   const session = await getRelaySession()
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_FETCH_TIMEOUT_MS)
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
   try {
     return await fetch(`${session.apiBase}${path}`, {
       ...init,
