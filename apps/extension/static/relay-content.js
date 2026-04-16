@@ -697,13 +697,17 @@
       config.platform,
       sourceConversationId,
     );
+
+    // Stability should track meaningful chat progression, not every tiny DOM or
+    // text fluctuation inside a message bubble. ChatGPT keeps mutating rendered
+    // message markup long after a response is done, which can otherwise keep the
+    // page permanently "unstable".
     const contentStabilityKey = JSON.stringify({
       platform: config.platform,
       routeKind,
-      url: metadata.url,
+      pathname: metadata.pathname,
       sourceConversationId,
       turns: turns.length,
-      captureSignature,
       promptReady,
       isFreshRoute,
       isStreaming,
