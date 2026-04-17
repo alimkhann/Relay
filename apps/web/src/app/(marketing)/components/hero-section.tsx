@@ -105,7 +105,6 @@ export function HeroSection() {
           >
             <ChromeWebstoreBadge
               source="hero_primary"
-              variant="primary"
               onClick={() => {
                 trackMarketingEvent("add_to_chrome_clicked", { source: "hero_primary" })
               }}
@@ -115,7 +114,7 @@ export function HeroSection() {
               onClick={() => {
                 trackMarketingEvent("get_started_clicked", { source: "hero_primary" })
               }}
-              className="inline-flex items-center gap-2 rounded-full border border-white/[0.15] px-7 py-3 text-sm font-medium text-white/70 hover:text-white hover:border-white/25 transition-all duration-200"
+              className="inline-flex items-center gap-2 rounded-full bg-white text-[#0a0a0a] shadow-[0_2px_12px_rgba(255,255,255,0.08)] px-7 py-3 text-sm font-semibold transition-all duration-300 ease-out hover:-translate-y-px hover:shadow-[0_4px_20px_rgba(255,255,255,0.14)]"
             >
               Get Started
               <span className="text-xs">→</span>

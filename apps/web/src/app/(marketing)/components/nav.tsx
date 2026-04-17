@@ -80,7 +80,7 @@ export function Nav() {
           <div className="hidden md:flex items-center justify-end gap-2.5">
             <ChromeWebstoreBadge
               source="nav_desktop"
-              variant="compact"
+              iconOnly={shaped}
               onClick={() => {
                 trackMarketingEvent("add_to_chrome_clicked", { source: "nav_desktop" })
               }}
@@ -91,12 +91,13 @@ export function Nav() {
                 trackMarketingEvent("get_started_clicked", { source: "nav_desktop" })
               }}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold whitespace-nowrap shrink-0 transition-all duration-300",
-                "bg-white text-[#0a0a0a] shadow-[0_2px_12px_rgba(255,255,255,0.08)] hover:shadow-[0_4px_20px_rgba(255,255,255,0.12)] hover:-translate-y-px"
+                "inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold whitespace-nowrap shrink-0",
+                "bg-white text-[#0a0a0a] shadow-[0_2px_12px_rgba(255,255,255,0.08)]",
+                "transition-all duration-300 ease-out hover:-translate-y-px hover:shadow-[0_4px_20px_rgba(255,255,255,0.14)]"
               )}
             >
               Get started
-              <ArrowRight className="h-3.5 w-3.5" />
+              {!shaped ? <ArrowRight className="h-3.5 w-3.5" /> : null}
             </Link>
           </div>
 
