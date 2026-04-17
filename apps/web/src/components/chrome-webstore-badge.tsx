@@ -32,19 +32,21 @@ export function ChromeWebstoreBadge({
       data-source={source}
       aria-label="Add Relay to Chrome — Chrome Web Store"
       className={cn(
-        "group inline-flex items-center rounded-full bg-white text-[#0a0a0a] font-semibold whitespace-nowrap",
-        "shadow-[0_2px_12px_rgba(255,255,255,0.08)] hover:shadow-[0_4px_20px_rgba(255,255,255,0.14)] hover:-translate-y-px",
+        "group inline-flex items-center font-semibold whitespace-nowrap",
         MORPH,
-        iconOnly ? "gap-0 px-2 py-2" : "gap-2 pl-3 pr-5 py-2 text-sm",
+        "hover:-translate-y-px",
+        iconOnly
+          ? "gap-0 p-0 bg-transparent shadow-none rounded-none"
+          : "gap-2 pl-3 pr-5 py-2 text-sm rounded-full bg-white text-[#0a0a0a] shadow-[0_2px_12px_rgba(255,255,255,0.08)] hover:shadow-[0_4px_20px_rgba(255,255,255,0.14)]",
         className
       )}
     >
       <Image
         src="/images/192px.svg"
-        alt=""
-        width={20}
-        height={20}
-        className="h-5 w-5 shrink-0"
+        alt={iconOnly ? "Get Relay extension" : ""}
+        width={40}
+        height={40}
+        className={cn("shrink-0", MORPH, iconOnly ? "h-9 w-9" : "h-5 w-5")}
         priority={false}
         unoptimized
       />
