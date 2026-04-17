@@ -372,15 +372,6 @@ export function SettingsPreferences({
           </SettingsSection>
           </FadeIn>
 
-          <FadeIn delay={0.15}>
-          <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-soft)] px-5 py-4">
-            <p className="text-[13px] font-medium text-[var(--relay-ink)]">Offline fallback</p>
-            <p className="mt-1 text-[13px] leading-relaxed text-[var(--relay-muted)]">
-              When AI is unavailable, Relay inserts a bounded brief from saved project context. This is
-              currently automatic and does not need separate configuration.
-            </p>
-          </div>
-          </FadeIn>
         </>
       ) : null}
 

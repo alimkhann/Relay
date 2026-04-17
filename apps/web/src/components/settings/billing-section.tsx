@@ -580,24 +580,12 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
               title="Free"
               subtitle={PRICING.free.description}
               price="$0 / forever"
-              badge={entitlements.plan === "free" ? "Current plan" : undefined}
+              badge={entitlements.plan === "free" ? "Current" : undefined}
               features={[...PRICING.free.features]}
               actions={
                 entitlements.plan === "free" ? (
-                  <p className="text-[12px] text-[var(--relay-muted)]">You&apos;re on Free right now.</p>
-                ) : (
-                  <div className="space-y-2">
-                    <button
-                      type="button"
-                      onClick={() => void handlePortal()}
-                      disabled={loading !== null}
-                      className="w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-4 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition hover:bg-[var(--relay-soft)] disabled:opacity-50"
-                    >
-                      {loading === "portal" ? "Opening portal..." : "Manage in portal"}
-                    </button>
-                    <p className="text-[12px] text-[var(--relay-muted)]">Use the customer portal to cancel or change your subscription.</p>
-                  </div>
-                )
+                  <p className="text-[12px] text-[var(--relay-muted)]">You&apos;re on the Free plan.</p>
+                ) : null
               }
             />
 
@@ -606,7 +594,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
               subtitle={PRICING.starter.description}
               price={yearly ? `$${Math.round(PRICING.starter.yearlyPrice / 12)}/mo` : `$${PRICING.starter.monthlyPrice}/mo`}
               priceNote={yearly ? "Billed $120/yr · -17%" : undefined}
-              badge={entitlements.plan === "starter" ? "Current plan" : "RECOMMENDED"}
+              badge={entitlements.plan === "starter" ? "Current" : undefined}
               features={[...PRICING.starter.features]}
               actions={
                 entitlements.plan === "starter" ? (
@@ -631,9 +619,9 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
                       type="button"
                       onClick={() => void handlePortal()}
                       disabled={loading !== null}
-                      className="w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-4 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition hover:bg-[var(--relay-soft)] disabled:opacity-50"
+                      className="w-full rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
                     >
-                      {loading === "portal" ? "Opening portal..." : "Switch via portal"}
+                      {loading === "portal" ? "Opening portal..." : "Manage subscription"}
                     </button>
                   </div>
                 ) : (
@@ -657,7 +645,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
               subtitle={entitlements.isTrialing ? "Trialing now" : PRICING.pro.description}
               price={yearly ? `$${Math.round(PRICING.pro.yearlyPrice / 12)}/mo` : `$${PRICING.pro.monthlyPrice}/mo`}
               priceNote={yearly ? "Billed $180/yr · -17%" : undefined}
-              badge={entitlements.plan === "pro" ? "Current plan" : undefined}
+              badge={entitlements.plan === "pro" ? "Current" : undefined}
               tone="accent"
               features={[...PRICING.pro.features]}
               actions={
