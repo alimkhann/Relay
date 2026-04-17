@@ -97,7 +97,12 @@ export function Nav() {
               )}
             >
               Get started
-              {!shaped ? <ArrowRight className="h-3.5 w-3.5" /> : null}
+              <ArrowRight
+                className={cn(
+                  "h-3.5 w-3.5 overflow-hidden transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                  shaped ? "max-w-0 -ml-1.5 opacity-0" : "max-w-4 opacity-100"
+                )}
+              />
             </Link>
           </div>
 

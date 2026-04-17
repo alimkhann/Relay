@@ -6,6 +6,8 @@ import { cn } from "@/lib/cn"
 export const CHROME_WEBSTORE_URL =
   "https://chromewebstore.google.com/detail/relay-%E2%80%94-ai-chat-memory-co/ilgnnbhokdndbgchcfffolemkmmkpklf"
 
+const MORPH = "transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]"
+
 interface ChromeWebstoreBadgeProps {
   source: string
   onClick?: () => void
@@ -30,30 +32,31 @@ export function ChromeWebstoreBadge({
       data-source={source}
       aria-label="Add Relay to Chrome — Chrome Web Store"
       className={cn(
-        "group inline-flex items-center gap-2 rounded-full font-semibold whitespace-nowrap",
-        "bg-white text-[#0a0a0a] shadow-[0_2px_12px_rgba(255,255,255,0.08)]",
-        "transition-all duration-300 ease-out hover:-translate-y-px hover:shadow-[0_4px_20px_rgba(255,255,255,0.14)]",
-        iconOnly ? "p-1.5" : "pl-2 pr-5 py-1.5 text-sm",
+        "group inline-flex items-center rounded-full bg-white text-[#0a0a0a] font-semibold whitespace-nowrap",
+        "shadow-[0_2px_12px_rgba(255,255,255,0.08)] hover:shadow-[0_4px_20px_rgba(255,255,255,0.14)] hover:-translate-y-px",
+        MORPH,
+        iconOnly ? "gap-0 px-2 py-2" : "gap-2 pl-3 pr-5 py-2 text-sm",
         className
       )}
     >
+      <Image
+        src="/images/192px.svg"
+        alt=""
+        width={20}
+        height={20}
+        className="h-5 w-5 shrink-0"
+        priority={false}
+        unoptimized
+      />
       <span
         className={cn(
-          "inline-flex items-center justify-center rounded-full overflow-hidden bg-white",
-          iconOnly ? "h-7 w-7" : "h-8 w-8"
+          "overflow-hidden whitespace-nowrap",
+          MORPH,
+          iconOnly ? "max-w-0 opacity-0" : "max-w-[200px] opacity-100"
         )}
       >
-        <Image
-          src="/images/192px.svg"
-          alt=""
-          width={32}
-          height={32}
-          className="h-full w-full object-cover"
-          priority={false}
-          unoptimized
-        />
+        {label}
       </span>
-      {!iconOnly ? <span>{label}</span> : null}
     </a>
   )
 }
