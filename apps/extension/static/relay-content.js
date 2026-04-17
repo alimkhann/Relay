@@ -2057,25 +2057,31 @@
       type: "RELAY_INSERT_PROJECT_BRIEF",
       payload: {
         source: "inline_chip",
+        projectId: activeState.projectId,
       },
     });
     if (!result || !result.ok) {
-      emitInlineTelemetry({
-        level: "error",
-        area: "insert",
-        event: "inline_insert.failed",
-        flowId,
-        message:
-          result && result.reason
-            ? result.reason
-            : "Insert failed from inline chip.",
-        context: {
-          projectId: activeState.projectId,
-        },
-      });
-      // Silently dismiss — the brief insertion is best-effort.
-      // False positives (DOM race conditions) previously showed "Insert failed"
-      // even when the content was actually inserted successfully.
+      // Verify post-hoc: if prompt now contains non-trivial text, insertion
+      // likely succeeded despite a race-y ok:false. Only log error if prompt
+      // is still empty (true failure).
+      const promptTarget = findPrompt(getSiteConfig());
+      const promptText = promptTarget ? readPromptText(promptTarget) : "";
+      const likelyInserted = promptText && promptText.trim().length > 40;
+      if (!likelyInserted) {
+        emitInlineTelemetry({
+          level: "warn",
+          area: "insert",
+          event: "inline_insert.failed",
+          flowId,
+          message:
+            result && result.reason
+              ? result.reason
+              : "Insert failed from inline chip.",
+          context: {
+            projectId: activeState.projectId,
+          },
+        });
+      }
       relayChipState.buttonMode = "idle";
       relayChipState.buttonError = "";
       relayChipState.dismissed = true;

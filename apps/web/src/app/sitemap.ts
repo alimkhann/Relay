@@ -5,6 +5,10 @@ const APP_URL = "https://onrelay.app"
 const routes = [
   "",
   "/get-started",
+  "/machine",
+  "/pricing",
+  "/roadmap",
+  "/status",
   "/docs",
   "/docs/api",
   "/docs/concepts",
