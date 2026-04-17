@@ -108,6 +108,7 @@ export function HeroSection() {
               onClick={() => {
                 trackMarketingEvent("add_to_chrome_clicked", { source: "hero_primary" })
               }}
+              className="pl-4 pr-7 py-3"
             />
             <Link
               href="/get-started"
