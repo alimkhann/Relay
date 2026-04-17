@@ -1,4 +1,3 @@
-import { unstable_noStore as noStore } from "next/cache"
 import { Nav } from "./components/nav"
 import { HeroSection } from "./components/hero-section"
 import { HeroVisual } from "./components/hero-visual"
@@ -11,17 +10,8 @@ import { BottomCta } from "./components/bottom-cta"
 import { Footer } from "./components/footer"
 import { PageTelemetry } from "@/components/telemetry/page-telemetry"
 import { PostHogIdentity } from "@/components/telemetry/posthog-identity"
-import {
-  pickOppositeLandingBackground,
-  pickRandomLandingBackground,
-} from "./background-images"
 
 export default function LandingPage() {
-  noStore()
-
-  const backgroundSrc = pickRandomLandingBackground()
-  const bottomCtaBackgroundSrc = pickOppositeLandingBackground(backgroundSrc)
-
   return (
     <main className="bg-[#0a0a0a] text-[#f5f5f5] overflow-x-hidden">
       <PostHogIdentity userId={null} />
@@ -32,14 +22,14 @@ export default function LandingPage() {
         message="Rendered the landing page."
       />
       <Nav />
-      <HeroSection backgroundSrc={backgroundSrc} />
+      <HeroSection />
       <HeroVisual />
       <FeaturesSection />
       <HowItWorks />
       <McpSection />
       <PricingSection />
       <Faq />
-      <BottomCta backgroundSrc={bottomCtaBackgroundSrc} />
+      <BottomCta />
       <Footer />
     </main>
   )

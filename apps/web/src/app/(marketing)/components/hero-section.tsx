@@ -2,11 +2,13 @@
 
 import Image from "next/image"
 import Link from "next/link"
+import { useState } from "react"
 import { motion } from "motion/react"
 import { LogoStrip } from "./logo-strip"
 import { trackMarketingEvent } from "./analytics"
 import { ChevronDown } from "lucide-react"
 import { usePreloaderReady } from "./use-preloader-ready"
+import { pickRandomLandingBackground } from "../background-images"
 
 const ease = [0.25, 0.1, 0.25, 1] as const
 
@@ -19,8 +21,9 @@ const fadeUp = {
   }),
 }
 
-export function HeroSection({ backgroundSrc }: { backgroundSrc: string }) {
+export function HeroSection() {
   const ready = usePreloaderReady()
+  const [backgroundSrc] = useState(() => pickRandomLandingBackground())
 
   return (
     <section id="top" className="relative min-h-screen flex flex-col">

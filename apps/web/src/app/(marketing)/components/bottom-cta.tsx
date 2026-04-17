@@ -3,15 +3,19 @@
 import Image from "next/image"
 import Link from "next/link"
 import { motion, useInView } from "motion/react"
-import { useRef } from "react"
+import { useRef, useState } from "react"
 
 import { trackMarketingEvent } from "./analytics"
+import { pickOppositeLandingBackground, pickRandomLandingBackground } from "../background-images"
 
 const ease = [0.25, 0.1, 0.25, 1] as const
 
-export function BottomCta({ backgroundSrc }: { backgroundSrc: string }) {
+export function BottomCta() {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: "-80px" })
+  const [backgroundSrc] = useState(() =>
+    pickOppositeLandingBackground(pickRandomLandingBackground()),
+  )
 
   return (
     <section className="relative min-h-[85vh] flex items-center justify-center px-5" ref={ref}>
