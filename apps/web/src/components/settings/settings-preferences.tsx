@@ -18,6 +18,7 @@ import { cn } from "@/lib/cn"
 import { syncUserSettingsToExtension } from "@/lib/extension-settings-bridge"
 import { createClientFlowId } from "@/lib/telemetry/client"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
+import { ChromeWebstoreBadge } from "@/components/chrome-webstore-badge"
 
 interface SettingsPreferencesProps {
   initialSettings: UserSettingsRow["settings"]
@@ -28,7 +29,6 @@ interface SettingsPreferencesProps {
 }
 
 const EXTENSION_VERSION = "0.3.0"
-const CHROME_WEB_STORE_URL = "https://chromewebstore.google.com/search/Relay"
 
 const platformOptions = [
   { key: "chatgpt", label: "ChatGPT", icon: OpenAIIcon },
@@ -400,14 +400,10 @@ export function SettingsPreferences({
                   </p>
                 </div>
 
-                <a
-                  href={CHROME_WEB_STORE_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="shrink-0 rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-white px-4 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition hover:bg-gray-50 dark:bg-[var(--relay-surface)] dark:hover:bg-[var(--relay-soft)]"
-                >
-                  Chrome Web Store
-                </a>
+                <ChromeWebstoreBadge
+                  source="settings_extension"
+                  className="shrink-0 inline-flex transition-opacity duration-200 hover:opacity-90"
+                />
               </div>
             </div>
           </SettingsSection>

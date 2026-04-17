@@ -7,6 +7,7 @@ import { cn } from "@/lib/cn"
 import { trackMarketingEvent } from "./analytics"
 import { motion, AnimatePresence } from "motion/react"
 import { ArrowRight, Menu, X } from "lucide-react"
+import { ChromeWebstoreBadge } from "@/components/chrome-webstore-badge"
 
 const NAV_LINKS = [
   { label: "Home", href: "#top" },
@@ -31,7 +32,7 @@ export function Nav() {
       <header className="fixed top-0 left-0 right-0 z-50">
         <nav
           className={cn(
-            "mx-auto grid grid-cols-[1fr_auto] md:grid-cols-[120px_1fr_120px] items-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] px-6 py-3 md:py-5 max-w-6xl border border-transparent bg-transparent",
+            "mx-auto grid grid-cols-[1fr_auto] md:grid-cols-[120px_1fr_auto] items-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] px-6 py-3 md:py-5 max-w-6xl border border-transparent bg-transparent",
             mobileOpen &&
               "max-md:bg-[#0a0a0a] max-md:border-b max-md:border-white/[0.06]",
             shaped &&
@@ -75,20 +76,31 @@ export function Nav() {
             ))}
           </div>
 
-          {/* Desktop CTA */}
-          <Link
-            href="/get-started"
-            onClick={() => {
-              trackMarketingEvent("get_started_clicked", { source: "nav_desktop" })
-            }}
-            className={cn(
-              "hidden md:inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold whitespace-nowrap shrink-0 transition-all duration-300",
-              "bg-white text-[#0a0a0a] shadow-[0_2px_12px_rgba(255,255,255,0.08)] hover:shadow-[0_4px_20px_rgba(255,255,255,0.12)] hover:-translate-y-px"
-            )}
-          >
-            Get started
-            <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
+          {/* Desktop CTA cluster */}
+          <div className="hidden md:flex items-center justify-end gap-3">
+            <ChromeWebstoreBadge
+              source="nav_desktop"
+              onClick={() => {
+                trackMarketingEvent("add_to_chrome_clicked", { source: "nav_desktop" })
+              }}
+              width={140}
+              height={40}
+              className="inline-flex transition-opacity duration-200 hover:opacity-90"
+            />
+            <Link
+              href="/get-started"
+              onClick={() => {
+                trackMarketingEvent("get_started_clicked", { source: "nav_desktop" })
+              }}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold whitespace-nowrap shrink-0 transition-all duration-300",
+                "bg-white text-[#0a0a0a] shadow-[0_2px_12px_rgba(255,255,255,0.08)] hover:shadow-[0_4px_20px_rgba(255,255,255,0.12)] hover:-translate-y-px"
+              )}
+            >
+              Get started
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
 
           {/* Mobile hamburger */}
           <button
@@ -130,13 +142,21 @@ export function Nav() {
                   {link.label}
                 </a>
               ))}
+              <ChromeWebstoreBadge
+                source="nav_mobile"
+                onClick={() => {
+                  trackMarketingEvent("add_to_chrome_clicked", { source: "nav_mobile" })
+                  setMobileOpen(false)
+                }}
+                className="mt-1 inline-flex justify-center"
+              />
               <Link
                 href="/get-started"
                 onClick={() => {
                   trackMarketingEvent("get_started_clicked", { source: "nav_mobile" })
                   setMobileOpen(false)
                 }}
-                className="mt-1 inline-flex items-center justify-center gap-1.5 rounded-full bg-white text-[#0a0a0a] px-5 py-2.5 text-sm font-medium"
+                className="inline-flex items-center justify-center gap-1.5 rounded-full bg-white text-[#0a0a0a] px-5 py-2.5 text-sm font-medium"
               >
                 Get Started →
               </Link>

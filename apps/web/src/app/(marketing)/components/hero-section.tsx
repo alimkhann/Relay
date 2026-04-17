@@ -9,6 +9,7 @@ import { trackMarketingEvent } from "./analytics"
 import { ChevronDown } from "lucide-react"
 import { usePreloaderReady } from "./use-preloader-ready"
 import { pickRandomLandingBackground } from "../background-images"
+import { ChromeWebstoreBadge } from "@/components/chrome-webstore-badge"
 
 const ease = [0.25, 0.1, 0.25, 1] as const
 
@@ -102,28 +103,23 @@ export function HeroSection() {
             animate={ready ? "visible" : "hidden"}
             className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3"
           >
+            <ChromeWebstoreBadge
+              source="hero_primary"
+              onClick={() => {
+                trackMarketingEvent("add_to_chrome_clicked", { source: "hero_primary" })
+              }}
+              className="inline-flex transition-opacity duration-200 hover:opacity-90"
+            />
             <Link
               href="/get-started"
               onClick={() => {
                 trackMarketingEvent("get_started_clicked", { source: "hero_primary" })
               }}
-              className="inline-flex items-center gap-2 rounded-full bg-white text-[#0a0a0a] px-7 py-3 text-sm font-medium hover:bg-white/90 transition-colors duration-200"
+              className="inline-flex items-center gap-2 rounded-full border border-white/[0.15] px-7 py-3 text-sm font-medium text-white/70 hover:text-white hover:border-white/25 transition-all duration-200"
             >
               Get Started
               <span className="text-xs">→</span>
             </Link>
-            <a
-              href="/docs"
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => {
-                trackMarketingEvent("docs_clicked", { source: "hero_secondary" })
-              }}
-              className="inline-flex items-center gap-2 rounded-full border border-white/[0.15] px-7 py-3 text-sm font-medium text-white/70 hover:text-white hover:border-white/25 transition-all duration-200"
-            >
-              Read the docs
-              <span className="text-xs">→</span>
-            </a>
           </motion.div>
 
           {/* Microcopy */}
