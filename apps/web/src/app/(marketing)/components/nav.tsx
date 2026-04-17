@@ -32,7 +32,7 @@ export function Nav() {
       <header className="fixed top-0 left-0 right-0 z-50">
         <nav
           className={cn(
-            "mx-auto grid grid-cols-[1fr_auto] md:grid-cols-[120px_1fr_auto] items-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] px-6 py-3 md:py-5 max-w-6xl border border-transparent bg-transparent",
+            "relative mx-auto flex items-center justify-between transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] px-6 py-3 md:py-5 max-w-6xl border border-transparent bg-transparent",
             mobileOpen &&
               "max-md:bg-[#0a0a0a] max-md:border-b max-md:border-white/[0.06]",
             shaped &&
@@ -55,8 +55,8 @@ export function Nav() {
             />
           </Link>
 
-          {/* Desktop nav links — center */}
-          <div className="hidden md:flex items-center justify-center gap-7">
+          {/* Desktop nav links — absolute centered */}
+          <div className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center justify-center gap-7">
             {NAV_LINKS.map((link) => (
               <a
                 key={link.label}
@@ -77,15 +77,13 @@ export function Nav() {
           </div>
 
           {/* Desktop CTA cluster */}
-          <div className="hidden md:flex items-center justify-end gap-3">
+          <div className="hidden md:flex items-center justify-end gap-2.5">
             <ChromeWebstoreBadge
               source="nav_desktop"
+              variant="compact"
               onClick={() => {
                 trackMarketingEvent("add_to_chrome_clicked", { source: "nav_desktop" })
               }}
-              width={140}
-              height={40}
-              className="inline-flex transition-opacity duration-200 hover:opacity-90"
             />
             <Link
               href="/get-started"

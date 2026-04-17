@@ -105,10 +105,10 @@ export function HeroSection() {
           >
             <ChromeWebstoreBadge
               source="hero_primary"
+              variant="primary"
               onClick={() => {
                 trackMarketingEvent("add_to_chrome_clicked", { source: "hero_primary" })
               }}
-              className="inline-flex transition-opacity duration-200 hover:opacity-90"
             />
             <Link
               href="/get-started"

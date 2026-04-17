@@ -80,33 +80,6 @@ function InputTyping({ text, startDelay, inView }: { text: string; startDelay: n
   )
 }
 
-/* ─── Cursor keyframes (approximate % positions within the hero) ─── */
-const CURSOR_X = [
-  "15%",   // 0: start at input bar
-  "15%",   // 1: in input field
-  "42%",   // 2: send button
-  "42%",   // 3: stay at send
-  "25%",   // 4: drift center-left
-  "30%",   // 5: up to toast area
-  "55%",   // 6: cross to right panel
-  "70%",   // 7: center of right panel
-  "78%",   // 8: bottom-right
-  "78%",   // 9: fade out position
-]
-const CURSOR_Y = [
-  "88%",   // 0: input bar
-  "88%",   // 1: in input
-  "88%",   // 2: send button
-  "88%",   // 3: stay
-  "55%",   // 4: drift up
-  "12%",   // 5: toast
-  "35%",   // 6: cross divider
-  "50%",   // 7: center right
-  "75%",   // 8: bottom right
-  "75%",   // 9: fade out
-]
-const CURSOR_TIMES = [0, 0.06, 0.12, 0.18, 0.30, 0.42, 0.52, 0.60, 0.78, 1]
-
 export function HeroVisual() {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: "-80px" })
@@ -119,23 +92,6 @@ export function HeroVisual() {
       </div>
 
       <div className="relative mx-auto max-w-6xl">
-        {/* Animated cursor — desktop only */}
-        <motion.div
-          className="hidden md:block absolute w-3 h-3 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.4)] z-30 pointer-events-none"
-          initial={{ opacity: 0, left: CURSOR_X[0], top: CURSOR_Y[0] }}
-          animate={inView ? {
-            opacity: [0, 1, 1, 1, 1, 1, 1, 1, 1, 0],
-            left: CURSOR_X,
-            top: CURSOR_Y,
-          } : undefined}
-          transition={{
-            duration: 8,
-            times: CURSOR_TIMES,
-            ease: "easeInOut",
-            delay: 0.5,
-          }}
-        />
-
         <div className="grid md:grid-cols-2 gap-4 md:gap-5">
           {/* Left panel — Browser chat */}
           <motion.div
