@@ -3,6 +3,7 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { APP_ORIGIN } from "@/lib/site-config";
 
 import { ThemeProvider } from "@/components/theme-provider";
 import { GlobalTelemetryBootstrap } from "@/components/telemetry/global-telemetry-bootstrap";
@@ -12,7 +13,7 @@ import { LogoPreloader } from "@/components/ui/logo-preloader";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://onrelay.app"),
+  metadataBase: new URL(APP_ORIGIN),
   title: "Relay",
   description: "Keep your project brief ready for every fresh AI chat.",
   icons: {

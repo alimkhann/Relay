@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { NextRequest } from "next/server"
 
 const { middlewareFn, middlewareFactory, getAuthServerMock } = vi.hoisted(() => ({
   middlewareFn: vi.fn(),
@@ -26,6 +27,10 @@ describe("middleware", () => {
 
   it("keeps standard sign-in for protected app routes", async () => {
     const request = {
+      method: "GET",
+      headers: {
+        get: vi.fn(() => null)
+      },
       nextUrl: {
         pathname: "/dashboard"
       }
@@ -41,6 +46,10 @@ describe("middleware", () => {
 
   it("does not special-case get-started in middleware anymore", async () => {
     const request = {
+      method: "GET",
+      headers: {
+        get: vi.fn(() => null)
+      },
       nextUrl: {
         pathname: "/settings"
       }
@@ -75,6 +84,20 @@ describe("middleware", () => {
     expect(response.headers.get("access-control-allow-origin")).toBe(
       "chrome-extension://capboopgpcmoakcilbjlbepmiobhdehj"
     )
+    expect(middlewareFactory).not.toHaveBeenCalled()
+    expect(middlewareFn).not.toHaveBeenCalled()
+  })
+
+  it("rewrites supported public pages to the markdown variant when requested", async () => {
+    const request = new NextRequest("https://www.onrelay.app/docs/api", {
+      headers: {
+        Accept: "text/markdown",
+      },
+    })
+
+    const response = await middleware(request)
+
+    expect(response.headers.get("x-middleware-rewrite")).toContain("/_relay/markdown?pathname=%2Fdocs%2Fapi")
     expect(middlewareFactory).not.toHaveBeenCalled()
     expect(middlewareFn).not.toHaveBeenCalled()
   })

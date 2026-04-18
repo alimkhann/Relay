@@ -2,6 +2,8 @@ import path from "node:path"
 import { withPostHogConfig } from "@posthog/nextjs-config"
 import type { NextConfig } from "next"
 
+import { DISCOVERY_LINK_HEADER } from "./src/lib/site-config"
+
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
   outputFileTracingRoot: path.join(import.meta.dirname, "../../"),
@@ -20,6 +22,24 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
           { key: "X-DNS-Prefetch-Control", value: "on" }
+        ]
+      },
+      {
+        source: "/",
+        headers: [
+          { key: "Link", value: DISCOVERY_LINK_HEADER },
+        ]
+      },
+      {
+        source: "/docs",
+        headers: [
+          { key: "Link", value: DISCOVERY_LINK_HEADER },
+        ]
+      },
+      {
+        source: "/docs/:path*",
+        headers: [
+          { key: "Link", value: DISCOVERY_LINK_HEADER },
         ]
       }
     ]

@@ -3,6 +3,7 @@ import { Suspense } from "react"
 
 import { DocsSidebar } from "@/components/docs/docs-sidebar"
 import { DocsMobileNav } from "@/components/docs/docs-mobile-nav"
+import { WebMcpBootstrap } from "@/components/webmcp/webmcp-bootstrap"
 
 export const metadata: Metadata = {
   title: "Docs — Relay",
@@ -16,6 +17,7 @@ export const metadata: Metadata = {
 export default function DocsLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-[var(--relay-bg)]">
+      <WebMcpBootstrap />
       <Suspense fallback={null}>
         <DocsMobileNav />
       </Suspense>

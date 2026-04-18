@@ -1,6 +1,5 @@
 import type { MetadataRoute } from "next"
-
-const APP_URL = "https://onrelay.app"
+import { APP_ORIGIN } from "@/lib/site-config"
 
 const routes = [
   "",
@@ -23,7 +22,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date()
 
   return routes.map((route) => ({
-    url: `${APP_URL}${route}`,
+    url: `${APP_ORIGIN}${route}`,
     lastModified: now,
     changeFrequency: route.startsWith("/docs") ? "weekly" : "monthly",
     priority: route === "" ? 1 : route === "/get-started" ? 0.9 : 0.7,

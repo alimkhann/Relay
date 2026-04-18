@@ -3,7 +3,40 @@ import { NextResponse, type NextRequest } from "next/server"
 import { getAuthServer } from "@/lib/auth/server"
 import { buildExtensionPreflightResponse, isExtensionOrigin } from "@/server/http/extension-cors"
 
+const MARKDOWN_ENABLED_PATHS = [
+  /^\/$/,
+  /^\/machine$/,
+  /^\/docs$/,
+  /^\/docs\/[^/]+$/,
+  /^\/get-started$/,
+  /^\/privacy$/,
+  /^\/terms$/,
+]
+
+function wantsMarkdown(request: NextRequest) {
+  return request.method !== "OPTIONS" && Boolean(request.headers.get("accept")?.includes("text/markdown"))
+}
+
+function supportsMarkdownPath(pathname: string) {
+  return MARKDOWN_ENABLED_PATHS.some((pattern) => pattern.test(pathname))
+}
+
+function isProtectedPath(pathname: string) {
+  return pathname.startsWith("/dashboard/")
+    || pathname === "/dashboard"
+    || pathname.startsWith("/projects/")
+    || pathname === "/settings"
+    || pathname.startsWith("/settings/")
+}
+
 export default function middleware(request: NextRequest) {
+  if ((request.method === "GET" || request.method === "HEAD") && wantsMarkdown(request) && supportsMarkdownPath(request.nextUrl.pathname)) {
+    const url = request.nextUrl.clone()
+    url.pathname = "/_relay/markdown"
+    url.searchParams.set("pathname", request.nextUrl.pathname)
+    return NextResponse.rewrite(url)
+  }
+
   // API routes handle their own auth via withApiAuth / resolveViewer(),
   // which returns proper 401 JSON responses. The Neon Auth middleware must
   // NOT intercept API routes — it would redirect to /sign-in (HTML), causing
@@ -22,7 +55,7 @@ export default function middleware(request: NextRequest) {
 
   const auth = getAuthServer()
 
-  if (!auth) {
+  if (!isProtectedPath(request.nextUrl.pathname) || !auth) {
     return NextResponse.next()
   }
 
@@ -32,5 +65,19 @@ export default function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/projects/:path*", "/settings/:path*"]
+  matcher: [
+    "/",
+    "/machine",
+    "/docs",
+    "/docs/:path*",
+    "/get-started",
+    "/privacy",
+    "/terms",
+    "/dashboard/:path*",
+    "/dashboard",
+    "/projects/:path*",
+    "/settings/:path*",
+    "/settings",
+    "/api/:path*",
+  ]
 }

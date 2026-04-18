@@ -1,4 +1,4 @@
-const APP_URL = "https://onrelay.app"
+import { APP_ORIGIN } from "@/lib/site-config"
 
 const BODY = `# Relay
 
@@ -8,23 +8,23 @@ Relay runs as a Chrome extension plus a web dashboard. It also exposes an MCP se
 
 ## Core
 
-- [Homepage](${APP_URL}): product overview, features, pricing
-- [Get started](${APP_URL}/get-started): setup flow for extension + CLI wizard
-- [Machine page](${APP_URL}/machine): structured, AI-readable description of Relay (what it is, how it works, who it's for)
+- [Homepage](${APP_ORIGIN}): product overview, features, pricing
+- [Get started](${APP_ORIGIN}/get-started): setup flow for extension + CLI wizard
+- [Machine page](${APP_ORIGIN}/machine): structured, AI-readable description of Relay (what it is, how it works, who it's for)
 
 ## Docs
 
-- [Docs index](${APP_URL}/docs): entry point
-- [Concepts](${APP_URL}/docs/concepts): memory model, projects, briefs, context packets
-- [Extension](${APP_URL}/docs/extension): browser sidecar behavior, supported AI tools
-- [MCP](${APP_URL}/docs/mcp): MCP server reference for CLI agents
-- [API](${APP_URL}/docs/api): HTTP API reference
-- [Plans](${APP_URL}/docs/plans): Free, Starter, Pro pricing + limits
+- [Docs index](${APP_ORIGIN}/docs): entry point
+- [Concepts](${APP_ORIGIN}/docs/concepts): memory model, projects, briefs, context packets
+- [Extension](${APP_ORIGIN}/docs/extension): browser sidecar behavior, supported AI tools
+- [MCP](${APP_ORIGIN}/docs/mcp): MCP server reference for CLI agents
+- [API](${APP_ORIGIN}/docs/api): HTTP API reference
+- [Plans](${APP_ORIGIN}/docs/plans): Free, Starter, Pro pricing + limits
 
 ## Optional
 
-- [Privacy](${APP_URL}/privacy)
-- [Terms](${APP_URL}/terms)
+- [Privacy](${APP_ORIGIN}/privacy)
+- [Terms](${APP_ORIGIN}/terms)
 `
 
 export function GET() {

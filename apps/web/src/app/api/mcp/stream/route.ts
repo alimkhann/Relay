@@ -8,6 +8,7 @@ import { createRepositoryBundle } from "@relay/db"
 import { detectCrossSurfaceDrifts } from "@/server/services/drift-reconciler"
 import { sweepOpenWorkSessions } from "@/server/services/work-session-flush-service"
 import { RelayHttpMcpClient } from "./relay-http-mcp-client"
+import { RELAY_MCP_PROMPT_NAMES, RELAY_MCP_RESOURCE_URIS, RELAY_MCP_SERVER_NAME, RELAY_MCP_SERVER_VERSION, RELAY_MCP_TOOL_NAMES } from "@/server/mcp/metadata"
 
 /**
  * Opportunistic sweep throttle. Per-user in-memory map of last sweep timestamp.
@@ -62,8 +63,8 @@ async function resolveViewerFromRequest(request: Request): Promise<Viewer> {
 function createHttpMcpServer(viewer: Viewer) {
   const client = new RelayHttpMcpClient(viewer)
   const server = new McpServer({
-    name: "relay",
-    version: "0.2.1"
+    name: RELAY_MCP_SERVER_NAME,
+    version: RELAY_MCP_SERVER_VERSION
   })
 
   const projectId = viewer.projectId
@@ -90,7 +91,7 @@ function registerHttpTools(
   viewer: Viewer
 ) {
   server.tool(
-    "project.list",
+    RELAY_MCP_TOOL_NAMES[0],
     "List all Relay projects you have access to. Returns project IDs, names, slugs, and descriptions. Call this first to find a project ID and to match the user's current working directory or repository against project names and slugs before calling project.get_brief.",
     {
       limit: z.number().optional().describe("Maximum number of projects to return"),
@@ -106,7 +107,7 @@ function registerHttpTools(
   )
 
   server.tool(
-    "project.set_current",
+    RELAY_MCP_TOOL_NAMES[1],
     "Switch the current Relay project for this token. Use this when the user is clearly working on a different project than the cached one. The switch persists across future MCP calls with the same token. Call project.list first to find the correct projectId.",
     {
       projectId: z.string().uuid().describe("The ID of the project to switch to."),
@@ -135,7 +136,7 @@ function registerHttpTools(
   )
 
   server.tool(
-    "project.get_brief",
+    RELAY_MCP_TOOL_NAMES[2],
     `Fetch a project context brief from Relay. Returns a markdown document with project state, decisions, constraints, tasks, and key memory items formatted for an AI coding session.
 
 IMPORTANT — before calling project.get_brief, always verify which project the user is working on:
@@ -162,7 +163,7 @@ Call this at the start of every coding session to restore project memory.`,
   )
 
   server.tool(
-    "project.get_state",
+    RELAY_MCP_TOOL_NAMES[3],
     "Get full structured project state including overview, objectives, decisions, constraints, and tasks.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -178,7 +179,7 @@ Call this at the start of every coding session to restore project memory.`,
   )
 
   server.tool(
-    "memory.search",
+    RELAY_MCP_TOOL_NAMES[4],
     "Search memory items by keyword or semantic query. Returns matching decisions, constraints, tasks, notes, and other memory items.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -202,7 +203,7 @@ Call this at the start of every coding session to restore project memory.`,
   )
 
   server.tool(
-    "memory.add",
+    RELAY_MCP_TOOL_NAMES[5],
     "Add a memory item to the project. Use this to persist decisions, constraints, tasks, or notes discovered during the session.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -227,7 +228,7 @@ Call this at the start of every coding session to restore project memory.`,
   )
 
   server.tool(
-    "context.save",
+    RELAY_MCP_TOOL_NAMES[6],
     `Push a structured session snapshot into Relay and run it through the digest + reconcile pipeline. You do NOT need to call this at natural break points — Relay auto-flushes via Claude Code hooks (relay-flush), stdio shutdown, and an opportunistic server-side sweep that runs before every MCP request. Call explicitly only for an immediate checkpoint or when ending a session on a hookless client. Set finalize=false to record state without closing the session.`,
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -261,7 +262,7 @@ Call this at the start of every coding session to restore project memory.`,
   )
 
   server.tool(
-    "context.checkpoint",
+    RELAY_MCP_TOOL_NAMES[7],
     "Mid-session snapshot: identical payload to context.save but never closes the work session. Relay will flush automatically at the next hook/shutdown/sweep.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -288,7 +289,7 @@ Call this at the start of every coding session to restore project memory.`,
   )
 
   server.tool(
-    "memory.manage",
+    RELAY_MCP_TOOL_NAMES[8],
     "Update, delete, or archive an existing memory item by its ID.",
     {
       action: z.string().describe("Action to perform: update, delete, or archive"),
@@ -307,7 +308,7 @@ Call this at the start of every coding session to restore project memory.`,
   )
 
   server.tool(
-    "project.set_state",
+    RELAY_MCP_TOOL_NAMES[9],
     "Upsert the high-level project state used for briefs and dashboard overview. Use this when bootstrapping or correcting canonical project context from an agent session. Omitted scalar fields stay unchanged; list fields merge uniquely unless replaceLists is true.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -332,7 +333,7 @@ Call this at the start of every coding session to restore project memory.`,
   )
 
   server.tool(
-    "project.update",
+    RELAY_MCP_TOOL_NAMES[10],
     "Update a project's name or description.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -353,7 +354,7 @@ Call this at the start of every coding session to restore project memory.`,
   )
 
   server.tool(
-    "memory.recall",
+    RELAY_MCP_TOOL_NAMES[11],
     "Search memory and retrieve project state in one call. Use before making decisions to check for existing constraints and context.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -401,7 +402,7 @@ You have access to Relay, a project memory system that keeps context synchronize
 
 function registerHttpPrompts(server: McpServer) {
   server.prompt(
-    "relay_session_guidelines",
+    RELAY_MCP_PROMPT_NAMES[0],
     "Guidelines for using Relay tools effectively during a coding session.",
     () => ({
       messages: [
@@ -417,10 +418,10 @@ function registerHttpPrompts(server: McpServer) {
 function registerHttpResources(server: McpServer) {
   server.resource(
     "session_guidelines",
-    "relay://session-guidelines",
+    RELAY_MCP_RESOURCE_URIS[0],
     { description: "Relay session guidelines for AI coding tools", mimeType: "text/markdown" },
     async () => ({
-      contents: [{ uri: "relay://session-guidelines", text: SESSION_GUIDELINES, mimeType: "text/markdown" }],
+      contents: [{ uri: RELAY_MCP_RESOURCE_URIS[0], text: SESSION_GUIDELINES, mimeType: "text/markdown" }],
     })
   )
 }
