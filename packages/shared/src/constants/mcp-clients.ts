@@ -13,14 +13,6 @@ export type RelayMcpClientId =
 
 export type RelayMcpSupportTier = "validated" | "supported" | "experimental"
 export type RelayMcpTransportMode = "local" | "remote"
-export type RelayMcpInstructionSurface =
-  | "none"
-  | "hooks"
-  | "rules"
-  | "agents_md"
-  | "project_instructions"
-  | "instructions"
-  | "experimental"
 
 export type RelayMcpConfigFormat =
   | "json-mcpServers"
@@ -33,10 +25,12 @@ export interface RelayMcpClientDescriptor {
   name: string
   supportTier: RelayMcpSupportTier
   configFormat: RelayMcpConfigFormat
-  configPathLabel: string
+  mcpConfig: string
   supportedTransports: readonly RelayMcpTransportMode[]
-  instructionSurface: RelayMcpInstructionSurface
-  instructionPathLabel: string | null
+  repoInstructions: readonly string[]
+  userInstructions: readonly string[]
+  workspaceHooks: readonly string[]
+  userHooks: readonly string[]
   officialDocsUrl: string
   lastVerifiedAt: string
 }
@@ -47,10 +41,12 @@ export const RELAY_MCP_CLIENTS: readonly RelayMcpClientDescriptor[] = [
     name: "Claude Code",
     supportTier: "validated",
     configFormat: "json-mcpServers",
-    configPathLabel: "~/.claude.json",
+    mcpConfig: "~/.claude.json",
     supportedTransports: ["local", "remote"],
-    instructionSurface: "hooks",
-    instructionPathLabel: "~/.claude/settings.json",
+    repoInstructions: ["CLAUDE.md"],
+    userInstructions: ["~/.claude/CLAUDE.md"],
+    workspaceHooks: [],
+    userHooks: ["~/.claude/settings.json"],
     officialDocsUrl: "https://code.claude.com/docs/en/mcp",
     lastVerifiedAt: "2026-04-19",
   },
@@ -59,10 +55,12 @@ export const RELAY_MCP_CLIENTS: readonly RelayMcpClientDescriptor[] = [
     name: "Claude Desktop",
     supportTier: "validated",
     configFormat: "json-mcpServers",
-    configPathLabel: "claude_desktop_config.json",
+    mcpConfig: "claude_desktop_config.json",
     supportedTransports: ["local", "remote"],
-    instructionSurface: "none",
-    instructionPathLabel: null,
+    repoInstructions: [],
+    userInstructions: [],
+    workspaceHooks: [],
+    userHooks: [],
     officialDocsUrl: "https://code.claude.com/docs/en/mcp",
     lastVerifiedAt: "2026-04-19",
   },
@@ -71,10 +69,12 @@ export const RELAY_MCP_CLIENTS: readonly RelayMcpClientDescriptor[] = [
     name: "Cursor (project)",
     supportTier: "validated",
     configFormat: "json-mcpServers",
-    configPathLabel: ".cursor/mcp.json",
+    mcpConfig: ".cursor/mcp.json",
     supportedTransports: ["local", "remote"],
-    instructionSurface: "rules",
-    instructionPathLabel: ".cursor/rules",
+    repoInstructions: ["AGENTS.md", ".cursor/rules/*.mdc"],
+    userInstructions: ["Cursor user rules"],
+    workspaceHooks: [],
+    userHooks: [],
     officialDocsUrl: "https://docs.cursor.com/context/model-context-protocol",
     lastVerifiedAt: "2026-04-19",
   },
@@ -83,10 +83,12 @@ export const RELAY_MCP_CLIENTS: readonly RelayMcpClientDescriptor[] = [
     name: "Cursor (global)",
     supportTier: "validated",
     configFormat: "json-mcpServers",
-    configPathLabel: "~/.cursor/mcp.json",
+    mcpConfig: "~/.cursor/mcp.json",
     supportedTransports: ["local", "remote"],
-    instructionSurface: "agents_md",
-    instructionPathLabel: "AGENTS.md or Cursor user rules",
+    repoInstructions: ["AGENTS.md", ".cursor/rules/*.mdc"],
+    userInstructions: ["Cursor user rules"],
+    workspaceHooks: [],
+    userHooks: [],
     officialDocsUrl: "https://docs.cursor.com/context/model-context-protocol",
     lastVerifiedAt: "2026-04-19",
   },
@@ -95,11 +97,17 @@ export const RELAY_MCP_CLIENTS: readonly RelayMcpClientDescriptor[] = [
     name: "VS Code",
     supportTier: "supported",
     configFormat: "json-servers",
-    configPathLabel: "User mcp.json or .vscode/mcp.json",
+    mcpConfig: "User mcp.json or .vscode/mcp.json",
     supportedTransports: ["local", "remote"],
-    instructionSurface: "agents_md",
-    instructionPathLabel: "AGENTS.md",
-    officialDocsUrl: "https://code.visualstudio.com/updates/v1_102",
+    repoInstructions: [
+      "AGENTS.md",
+      ".github/copilot-instructions.md",
+      ".github/instructions/*.instructions.md",
+    ],
+    userInstructions: ["VS Code user instruction files"],
+    workspaceHooks: [],
+    userHooks: [],
+    officialDocsUrl: "https://code.visualstudio.com/docs/copilot/customization/custom-instructions",
     lastVerifiedAt: "2026-04-19",
   },
   {
@@ -107,11 +115,13 @@ export const RELAY_MCP_CLIENTS: readonly RelayMcpClientDescriptor[] = [
     name: "Windsurf",
     supportTier: "supported",
     configFormat: "json-mcpServers",
-    configPathLabel: "~/.codeium/mcp_config.json",
+    mcpConfig: "~/.codeium/mcp_config.json",
     supportedTransports: ["local", "remote"],
-    instructionSurface: "rules",
-    instructionPathLabel: ".windsurfrules or project rules",
-    officialDocsUrl: "https://docs.windsurf.com/plugins/cascade/mcp",
+    repoInstructions: ["AGENTS.md", ".windsurf/rules/*"],
+    userInstructions: ["~/.codeium/windsurf/memories/global_rules.md"],
+    workspaceHooks: [".windsurf/hooks.json"],
+    userHooks: ["~/.codeium/windsurf/hooks.json"],
+    officialDocsUrl: "https://docs.windsurf.com/plugins/cascade/memories",
     lastVerifiedAt: "2026-04-19",
   },
   {
@@ -119,10 +129,16 @@ export const RELAY_MCP_CLIENTS: readonly RelayMcpClientDescriptor[] = [
     name: "OpenAI Codex",
     supportTier: "validated",
     configFormat: "toml-codex",
-    configPathLabel: "~/.codex/config.toml",
+    mcpConfig: "~/.codex/config.toml",
     supportedTransports: ["local"],
-    instructionSurface: "agents_md",
-    instructionPathLabel: "AGENTS.md",
+    repoInstructions: ["AGENTS.md"],
+    userInstructions: [
+      "$CODEX_HOME/AGENTS.md",
+      "$CODEX_HOME/AGENTS.override.md",
+      "model_instructions_file in ~/.codex/config.toml",
+    ],
+    workspaceHooks: [],
+    userHooks: [],
     officialDocsUrl: "https://developers.openai.com/learn/docs-mcp",
     lastVerifiedAt: "2026-04-19",
   },
@@ -131,11 +147,16 @@ export const RELAY_MCP_CLIENTS: readonly RelayMcpClientDescriptor[] = [
     name: "OpenCode",
     supportTier: "supported",
     configFormat: "json-opencode",
-    configPathLabel: "~/.config/opencode/opencode.json or opencode.json",
+    mcpConfig: "~/.config/opencode/opencode.json or opencode.json",
     supportedTransports: ["local", "remote"],
-    instructionSurface: "instructions",
-    instructionPathLabel: "opencode.json instructions",
-    officialDocsUrl: "https://opencode.ai/docs/config",
+    repoInstructions: ["AGENTS.md", "opencode.json[c] instructions"],
+    userInstructions: [
+      "~/.config/opencode/AGENTS.md",
+      "~/.config/opencode/opencode.json[c] instructions",
+    ],
+    workspaceHooks: [],
+    userHooks: [],
+    officialDocsUrl: "https://open-code.ai/docs/en/config",
     lastVerifiedAt: "2026-04-19",
   },
   {
@@ -143,11 +164,13 @@ export const RELAY_MCP_CLIENTS: readonly RelayMcpClientDescriptor[] = [
     name: "Gemini CLI",
     supportTier: "validated",
     configFormat: "json-mcpServers",
-    configPathLabel: "~/.gemini/settings.json",
+    mcpConfig: "~/.gemini/settings.json",
     supportedTransports: ["local", "remote"],
-    instructionSurface: "none",
-    instructionPathLabel: null,
-    officialDocsUrl: "https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md",
+    repoInstructions: ["GEMINI.md", "AGENTS.md (if added to context.fileName)"],
+    userInstructions: ["~/.gemini/GEMINI.md"],
+    workspaceHooks: [".gemini/settings.json"],
+    userHooks: ["~/.gemini/settings.json"],
+    officialDocsUrl: "https://geminicli.com/docs/reference/configuration/",
     lastVerifiedAt: "2026-04-19",
   },
   {
@@ -155,11 +178,13 @@ export const RELAY_MCP_CLIENTS: readonly RelayMcpClientDescriptor[] = [
     name: "Warp",
     supportTier: "supported",
     configFormat: "json-mcpServers",
-    configPathLabel: "~/.warp/mcp.json",
+    mcpConfig: "~/.warp/mcp.json",
     supportedTransports: ["local", "remote"],
-    instructionSurface: "project_instructions",
-    instructionPathLabel: "WARP.md",
-    officialDocsUrl: "https://docs.warp.dev/knowledge-and-collaboration/rules",
+    repoInstructions: ["AGENTS.md", "WARP.md (legacy)"],
+    userInstructions: ["Warp global rules"],
+    workspaceHooks: [],
+    userHooks: [],
+    officialDocsUrl: "https://docs.warp.dev/agent-platform/capabilities/rules",
     lastVerifiedAt: "2026-04-19",
   },
   {
@@ -167,11 +192,13 @@ export const RELAY_MCP_CLIENTS: readonly RelayMcpClientDescriptor[] = [
     name: "Antigravity",
     supportTier: "experimental",
     configFormat: "json-mcpServers",
-    configPathLabel: "~/.antigravity/mcp.json",
+    mcpConfig: "Experimental raw MCP config (client-managed)",
     supportedTransports: ["local", "remote"],
-    instructionSurface: "experimental",
-    instructionPathLabel: null,
-    officialDocsUrl: "https://github.com/mcp/io.github.upstash/context7",
+    repoInstructions: [],
+    userInstructions: [],
+    workspaceHooks: [],
+    userHooks: [],
+    officialDocsUrl: "https://antigravity.codes/blog/antigravity-mcp-tutorial",
     lastVerifiedAt: "2026-04-19",
   },
 ] as const

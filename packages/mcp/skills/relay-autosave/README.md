@@ -1,4 +1,4 @@
-# Relay Autosave Hooks — Claude Code
+# Relay Client Setup — Claude Code Hooks
 
 Autonomous save-before-compact / session-end for Claude Code users of Relay.
 
@@ -28,11 +28,11 @@ if the session crashes mid-thought.
 ### One-line install
 
 ```bash
-relay-flush install-claude-code
+relay-flush install-client-setup
 ```
 
 This merges the hook config below into `~/.claude/settings.json`. Re-run
-anytime to refresh.
+any time to refresh.
 
 ### Manual install
 
@@ -74,6 +74,17 @@ project directory to scope it to that project):
           }
         ]
       }
+    ],
+    "StopFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "relay-flush stop_failure --quiet"
+          }
+        ]
+      }
     ]
   }
 }
@@ -90,6 +101,7 @@ Then restart Claude Code. Confirm hooks loaded via `/hooks`.
 | `PreCompact`| Right before Claude Code compacts the chat           | Catch everything before the context is summarized. |
 | `SessionEnd`| When the session ends (normal exit)                  | Graceful save on close. |
 | `Stop`      | When the user interrupts / stops the agent           | Save partial progress before handing control back. |
+| `StopFailure`| When the turn ends because the provider errors      | Best-effort save on failure, not just clean exits. |
 
 All three run the same command. The `reason` argument is telemetry-only — the
 flush itself always does the same thing: sweep any open sessions for this
@@ -112,4 +124,4 @@ Or pass explicitly in the hook command: `relay-flush precompact --project=<uuid>
 
 ## Uninstall
 
-Remove the three entries from `~/.claude/settings.json`.
+Remove the Relay hook entries from `~/.claude/settings.json`.

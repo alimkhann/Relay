@@ -229,7 +229,7 @@ Call this at the start of every coding session to restore project memory.`,
 
   server.tool(
     RELAY_MCP_TOOL_NAMES[6],
-    `Push a structured session snapshot into Relay and run it through the digest + reconcile pipeline. You do NOT need to call this at natural break points — Relay auto-flushes via Claude Code hooks (relay-flush), stdio shutdown, and an opportunistic server-side sweep that runs before every MCP request. Call explicitly only for an immediate checkpoint or when ending a session on a hookless client. Set finalize=false to record state without closing the session.`,
+    `Push a structured session snapshot into Relay and run it through the digest + reconcile pipeline. You do NOT need to call this at natural break points — Relay auto-flushes via supported client hooks (relay-flush), stdio shutdown, and an opportunistic server-side sweep that runs before every MCP request. Call explicitly only for an immediate checkpoint or when ending a session on a hookless client. Set finalize=false to record state without closing the session.`,
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
       summary: z.string().optional().describe("High-level session summary"),

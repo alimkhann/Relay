@@ -1,0 +1,12 @@
+---
+description: Relay repository-specific Cursor guidance that supplements AGENTS.md.
+alwaysApply: true
+---
+
+The canonical repository policy is in `AGENTS.md`. Follow it first.
+
+Cursor-specific guidance for Relay:
+
+- Use this rule only as a supplement to `AGENTS.md`, not as a competing policy source.
+- Cursor has no official Relay-managed hook flow here, so call `checkpoint_context` before compaction-equivalent actions, before switching threads, and after a meaningful unit of work when durable continuity matters.
+- Keep searches and file reads tight. Do not repeatedly scan the repo for the same symbol.

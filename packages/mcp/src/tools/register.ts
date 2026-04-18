@@ -134,7 +134,7 @@ Call this at the start of every coding session to restore project memory.`,
     "save_context",
     `Push a structured session snapshot (summary, decisions, progress, constraints, next steps, notes) into Relay's active work session and run it through the digest + reconcile pipeline.
 
-You DO NOT need to call this at natural break points — Relay auto-flushes on Claude Code's PreCompact/SessionEnd/Stop hooks (via relay-flush), on stdio shutdown, and opportunistically on the server before any MCP request. Call it explicitly only when the agent or user wants an immediate checkpoint (e.g. "save this decision now") or when ending a session from a client without hooks.
+You DO NOT need to call this at natural break points — Relay auto-flushes on supported client hooks (for example Claude Code, Gemini CLI, and Windsurf via relay-flush), on stdio shutdown, and opportunistically on the server before any MCP request. Call it explicitly only when the agent or user wants an immediate checkpoint (e.g. "save this decision now") or when ending a session from a client without hooks.
 
 Set finalize=false to record state without closing the session — useful for mid-session snapshots. Default finalize=true flushes and closes.`,
     saveContextSchema.shape,

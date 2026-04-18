@@ -16,4 +16,10 @@ test-results
 !.env.*.example
 .vercel
 *.pem
+*.key
+*.zip
+*.pptx
+*.eml
 .worktrees
+.tmp
+research

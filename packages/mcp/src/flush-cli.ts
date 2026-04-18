@@ -19,13 +19,22 @@ import { fileURLToPath } from "node:url"
 import { loadConfig } from "./config.js"
 import { RelayClient } from "./client.js"
 
-type FlushReason = "precompact" | "session_end" | "stop" | "explicit"
+type FlushReason =
+  | "precompact"
+  | "precompress"
+  | "session_end"
+  | "stop"
+  | "stop_failure"
+  | "failure"
+  | "mcp_tool_use"
+  | "explicit"
 
 interface ParsedArgs {
   reason: FlushReason
   idleMs: number
   projectId?: string
   quiet: boolean
+  failureOnly: boolean
 }
 
 function parseDuration(value: string): number {
@@ -47,9 +56,18 @@ function parseDuration(value: string): number {
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
-  const args: ParsedArgs = { reason: "explicit", idleMs: 0, quiet: false }
+  const args: ParsedArgs = { reason: "explicit", idleMs: 0, quiet: false, failureOnly: false }
   for (const raw of argv) {
-    if (raw === "precompact" || raw === "session_end" || raw === "stop" || raw === "explicit") {
+    if (
+      raw === "precompact" ||
+      raw === "precompress" ||
+      raw === "session_end" ||
+      raw === "stop" ||
+      raw === "stop_failure" ||
+      raw === "failure" ||
+      raw === "mcp_tool_use" ||
+      raw === "explicit"
+    ) {
       args.reason = raw
       continue
     }
@@ -64,6 +82,9 @@ function parseArgs(argv: string[]): ParsedArgs {
     if (raw.startsWith("--project=")) {
       args.projectId = raw.slice("--project=".length)
       continue
+    }
+    if (raw === "--failure-only") {
+      args.failureOnly = true
     }
   }
   return args
@@ -86,8 +107,8 @@ interface ClaudeSettings {
 
 const RELAY_MARK_COMMAND_PREFIX = "relay-flush"
 
-async function loadSkillHooks(): Promise<Record<string, HookMatcher[]>> {
-  const skillPath = resolve(
+async function loadBundledClaudeHooks(): Promise<Record<string, HookMatcher[]>> {
+  const bundledHooksPath = resolve(
     dirname(fileURLToPath(import.meta.url)),
     "..",
     "skills",
@@ -95,12 +116,12 @@ async function loadSkillHooks(): Promise<Record<string, HookMatcher[]>> {
     "hooks.json",
   )
   try {
-    const raw = await readFile(skillPath, "utf-8")
+    const raw = await readFile(bundledHooksPath, "utf-8")
     const parsed = JSON.parse(raw) as { hooks?: Record<string, HookMatcher[]> }
     return parsed.hooks ?? {}
   } catch {
-    // Fallback: ship the canonical hook set inline so the CLI works even
-    // when the packaged skills/ directory isn't adjacent to dist/.
+    // Fallback: ship the canonical Claude hook set inline so the CLI works
+    // even when the packaged docs directory isn't adjacent to dist/.
     return {
       PreCompact: [
         { matcher: "*", hooks: [{ type: "command", command: "relay-flush precompact --quiet" }] },
@@ -111,7 +132,53 @@ async function loadSkillHooks(): Promise<Record<string, HookMatcher[]>> {
       Stop: [
         { matcher: "*", hooks: [{ type: "command", command: "relay-flush stop --quiet" }] },
       ],
+      StopFailure: [
+        { matcher: "*", hooks: [{ type: "command", command: "relay-flush stop_failure --quiet" }] },
+      ],
     }
+  }
+}
+
+function looksLikeFailureSignal(raw: string) {
+  const normalized = raw.toLowerCase()
+  const patterns = [
+    "rate limit",
+    "quota",
+    "too many requests",
+    "try again later",
+    "api error",
+    "temporarily unavailable",
+    "context window",
+    "request failed",
+  ]
+  return patterns.some((pattern) => normalized.includes(pattern))
+}
+
+async function shouldSkipFailureOnlyFlush() {
+  const chunks: string[] = []
+  for await (const chunk of process.stdin) {
+    chunks.push(typeof chunk === "string" ? chunk : chunk.toString("utf-8"))
+  }
+
+  const raw = chunks.join("").trim()
+  if (!raw) return true
+
+  if (looksLikeFailureSignal(raw)) return false
+
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    const candidateValues = [
+      parsed["prompt_response"],
+      parsed["reason"],
+      parsed["message"],
+      JSON.stringify(parsed["tool_info"] ?? null),
+    ]
+      .filter((value): value is string => typeof value === "string")
+      .join("\n")
+
+    return !looksLikeFailureSignal(candidateValues)
+  } catch {
+    return !looksLikeFailureSignal(raw)
   }
 }
 
@@ -135,7 +202,7 @@ function mergeHookEvent(existing: HookMatcher[] | undefined, incoming: HookMatch
   return merged
 }
 
-async function installClaudeCodeSkill(quiet: boolean) {
+async function installClaudeCodeSetup(quiet: boolean) {
   const settingsPath = join(homedir(), ".claude", "settings.json")
   await mkdir(dirname(settingsPath), { recursive: true })
 
@@ -147,7 +214,7 @@ async function installClaudeCodeSkill(quiet: boolean) {
     // File doesn't exist yet or isn't JSON — we'll create a fresh one.
   }
 
-  const incoming = await loadSkillHooks()
+  const incoming = await loadBundledClaudeHooks()
   const nextHooks: Record<string, HookMatcher[]> = { ...(settings.hooks ?? {}) }
   for (const [event, matchers] of Object.entries(incoming)) {
     nextHooks[event] = mergeHookEvent(nextHooks[event], matchers)
@@ -165,13 +232,21 @@ async function installClaudeCodeSkill(quiet: boolean) {
 
 async function main() {
   const rawArgs = process.argv.slice(2)
-  if (rawArgs[0] === "install-claude-code" || rawArgs[0] === "install-skill") {
+  if (
+    rawArgs[0] === "install-claude-code" ||
+    rawArgs[0] === "install-client-setup" ||
+    rawArgs[0] === "install-skill"
+  ) {
     const quiet = rawArgs.includes("--quiet") || rawArgs.includes("-q")
-    await installClaudeCodeSkill(quiet)
+    await installClaudeCodeSetup(quiet)
     process.exit(0)
   }
 
   const args = parseArgs(rawArgs)
+
+  if (args.failureOnly && await shouldSkipFailureOnlyFlush()) {
+    process.exit(0)
+  }
 
   let config
   try {

@@ -37,7 +37,8 @@ Relay prints the approval URL and session code so you can open it manually on an
 
 - Detects supported MCP client config locations
 - Writes Relay MCP config using each client's native config format
-- Installs Claude Code autosave hooks where supported
+- Installs client setup only where the client exposes an official support surface
+- Adds Claude Code, Gemini CLI, and Windsurf hooks where supported
 - Saves Relay auth in `~/.relay/mcp.json`
 
 ## Uninstall
@@ -69,4 +70,4 @@ Publish:
 pnpm release:cli
 ```
 
-If you publish manually, run the release commands locally after bumping the package version.
+If you publish manually, run `pnpm release:dry-run` first and bump the package version intentionally.

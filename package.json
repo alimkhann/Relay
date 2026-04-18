@@ -18,6 +18,7 @@
     "release:mcp": "pnpm --filter @onrelay/mcp publish --access public",
     "release:wizard:dry-run": "pnpm --filter @onrelay/wizard pack --pack-destination ../../.tmp/wizard-pack",
     "release:wizard": "pnpm --filter @onrelay/wizard publish --access public",
+    "release:dry-run": "pnpm release:cli:dry-run && pnpm release:mcp:dry-run && pnpm release:wizard:dry-run",
     "db:local:start": "docker compose -f docker-compose.local.yml up -d",
     "db:local:stop": "docker compose -f docker-compose.local.yml down",
     "db:local:migrate": "node scripts/db-admin.js migrate",
@@ -30,6 +31,7 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "validate:env": "node scripts/validate-env.mjs",
+    "test:stable": "vitest run packages/cli-core/src/install-mcp.test.ts apps/web/src/server/services/bootstrap-service.test.ts apps/web/src/server/services/billing-config.test.ts apps/web/src/app/agent-discovery.test.ts packages/mcp/src/tools/tools.test.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test"

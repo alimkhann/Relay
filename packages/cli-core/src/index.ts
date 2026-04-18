@@ -17,11 +17,12 @@ export { installMcpConfig, uninstallMcpConfig, validateInstalledMcpConfig } from
 export {
   installClientSetup,
   uninstallClientSetup,
+  validateInstalledClientSetup,
   installSkillFile,
   installUniversalSkillFile,
   uninstallSkillFile,
   uninstallUniversalSkillFile
-} from "./install-skill"
+} from "./install-client-setup"
 export { type ProjectSummary, listProjects, getProjectDashboard } from "./project-api"
 export { printBanner, success, info, warn, error, step } from "./ui"
 export {

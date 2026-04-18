@@ -13,7 +13,7 @@ import { mergeDigestIntoState } from "./project-state-service"
 
 export interface FlushWorkSessionInput {
   sessionId: string
-  reason?: "precompact" | "session_end" | "stop" | "sweep" | "explicit"
+  reason?: string
   summaryShort?: string | null
   /** Overrides the session's latest structured state (e.g. passed from save_context tool) */
   structuredState?: WorkSessionStructuredState | null
@@ -140,7 +140,7 @@ async function runDigestAndReconcile(
  * Idempotent: calling on an already-closed session is a no-op.
  * Safe to call from:
  *   - Explicit `save_context` / `checkpoint_context` MCP tool.
- *   - Client-side hooks (Claude Code PreCompact, SessionEnd, Stop).
+ *   - Client-side hooks (for example Claude Code, Gemini CLI, or Windsurf).
  *   - Opportunistic server-side sweep at the head of MCP requests.
  */
 export async function flushWorkSession(
@@ -255,7 +255,7 @@ export interface SweepOpenWorkSessionsInput {
   idleMs?: number
   /** Cap on number of sessions to flush in one sweep (default 3). */
   limit?: number
-  reason?: FlushWorkSessionInput["reason"]
+  reason?: string
 }
 
 export interface SweepOpenWorkSessionsResult {
@@ -267,7 +267,7 @@ export interface SweepOpenWorkSessionsResult {
 /**
  * Opportunistic sweep: finds stale open work sessions for a user and runs
  * them through the flush pipeline. Used by:
- *   - `relay-flush` CLI helper (called from Claude Code hooks).
+ *   - `relay-flush` CLI helper (called from supported client hooks).
  *   - Opportunistic in-request sweep at the head of MCP stream route.
  */
 export async function sweepOpenWorkSessions(

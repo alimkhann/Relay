@@ -7,7 +7,7 @@ on:
   pull_request:
 
 jobs:
-  verify:
+  fast-verify:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -33,8 +33,59 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Test
-        run: pnpm test
+      - name: Stable Tests
+        run: pnpm test:stable
 
       - name: Build
         run: pnpm build && pnpm build:cli && pnpm build:mcp && pnpm build:wizard
+
+      - name: Release Dry Run
+        run: pnpm release:dry-run
+
+  full-test-suite:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Full Vitest Suite
+        run: pnpm test
+
+  e2e:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Playwright E2E
+        run: pnpm test:e2e

@@ -27,9 +27,7 @@ const structuredStateSchema = z
 const flushRequestSchema = z.object({
   /** When omitted, the route sweeps all open sessions for this viewer+project. */
   sessionId: z.string().min(1).optional(),
-  reason: z
-    .enum(["precompact", "session_end", "stop", "sweep", "explicit"])
-    .optional(),
+  reason: z.string().min(1).max(64).optional(),
   summaryShort: z.string().nullable().optional(),
   structuredState: structuredStateSchema,
   /** Sweep option: only flush sessions idle longer than this many ms. */

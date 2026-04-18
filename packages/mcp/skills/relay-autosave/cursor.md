@@ -3,7 +3,7 @@
 Cursor does not yet ship a real hook API (no equivalent to Claude Code's
 `PreCompact`, `SessionEnd`, `Stop`). Until it does, Relay gives you two
 autonomy paths for Cursor that work **today** and converge on the same flush
-pipeline as the Claude Code skill.
+pipeline as the Claude Code hook setup.
 
 ---
 
@@ -92,4 +92,4 @@ flush point when the others can't reach.
 - Paths 2 & 3 are layered optional autonomy. Neither requires Cursor to
   support hooks natively.
 - When Cursor ships a real hook API, Relay will add first-class Cursor
-  support to `relay-flush install-cursor`.
+  hook setup instead of relying on these fallback paths.

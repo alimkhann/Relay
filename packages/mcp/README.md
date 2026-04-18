@@ -19,10 +19,17 @@ npx -y @onrelay/mcp
 
 The `relay-mcp` binary reads Relay credentials from `~/.relay/mcp.json` or `RELAY_API_TOKEN`.
 
-## Claude Code hooks
+## Hook-capable clients
 
-Relay can install Claude Code autosave hooks into `~/.claude/settings.json` so
-`relay-flush` runs on `PreCompact`, `SessionEnd`, and `Stop`.
+Relay installs extra client setup only where the client has an official hook surface.
+
+- Claude Code: `PreCompact`, `SessionEnd`, `Stop`, `StopFailure`
+- Gemini CLI: `PreCompress`, `SessionEnd`, `AfterAgent`
+- Windsurf: `post_cascade_response_with_transcript`, `post_mcp_tool_use`
+
+Relay does not promise a universal pre-rate-limit save hook. The fallback model
+is best-effort pre-loss protection: native hooks where supported, opportunistic
+server sweeps, and explicit checkpoints for hookless clients.
 
 ## Troubleshooting
 
@@ -32,6 +39,6 @@ Relay can install Claude Code autosave hooks into `~/.claude/settings.json` so
 ## Publish
 
 ```bash
-pnpm release:mcp:dry-run
+pnpm release:dry-run
 pnpm release:mcp
 ```

@@ -11,7 +11,7 @@ import {
 
 export interface DetectedIDE extends RelayMcpClientDescriptor {
   mcpConfigPath: string
-  instructionPath: string | null
+  clientSetupPath: string | null
   legacyConfigPaths: string[]
 }
 
@@ -38,7 +38,7 @@ function buildDetectedIDE(
   id: RelayMcpClientId,
   input: {
     mcpConfigPath: string
-    instructionPath?: string | null
+    clientSetupPath?: string | null
     legacyConfigPaths?: string[]
   }
 ): DetectedIDE {
@@ -50,7 +50,7 @@ function buildDetectedIDE(
   return {
     ...descriptor,
     mcpConfigPath: input.mcpConfigPath,
-    instructionPath: input.instructionPath ?? descriptor.instructionPathLabel ?? null,
+    clientSetupPath: input.clientSetupPath ?? null,
     legacyConfigPaths: input.legacyConfigPaths ?? [],
   }
 }
@@ -70,7 +70,7 @@ const CLIENT_REGISTRY: readonly ClientRegistryEntry[] = [
       if (!(await exists(configPath)) && !(await exists(configDir))) return null
       return buildDetectedIDE("claude", {
         mcpConfigPath: configPath,
-        instructionPath: join(configDir, "settings.json"),
+        clientSetupPath: join(configDir, "settings.json"),
       })
     },
   },
@@ -95,7 +95,6 @@ const CLIENT_REGISTRY: readonly ClientRegistryEntry[] = [
       if (!(await exists(cursorDir))) return null
       return buildDetectedIDE("cursor-project", {
         mcpConfigPath: join(cursorDir, "mcp.json"),
-        instructionPath: join(cursorDir, "rules"),
       })
     },
   },
@@ -109,7 +108,6 @@ const CLIENT_REGISTRY: readonly ClientRegistryEntry[] = [
       if (!(await exists(configPath)) && !(await exists(legacyPath)) && !(await exists(join(home, ".cursor")))) return null
       return buildDetectedIDE("cursor-global", {
         mcpConfigPath: configPath,
-        instructionPath: "AGENTS.md or Cursor user rules",
         legacyConfigPaths: [legacyPath],
       })
     },
@@ -123,7 +121,6 @@ const CLIENT_REGISTRY: readonly ClientRegistryEntry[] = [
       if (!(await exists(configPath)) && !(await exists(dirnameOf(configPath)))) return null
       return buildDetectedIDE("vscode", {
         mcpConfigPath: configPath,
-        instructionPath: "AGENTS.md",
       })
     },
   },
@@ -137,7 +134,7 @@ const CLIENT_REGISTRY: readonly ClientRegistryEntry[] = [
       if (!(await exists(configPath)) && !(await exists(legacyPath)) && !(await exists(join(home, ".codeium")))) return null
       return buildDetectedIDE("windsurf", {
         mcpConfigPath: configPath,
-        instructionPath: ".windsurfrules or project rules",
+        clientSetupPath: join(home, ".codeium", "windsurf", "hooks.json"),
         legacyConfigPaths: [legacyPath],
       })
     },
@@ -150,7 +147,6 @@ const CLIENT_REGISTRY: readonly ClientRegistryEntry[] = [
       if (!(await exists(configPath)) && !(await exists(legacyPath)) && !(await exists(join(home, ".codex")))) return null
       return buildDetectedIDE("codex-cli", {
         mcpConfigPath: configPath,
-        instructionPath: join(home, ".codex", "AGENTS.md"),
         legacyConfigPaths: [legacyPath],
       })
     },
@@ -175,7 +171,6 @@ const CLIENT_REGISTRY: readonly ClientRegistryEntry[] = [
       }
       return buildDetectedIDE("opencode", {
         mcpConfigPath: detectedPath ?? globalJson,
-        instructionPath: detectedPath ?? globalJson,
         legacyConfigPaths: legacyPaths,
       })
     },
@@ -192,6 +187,7 @@ const CLIENT_REGISTRY: readonly ClientRegistryEntry[] = [
       }
       return buildDetectedIDE("gemini-cli", {
         mcpConfigPath: (await exists(configPath)) || hasPrimaryDir ? configPath : fallbackPath,
+        clientSetupPath: (await exists(configPath)) || hasPrimaryDir ? configPath : fallbackPath,
         legacyConfigPaths: [legacyPath],
       })
     },
@@ -205,7 +201,6 @@ const CLIENT_REGISTRY: readonly ClientRegistryEntry[] = [
       if (!(await exists(configPath)) && !(await exists(fallbackPath)) && !hasPrimaryDir) return null
       return buildDetectedIDE("warp", {
         mcpConfigPath: (await exists(configPath)) || hasPrimaryDir ? configPath : fallbackPath,
-        instructionPath: "WARP.md",
       })
     },
   },

@@ -32,6 +32,17 @@
           }
         ]
       }
+    ],
+    "StopFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "relay-flush stop_failure --quiet"
+          }
+        ]
+      }
     ]
   }
 }

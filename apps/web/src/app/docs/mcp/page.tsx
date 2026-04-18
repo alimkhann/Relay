@@ -17,7 +17,7 @@ export default function McpDocsPage() {
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Quick install</h2>
           <p className="text-[15px] text-[var(--relay-muted)]">
-            Run the setup wizard to authenticate and install Relay MCP using local stdio. Relay only installs extra client setup where the client has an official standards-based surface, such as Claude Code hooks.
+            Run the setup wizard to authenticate and install Relay MCP using local stdio. Relay only installs extra client setup where the client has an official standards-based surface, such as Claude Code, Gemini CLI, or Windsurf hooks.
           </p>
           <pre className="rounded-md bg-[var(--relay-soft)] border border-[var(--relay-line)] px-4 py-3 font-mono text-[13px] text-[var(--relay-ink)]">
             npx @onrelay/wizard
@@ -67,19 +67,30 @@ export default function McpDocsPage() {
               <thead>
                 <tr className="border-b border-[var(--relay-line)]">
                   <th className="px-4 py-3 text-left font-semibold text-[var(--relay-ink)]">Client</th>
-                  <th className="px-4 py-3 text-left font-semibold text-[var(--relay-ink)]">Config path</th>
+                  <th className="px-4 py-3 text-left font-semibold text-[var(--relay-ink)]">MCP config</th>
                   <th className="px-4 py-3 text-left font-semibold text-[var(--relay-ink)]">Transport</th>
-                  <th className="px-4 py-3 text-left font-semibold text-[var(--relay-ink)]">Instructions / hooks</th>
+                  <th className="px-4 py-3 text-left font-semibold text-[var(--relay-ink)]">Repo instructions</th>
+                  <th className="px-4 py-3 text-left font-semibold text-[var(--relay-ink)]">User instructions</th>
+                  <th className="px-4 py-3 text-left font-semibold text-[var(--relay-ink)]">Hooks</th>
                   <th className="px-4 py-3 text-left font-semibold text-[var(--relay-ink)]">Tier</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--relay-line)]">
                 {RELAY_MCP_CLIENTS.map((client) => (
                   <tr key={client.id}>
-                    <td className="px-4 py-3 text-[var(--relay-ink)]">{client.name}</td>
-                    <td className="px-4 py-3 text-[var(--relay-muted)]">{client.configPathLabel}</td>
+                    <td className="px-4 py-3 text-[var(--relay-ink)]">
+                      <a href={client.officialDocsUrl} className="underline underline-offset-2">
+                        {client.name}
+                      </a>
+                      <div className="mt-1 text-[11px] text-[var(--relay-muted)]">Verified {client.lastVerifiedAt}</div>
+                    </td>
+                    <td className="px-4 py-3 text-[var(--relay-muted)]">{client.mcpConfig}</td>
                     <td className="px-4 py-3 text-[var(--relay-muted)]">{client.supportedTransports.join(", ")}</td>
-                    <td className="px-4 py-3 text-[var(--relay-muted)]">{client.instructionPathLabel ?? "None"}</td>
+                    <td className="px-4 py-3 text-[var(--relay-muted)]">{client.repoInstructions.join(", ") || "None"}</td>
+                    <td className="px-4 py-3 text-[var(--relay-muted)]">{client.userInstructions.join(", ") || "None"}</td>
+                    <td className="px-4 py-3 text-[var(--relay-muted)]">
+                      {[...client.workspaceHooks, ...client.userHooks].join(", ") || "None"}
+                    </td>
                     <td className="px-4 py-3 text-[var(--relay-muted)]">{client.supportTier}</td>
                   </tr>
                 ))}

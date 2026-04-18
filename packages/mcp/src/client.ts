@@ -266,7 +266,7 @@ export class RelayClient {
    *
    * Safe to call repeatedly: a closed session is a no-op on the server.
    */
-  async flushWorkSession(reason: "precompact" | "session_end" | "stop" | "explicit" = "explicit") {
+  async flushWorkSession(reason = "explicit") {
     if (!this.workSession) return
     const { id, projectId } = this.workSession
 

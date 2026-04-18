@@ -12,6 +12,7 @@ import {
   detectIDEs,
   installMcpConfig,
   installClientSetup,
+  validateInstalledClientSetup,
   validateInstalledMcpConfig,
   listProjects,
   printBanner,
@@ -135,6 +136,10 @@ export async function runWizard(options: { apiBase?: string; analytics?: RelayCl
 
         const setupPath = await installClientSetup(ide)
         if (setupPath) {
+          const isSetupValid = await validateInstalledClientSetup(ide)
+          if (!isSetupValid) {
+            throw new Error(`Relay client setup did not validate for ${ide.name}.`)
+          }
           success(`Client setup → ${pc.dim(setupPath)}`)
         }
       }
