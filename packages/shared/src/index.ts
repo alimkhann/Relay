@@ -1,5 +1,6 @@
 export * from "./constants/platforms"
 export * from "./constants/canon"
+export * from "./constants/mcp-clients"
 export * from "./schemas/binding"
 export * from "./schemas/billing"
 export * from "./schemas/canon"

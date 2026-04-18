@@ -2,6 +2,7 @@ import { createRepositoryBundle } from "@relay/db"
 import type { BillingStatusDto, UserEntitlementsDto } from "@relay/shared"
 
 import { ForbiddenError, TooManyRequestsError } from "@/server/http/errors"
+import { logServerEvent } from "@/server/logging/logger"
 import { FREE_LIMITS, getDefaultEntitlements, getPlanLimits } from "./billing-config"
 
 type WindowKey = "minute" | "day" | "month"
@@ -115,6 +116,22 @@ export async function consumeQuota(userId: string, featureKey: string, windowKey
       }
     )
   }
+  await logServerEvent({
+    level: "info",
+    surface: "web-api",
+    area: "billing",
+    event: "quota_consumed",
+    message: "Consumed Relay quota for a billing-scoped feature.",
+    userId,
+    context: {
+      featureKey,
+      windowKey,
+      amount,
+      limit,
+      remaining: limit - counter.count,
+      plan: plan ?? "free",
+    },
+  }).catch(() => {})
   return { ...counter, limit, remaining: limit - counter.count }
 }
 

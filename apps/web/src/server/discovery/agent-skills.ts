@@ -68,7 +68,7 @@ npx @onrelay/wizard
 
 - Relay's hosted streamable HTTP MCP endpoint is \`https://www.onrelay.app/api/mcp/stream\`.
 - The safest default is the setup wizard, not manual token editing.
-- Once connected, start sessions by calling \`project.list\` and then \`project.get_brief\`.
+- Once connected, start sessions by calling \`list_projects\` and then \`get_brief\`.
 `,
   }),
   buildSkillDocument({
@@ -82,16 +82,16 @@ Use this skill when a coding agent needs the current Relay context before making
 
 ## Workflow
 
-1. Call \`project.list\`.
+1. Call \`list_projects\`.
 2. Match the current repository or working directory to the most likely Relay project.
-3. If needed, call \`project.set_current\` with the matching project ID.
-4. Call \`project.get_brief\` to load the current project brief.
+3. If needed, call \`set_current_project\` with the matching project ID.
+4. Call \`get_brief\` to load the current project brief.
 
 ## Guidance
 
-- Prefer \`project.get_brief\` for human-readable working context.
-- Use \`project.get_state\` when the task needs structured state.
-- Use \`memory.search\` or \`memory.recall\` before making architectural changes.
+- Prefer \`get_brief\` for human-readable working context.
+- Use \`get_project_state\` when the task needs structured state.
+- Use \`search_context\` or \`recall_context\` before making architectural changes.
 
 ## When to refresh
 
@@ -111,9 +111,9 @@ Use this skill when a coding session produced new durable context that should be
 
 ## Preferred write pattern
 
-- Use \`memory.add\` immediately for important individual decisions, constraints, or tasks.
-- Use \`context.checkpoint\` for a mid-session snapshot that should not close the work session.
-- Use \`context.save\` when you want to finalize the session summary.
+- Use \`add_memory\` immediately for important individual decisions, constraints, or tasks.
+- Use \`checkpoint_context\` for a mid-session snapshot that should not close the work session.
+- Use \`save_context\` when you want to finalize the session summary.
 
 ## Minimum end-of-session payload
 

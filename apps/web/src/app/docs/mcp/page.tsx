@@ -1,4 +1,5 @@
 import { Suspense } from "react"
+import { RELAY_MCP_CLIENTS } from "@relay/shared"
 
 import { DocsFooterNav } from "@/components/docs/docs-footer-nav"
 
@@ -16,13 +17,13 @@ export default function McpDocsPage() {
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Quick install</h2>
           <p className="text-[15px] text-[var(--relay-muted)]">
-            Run the setup wizard to authenticate, install MCP config, and set up skill files:
+            Run the setup wizard to authenticate and install Relay MCP using local stdio. Relay only installs extra client setup where the client has an official standards-based surface, such as Claude Code hooks.
           </p>
           <pre className="rounded-md bg-[var(--relay-soft)] border border-[var(--relay-line)] px-4 py-3 font-mono text-[13px] text-[var(--relay-ink)]">
             npx @onrelay/wizard
           </pre>
           <p className="text-[13px] text-[var(--relay-muted)]">
-            The wizard will open your browser to authenticate, then configure your IDE automatically.
+            The default install path is local stdio. Relay&apos;s hosted HTTP MCP remains experimental and is documented separately after auth refresh parity is fully hardened.
           </p>
         </section>
 
@@ -46,17 +47,48 @@ export default function McpDocsPage() {
 }`}</pre>
             </li>
             <li>
-              Add the MCP server to your IDE config (e.g. <code className="text-[13px] font-mono text-[var(--relay-ink)]">~/.claude/mcp.json</code>):
+              Add the MCP server to your client config. Relay follows each client&apos;s native format instead of forcing one shared JSON schema:
               <pre className="mt-2 rounded-md bg-[var(--relay-soft)] border border-[var(--relay-line)] px-4 py-3 font-mono text-[13px] text-[var(--relay-ink)]">{`{
   "mcpServers": {
     "relay": {
       "command": "npx",
-       "args": ["-y", "@onrelay/mcp"]
+      "args": ["-y", "@onrelay/mcp"]
     }
   }
 }`}</pre>
             </li>
           </ol>
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Compatibility matrix</h2>
+          <div className="overflow-x-auto rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="border-b border-[var(--relay-line)]">
+                  <th className="px-4 py-3 text-left font-semibold text-[var(--relay-ink)]">Client</th>
+                  <th className="px-4 py-3 text-left font-semibold text-[var(--relay-ink)]">Config path</th>
+                  <th className="px-4 py-3 text-left font-semibold text-[var(--relay-ink)]">Transport</th>
+                  <th className="px-4 py-3 text-left font-semibold text-[var(--relay-ink)]">Instructions / hooks</th>
+                  <th className="px-4 py-3 text-left font-semibold text-[var(--relay-ink)]">Tier</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--relay-line)]">
+                {RELAY_MCP_CLIENTS.map((client) => (
+                  <tr key={client.id}>
+                    <td className="px-4 py-3 text-[var(--relay-ink)]">{client.name}</td>
+                    <td className="px-4 py-3 text-[var(--relay-muted)]">{client.configPathLabel}</td>
+                    <td className="px-4 py-3 text-[var(--relay-muted)]">{client.supportedTransports.join(", ")}</td>
+                    <td className="px-4 py-3 text-[var(--relay-muted)]">{client.instructionPathLabel ?? "None"}</td>
+                    <td className="px-4 py-3 text-[var(--relay-muted)]">{client.supportTier}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[13px] text-[var(--relay-muted)]">
+            `validated` means Relay matches the current official format and has been checked recently. `supported` means Relay follows the published format but the integration surface is still narrower. `experimental` means the client is still installable, but Relay does not yet claim first-class polish.
+          </p>
         </section>
 
         <section className="space-y-3">
@@ -67,9 +99,13 @@ export default function McpDocsPage() {
               { name: "get_project_state", desc: "Get full project state including objectives and constraints" },
               { name: "list_projects", desc: "List all Relay projects" },
               { name: "add_memory", desc: "Save a decision, constraint, or note to project memory" },
+              { name: "checkpoint_context", desc: "Save a mid-session snapshot without finalizing the work session" },
               { name: "manage_memory", desc: "Update, archive, or delete a memory item" },
+              { name: "recall_context", desc: "Search memory and pull project state in one call" },
               { name: "search_context", desc: "Search across project context and memory" },
               { name: "save_context", desc: "Save a session summary with decisions and next steps" },
+              { name: "set_current_project", desc: "Pin the active Relay project for the current MCP session" },
+              { name: "set_project_state", desc: "Correct or bootstrap high-level project state" },
               { name: "update_project", desc: "Rename a project or refresh its description" },
             ].map((tool) => (
               <div key={tool.name} className="px-4 py-3">

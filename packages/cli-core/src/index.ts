@@ -13,15 +13,16 @@ export {
   isDevMode,
   getMcpCommand
 } from "./detect"
-export { installMcpConfig, uninstallMcpConfig } from "./install-mcp"
+export { installMcpConfig, uninstallMcpConfig, validateInstalledMcpConfig } from "./install-mcp"
 export {
+  installClientSetup,
+  uninstallClientSetup,
   installSkillFile,
   installUniversalSkillFile,
   uninstallSkillFile,
   uninstallUniversalSkillFile
 } from "./install-skill"
 export { type ProjectSummary, listProjects, getProjectDashboard } from "./project-api"
-export { SKILL_FILE_NAME, SKILL_CONTENT } from "./skill-content"
 export { printBanner, success, info, warn, error, step } from "./ui"
 export {
   type AuthResult,

@@ -8,8 +8,8 @@ import {
   getConfigPath,
   detectIDEs,
   installMcpConfig,
-  installSkillFile,
-  installUniversalSkillFile,
+  installClientSetup,
+  validateInstalledMcpConfig,
   listProjects,
   printBanner,
   success,
@@ -17,54 +17,11 @@ import {
   step,
   startAuthFlow,
   startScopedMcpAuthFlow,
-  type DetectedIDE,
 } from "@relay/cli-core"
 import { startUnifiedAuthFlow } from "./auth"
 import { runUninstall } from "./uninstall"
 
 const DEFAULT_API_BASE = "https://www.onrelay.app"
-
-interface McpConfig {
-  mcpServers?: Record<string, {
-    command?: string
-    args?: string[]
-    url?: string
-    headers?: Record<string, string>
-  }>
-}
-
-async function installMcpConfigWithMode(
-  ide: DetectedIDE,
-  mode: "local" | "remote",
-  remoteUrl?: string,
-  bearerToken?: string
-): Promise<void> {
-  if (mode === "local") {
-    await installMcpConfig(ide)
-    return
-  }
-
-  // Remote HTTP MCP config
-  const { readFile, writeFile, mkdir } = await import("node:fs/promises")
-  const { dirname } = await import("node:path")
-
-  let existing: McpConfig = {}
-  try {
-    const raw = await readFile(ide.mcpConfigPath, "utf-8")
-    existing = JSON.parse(raw) as McpConfig
-  } catch {
-    // New file
-  }
-
-  existing.mcpServers = existing.mcpServers ?? {}
-  existing.mcpServers["relay"] = {
-    url: remoteUrl!,
-    headers: { Authorization: `Bearer ${bearerToken!}` }
-  }
-
-  await mkdir(dirname(ide.mcpConfigPath), { recursive: true })
-  await writeFile(ide.mcpConfigPath, JSON.stringify(existing, null, 2) + "\n", "utf-8")
-}
 
 export async function runWizardFlow(options: { apiBase?: string; openBrowser?: boolean } = {}) {
   printBanner()
@@ -162,26 +119,7 @@ export async function runWizardFlow(options: { apiBase?: string; openBrowser?: b
   step("Detecting coding tools...")
   const ides = await detectIDEs()
 
-  // Step 6: MCP transport mode
-  let mcpMode: "local" | "remote" = "local"
-  const remoteUrl = `${auth.apiBase}/api/mcp/stream`
-
-  if (ides.length > 0) {
-    const transport = await p.select({
-      message: "MCP transport mode:",
-      options: [
-        { value: "local", label: "Local stdio (recommended)", hint: "Runs relay-mcp locally" },
-        { value: "remote", label: "Remote HTTP", hint: "Connects to onrelay.app — no local process" }
-      ],
-      initialValue: "local"
-    })
-
-    if (!p.isCancel(transport)) {
-      mcpMode = transport as "local" | "remote"
-    }
-  }
-
-  // Step 7: Install MCP configs and skill files
+  // Step 6: Install MCP configs and client-specific setup
   if (ides.length === 0) {
     info("No supported IDEs detected. You can configure MCP manually.")
   } else {
@@ -201,20 +139,20 @@ export async function runWizardFlow(options: { apiBase?: string; openBrowser?: b
       const selectedIdes = ides.filter((ide) => (selectedIdeIds as string[]).includes(ide.id))
 
       for (const ide of selectedIdes) {
-        await installMcpConfigWithMode(ide, mcpMode, remoteUrl, accessToken)
-        success(`MCP config → ${pc.dim(ide.mcpConfigPath)}`)
+        await installMcpConfig(ide, { mode: "local" })
+        const isInstalled = await validateInstalledMcpConfig(ide)
+        success(`${ide.name} (${ide.supportTier}) MCP config → ${pc.dim(ide.mcpConfigPath)}`)
+        if (!isInstalled) {
+          throw new Error(`Relay MCP install did not validate for ${ide.name}.`)
+        }
 
-        const skillPath = await installSkillFile(ide)
-        if (skillPath) {
-          success(`Skill file → ${pc.dim(skillPath)}`)
+        const setupPath = await installClientSetup(ide)
+        if (setupPath) {
+          success(`Client setup → ${pc.dim(setupPath)}`)
         }
       }
     }
   }
-
-  // Step 8: Universal skill file
-  const universalPath = await installUniversalSkillFile()
-  success(`Universal skill file → ${pc.dim(universalPath)}`)
 
   // Done
   console.log()
@@ -223,6 +161,6 @@ export async function runWizardFlow(options: { apiBase?: string; openBrowser?: b
   info("Next steps:")
   console.log(pc.dim("  1. Open a new terminal session in your project"))
   console.log(pc.dim("  2. Your AI coding tool will auto-discover Relay MCP"))
-  console.log(pc.dim(`  3. Try: "load my project context from Relay"`))
+  console.log(pc.dim("  3. Start by calling list_projects, then get_brief"))
   console.log()
 }

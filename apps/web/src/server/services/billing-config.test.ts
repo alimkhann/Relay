@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { FREE_LIMITS, PRO_LIMITS, STARTER_LIMITS, getPlanLimits } from "./billing-config"
+import { FREE_LIMITS, PLAN_MARKETING_COPY, PRO_LIMITS, STARTER_LIMITS, getPlanLimits } from "./billing-config"
 
 describe("billing plan limits", () => {
   it("returns distinct starter and pro limits", () => {
@@ -22,5 +22,11 @@ describe("billing plan limits", () => {
     expect(PRO_LIMITS.historyRetentionDays).toBe(365)
     expect(PRO_LIMITS.mcpDeepReadDaily).toBe(30)
     expect(PRO_LIMITS.aiAnalysesPerUserDaily).toBe(90)
+  })
+
+  it("derives plan marketing copy from the runtime limits", () => {
+    expect(PLAN_MARKETING_COPY.free.features[0]).toContain(String(FREE_LIMITS.activeProjects))
+    expect(PLAN_MARKETING_COPY.starter.features[1]).toContain(String(STARTER_LIMITS.mcpDeepReadDaily))
+    expect(PLAN_MARKETING_COPY.pro.features[2]).toContain(PRO_LIMITS.captureMonthly.toLocaleString("en-US"))
   })
 })

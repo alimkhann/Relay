@@ -47,6 +47,52 @@ export const PLAN_PRODUCT_IDS = {
   },
 } as const
 
+function formatNumber(value: number) {
+  return new Intl.NumberFormat("en-US").format(value)
+}
+
+export const PLAN_LIMIT_ROWS = [
+  { label: "Active projects", key: "activeProjects" },
+  { label: "Captures / month", key: "captureMonthly" },
+  { label: "Retention", key: "historyRetentionDays" },
+  { label: "MCP basic reads / day", key: "mcpReadDaily" },
+  { label: "MCP deep reads / day", key: "mcpDeepReadDaily" },
+  { label: "MCP writes / day", key: "mcpWriteDaily" },
+  { label: "AI analyses / day", key: "aiAnalysesPerUserDaily" },
+  { label: "Memory items / project", key: "memoryItemsPerProject" },
+] as const
+
+export const PLAN_MARKETING_COPY = {
+  free: {
+    features: [
+      `Up to ${FREE_LIMITS.activeProjects} active projects`,
+      `${formatNumber(FREE_LIMITS.mcpReadDaily)} MCP reads + ${formatNumber(FREE_LIMITS.mcpDeepReadDaily)} deep reads / day`,
+      `${FREE_LIMITS.historyRetentionDays}-day retention, ${formatNumber(FREE_LIMITS.captureMonthly)} captures / month`,
+      "Browser capture across supported AI tools",
+      "Basic context briefs",
+    ],
+  },
+  starter: {
+    features: [
+      `Up to ${STARTER_LIMITS.activeProjects} active projects`,
+      `${formatNumber(STARTER_LIMITS.mcpReadDaily)} MCP reads + ${formatNumber(STARTER_LIMITS.mcpDeepReadDaily)} deep reads / day`,
+      `${STARTER_LIMITS.historyRetentionDays}-day retention, ${formatNumber(STARTER_LIMITS.captureMonthly)} captures / month`,
+      "Autonomous context updates",
+      "Full + continuity briefs",
+    ],
+  },
+  pro: {
+    features: [
+      `Up to ${PRO_LIMITS.activeProjects} active projects`,
+      `${formatNumber(PRO_LIMITS.mcpReadDaily)} MCP reads + ${formatNumber(PRO_LIMITS.mcpDeepReadDaily)} deep reads / day`,
+      `${PRO_LIMITS.historyRetentionDays}-day retention, ${formatNumber(PRO_LIMITS.captureMonthly)} captures / month`,
+      "High-quality model for reflections",
+      "Aggressive autonomy + conflict resolution",
+      "Priority support",
+    ],
+  },
+} as const
+
 export function getPlanLimits(plan: BillingPlanKey): EntitlementLimitsDto {
   if (plan === "pro") return PRO_LIMITS
   if (plan === "starter") return STARTER_LIMITS

@@ -11,6 +11,7 @@ import { describeGeminiError, GEMINI_MODELS, runGeminiJsonWithFallback, type Gem
 import { embedAndRelateItems, emitMemoryEvent } from "./memory-service"
 import { mergeDigestIntoState } from "./project-state-service"
 import { resolveProjectAiBudget } from "./ai-budget-service"
+import { logServerEvent } from "@/server/logging/logger"
 
 interface DigestModelShape extends SessionDigestShape {
   confidence?: number
@@ -707,6 +708,8 @@ async function runDigestJobInternal(
   job: AiJobRunRow,
   timeoutMs = DIGEST_INLINE_TIMEOUT_MS
 ): Promise<DigestJobOutcome> {
+  const queuedAtMs = new Date(job.createdAt).getTime()
+  const runStartedAtMs = Date.now()
   let currentModel: string | null = null
   let currentFallbackUsed = false
   let lastGeminiStage: GeminiStage | null = null
@@ -880,6 +883,28 @@ async function runDigestJobInternal(
       errorMessage: failureMessage,
     }
   } finally {
+    await logServerEvent({
+      level: "info",
+      surface: "web-api",
+      area: "digest",
+      event: "digest_job_finished",
+      message: "Completed a Relay digest job attempt.",
+      userId,
+      context: {
+        projectId: job.projectId,
+        jobId: job.id,
+        status: await repositories.aiJobs.listByProject(job.projectId, {
+          jobKind: "session_digest",
+          limit: 1,
+          statuses: ["completed", "failed", "timed_out", "running", "pending", "deferred"],
+        }).then((jobs) => jobs.find((candidate) => candidate.id === job.id)?.status ?? "unknown"),
+        queueDelayMs: Math.max(0, runStartedAtMs - queuedAtMs),
+        runDurationMs: Math.max(0, Date.now() - runStartedAtMs),
+        model: currentModel,
+        fallbackUsed: currentFallbackUsed,
+        lastGeminiStage,
+      },
+    }).catch(() => {})
     clearTimeout(timeoutHandle)
   }
 }
@@ -1094,6 +1119,26 @@ export async function drainDigestJobs(userId: string, limit = 4) {
 
   for (const [projectId, jobs] of byProject) {
     await runBatchDigestForProject(repositories, userId, projectId, jobs)
+  }
+}
+
+export async function drainDigestJobsForProject(userId: string, projectId: string, limit = 2) {
+  const repositories = createRepositoryBundle(userId)
+  await repositories.aiJobs.markTimedOutOlderThan("session_digest", DIGEST_JOB_TIMEOUT_MINUTES)
+
+  const priorityJobs = await repositories.aiJobs.listByProject(projectId, {
+    jobKind: "session_digest",
+    statuses: ["pending", "timed_out"],
+    limit,
+  })
+
+  for (const job of priorityJobs) {
+    await runDigestJobInternal(repositories, userId, job)
+  }
+
+  const deferredJobs = await repositories.aiJobs.listDeferredByProject(projectId, limit)
+  if (deferredJobs.length > 0) {
+    await runBatchDigestForProject(repositories, userId, projectId, deferredJobs)
   }
 }
 

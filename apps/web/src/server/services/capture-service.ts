@@ -1,11 +1,12 @@
 import { createRepositoryBundle } from "@relay/db"
 import { capturePayloadSchema, withCaptureSignature } from "@relay/shared"
 
-import { resolveProjectAiBudget } from "./ai-budget-service"
-import { decideDigestStrategy, enqueueDigestJob, runDigestJobInline } from "./digest-service"
+import { decideDigestStrategy, drainDigestJobsForProject, enqueueDigestJob } from "./digest-service"
 import { getProjectStateStatus } from "./state-status-service"
+import { logServerEvent } from "@/server/logging/logger"
 
 export async function saveCapture(userId: string, input: unknown) {
+  const startedAt = Date.now()
   const repositories = createRepositoryBundle(userId)
   const parsed = capturePayloadSchema.parse(input)
   const normalizedInput = withCaptureSignature({
@@ -55,6 +56,7 @@ export async function saveCapture(userId: string, input: unknown) {
       turnCount: turns.length
     }
   })
+  await repositories.bootstrapPackets.clearProject(normalizedInput.projectId)
 
   const shouldQueueDigest = latestComparable?.captureSignature !== normalizedInput.session.captureSignature
   let jobId: string | null = null
@@ -77,6 +79,25 @@ export async function saveCapture(userId: string, input: unknown) {
     digestStrategy = decision.strategy
     budgetStatus = decision.budgetStatus ?? null
 
+    if (budgetStatus && budgetStatus.aiRemaining <= 0 && decision.strategy !== "ai") {
+      await logServerEvent({
+        level: "warn",
+        surface: "web-api",
+        area: "digest",
+        event: "digest_budget_blocked",
+        message: "Relay could not run an immediate AI digest because the daily budget was exhausted.",
+        userId,
+        context: {
+          projectId: normalizedInput.projectId,
+          sessionId: session.id,
+          strategy: decision.strategy,
+          aiUsed: budgetStatus.aiUsed,
+          aiLimit: budgetStatus.aiLimit,
+          plan: budgetStatus.plan,
+        },
+      }).catch(() => {})
+    }
+
     if (decision.strategy === "ai") {
       const job = await enqueueDigestJob(userId, {
         projectId: normalizedInput.projectId,
@@ -84,20 +105,7 @@ export async function saveCapture(userId: string, input: unknown) {
         captureSignature: normalizedInput.session.captureSignature
       })
       jobId = job.id
-      digestOutcome = await runDigestJobInline(repositories, userId, job)
-      const refreshedBudget = await resolveProjectAiBudget(repositories, userId, normalizedInput.projectId)
-      budgetStatus = {
-        aiUsed: refreshedBudget.dailyProjectAiUsed,
-        aiLimit: refreshedBudget.dailyProjectAiLimit,
-        aiRemaining: refreshedBudget.dailyProjectAiRemaining,
-        plan: refreshedBudget.plan,
-      }
-      console.info("[capture-service] inline digest outcome", {
-        projectId: normalizedInput.projectId,
-        sessionId: session.id,
-        jobId,
-        digestOutcome,
-      })
+      void drainDigestJobsForProject(userId, normalizedInput.projectId, 1).catch(() => {})
     } else if (decision.strategy === "deferred") {
       const job = await enqueueDigestJob(userId, {
         projectId: normalizedInput.projectId,
@@ -106,10 +114,30 @@ export async function saveCapture(userId: string, input: unknown) {
         status: "deferred"
       })
       jobId = job.id
+      void drainDigestJobsForProject(userId, normalizedInput.projectId, 1).catch(() => {})
     }
   }
 
   const stateStatus = await getProjectStateStatus(repositories, normalizedInput.projectId)
+  await logServerEvent({
+    level: "info",
+    surface: "web-api",
+    area: "capture",
+    event: "capture_saved",
+    message: "Saved a Relay capture and queued follow-up processing.",
+    userId,
+    context: {
+      projectId: normalizedInput.projectId,
+      sessionId: session.id,
+      digestStrategy,
+      digestQueued: digestStrategy !== "skip",
+      jobId,
+      duplicateSkipped: false,
+      captureSaveAckMs: Math.max(0, Date.now() - startedAt),
+      bootstrapPacketsInvalidated: true,
+      plan: budgetStatus?.plan ?? null,
+    },
+  }).catch(() => {})
 
   return {
     session,

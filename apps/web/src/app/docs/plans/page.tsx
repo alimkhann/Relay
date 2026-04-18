@@ -4,6 +4,35 @@ import { Suspense } from "react"
 
 import { DocsFooterNav } from "@/components/docs/docs-footer-nav"
 import { PRICING } from "@/app/(marketing)/pricing.config"
+import { FREE_LIMITS, PLAN_LIMIT_ROWS, PRO_LIMITS, STARTER_LIMITS } from "@/server/services/billing-config"
+
+const PLAN_TABLE_ROWS = PLAN_LIMIT_ROWS.map((row) => {
+  if (row.key === "historyRetentionDays") {
+    return {
+      label: row.label,
+      free: `${FREE_LIMITS.historyRetentionDays} days`,
+      starter: `${STARTER_LIMITS.historyRetentionDays} days`,
+      pro: `${PRO_LIMITS.historyRetentionDays} days`,
+    }
+  }
+
+  if (row.key === "aiAnalysesPerUserDaily") {
+    return {
+      label: row.label,
+      free: `${FREE_LIMITS.aiAnalysesPerProjectDaily} / proj · ${FREE_LIMITS.aiAnalysesPerUserDaily} total`,
+      starter: `${STARTER_LIMITS.aiAnalysesPerProjectDaily} / proj · ${STARTER_LIMITS.aiAnalysesPerUserDaily} total`,
+      pro: `${PRO_LIMITS.aiAnalysesPerProjectDaily} / proj · ${PRO_LIMITS.aiAnalysesPerUserDaily} total`,
+    }
+  }
+
+  const formatValue = (value: number) => value.toLocaleString("en-US")
+  return {
+    label: row.label,
+    free: formatValue(FREE_LIMITS[row.key]),
+    starter: formatValue(STARTER_LIMITS[row.key]),
+    pro: formatValue(PRO_LIMITS[row.key]),
+  }
+})
 
 export default function PlansDocsPage() {
   return (
@@ -41,14 +70,7 @@ export default function PlansDocsPage() {
             </thead>
             <tbody className="divide-y divide-[var(--relay-line)]">
               {[
-                { label: "Active projects", free: "2", starter: "10", pro: "20" },
-                { label: "Captures / month", free: "100", starter: "1,200", pro: "3,000" },
-                { label: "Retention", free: "7 days", starter: "180 days", pro: "365 days" },
-                { label: "MCP basic reads / day", free: "12", starter: "200", pro: "500" },
-                { label: "MCP deep reads / day", free: "2", starter: "12", pro: "30" },
-                { label: "MCP writes / day", free: "1", starter: "15", pro: "40" },
-                { label: "AI analyses / day", free: "2 / proj · 4 total", starter: "8 / proj · 40 total", pro: "18 / proj · 90 total" },
-                { label: "Memory items / project", free: "150", starter: "1,500", pro: "4,000" },
+                ...PLAN_TABLE_ROWS,
                 { label: "Autonomous context", free: "—", starter: "Yes", pro: "Yes" },
                 { label: "High-quality model", free: "—", starter: "—", pro: "Yes" },
               ].map((row) => (

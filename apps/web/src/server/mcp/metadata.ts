@@ -6,18 +6,18 @@ export const RELAY_MCP_TRANSPORT_ENDPOINT = `${APP_ORIGIN}/api/mcp/stream`
 export const RELAY_MCP_DOCUMENTATION_URL = `${APP_ORIGIN}/docs/mcp`
 
 export const RELAY_MCP_TOOL_NAMES = [
-  "project.list",
-  "project.set_current",
-  "project.get_brief",
-  "project.get_state",
-  "memory.search",
-  "memory.add",
-  "context.save",
-  "context.checkpoint",
-  "memory.manage",
-  "project.set_state",
-  "project.update",
-  "memory.recall",
+  "list_projects",
+  "set_current_project",
+  "get_brief",
+  "get_project_state",
+  "search_context",
+  "add_memory",
+  "save_context",
+  "checkpoint_context",
+  "manage_memory",
+  "set_project_state",
+  "update_project",
+  "recall_context",
 ] as const
 
 export const RELAY_MCP_PROMPT_NAMES = [

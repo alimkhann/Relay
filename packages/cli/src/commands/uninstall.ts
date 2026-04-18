@@ -2,8 +2,7 @@ import type { RelayCliAnalytics } from "../analytics"
 import {
   detectIDEs,
   uninstallMcpConfig,
-  uninstallSkillFile,
-  uninstallUniversalSkillFile,
+  uninstallClientSetup,
   clearConfig,
   loadConfig,
   info,
@@ -21,13 +20,12 @@ export async function runUninstallCommand(options: { analytics?: RelayCliAnalyti
 
   for (const ide of ides) {
     const removedMcp = await uninstallMcpConfig(ide)
-    const removedSkill = await uninstallSkillFile(ide)
-    if (removedMcp || removedSkill) {
+    const removedSetup = await uninstallClientSetup(ide)
+    if (removedMcp || removedSetup) {
       removedCount += 1
     }
   }
 
-  await uninstallUniversalSkillFile()
   await clearConfig()
   options.analytics?.capture("cli_uninstall_completed", { success: true, removed_targets: removedCount })
 

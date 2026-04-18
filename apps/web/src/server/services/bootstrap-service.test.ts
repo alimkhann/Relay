@@ -275,6 +275,18 @@ describe("shouldReuseLatestBootstrapPacket", () => {
       })
     ).toBe(true)
   })
+
+  it("refuses to reuse a cached brief while a newer capture is still pending digest", () => {
+    expect(
+      shouldReuseLatestBootstrapPacket({
+        latestCreatedAt: "2026-03-11T00:00:00.000Z",
+        latestDigestCreatedAt: "2026-03-10T00:00:00.000Z",
+        stateDirty: false,
+        deep: false,
+        hasPendingCapture: true,
+      })
+    ).toBe(false)
+  })
 })
 
 describe("computeBootstrapInputHash", () => {

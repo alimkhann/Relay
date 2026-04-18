@@ -22,13 +22,13 @@ if the session crashes mid-thought.
    pnpm add -g @onrelay/mcp
    ```
 
-2. **Relay config exists** — run `relay-mcp` once to log in, pick a project.
+2. **Relay config exists** — run `npx @onrelay/wizard` once to log in, pick a project.
    This writes `~/.relay/mcp.json` with your token and project id.
 
 ### One-line install
 
 ```bash
-relay-mcp install-skill claude-code
+relay-flush install-claude-code
 ```
 
 This merges the hook config below into `~/.claude/settings.json`. Re-run
@@ -112,5 +112,4 @@ Or pass explicitly in the hook command: `relay-flush precompact --project=<uuid>
 
 ## Uninstall
 
-Remove the three entries from `~/.claude/settings.json`, or run
-`relay-mcp uninstall-skill claude-code`.
+Remove the three entries from `~/.claude/settings.json`.

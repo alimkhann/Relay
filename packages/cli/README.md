@@ -36,8 +36,8 @@ Relay prints the approval URL and session code so you can open it manually on an
 ## Supported setup flow
 
 - Detects supported MCP client config locations
-- Writes Relay MCP config into local tooling config files
-- Installs the Relay skill file for supported agents
+- Writes Relay MCP config using each client's native config format
+- Installs Claude Code autosave hooks where supported
 - Saves Relay auth in `~/.relay/mcp.json`
 
 ## Uninstall
@@ -46,7 +46,7 @@ Relay prints the approval URL and session code so you can open it manually on an
 relay uninstall
 ```
 
-This removes the `relay` MCP entry from detected tool config files, removes Relay skill files where installed, and clears local CLI credentials.
+This removes the `relay` MCP entry from detected tool config files, removes client-specific Relay setup where installed, and clears local CLI credentials.
 
 ## Troubleshooting
 

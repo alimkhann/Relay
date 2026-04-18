@@ -1,5 +1,6 @@
 import { createRepositoryBundle } from "@relay/db"
 import type {
+  AiJobRunRow,
   BootstrapPacketDto,
   BootstrapRequest,
   BootstrapPacketRow,
@@ -10,6 +11,7 @@ import type {
   ProjectStateStatusDto,
   ProjectSummarySnapshotRow,
   SessionDigestRow,
+  SourceSessionRow,
   TargetProfileRow,
   WorkSessionCheckpointWithSessionRow,
 } from "@relay/shared"
@@ -17,6 +19,8 @@ import { bootstrapRequestSchema, buildEffectiveProjectState, computeDecayScore, 
 
 import { NotFoundError } from "@/server/http/errors"
 import { buildBootstrapCanonView } from "./canon-autonomy-service"
+import { logServerEvent } from "@/server/logging/logger"
+import { drainDigestJobsForProject } from "./digest-service"
 import { resolveViewerEntitlements } from "./entitlement-service"
 import { GEMINI_MODELS, runGeminiJsonWithFallback } from "./gemini-service"
 import { getProjectStateStatus } from "./state-status-service"
@@ -213,9 +217,14 @@ export function shouldReuseLatestBootstrapPacket(input: {
   latestDigestCreatedAt: string | null
   stateDirty: boolean
   deep: boolean
+  hasPendingCapture?: boolean
   latestInputHash?: string | null
   currentInputHash?: string | null
 }) {
+  if (input.hasPendingCapture) {
+    return false
+  }
+
   if (input.latestInputHash && input.currentInputHash) {
     return input.latestInputHash === input.currentInputHash
   }
@@ -982,13 +991,38 @@ export function shouldDeferBootstrapGeneration(state: ProjectStateRow | null, di
   return !state && digests.length === 0
 }
 
+function latestTimestamp(value: string | null | undefined) {
+  return value ? new Date(value).getTime() : 0
+}
+
+function hasPendingCaptureFreshnessGap(input: {
+  latestSession: SourceSessionRow | null
+  digests: SessionDigestRow[]
+  digestJobs: AiJobRunRow[]
+}) {
+  if (!input.latestSession) return false
+
+  const latestSessionAt = latestTimestamp(input.latestSession.capturedAt)
+  const latestDigestAt = latestTimestamp(input.digests[0]?.createdAt ?? null)
+  const hasPendingJobs = input.digestJobs.some((job) => job.status !== "completed" && job.status !== "failed")
+
+  if (!input.digests[0]) {
+    return hasPendingJobs
+  }
+
+  return hasPendingJobs && latestSessionAt > latestDigestAt
+}
+
 export async function generateBootstrapForProject(userId: string, projectId: string, input: unknown): Promise<BootstrapGenerationResult> {
   const repositories = createRepositoryBundle(userId)
   const parsed = bootstrapRequestSchema.parse(input)
   const entitlements = await resolveViewerEntitlements(userId)
-  const [project, profile, rawState, digests, memoryItems, stateOverrides, workSessionContext, canonEntries, summarySnapshots, projectSettings] = await Promise.all([
+  const [project, profile] = await Promise.all([
     repositories.projects.getById(projectId),
     repositories.targetProfiles.getByKey(parsed.targetProfileKey),
+  ])
+
+  let [rawState, digests, memoryItems, stateOverrides, workSessionContext, canonEntries, summarySnapshots, projectSettings, latestSession, digestJobs] = await Promise.all([
     repositories.projectState.getByProject(projectId),
     repositories.sessionDigests.listByProject(projectId),
     repositories.memory.listByProject(projectId),
@@ -1001,6 +1035,12 @@ export async function generateBootstrapForProject(userId: string, projectId: str
     repositories.canonEntries.listByProject(projectId, { statuses: ["active", "tentative", "disputed"], limit: 64 }).catch(() => []),
     repositories.projectSummarySnapshots.listLatestByProject(projectId, { limit: 12 }).catch(() => []),
     repositories.projectSettings.getByProject(projectId).catch(() => null),
+    repositories.sessions.listByProject(projectId, { limit: 1 }).then((sessions) => sessions[0] ?? null),
+    repositories.aiJobs.listByProject(projectId, {
+      jobKind: "session_digest",
+      statuses: ["pending", "running", "timed_out", "deferred"],
+      limit: 6,
+    }),
   ])
 
   if (!project) {
@@ -1009,6 +1049,45 @@ export async function generateBootstrapForProject(userId: string, projectId: str
 
   if (!profile) {
     throw new NotFoundError("Target profile not found.")
+  }
+
+  if (hasPendingCaptureFreshnessGap({ latestSession, digests, digestJobs })) {
+    await drainDigestJobsForProject(userId, projectId, 2)
+    await logServerEvent({
+      level: "info",
+      surface: "web-api",
+      area: "bootstrap",
+      event: "bootstrap_digest_drain",
+      message: "Paused bootstrap generation until pending digest work finished.",
+      userId,
+      context: {
+        projectId,
+        latestSessionAt: latestSession?.capturedAt ?? null,
+        latestDigestAt: digests[0]?.createdAt ?? null,
+        pendingJobs: digestJobs.length,
+      },
+    }).catch(() => {})
+
+    ;[rawState, digests, memoryItems, stateOverrides, workSessionContext, canonEntries, summarySnapshots, projectSettings, latestSession, digestJobs] = await Promise.all([
+      repositories.projectState.getByProject(projectId),
+      repositories.sessionDigests.listByProject(projectId),
+      repositories.memory.listByProject(projectId),
+      repositories.projectStateOverrides.getByProject(projectId),
+      repositories.workSessionCheckpoints.listRecentByProject(projectId, {
+        since: parsed.since,
+        limit: 8,
+        surfaces: ["mcp", "cli", "chatgpt", "claude", "gemini", "grok", "perplexity", "deepseek", "codex"],
+      }),
+      repositories.canonEntries.listByProject(projectId, { statuses: ["active", "tentative", "disputed"], limit: 64 }).catch(() => []),
+      repositories.projectSummarySnapshots.listLatestByProject(projectId, { limit: 12 }).catch(() => []),
+      repositories.projectSettings.getByProject(projectId).catch(() => null),
+      repositories.sessions.listByProject(projectId, { limit: 1 }).then((sessions) => sessions[0] ?? null),
+      repositories.aiJobs.listByProject(projectId, {
+        jobKind: "session_digest",
+        statuses: ["pending", "running", "timed_out", "deferred"],
+        limit: 6,
+      }),
+    ])
   }
 
   const activeMemoryItems = memoryItems.filter((item) => !item.isArchived)
@@ -1117,13 +1196,15 @@ export async function generateBootstrapForProject(userId: string, projectId: str
       memoryLatestUpdatedAt: scopedMemoryItems[0]?.updatedAt ?? null,
     })
   const latest = await repositories.bootstrapPackets.getLatest(projectId, profile.id, parsed.kind)
+  const hasPendingCapture = latestTimestamp(latestSession?.capturedAt ?? null) > latestTimestamp(scopedDigests[0]?.createdAt ?? null)
   if (
     latest &&
     shouldReuseLatestBootstrapPacket({
       latestCreatedAt: latest.createdAt,
-       latestDigestCreatedAt: scopedDigests[0]?.createdAt ?? null,
+      latestDigestCreatedAt: scopedDigests[0]?.createdAt ?? null,
       stateDirty: Boolean(state?.dirty),
       deep: Boolean(parsed.deep),
+      hasPendingCapture,
       latestInputHash:
         typeof latest.generationMetadata?.input_hash === "string"
           ? String(latest.generationMetadata.input_hash)
@@ -1131,6 +1212,27 @@ export async function generateBootstrapForProject(userId: string, projectId: str
       currentInputHash: briefInputHash,
     })
   ) {
+    await logServerEvent({
+      level: "info",
+      surface: "web-api",
+      area: "bootstrap",
+      event: "bootstrap_served",
+      message: "Served a cached Relay bootstrap packet.",
+      userId,
+      context: {
+        projectId,
+        kind: parsed.kind,
+        readMode: resolveReadMode({ deep: parsed.deep, packetMode }),
+        deep: Boolean(parsed.deep),
+        reusedCachedPacket: true,
+        staleReusePrevented: false,
+        pendingDigestJobs: digestJobs.length,
+        renderer: latest.renderer,
+        actualModel: latest.renderer,
+        packetMode,
+      },
+    }).catch(() => {})
+
     return {
       status: "ready",
       packet: latest,
@@ -1217,6 +1319,27 @@ export async function generateBootstrapForProject(userId: string, projectId: str
       renderer
     }
   })
+
+  await logServerEvent({
+    level: "info",
+    surface: "web-api",
+    area: "bootstrap",
+    event: "bootstrap_served",
+    message: "Served a Relay bootstrap packet.",
+    userId,
+    context: {
+      projectId,
+      kind: parsed.kind,
+      readMode: resolveReadMode({ deep: parsed.deep, packetMode }),
+      deep: Boolean(parsed.deep),
+      reusedCachedPacket: false,
+      staleReusePrevented: hasPendingCapture,
+      pendingDigestJobs: digestJobs.length,
+      renderer,
+      actualModel,
+      packetMode,
+    },
+  }).catch(() => {})
 
   return {
     status: "ready",

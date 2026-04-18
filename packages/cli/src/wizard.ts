@@ -11,8 +11,8 @@ import {
   getConfigPath,
   detectIDEs,
   installMcpConfig,
-  installSkillFile,
-  installUniversalSkillFile,
+  installClientSetup,
+  validateInstalledMcpConfig,
   listProjects,
   printBanner,
   success,
@@ -126,20 +126,20 @@ export async function runWizard(options: { apiBase?: string; analytics?: RelayCl
       const selectedIdes = ides.filter((ide) => (selectedIdeIds as string[]).includes(ide.id))
 
       for (const ide of selectedIdes) {
-        await installMcpConfig(ide)
-        success(`MCP config → ${pc.dim(ide.mcpConfigPath)}`)
+        await installMcpConfig(ide, { mode: "local" })
+        const isInstalled = await validateInstalledMcpConfig(ide)
+        success(`${ide.name} (${ide.supportTier}) MCP config → ${pc.dim(ide.mcpConfigPath)}`)
+        if (!isInstalled) {
+          throw new Error(`Relay MCP install did not validate for ${ide.name}.`)
+        }
 
-        const skillPath = await installSkillFile(ide)
-        if (skillPath) {
-          success(`Skill file → ${pc.dim(skillPath)}`)
+        const setupPath = await installClientSetup(ide)
+        if (setupPath) {
+          success(`Client setup → ${pc.dim(setupPath)}`)
         }
       }
     }
   }
-
-  // Universal skill file
-  const universalPath = await installUniversalSkillFile()
-  success(`Universal skill file → ${pc.dim(universalPath)}`)
 
   // Done
   console.log()
@@ -148,6 +148,6 @@ export async function runWizard(options: { apiBase?: string; analytics?: RelayCl
   info("Next steps:")
   console.log(pc.dim("  1. Open a new terminal session in your project"))
   console.log(pc.dim("  2. Your AI coding tool will auto-discover Relay MCP"))
-  console.log(pc.dim(`  3. Try: "load my project context from Relay"`))
+  console.log(pc.dim("  3. Start by calling list_projects, then get_brief"))
   console.log()
 }

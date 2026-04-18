@@ -1,3 +1,5 @@
+import { PLAN_MARKETING_COPY } from "@/server/services/billing-config"
+
 export const PRICING = {
   free: {
     name: "Free",
@@ -6,13 +8,7 @@ export const PRICING = {
     description: "Try Relay, no card needed",
     cta: "Get Started",
     ctaVariant: "outline" as const,
-    features: [
-      "Up to 2 active projects",
-      "12 MCP reads / day",
-      "7-day capture retention",
-      "Browser capture across supported AI tools",
-      "Basic context briefs",
-    ],
+    features: PLAN_MARKETING_COPY.free.features,
   },
   starter: {
     name: "Starter",
@@ -21,13 +17,7 @@ export const PRICING = {
     description: "For solo builders who live inside AI tools",
     cta: "Get Starter",
     ctaVariant: "primary" as const,
-    features: [
-      "Up to 10 active projects",
-      "200 reads + 12 deep reads / day",
-      "180-day retention, 1,200 captures / mo",
-      "Autonomous context updates",
-      "Full + continuity briefs",
-    ],
+    features: PLAN_MARKETING_COPY.starter.features,
   },
   pro: {
     name: "Pro",
@@ -36,13 +26,6 @@ export const PRICING = {
     description: "Full autonomy, deep continuity, every surface",
     cta: "Get Pro",
     ctaVariant: "outline" as const,
-    features: [
-      "Up to 20 active projects",
-      "500 reads + 30 deep reads / day",
-      "365-day retention, 3,000 captures / mo",
-      "High-quality model for reflections",
-      "Aggressive autonomy + conflict resolution",
-      "Priority support",
-    ],
+    features: PLAN_MARKETING_COPY.pro.features,
   },
 } as const

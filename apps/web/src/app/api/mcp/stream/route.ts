@@ -73,7 +73,7 @@ function createHttpMcpServer(viewer: Viewer) {
     if (explicitId) return explicitId
     if (projectId) return projectId
     throw new Error(
-      "Could not determine project. Call project.list to see your projects, then call project.set_current with the correct projectId — or pass projectId explicitly."
+      "Could not determine project. Call list_projects to see your projects, then call set_current_project with the correct projectId — or pass projectId explicitly."
     )
   }
 
@@ -92,7 +92,7 @@ function registerHttpTools(
 ) {
   server.tool(
     RELAY_MCP_TOOL_NAMES[0],
-    "List all Relay projects you have access to. Returns project IDs, names, slugs, and descriptions. Call this first to find a project ID and to match the user's current working directory or repository against project names and slugs before calling project.get_brief.",
+    "List all Relay projects you have access to. Returns project IDs, names, slugs, and descriptions. Call this first to find a project ID and to match the user's current working directory or repository against project names and slugs before calling get_brief.",
     {
       limit: z.number().optional().describe("Maximum number of projects to return"),
     },
@@ -108,7 +108,7 @@ function registerHttpTools(
 
   server.tool(
     RELAY_MCP_TOOL_NAMES[1],
-    "Switch the current Relay project for this token. Use this when the user is clearly working on a different project than the cached one. The switch persists across future MCP calls with the same token. Call project.list first to find the correct projectId.",
+    "Switch the current Relay project for this token. Use this when the user is clearly working on a different project than the cached one. The switch persists across future MCP calls with the same token. Call list_projects first to find the correct projectId.",
     {
       projectId: z.string().uuid().describe("The ID of the project to switch to."),
     },
@@ -139,11 +139,11 @@ function registerHttpTools(
     RELAY_MCP_TOOL_NAMES[2],
     `Fetch a project context brief from Relay. Returns a markdown document with project state, decisions, constraints, tasks, and key memory items formatted for an AI coding session.
 
-IMPORTANT — before calling project.get_brief, always verify which project the user is working on:
-1. Call project.list to see all available projects.
+IMPORTANT — before calling get_brief, always verify which project the user is working on:
+1. Call list_projects to see all available projects.
 2. Match the current working directory / git repository against the project names and slugs.
-3. If the cached project is wrong, call project.set_current with the correct projectId.
-4. Only then call project.get_brief.
+3. If the cached project is wrong, call set_current_project with the correct projectId.
+4. Only then call get_brief.
 
 Call this at the start of every coding session to restore project memory.`,
     {
@@ -263,7 +263,7 @@ Call this at the start of every coding session to restore project memory.`,
 
   server.tool(
     RELAY_MCP_TOOL_NAMES[7],
-    "Mid-session snapshot: identical payload to context.save but never closes the work session. Relay will flush automatically at the next hook/shutdown/sweep.",
+    "Mid-session snapshot: identical payload to save_context but never closes the work session. Relay will flush automatically at the next hook/shutdown/sweep.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
       summary: z.string().optional().describe("High-level session summary"),
@@ -378,15 +378,15 @@ You have access to Relay, a project memory system that keeps context synchronize
 ## Recommended Workflow
 
 ### At Session Start
-1. Call \`project.list\` to see all available projects.
+1. Call \`list_projects\` to see all available projects.
 2. Match the user's current working directory / git repository against the project names and slugs.
-3. If the cached project is wrong, call \`project.set_current\` with the correct projectId.
-4. Call \`project.get_brief\` to load the current project context, decisions, constraints, and recent progress.
+3. If the cached project is wrong, call \`set_current_project\` with the correct projectId.
+4. Call \`get_brief\` to load the current project context, decisions, constraints, and recent progress.
 
 ### During the Session
-- Before making architectural decisions, call \`memory.recall\` to check for existing decisions or constraints.
-- When the user makes a new decision or identifies a task, call \`memory.add\` to persist it immediately.
-- Use \`memory.search\` to check for duplicates before adding.
+- Before making architectural decisions, call \`recall_context\` to check for existing decisions or constraints.
+- When the user makes a new decision or identifies a task, call \`add_memory\` to persist it immediately.
+- Use \`search_context\` to check for duplicates before adding.
 
 ### At Session End
 - Call \`memory.save_context\` with a structured summary of what was accomplished, new decisions, and next steps.

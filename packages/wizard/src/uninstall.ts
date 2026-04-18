@@ -4,8 +4,7 @@ import pc from "picocolors"
 import {
   detectIDEs,
   uninstallMcpConfig,
-  uninstallSkillFile,
-  uninstallUniversalSkillFile,
+  uninstallClientSetup,
   clearConfig,
   success,
   info
@@ -34,9 +33,9 @@ export async function runUninstall() {
 
       for (const ide of selectedIdes) {
         const removedMcp = await uninstallMcpConfig(ide)
-        const removedSkill = await uninstallSkillFile(ide)
+        const removedSetup = await uninstallClientSetup(ide)
         if (removedMcp) success(`Removed MCP config from ${ide.name}`)
-        if (removedSkill) success(`Removed skill file from ${ide.name}`)
+        if (removedSetup) success(`Removed client setup from ${ide.name}`)
       }
     }
   }
@@ -49,16 +48,6 @@ export async function runUninstall() {
   if (!p.isCancel(shouldClearCreds) && shouldClearCreds) {
     await clearConfig()
     success("Credentials cleared.")
-  }
-
-  const shouldRemoveUniversal = await p.confirm({
-    message: "Remove universal skill file (~/.agents/skills/relay/)?",
-    initialValue: true,
-  })
-
-  if (!p.isCancel(shouldRemoveUniversal) && shouldRemoveUniversal) {
-    await uninstallUniversalSkillFile()
-    success("Universal skill file removed.")
   }
 
   console.log()
