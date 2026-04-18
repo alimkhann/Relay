@@ -97,7 +97,7 @@ describe("middleware", () => {
 
     const response = await middleware(request)
 
-    expect(response.headers.get("x-middleware-rewrite")).toContain("/_relay/markdown?pathname=%2Fdocs%2Fapi")
+    expect(response.headers.get("x-middleware-rewrite")).toContain("/agent-markdown?pathname=%2Fdocs%2Fapi")
     expect(middlewareFactory).not.toHaveBeenCalled()
     expect(middlewareFn).not.toHaveBeenCalled()
   })

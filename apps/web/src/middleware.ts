@@ -32,7 +32,7 @@ function isProtectedPath(pathname: string) {
 export default function middleware(request: NextRequest) {
   if ((request.method === "GET" || request.method === "HEAD") && wantsMarkdown(request) && supportsMarkdownPath(request.nextUrl.pathname)) {
     const url = request.nextUrl.clone()
-    url.pathname = "/_relay/markdown"
+    url.pathname = "/agent-markdown"
     url.searchParams.set("pathname", request.nextUrl.pathname)
     return NextResponse.rewrite(url)
   }

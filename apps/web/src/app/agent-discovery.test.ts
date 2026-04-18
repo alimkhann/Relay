@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { GET as markdownGet, HEAD as markdownHead } from "./_relay/markdown/route"
+import { GET as markdownGet, HEAD as markdownHead } from "./agent-markdown/route"
 import { GET as apiCatalogGet } from "./.well-known/api-catalog/route"
 import { GET as agentSkillsIndexGet } from "./.well-known/agent-skills/index.json/route"
 import { GET as mcpCardGet } from "./.well-known/mcp/server-card.json/route"
@@ -83,7 +83,7 @@ describe("agent discovery routes", () => {
 
 describe("markdown negotiation route", () => {
   it("returns markdown with the expected headers", async () => {
-    const response = await markdownGet(new Request("https://www.onrelay.app/_relay/markdown?pathname=%2Fdocs%2Fapi"))
+    const response = await markdownGet(new Request("https://www.onrelay.app/agent-markdown?pathname=%2Fdocs%2Fapi"))
     const body = await response.text()
 
     expect(response.status).toBe(200)
@@ -95,7 +95,7 @@ describe("markdown negotiation route", () => {
   })
 
   it("returns header-only markdown metadata on HEAD", async () => {
-    const response = await markdownHead(new Request("https://www.onrelay.app/_relay/markdown?pathname=%2F"))
+    const response = await markdownHead(new Request("https://www.onrelay.app/agent-markdown?pathname=%2F"))
 
     expect(response.status).toBe(200)
     expect(response.headers.get("content-type")).toContain("text/markdown")
