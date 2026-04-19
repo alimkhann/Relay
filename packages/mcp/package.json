@@ -1,6 +1,6 @@
 {
   "name": "@onrelay/mcp",
-  "version": "0.3.2",
+  "version": "0.3.4",
   "description": "Relay MCP server for local AI coding tools",
   "license": "UNLICENSED",
   "type": "module",

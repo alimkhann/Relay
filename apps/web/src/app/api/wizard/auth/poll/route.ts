@@ -22,11 +22,13 @@ function sha256Base64Url(input: string) {
   return createHash("sha256").update(input).digest("base64url")
 }
 
+const WIZARD_DEFAULT_SCOPES = ["project:read", "project:write", "memory:read", "memory:write", "brief:read"] as const
+
 /**
  * GET /api/wizard/auth/poll?secret=...&codeVerifier=...
  *
- * Combined polling endpoint. Once the user confirms in the browser,
- * this returns both a CLI token and scoped MCP tokens in one response.
+ * Once the user confirms in the browser, this returns the Relay API token and,
+ * when a project can be resolved, a scoped MCP token.
  */
 export const GET = withApiRoute(async (request: Request) => {
   await assertIpRateLimit(request, "wizard_auth_poll_ip", 15)
@@ -54,13 +56,14 @@ export const GET = withApiRoute(async (request: Request) => {
   if (cliSession.status !== "confirmed" || !cliSession.userId) {
     return NextResponse.json({ status: "invalid" })
   }
+  const userId = cliSession.userId
 
   // Step 2: Get or create CLI token
   let cliToken: string
   if (cliSession.apiToken) {
     cliToken = decryptSecret(cliSession.apiToken)
   } else {
-    const { token } = await createExtensionTokenForUser(cliSession.userId, {
+    const { token } = await createExtensionTokenForUser(userId, {
       deviceName: cliSession.deviceName,
       purpose: "cli_mcp"
     })
@@ -73,7 +76,7 @@ export const GET = withApiRoute(async (request: Request) => {
     hashContent(`wizard_mcp_${secret}`)
   )
 
-  if (!mcpSession || !codeVerifier) {
+  if (!codeVerifier) {
     // Return just the CLI token if no MCP session found
     return NextResponse.json({
       status: "confirmed",
@@ -82,12 +85,23 @@ export const GET = withApiRoute(async (request: Request) => {
     })
   }
 
-  // Approve MCP session if still pending (wizard auto-confirms both)
-  if (mcpSession.status === "pending") {
-    await repositories.mcpAuthSessions.approve(mcpSession.id, cliSession.userId)
-  }
+  const resolvedMcpSession = mcpSession ?? await (async () => {
+    const scopedRepositories = createRepositoryBundle(userId)
+    const projects = await scopedRepositories.projects.listByOwner(userId)
+    const defaultProject = projects[0]
+    if (!defaultProject) return null
 
-  if (mcpSession.status === "exchanged") {
+    return {
+      id: `wizard-default:${defaultProject.id}`,
+      status: "approved" as const,
+      projectId: defaultProject.id,
+      scopes: [...WIZARD_DEFAULT_SCOPES],
+      codeChallenge: sha256Base64Url(codeVerifier),
+    }
+  })()
+  const isSyntheticSession = !mcpSession
+
+  if (!resolvedMcpSession) {
     return NextResponse.json({
       status: "confirmed",
       cliToken,
@@ -95,8 +109,22 @@ export const GET = withApiRoute(async (request: Request) => {
     })
   }
 
+  // Approve MCP session if still pending (wizard auto-confirms both)
+  if (!isSyntheticSession && resolvedMcpSession.status === "pending") {
+    await repositories.mcpAuthSessions.approve(resolvedMcpSession.id, userId)
+  }
+
+  if (!isSyntheticSession && resolvedMcpSession.status === "exchanged") {
+    return NextResponse.json({
+      status: "confirmed",
+      cliToken,
+      projectId: resolvedMcpSession.projectId,
+      apiBase: process.env["NEXT_PUBLIC_RELAY_APP_URL"] ?? "https://www.onrelay.app"
+    })
+  }
+
   // Verify PKCE
-  if (sha256Base64Url(codeVerifier) !== mcpSession.codeChallenge) {
+  if (sha256Base64Url(codeVerifier) !== resolvedMcpSession.codeChallenge) {
     return NextResponse.json({ status: "invalid" })
   }
 
@@ -107,21 +135,25 @@ export const GET = withApiRoute(async (request: Request) => {
 
   const claimed = await repositories.provider.transaction(async (provider) => {
     const tx = createRepositoryBundle(undefined, provider)
-    const exchangeable = await tx.mcpAuthSessions.claimApproved(mcpSession.id)
-    if (!exchangeable) return false
+    if (!isSyntheticSession) {
+      const exchangeable = await tx.mcpAuthSessions.claimApproved(resolvedMcpSession.id)
+      if (!exchangeable) return false
+    }
 
     await tx.mcpTokens.create({
-      userId: cliSession.userId!,
-      projectId: mcpSession.projectId,
+      userId,
+      projectId: resolvedMcpSession.projectId,
       tokenHash: hashContent(accessToken),
       tokenPrefix: accessToken.slice(0, 16),
-      scopes: mcpSession.scopes,
+      scopes: resolvedMcpSession.scopes,
       expiresAt: accessExpiresAt,
       refreshTokenHash: hashContent(refreshToken),
       refreshTokenPrefix: refreshToken.slice(0, 16),
       refreshExpiresAt,
     })
-    await tx.mcpAuthSessions.markExchanged(mcpSession.id)
+    if (!isSyntheticSession) {
+      await tx.mcpAuthSessions.markExchanged(resolvedMcpSession.id)
+    }
     return true
   })
 
@@ -129,6 +161,7 @@ export const GET = withApiRoute(async (request: Request) => {
     return NextResponse.json({
       status: "confirmed",
       cliToken,
+      projectId: resolvedMcpSession.projectId,
       apiBase: process.env["NEXT_PUBLIC_RELAY_APP_URL"] ?? "https://www.onrelay.app"
     })
   }
@@ -136,6 +169,7 @@ export const GET = withApiRoute(async (request: Request) => {
   return NextResponse.json({
     status: "confirmed",
     cliToken,
+    projectId: resolvedMcpSession.projectId,
     accessToken,
     refreshToken,
     accessExpiresAt,

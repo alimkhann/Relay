@@ -23,10 +23,16 @@ function buildDetectedIDE(id: DetectedIDE["id"], mcpConfigPath: string, clientSe
 
   return {
     ...descriptor,
+    workspaceRoot: dirnameOf(mcpConfigPath),
     mcpConfigPath,
     clientSetupPath,
     legacyConfigPaths: [],
   }
+}
+
+function dirnameOf(path: string) {
+  const slash = path.lastIndexOf("/")
+  return slash >= 0 ? path.slice(0, slash) : "."
 }
 
 describe("RELAY_MCP_CLIENTS", () => {
@@ -118,6 +124,33 @@ describe("installMcpConfig", () => {
     expect(raw.servers?.relay?.command).toBe("npx")
   })
 
+  it("preserves existing JSONC comments when writing JSON MCP config", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "relay-jsonc-"))
+    const configPath = join(dir, "mcp.json")
+    const ide = buildDetectedIDE("cursor-global", configPath)
+
+    await writeFile(
+      configPath,
+      `{
+  // Keep this comment
+  "mcpServers": {
+    "neon": {
+      "command": "npx"
+    }
+  }
+}
+`,
+      "utf-8"
+    )
+
+    await installMcpConfig(ide, { mode: "local" })
+
+    const raw = await readFile(configPath, "utf-8")
+    expect(raw).toContain("// Keep this comment")
+    expect(raw).toContain('"neon"')
+    expect(raw).toContain('"relay"')
+  })
+
   it("removes Relay from legacy config paths during uninstall", async () => {
     const dir = await mkdtemp(join(tmpdir(), "relay-cursor-"))
     const configPath = join(dir, "mcp.json")
@@ -180,8 +213,9 @@ describe("installClientSetup", () => {
     const settingsPath = join(dir, "settings.json")
     const ide = buildDetectedIDE("claude", join(dir, ".claude.json"), settingsPath)
 
-    const installedPath = await installClientSetup(ide)
-    expect(installedPath).toBe(settingsPath)
+    const result = await installClientSetup(ide)
+    expect(result.artifacts.map((artifact) => artifact.path)).toContain(settingsPath)
+    expect(result.artifacts.some((artifact) => artifact.kind === "instructions")).toBe(true)
     expect(await validateInstalledClientSetup(ide)).toBe(true)
 
     const installed = JSON.parse(await readFile(settingsPath, "utf-8")) as {
@@ -202,7 +236,8 @@ describe("installClientSetup", () => {
     const settingsPath = join(dir, "settings.json")
     const ide = buildDetectedIDE("gemini-cli", settingsPath, settingsPath)
 
-    await installClientSetup(ide)
+    const result = await installClientSetup(ide)
+    expect(result.artifacts.some((artifact) => artifact.kind === "instructions")).toBe(true)
     expect(await validateInstalledClientSetup(ide)).toBe(true)
 
     const installed = JSON.parse(await readFile(settingsPath, "utf-8")) as {
@@ -219,11 +254,16 @@ describe("installClientSetup", () => {
   })
 
   it("installs and removes Windsurf hooks", async () => {
+    const workspaceDir = await mkdtemp(join(tmpdir(), "relay-windsurf-workspace-"))
     const dir = await mkdtemp(join(tmpdir(), "relay-windsurf-"))
     const hooksPath = join(dir, "hooks.json")
-    const ide = buildDetectedIDE("windsurf", join(dir, "mcp_config.json"), hooksPath)
+    const ide = {
+      ...buildDetectedIDE("windsurf", join(dir, "mcp_config.json"), hooksPath),
+      workspaceRoot: workspaceDir,
+    }
 
-    await installClientSetup(ide)
+    const result = await installClientSetup(ide)
+    expect(result.artifacts.some((artifact) => artifact.kind === "rules")).toBe(true)
     expect(await validateInstalledClientSetup(ide)).toBe(true)
 
     const installed = JSON.parse(await readFile(hooksPath, "utf-8")) as {
@@ -237,5 +277,61 @@ describe("installClientSetup", () => {
 
     const uninstalled = JSON.parse(await readFile(hooksPath, "utf-8")) as { hooks?: Record<string, unknown> }
     expect(uninstalled.hooks).toBeUndefined()
+  })
+
+  it("installs a managed Codex instructions block", async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), "relay-codex-home-"))
+    const configPath = join(homeDir, "config.toml")
+    const ide = {
+      ...buildDetectedIDE("codex-cli", configPath),
+      workspaceRoot: join(homeDir, "workspace"),
+    }
+
+    await installClientSetup(ide)
+    expect(await validateInstalledClientSetup(ide)).toBe(true)
+
+    const instructions = await readFile(join(homeDir, "AGENTS.md"), "utf-8")
+    expect(instructions).toContain("BEGIN RELAY MANAGED BLOCK: codex")
+  })
+
+  it("installs a Cursor rule file", async () => {
+    const workspaceDir = await mkdtemp(join(tmpdir(), "relay-cursor-workspace-"))
+    const ide = {
+      ...buildDetectedIDE("cursor-project", join(workspaceDir, ".cursor", "mcp.json")),
+      workspaceRoot: workspaceDir,
+    }
+
+    const result = await installClientSetup(ide)
+    expect(result.artifacts.some((artifact) => artifact.kind === "rules")).toBe(true)
+    expect(await validateInstalledClientSetup(ide)).toBe(true)
+    expect(await readFile(join(workspaceDir, ".cursor", "rules", "relay.mdc"), "utf-8")).toContain("Relay-managed Cursor guidance")
+  })
+
+  it("installs a Copilot instructions block", async () => {
+    const workspaceDir = await mkdtemp(join(tmpdir(), "relay-vscode-workspace-"))
+    const ide = {
+      ...buildDetectedIDE("vscode", join(workspaceDir, ".vscode", "mcp.json")),
+      workspaceRoot: workspaceDir,
+    }
+
+    await installClientSetup(ide)
+    expect(await validateInstalledClientSetup(ide)).toBe(true)
+    expect(await readFile(join(workspaceDir, ".github", "copilot-instructions.md"), "utf-8")).toContain("BEGIN RELAY MANAGED BLOCK: copilot")
+  })
+
+  it("installs OpenCode instructions and a project skill", async () => {
+    const workspaceDir = await mkdtemp(join(tmpdir(), "relay-opencode-workspace-"))
+    const configPath = join(workspaceDir, "opencode.json")
+    const ide = {
+      ...buildDetectedIDE("opencode", configPath),
+      workspaceRoot: workspaceDir,
+    }
+
+    await installClientSetup(ide)
+    expect(await validateInstalledClientSetup(ide)).toBe(true)
+
+    const config = JSON.parse(await readFile(configPath, "utf-8")) as { instructions?: string[] }
+    expect(config.instructions).toContain(".agents/instructions/relay.md")
+    expect(await readFile(join(workspaceDir, ".agents", "skills", "relay-context", "SKILL.md"), "utf-8")).toContain("name: relay-context")
   })
 })

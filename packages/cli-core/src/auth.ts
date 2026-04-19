@@ -29,6 +29,16 @@ export interface ScopedMcpAuthResult {
   apiBase: string
 }
 
+export interface UnifiedAuthResult {
+  token: string
+  projectId?: string
+  accessToken?: string
+  refreshToken?: string
+  accessExpiresAt?: string
+  refreshExpiresAt?: string
+  apiBase: string
+}
+
 interface StartMcpAuthResponse {
   sessionCode: string
   sessionSecret: string
@@ -38,6 +48,24 @@ interface StartMcpAuthResponse {
 
 interface PollMcpAuthResponse {
   status: "pending" | "approved" | "invalid"
+  accessToken?: string
+  refreshToken?: string
+  accessExpiresAt?: string
+  refreshExpiresAt?: string
+  apiBase?: string
+}
+
+interface WizardAuthStartResponse {
+  sessionCode: string
+  pollingSecret: string
+  expiresAt: string
+  appUrl: string
+}
+
+interface WizardAuthPollResponse {
+  status: "pending" | "confirmed" | "invalid"
+  cliToken?: string
+  projectId?: string
   accessToken?: string
   refreshToken?: string
   accessExpiresAt?: string
@@ -79,7 +107,7 @@ export async function startAuthFlow(apiBase: string, options?: AuthFlowOptions):
   }
 
   const data = (await response.json()) as StartResponse
-  const confirmUrl = `${data.appUrl}/cli-onboarding?code=${data.sessionCode}`
+  const confirmUrl = `${data.appUrl}/wizard-onboarding?code=${data.sessionCode}`
 
   console.log()
   console.log(pc.bold("  Your session code:"))
@@ -206,4 +234,79 @@ export async function startScopedMcpAuthFlow(apiBase: string, projectId: string,
   }
 
   throw new Error("MCP authorization timed out. Please try again.")
+}
+
+export async function startUnifiedAuthFlow(
+  apiBase: string,
+  projectId?: string,
+  options?: AuthFlowOptions
+): Promise<UnifiedAuthResult> {
+  const codeVerifier = randomBytes(32).toString("base64url")
+  const codeChallenge = sha256Base64Url(codeVerifier)
+
+  const response = await fetch(`${apiBase}/api/wizard/auth/start`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      codeChallenge,
+      projectId,
+      scopes: ["project:read", "project:write", "memory:read", "memory:write", "brief:read"]
+    })
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to start unified auth flow: ${response.status}`)
+  }
+
+  const data = (await response.json()) as WizardAuthStartResponse
+  const confirmUrl = `${data.appUrl}/wizard-onboarding?code=${data.sessionCode}`
+
+  console.log()
+  console.log(pc.bold("  Your session code:"))
+  console.log()
+  console.log(pc.bold(pc.cyan(`     ${data.sessionCode}`)))
+  console.log()
+  console.log(`  ${shouldOpenBrowser(options) ? "Opening browser to authorize..." : "Open this URL to authorize:"}`)
+  console.log(pc.dim(`  ${confirmUrl}`))
+  console.log()
+
+  await maybeOpenBrowser(confirmUrl, options)
+
+  const maxAttempts = 90
+  const intervalMs = 2000
+
+  for (let i = 0; i < maxAttempts; i++) {
+    await sleep(intervalMs)
+
+    try {
+      const pollResponse = await fetch(
+        `${apiBase}/api/wizard/auth/poll?secret=${encodeURIComponent(data.pollingSecret)}&codeVerifier=${encodeURIComponent(codeVerifier)}`
+      )
+
+      if (!pollResponse.ok) continue
+
+      const pollData = (await pollResponse.json()) as WizardAuthPollResponse
+      if (pollData.status === "invalid") {
+        throw new Error("Session expired or invalid. Please try again.")
+      }
+
+      if (pollData.status === "confirmed" && pollData.cliToken && pollData.apiBase) {
+        return {
+          token: pollData.cliToken,
+          projectId: pollData.projectId,
+          accessToken: pollData.accessToken,
+          refreshToken: pollData.refreshToken,
+          accessExpiresAt: pollData.accessExpiresAt,
+          refreshExpiresAt: pollData.refreshExpiresAt,
+          apiBase: pollData.apiBase,
+        }
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("Session expired")) {
+        throw error
+      }
+    }
+  }
+
+  throw new Error("Authorization timed out. Please try again.")
 }

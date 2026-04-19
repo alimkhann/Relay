@@ -9,7 +9,9 @@ npx @onrelay/wizard
 ```
 
 Relay defaults to local stdio installs. The wizard writes each client's native
-config format instead of forcing a generic shared JSON file.
+config format instead of forcing a generic shared JSON file, and it auto-installs
+client-native instructions, rules, hooks, or skills where those surfaces are
+officially supported.
 
 For manual local MCP config, point your client at:
 
@@ -30,6 +32,19 @@ Relay installs extra client setup only where the client has an official hook sur
 Relay does not promise a universal pre-rate-limit save hook. The fallback model
 is best-effort pre-loss protection: native hooks where supported, opportunistic
 server sweeps, and explicit checkpoints for hookless clients.
+
+## Behavior bridges
+
+Relay also installs behavior guidance by client so agents use Relay early but
+not noisily:
+
+- Claude Code: managed `CLAUDE.md` block + hooks
+- Codex: managed user `AGENTS.md` block
+- Cursor: `.cursor/rules/relay.mdc`
+- Windsurf: `.windsurf/rules/relay.md` + hooks
+- Gemini CLI: managed `GEMINI.md` block + hooks
+- OpenCode: managed `instructions` entries + project skill
+- VS Code / Copilot: managed `.github/copilot-instructions.md` block
 
 ## Troubleshooting
 

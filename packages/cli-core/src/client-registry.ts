@@ -10,6 +10,7 @@ import {
 } from "../../shared/src/index"
 
 export interface DetectedIDE extends RelayMcpClientDescriptor {
+  workspaceRoot: string
   mcpConfigPath: string
   clientSetupPath: string | null
   legacyConfigPaths: string[]
@@ -37,6 +38,7 @@ async function exists(path: string): Promise<boolean> {
 function buildDetectedIDE(
   id: RelayMcpClientId,
   input: {
+    workspaceRoot: string
     mcpConfigPath: string
     clientSetupPath?: string | null
     legacyConfigPaths?: string[]
@@ -49,6 +51,7 @@ function buildDetectedIDE(
 
   return {
     ...descriptor,
+    workspaceRoot: input.workspaceRoot,
     mcpConfigPath: input.mcpConfigPath,
     clientSetupPath: input.clientSetupPath ?? null,
     legacyConfigPaths: input.legacyConfigPaths ?? [],
@@ -69,6 +72,7 @@ const CLIENT_REGISTRY: readonly ClientRegistryEntry[] = [
       const configDir = join(home, ".claude")
       if (!(await exists(configPath)) && !(await exists(configDir))) return null
       return buildDetectedIDE("claude", {
+        workspaceRoot: process.cwd(),
         mcpConfigPath: configPath,
         clientSetupPath: join(configDir, "settings.json"),
       })
@@ -84,6 +88,7 @@ const CLIENT_REGISTRY: readonly ClientRegistryEntry[] = [
         return null
       }
       return buildDetectedIDE("claude-desktop", {
+        workspaceRoot: process.cwd(),
         mcpConfigPath: configPath,
       })
     },
@@ -94,6 +99,7 @@ const CLIENT_REGISTRY: readonly ClientRegistryEntry[] = [
       const cursorDir = join(cwd, ".cursor")
       if (!(await exists(cursorDir))) return null
       return buildDetectedIDE("cursor-project", {
+        workspaceRoot: cwd,
         mcpConfigPath: join(cursorDir, "mcp.json"),
       })
     },
@@ -107,6 +113,7 @@ const CLIENT_REGISTRY: readonly ClientRegistryEntry[] = [
         : join(home, ".config", "cursor", "mcp.json")
       if (!(await exists(configPath)) && !(await exists(legacyPath)) && !(await exists(join(home, ".cursor")))) return null
       return buildDetectedIDE("cursor-global", {
+        workspaceRoot: process.cwd(),
         mcpConfigPath: configPath,
         legacyConfigPaths: [legacyPath],
       })
@@ -120,6 +127,7 @@ const CLIENT_REGISTRY: readonly ClientRegistryEntry[] = [
       const configPath = process.platform === "darwin" ? macPath : linuxPath
       if (!(await exists(configPath)) && !(await exists(dirnameOf(configPath)))) return null
       return buildDetectedIDE("vscode", {
+        workspaceRoot: process.cwd(),
         mcpConfigPath: configPath,
       })
     },
@@ -133,6 +141,7 @@ const CLIENT_REGISTRY: readonly ClientRegistryEntry[] = [
         : join(home, ".config", "windsurf", "mcp.json")
       if (!(await exists(configPath)) && !(await exists(legacyPath)) && !(await exists(join(home, ".codeium")))) return null
       return buildDetectedIDE("windsurf", {
+        workspaceRoot: process.cwd(),
         mcpConfigPath: configPath,
         clientSetupPath: join(home, ".codeium", "windsurf", "hooks.json"),
         legacyConfigPaths: [legacyPath],
@@ -146,6 +155,7 @@ const CLIENT_REGISTRY: readonly ClientRegistryEntry[] = [
       const legacyPath = join(home, ".codex", "mcp.json")
       if (!(await exists(configPath)) && !(await exists(legacyPath)) && !(await exists(join(home, ".codex")))) return null
       return buildDetectedIDE("codex-cli", {
+        workspaceRoot: process.cwd(),
         mcpConfigPath: configPath,
         legacyConfigPaths: [legacyPath],
       })
@@ -170,6 +180,7 @@ const CLIENT_REGISTRY: readonly ClientRegistryEntry[] = [
         return null
       }
       return buildDetectedIDE("opencode", {
+        workspaceRoot: cwd,
         mcpConfigPath: detectedPath ?? globalJson,
         legacyConfigPaths: legacyPaths,
       })
@@ -186,6 +197,7 @@ const CLIENT_REGISTRY: readonly ClientRegistryEntry[] = [
         return null
       }
       return buildDetectedIDE("gemini-cli", {
+        workspaceRoot: process.cwd(),
         mcpConfigPath: (await exists(configPath)) || hasPrimaryDir ? configPath : fallbackPath,
         clientSetupPath: (await exists(configPath)) || hasPrimaryDir ? configPath : fallbackPath,
         legacyConfigPaths: [legacyPath],
@@ -200,6 +212,7 @@ const CLIENT_REGISTRY: readonly ClientRegistryEntry[] = [
       const hasPrimaryDir = await exists(join(home, ".warp"))
       if (!(await exists(configPath)) && !(await exists(fallbackPath)) && !hasPrimaryDir) return null
       return buildDetectedIDE("warp", {
+        workspaceRoot: process.cwd(),
         mcpConfigPath: (await exists(configPath)) || hasPrimaryDir ? configPath : fallbackPath,
       })
     },
@@ -212,6 +225,7 @@ const CLIENT_REGISTRY: readonly ClientRegistryEntry[] = [
       const hasPrimaryDir = await exists(join(home, ".antigravity"))
       if (!(await exists(configPath)) && !(await exists(fallbackPath)) && !hasPrimaryDir) return null
       return buildDetectedIDE("antigravity", {
+        workspaceRoot: process.cwd(),
         mcpConfigPath: (await exists(configPath)) || hasPrimaryDir ? configPath : fallbackPath,
       })
     },

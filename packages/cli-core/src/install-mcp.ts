@@ -3,6 +3,7 @@ import { dirname } from "node:path"
 
 import type { DetectedIDE } from "./detect"
 import { getMcpCommand } from "./detect"
+import { applyJsoncEdits, parseJsonc, type JsoncEdit } from "./jsonc"
 
 interface InstallMcpConfigOptions {
   mode?: "local" | "remote"
@@ -32,12 +33,6 @@ interface OpenCodeMcpConfig {
   url?: string
   headers?: Record<string, string>
   enabled: boolean
-}
-
-function stripJsonComments(raw: string) {
-  return raw
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "")
 }
 
 function buildRelayServerConfig(ide: DetectedIDE, options: Required<InstallMcpConfigOptions>): GenericMcpServerConfig {
@@ -199,12 +194,18 @@ function removeCodexTomlBlock(raw: string) {
   return next ? `${next}\n` : ""
 }
 
-async function loadJsonConfig(path: string): Promise<JsonMcpConfig> {
+async function loadJsonConfig(path: string): Promise<{ raw: string; data: JsonMcpConfig }> {
   try {
     const raw = await readFile(path, "utf-8")
-    return JSON.parse(stripJsonComments(raw)) as JsonMcpConfig
+    return {
+      raw,
+      data: parseJsonc<JsonMcpConfig>(raw),
+    }
   } catch {
-    return {}
+    return {
+      raw: "{}\n",
+      data: {},
+    }
   }
 }
 
@@ -216,19 +217,12 @@ async function loadCodexConfig(path: string) {
   }
 }
 
-function writeJsonMcpServer(
-  ide: DetectedIDE,
-  existing: JsonMcpConfig,
-  relayConfig: GenericMcpServerConfig
-) {
+function buildJsonInstallEdits(ide: DetectedIDE, relayConfig: GenericMcpServerConfig): JsoncEdit[] {
   if (ide.configFormat === "json-servers") {
-    existing.servers = existing.servers ?? {}
-    existing.servers.relay = relayConfig
-    return existing
+    return [{ path: ["servers", "relay"], value: relayConfig }]
   }
 
   if (ide.configFormat === "json-opencode") {
-    const currentMcp = typeof existing.mcp === "object" && existing.mcp ? existing.mcp as Record<string, unknown> : {}
     const nextRelay: OpenCodeMcpConfig =
       relayConfig.url
         ? {
@@ -243,47 +237,38 @@ function writeJsonMcpServer(
             enabled: true,
           }
 
-    existing.mcp = {
-      ...currentMcp,
-      relay: nextRelay,
-    }
-    return existing
+    return [{ path: ["mcp", "relay"], value: nextRelay }]
   }
 
-  existing.mcpServers = existing.mcpServers ?? {}
-  existing.mcpServers.relay = relayConfig
-  return existing
+  return [{ path: ["mcpServers", "relay"], value: relayConfig }]
 }
 
-function removeRelayFromJsonConfig(ide: DetectedIDE, existing: JsonMcpConfig) {
-  let removed = false
+function buildJsonUninstallEdits(ide: DetectedIDE, existing: JsonMcpConfig): JsoncEdit[] {
+  const edits: JsoncEdit[] = []
 
   if (existing.mcpServers?.relay) {
-    delete existing.mcpServers.relay
-    removed = true
-    if (Object.keys(existing.mcpServers).length === 0) {
-      delete existing.mcpServers
+    edits.push({ path: ["mcpServers", "relay"], value: undefined })
+    if (Object.keys(existing.mcpServers).length === 1) {
+      edits.push({ path: ["mcpServers"], value: undefined })
     }
   }
 
   if (existing.servers?.relay) {
-    delete existing.servers.relay
-    removed = true
-    if (Object.keys(existing.servers).length === 0) {
-      delete existing.servers
+    edits.push({ path: ["servers", "relay"], value: undefined })
+    if (Object.keys(existing.servers).length === 1) {
+      edits.push({ path: ["servers"], value: undefined })
     }
   }
 
   if (ide.configFormat === "json-opencode" && existing.mcp && typeof existing.mcp === "object" && "relay" in existing.mcp) {
     const mcp = existing.mcp as Record<string, unknown>
-    delete mcp.relay
-    removed = true
-    if (Object.keys(mcp).length === 0) {
-      delete existing.mcp
+    edits.push({ path: ["mcp", "relay"], value: undefined })
+    if (Object.keys(mcp).length === 1) {
+      edits.push({ path: ["mcp"], value: undefined })
     }
   }
 
-  return removed
+  return edits
 }
 
 export async function installMcpConfig(
@@ -308,8 +293,8 @@ export async function installMcpConfig(
   }
 
   const existing = await loadJsonConfig(ide.mcpConfigPath)
-  const next = writeJsonMcpServer(ide, existing, relayConfig)
-  await writeFile(ide.mcpConfigPath, JSON.stringify(next, null, 2) + "\n", "utf-8")
+  const next = applyJsoncEdits(existing.raw, buildJsonInstallEdits(ide, relayConfig))
+  await writeFile(ide.mcpConfigPath, next.text, "utf-8")
 }
 
 export async function uninstallMcpConfig(ide: DetectedIDE): Promise<boolean> {
@@ -331,10 +316,11 @@ export async function uninstallMcpConfig(ide: DetectedIDE): Promise<boolean> {
     }
 
     const existing = await loadJsonConfig(path)
-    const pathRemoved = removeRelayFromJsonConfig(ide, existing)
-    if (pathRemoved) {
+    const uninstallEdits = buildJsonUninstallEdits(ide, existing.data)
+    if (uninstallEdits.length > 0) {
+      const next = applyJsoncEdits(existing.raw, uninstallEdits)
       await mkdir(dirname(path), { recursive: true })
-      await writeFile(path, JSON.stringify(existing, null, 2) + "\n", "utf-8")
+      await writeFile(path, next.text, "utf-8")
       removed = true
     }
   }
@@ -349,7 +335,7 @@ export async function validateInstalledMcpConfig(ide: DetectedIDE): Promise<bool
   }
 
   const existing = await loadJsonConfig(ide.mcpConfigPath)
-  if (existing.mcpServers?.relay || existing.servers?.relay) return true
-  if (existing.mcp && typeof existing.mcp === "object" && "relay" in existing.mcp) return true
+  if (existing.data.mcpServers?.relay || existing.data.servers?.relay) return true
+  if (existing.data.mcp && typeof existing.data.mcp === "object" && "relay" in existing.data.mcp) return true
   return false
 }

@@ -48,7 +48,8 @@ export default function GettingStartedPage() {
         <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">4. Connect MCP (optional)</h2>
         <p className="text-[15px] text-[var(--relay-muted)]">
           If you use Claude Code, Cursor, Windsurf, or another MCP-compatible tool, connect Relay via MCP
-          for full two-way sync. See the{" "}
+          for full two-way sync. The wizard installs MCP first, then adds native instructions, rules, hooks,
+          or skills where the client officially supports them. See the{" "}
           <Link href="/docs/mcp" className="text-[var(--relay-accent)] underline underline-offset-2">
             MCP Integration
           </Link>{" "}

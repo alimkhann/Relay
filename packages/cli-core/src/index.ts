@@ -27,7 +27,9 @@ export { type ProjectSummary, listProjects, getProjectDashboard } from "./projec
 export { printBanner, success, info, warn, error, step } from "./ui"
 export {
   type AuthResult,
+  type UnifiedAuthResult,
   type ScopedMcpAuthResult,
   startAuthFlow,
-  startScopedMcpAuthFlow
+  startScopedMcpAuthFlow,
+  startUnifiedAuthFlow
 } from "./auth"

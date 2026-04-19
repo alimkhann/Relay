@@ -3,9 +3,6 @@ import pc from "picocolors"
 
 import type { RelayCliAnalytics } from "./analytics"
 import {
-  startAuthFlow,
-  startScopedMcpAuthFlow,
-  RelayApiClient,
   loadConfig,
   saveConfig,
   getConfigPath,
@@ -14,11 +11,12 @@ import {
   installClientSetup,
   validateInstalledClientSetup,
   validateInstalledMcpConfig,
-  listProjects,
   printBanner,
   success,
   info,
-  step
+  warn,
+  step,
+  startUnifiedAuthFlow,
 } from "@relay/cli-core"
 
 const DEFAULT_API_BASE = "https://www.onrelay.app"
@@ -42,48 +40,17 @@ export async function runWizard(options: { apiBase?: string; analytics?: RelayCl
     }
   }
 
-  // Auth
-  p.intro(pc.bold("Let's connect your terminal to Relay"))
+  // Unified auth
+  p.intro(pc.bold("Let's connect Relay MCP to your coding tools"))
 
   step(options.openBrowser === false ? "Starting manual authorization..." : "Starting browser authorization...")
-  const auth = await startAuthFlow(apiBase, { openBrowser: options.openBrowser })
+  const auth = await startUnifiedAuthFlow(apiBase, existing?.projectId, { openBrowser: options.openBrowser })
   await options.analytics?.identify(auth.apiBase, auth.token)
   success("Authenticated successfully!")
 
-  let projectId = existing?.projectId
-  const projectClient = new RelayApiClient(auth.apiBase, auth.token)
-  const projects = await listProjects(projectClient)
-
-  if (projects.length > 0) {
-    const selectedProjectId = await p.select({
-      message: "Choose the active Relay project for MCP access:",
-      options: projects.map((project) => ({
-        value: project.id,
-        label: project.name,
-        hint: project.slug
-      })),
-      initialValue: projectId ?? projects[0]?.id
-    })
-
-    if (!p.isCancel(selectedProjectId)) {
-      projectId = selectedProjectId as string
-    }
-  }
-
-  let accessToken: string | undefined
-  let refreshToken: string | undefined
-  let accessTokenExpiresAt: string | undefined
-  let refreshTokenExpiresAt: string | undefined
-
-  if (projectId) {
-    step("Requesting scoped MCP token...")
-    const scopedAuth = await startScopedMcpAuthFlow(auth.apiBase, projectId, {
-      openBrowser: options.openBrowser
-    })
-    accessToken = scopedAuth.accessToken
-    refreshToken = scopedAuth.refreshToken
-    accessTokenExpiresAt = scopedAuth.accessExpiresAt
-    refreshTokenExpiresAt = scopedAuth.refreshExpiresAt
+  if (!auth.accessToken) {
+    warn("Relay could not mint a scoped MCP token yet. Create a project in Relay, then re-run the installer.")
+  } else {
     success("Scoped MCP access approved!")
   }
 
@@ -91,15 +58,15 @@ export async function runWizard(options: { apiBase?: string; analytics?: RelayCl
   await saveConfig({
     apiBase: auth.apiBase,
     token: auth.token,
-    projectId,
-    accessToken,
-    refreshToken,
-    accessTokenExpiresAt,
-    refreshTokenExpiresAt,
+    projectId: auth.projectId ?? existing?.projectId,
+    accessToken: auth.accessToken,
+    refreshToken: auth.refreshToken,
+    accessTokenExpiresAt: auth.accessExpiresAt,
+    refreshTokenExpiresAt: auth.refreshExpiresAt,
   })
   options.analytics?.capture("cli_install_completed", {
     success: true,
-    project_id: projectId ?? null,
+    project_id: auth.projectId ?? existing?.projectId ?? null,
   })
   success(`Config saved to ${pc.dim(getConfigPath())}`)
 
@@ -134,13 +101,16 @@ export async function runWizard(options: { apiBase?: string; analytics?: RelayCl
           throw new Error(`Relay MCP install did not validate for ${ide.name}.`)
         }
 
-        const setupPath = await installClientSetup(ide)
-        if (setupPath) {
+        const setup = await installClientSetup(ide)
+        if (setup.artifacts.length > 0) {
           const isSetupValid = await validateInstalledClientSetup(ide)
           if (!isSetupValid) {
             throw new Error(`Relay client setup did not validate for ${ide.name}.`)
           }
-          success(`Client setup → ${pc.dim(setupPath)}`)
+          for (const artifact of setup.artifacts) {
+            const statusLabel = artifact.status === "already-configured" ? "already configured" : artifact.status
+            success(`${ide.name} ${artifact.kind} (${statusLabel}) → ${pc.dim(artifact.path)}`)
+          }
         }
       }
     }
@@ -152,7 +122,7 @@ export async function runWizard(options: { apiBase?: string; analytics?: RelayCl
   console.log()
   info("Next steps:")
   console.log(pc.dim("  1. Open a new terminal session in your project"))
-  console.log(pc.dim("  2. Your AI coding tool will auto-discover Relay MCP"))
+  console.log(pc.dim("  2. Your coding agent should load Relay MCP and its client-native guidance"))
   console.log(pc.dim("  3. Start by calling list_projects, then get_brief"))
   console.log()
 }

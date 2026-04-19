@@ -21,8 +21,9 @@ function generateSessionCode(): string {
 /**
  * POST /api/wizard/auth/start
  *
- * Starts a combined CLI + MCP auth session. One browser visit grants both tokens.
- * The wizard sends { codeChallenge, projectId, scopes } and gets back a polling secret.
+ * Starts a combined Relay auth session for the MCP wizard.
+ * One browser visit grants the Relay API token and, when a project can be
+ * resolved, a scoped MCP token.
  */
 export const POST = withApiRoute(async (request: Request) => {
   await assertIpRateLimit(request, "wizard_auth_start_ip", 5)
@@ -33,8 +34,8 @@ export const POST = withApiRoute(async (request: Request) => {
     scopes?: string[]
   }
 
-  if (typeof body.codeChallenge !== "string" || typeof body.projectId !== "string") {
-    return NextResponse.json({ error: "codeChallenge and projectId are required." }, { status: 400 })
+  if (typeof body.codeChallenge !== "string") {
+    return NextResponse.json({ error: "codeChallenge is required." }, { status: 400 })
   }
 
   const repositories = createRepositoryBundle()
@@ -53,20 +54,21 @@ export const POST = withApiRoute(async (request: Request) => {
     expiresAt,
   })
 
-  // Also create the MCP auth session linked to the same code
   const scopes = (body.scopes ?? []).filter((scope): scope is "project:read" | "project:write" | "memory:read" | "memory:write" | "brief:read" =>
     typeof scope === "string" && ["project:read", "project:write", "memory:read", "memory:write", "brief:read"].includes(scope)
   )
 
-  await repositories.mcpAuthSessions.create({
-    sessionCode: `W${sessionCode}`,
-    sessionHash: hashContent(`wizard_mcp_${pollingSecret}`),
-    sessionPrefix: `wizard_mcp_${pollingSecret}`.slice(0, 18),
-    codeChallenge: body.codeChallenge,
-    projectId: body.projectId,
-    scopes,
-    expiresAt,
-  })
+  if (typeof body.projectId === "string") {
+    await repositories.mcpAuthSessions.create({
+      sessionCode: `W${sessionCode}`,
+      sessionHash: hashContent(`wizard_mcp_${pollingSecret}`),
+      sessionPrefix: `wizard_mcp_${pollingSecret}`.slice(0, 18),
+      codeChallenge: body.codeChallenge,
+      projectId: body.projectId,
+      scopes,
+      expiresAt,
+    })
+  }
 
   const appUrl = process.env["NEXT_PUBLIC_RELAY_APP_URL"] ?? "https://www.onrelay.app"
 

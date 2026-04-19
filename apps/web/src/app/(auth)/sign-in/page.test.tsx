@@ -95,10 +95,10 @@ describe("SignInPage", () => {
     await expect(
       SignInPage({
         searchParams: Promise.resolve({
-          next: "/cli-onboarding?code=TEST",
+          next: "/wizard-onboarding?code=TEST",
           intent: "sign-in"
         })
       })
-    ).rejects.toThrow("REDIRECT:/cli-onboarding?code=TEST")
+    ).rejects.toThrow("REDIRECT:/wizard-onboarding?code=TEST")
   })
 })
