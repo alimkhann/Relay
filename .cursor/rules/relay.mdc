@@ -1,12 +1,12 @@
 ---
-description: Relay repository-specific Cursor guidance that supplements AGENTS.md.
+description: Relay-managed Cursor guidance for using Relay MCP without noisy reads or writes.
 alwaysApply: true
 ---
 
 The canonical repository policy is in `AGENTS.md`. Follow it first.
 
-Cursor-specific guidance for Relay:
-
-- Use this rule only as a supplement to `AGENTS.md`, not as a competing policy source.
-- Cursor has no official Relay-managed hook flow here, so call `checkpoint_context` before compaction-equivalent actions, before switching threads, and after a meaningful unit of work when durable continuity matters.
-- Keep searches and file reads tight. Do not repeatedly scan the repo for the same symbol.
+- Use Relay early when resuming a task: `list_projects`, `set_current_project` if needed, then `get_brief`.
+- Prefer `search_context` or `recall_context` before architectural changes when local context may be incomplete.
+- Use `add_memory` for durable single facts, `checkpoint_context` for milestones, and `save_context` when wrapping a meaningful unit of work.
+- Do not read or write Relay repeatedly when the current conversation already has the context you need.
+- Cursor has no Relay-managed hook flow here, so checkpoint only at meaningful boundaries.
