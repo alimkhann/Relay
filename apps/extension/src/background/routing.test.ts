@@ -74,7 +74,7 @@ describe("evaluateProjectRouting", () => {
     expect(result.confidence).toBe("high")
   })
 
-  it("allows bootstrap-phase auto-save only on strong explicit project-name evidence", () => {
+  it("holds bootstrap chats that are clearly about a project by name", () => {
     const result = evaluateProjectRouting({
       page: {
         supported: true,
@@ -115,9 +115,9 @@ describe("evaluateProjectRouting", () => {
       approvedAssociations: []
     })
 
-    expect(result.mode).toBe("auto-save")
+    expect(result.mode).toBe("hold")
     expect(result.candidateProjectId).toBe("project_relay")
-    expect(result.confidence).toBe("high")
+    expect(result.confidence).toBe("medium")
   })
 
   it("uses saved project context to hold or auto-route context-aware chats", () => {
@@ -167,7 +167,7 @@ describe("evaluateProjectRouting", () => {
     expect(["medium", "high"]).toContain(result.confidence)
   })
 
-  it("lets a recent assistant turn promote the right project when the user stops naming it", () => {
+  it("does not auto-save when the strongest bootstrap signal is a recent assistant reference", () => {
     const result = evaluateProjectRouting({
       page: {
         supported: true,
@@ -209,11 +209,12 @@ describe("evaluateProjectRouting", () => {
       approvedAssociations: []
     })
 
-    expect(result.mode).toBe("auto-save")
+    expect(result.mode).toBe("hold")
     expect(result.candidateProjectId).toBe("project_relay")
+    expect(result.confidence).toBe("medium")
   })
 
-  it("does not silently ignore chats with an exact project-name mention", () => {
+  it("keeps exact-name mentions on hold when they are visible but still unconfirmed", () => {
     const result = evaluateProjectRouting({
       page: {
         supported: true,
@@ -304,7 +305,7 @@ describe("evaluateProjectRouting", () => {
     ).toBe(true)
   })
 
-  it("does not override stronger explicit routing evidence with selected-project affinity", () => {
+  it("keeps project-focused bootstrap chats on hold even when another project is selected", () => {
     const result = evaluateProjectRouting({
       page: {
         supported: true,
@@ -345,9 +346,9 @@ describe("evaluateProjectRouting", () => {
       approvedAssociations: []
     })
 
-    expect(result.mode).toBe("auto-save")
+    expect(result.mode).toBe("hold")
     expect(result.candidateProjectId).toBe("project_relay")
-    expect(result.confidence).toBe("high")
+    expect(result.confidence).toBe("medium")
   })
 
   it("ignores unrelated fresh-project chats when the selected project only matches by selection", () => {
@@ -386,7 +387,7 @@ describe("evaluateProjectRouting", () => {
     expect(result.confidence).toBe("low")
   })
 
-  it("falls back to whole visible chat matches before using description overlap", () => {
+  it("holds whole-chat matches when a fresh project lacks prior continuity context", () => {
     const result = evaluateProjectRouting({
       page: {
         supported: true,
@@ -431,7 +432,7 @@ describe("evaluateProjectRouting", () => {
       approvedAssociations: []
     })
 
-    expect(result.mode).toBe("auto-save")
+    expect(result.mode).toBe("hold")
     expect(result.candidateProjectId).toBe("project_relay_brand")
     expect(
       result.reasons.some((reason) => reason.includes("visible chat turn")),
@@ -472,7 +473,7 @@ describe("evaluateProjectRouting", () => {
     expect(result.confidence).toBe("low")
   })
 
-  it("routes an existing chat from recent turns even when the latest user prompt is no longer explicit", () => {
+  it("holds existing bootstrap chats when older turns are strong but continuity is still unconfirmed", () => {
     const result = evaluateProjectRouting({
       page: {
         supported: true,
@@ -521,8 +522,44 @@ describe("evaluateProjectRouting", () => {
       approvedAssociations: []
     })
 
-    expect(result.mode).toBe("auto-save")
-    expect(result.confidence).toBe("high")
+    expect(result.mode).toBe("hold")
+    expect(result.confidence).toBe("medium")
     expect(result.candidateProjectId).toBe("project_relay")
+  })
+
+  it("ignores incidental single-name references when the chat is otherwise unrelated", () => {
+    const result = evaluateProjectRouting({
+      page: {
+        supported: true,
+        platform: "chatgpt",
+        pathname: "/c/random",
+        title: "Debugging a billing fetch",
+        recentRoutingText:
+          "Debugging a billing fetch\nuser: I mentioned Relay as a reference point, but this chat is about an unrelated API timeout.",
+        recentUserTurnText:
+          "I mentioned Relay as a reference point, but this chat is about an unrelated API timeout.",
+      },
+      projects: [
+        {
+          id: "project_relay",
+          name: "Relay",
+          slug: "relay",
+          memoryCount: 0,
+          sessionCount: 0,
+          routingContext: {
+            hasMeaningfulContext: false,
+            keywords: [],
+          },
+        },
+      ],
+      selectedProjectId: null,
+      lastTabProjectId: null,
+      boundProject: null,
+      approvedAssociations: [],
+    })
+
+    expect(result.mode).toBe("ignore")
+    expect(result.confidence).toBe("low")
+    expect(result.candidateProjectId).toBeNull()
   })
 })

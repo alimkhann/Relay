@@ -42,10 +42,14 @@ export async function adjudicateProjectAssociation(input: {
     maxInputTokens: GEMINI_MODELS.adjudication.maxInputTokens,
     maxOutputTokens: GEMINI_MODELS.adjudication.maxOutputTokens,
     systemInstruction:
-      "You decide whether an AI chat should be automatically associated to a Relay project. Return only JSON. Be conservative. Only return auto-save when the evidence is strong and the best candidate clearly dominates.",
+      "You decide whether an AI chat should be automatically associated to a Relay project. Return only JSON. Be conservative. Only return auto-save when the chat is clearly advancing that project and the best candidate clearly dominates. If a project is mentioned only for reference, comparison, or passing context, do not auto-save it.",
     prompt: [
       "Return JSON with exactly: decision, candidateProjectId, confidence, reason.",
       "decision must be one of: auto-save, hold, ignore.",
+      "Treat bare project-name mentions as weak evidence.",
+      "If the project is mentioned only for reference, comparison, or incidental context, return ignore.",
+      "If the project seems relevant but the evidence is still ambiguous or name-only, return hold instead of auto-save.",
+      "Only return auto-save when the chat is obviously about ongoing work for that project, not merely naming it.",
       `Heuristic mode: ${input.heuristicMode}`,
       `Heuristic confidence: ${input.heuristicConfidence}`,
       ...(input.title ? [`Chat title: ${input.title}`] : []),

@@ -23,6 +23,7 @@ import {
   deriveUnresolvedAssociationCardPresentation,
   shouldShowAssociationCard,
 } from "./control-panel-state";
+import { resolveDisplayedPlan } from "./control-panel-billing";
 import {
   createExtensionFlowId,
   logExtensionEvent,
@@ -1480,6 +1481,9 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       activeState.remoteStatus === "stale" ||
       activeState.remoteStatus === "unavailable");
   const insertButtonState = deriveInsertButtonState(activeState);
+  const displayedPlan = resolveDisplayedPlan(activeState);
+  const isKnownProPlan = displayedPlan === "pro";
+  const shouldShowUpgrade = displayedPlan === "free" || displayedPlan === "starter";
   const shouldRenderAssociationCard = shouldShowAssociationCard({
     onboardingStatus: activeState.onboarding.status,
     supported: activeState.page.supported,
@@ -1852,7 +1856,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   <h2 className={styles.projectName}>
                     {activeState.projectName ?? "No project"}
                   </h2>
-                  {activeState.entitlements?.isPro ? (
+                  {isKnownProPlan ? (
                     <span className={styles.proChip} aria-label="Pro plan">
                       Pro
                     </span>
@@ -1961,7 +1965,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 {activeState.lastBudgetStatus.aiRemaining === 0 ? (
                   <span>
                     AI analyses used up today — resets at midnight UTC
-                    {!activeState.entitlements?.isPro ? (
+                    {shouldShowUpgrade ? (
                       <>
                         {" · "}
                         <a
@@ -1970,7 +1974,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                           rel="noopener noreferrer"
                           className={styles.upgradeLink}
                         >
-                          {activeState.lastBudgetStatus.plan === "free"
+                          {displayedPlan === "free"
                             ? "Upgrade for 32/project · 120/day"
                             : "Upgrade for higher limits"}
                         </a>
@@ -1981,7 +1985,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   <span>
                     ⚡ {activeState.lastBudgetStatus.aiRemaining}/
                     {activeState.lastBudgetStatus.aiLimit} analyses today
-                    {!activeState.entitlements?.isPro ? (
+                    {shouldShowUpgrade ? (
                       <>
                         {" · "}
                         <a

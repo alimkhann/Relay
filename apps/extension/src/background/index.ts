@@ -2078,12 +2078,9 @@ async function adjudicateAssociationRouting(
   }
 
   const topCandidateId = decision.topCandidates[0]?.projectId ?? null;
-  const explicitSignalOverride =
-    decision.diagnostics.explicitNameSignal ||
-    decision.diagnostics.wholeChatExactMention;
   const allowAutoSave =
     result.decision === "auto-save" &&
-    (decision.confidence !== "low" || explicitSignalOverride) &&
+    decision.confidence !== "low" &&
     result.confidence === "high" &&
     Boolean(result.candidateProjectId) &&
     result.candidateProjectId === topCandidateId;

@@ -45,6 +45,24 @@ interface CandidateScore {
   signalCategories: Set<"name" | "title" | "description" | "context" | "binding" | "association">
 }
 
+function getContentSignalCategories(
+  categories: Set<"name" | "title" | "description" | "context" | "binding" | "association">
+) {
+  const contentCategories = new Set(categories)
+  contentCategories.delete("binding")
+  contentCategories.delete("association")
+  return contentCategories
+}
+
+function hasNonNameContentSignal(
+  categories: Set<"name" | "title" | "description" | "context" | "binding" | "association">
+) {
+  const contentCategories = getContentSignalCategories(categories)
+  contentCategories.delete("name")
+  contentCategories.delete("title")
+  return contentCategories.size > 0
+}
+
 interface EvaluateProjectRoutingInput {
   page: RelayPageState
   projects: RelayProjectOption[]
@@ -134,6 +152,26 @@ function hasProjectNameMention(project: RelayProjectOption, haystack: string | n
 
   const slug = project.slug ? slugify(project.slug) : ""
   return Boolean(slug && normalizedHaystack.includes(slug))
+}
+
+function hasIncidentalReferenceMention(project: RelayProjectOption, haystack: string | null | undefined) {
+  const normalizedHaystack = normalizeText(haystack ?? "").toLowerCase()
+  if (!normalizedHaystack || !hasProjectNameMention(project, normalizedHaystack)) {
+    return false
+  }
+
+  return [
+    "for reference",
+    "reference point",
+    "mentioned",
+    "mentioning",
+    "compare",
+    "comparison",
+    "unrelated",
+    "not about",
+    "just an example",
+    "for example",
+  ].some((phrase) => normalizedHaystack.includes(phrase))
 }
 
 function collectProjectTokens(project: RelayProjectOption) {
@@ -323,7 +361,6 @@ function scoreProjectCandidate(
     hasProjectNameMention(project, routingText)
   if (verbatimNameMention) {
     candidate.score += candidate.phase === "bootstrap" ? 42 : 34
-    candidate.highConfidenceEligible = true
     candidate.explicitNameSignal = true
     candidate.signalCategories.add("name")
     pushReason(candidate, "The project name appears verbatim in the current chat.")
@@ -332,9 +369,6 @@ function scoreProjectCandidate(
   const titleOverlap = overlapCount(projectTokens, titleTokens)
   if (titleOverlap > 0) {
     candidate.score += Math.min(candidate.phase === "bootstrap" ? 42 : 24, titleOverlap * (candidate.phase === "bootstrap" ? 14 : 8))
-    if (titleOverlap >= 2) {
-      candidate.highConfidenceEligible = true
-    }
     candidate.explicitNameSignal = true
     candidate.signalCategories.add("title")
     pushReason(candidate, "Project name overlaps with the chat title.")
@@ -346,9 +380,6 @@ function scoreProjectCandidate(
       candidate.phase === "bootstrap" ? 32 : 20,
       latestUserOverlap * (candidate.phase === "bootstrap" ? 12 : 7)
     )
-    if (latestUserOverlap >= 2) {
-      candidate.highConfidenceEligible = true
-    }
     candidate.explicitNameSignal = true
     candidate.signalCategories.add("name")
     pushReason(candidate, "The latest user turn mentions the project.")
@@ -360,9 +391,6 @@ function scoreProjectCandidate(
       candidate.phase === "bootstrap" ? 20 : 14,
       recentWindowOverlap * (candidate.phase === "bootstrap" ? 6 : 4)
     )
-    if (recentWindowOverlap >= 2) {
-      candidate.highConfidenceEligible = true
-    }
     candidate.explicitNameSignal = true
     candidate.signalCategories.add("name")
     pushReason(candidate, "Recent chat turns mention the project.")
@@ -373,7 +401,6 @@ function scoreProjectCandidate(
     hasProjectNameMention(project, fullVisibleRoutingText)
   if (exactWholeChatMention) {
     candidate.score += candidate.phase === "bootstrap" ? 26 : 18
-    candidate.highConfidenceEligible = true
     candidate.explicitNameSignal = true
     candidate.wholeChatExactMention = true
     candidate.signalCategories.add("name")
@@ -385,6 +412,15 @@ function scoreProjectCandidate(
     candidate.score += Math.min(candidate.phase === "bootstrap" ? 18 : 12, pathOverlap * 6)
     candidate.signalCategories.add("name")
     pushReason(candidate, "Project name overlaps with the route or URL.")
+  }
+
+  const incidentalReferenceMention =
+    hasIncidentalReferenceMention(project, input.page.recentUserTurnText) ||
+    hasIncidentalReferenceMention(project, routingText)
+  if (incidentalReferenceMention) {
+    candidate.score = Math.max(0, candidate.score - (candidate.phase === "bootstrap" ? 30 : 22))
+    candidate.highConfidenceEligible = false
+    pushReason(candidate, "The project appears to be mentioned only as a reference.")
   }
 
   const descriptionTitleOverlap = overlapCount(descriptionTokens, titleTokens)
@@ -532,40 +568,43 @@ function scoreProjectCandidate(
 function resolveConfidence(
   top: CandidateScore,
   runnerUpScore: number,
-  input: EvaluateProjectRoutingInput,
+  _input: EvaluateProjectRoutingInput,
 ) {
   const scoreGap = top.score - runnerUpScore
-  const workspaceIsEffectivelySingleProject = input.projects.length === 1
-  const strongBootstrapEvidence =
-    top.explicitNameSignal || top.bootstrapDescriptionOverlap >= 3
 
   // Association matches are inherently high-confidence — skip diversity check
   const hasAssociationMatch = top.signalCategories.has("association")
 
   // For auto-save, require at least 2 distinct content signal categories
   // (name, title, description, context) unless backed by an association match
-  const contentCategories = new Set(top.signalCategories)
-  contentCategories.delete("binding")
-  contentCategories.delete("association")
+  const contentCategories = getContentSignalCategories(top.signalCategories)
   const hasSignalDiversity = hasAssociationMatch || contentCategories.size >= 2
+  const hasStrongContentSignal = hasAssociationMatch || hasNonNameContentSignal(top.signalCategories)
+  const nameOnlyReference =
+    !hasAssociationMatch &&
+    top.explicitNameSignal &&
+    !hasStrongContentSignal
 
   if (
     top.highConfidenceEligible &&
+    (hasAssociationMatch || top.phase === "context-aware") &&
     top.score >= (top.phase === "bootstrap" ? 70 : 68) &&
     scoreGap >= (top.phase === "bootstrap" ? 18 : 12) &&
-    hasSignalDiversity
+    hasSignalDiversity &&
+    hasStrongContentSignal
   ) {
     return "high" as const
   }
 
-  if (
-    top.phase === "bootstrap" &&
-    strongBootstrapEvidence &&
-    top.score >= 24 &&
-    scoreGap >= (workspaceIsEffectivelySingleProject ? 4 : 8) &&
-    hasSignalDiversity
-  ) {
-    return "high" as const
+  if (nameOnlyReference) {
+    if (
+      top.score >= (top.phase === "bootstrap" ? 54 : 46) &&
+      scoreGap >= (top.phase === "bootstrap" ? 8 : 6)
+    ) {
+      return "medium" as const
+    }
+
+    return "low" as const
   }
 
   if (
