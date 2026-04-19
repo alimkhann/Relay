@@ -18,7 +18,19 @@ This is the canonical repository policy for coding agents working in Relay. Clie
   - `packages/wizard/src/*`
   - `packages/mcp/src/*`
   - `apps/web/src/app/docs/mcp/page.tsx`
-- Do not create ad hoc files in the repo root. Put durable docs in root only when they are repo-wide policy or release docs.
+- Root docs are intentionally limited. Only these repo-owned root docs should exist:
+  - `README.md`
+  - `AGENTS.md`
+  - `CLAUDE.md`
+  - `GEMINI.md`
+  - `CONTRIBUTING.md`
+  - `SECURITY.md`
+  - `SUPPORT.md`
+  - `LICENSE`
+  - `DEPLOYMENT.md`
+  - `RELEASING.md`
+- Put agent reference material that does not rely on reserved filenames in `docs/agents/`.
+- Put internal planning, research, launch notes, and archived handoff docs in `docs/internal/` or the relevant feature-specific research folder.
 
 ## Cost And Tool Discipline
 
@@ -37,11 +49,15 @@ This is the canonical repository policy for coding agents working in Relay. Clie
 - Use ASCII unless a file already needs Unicode.
 - Keep comments rare and high-signal.
 - If you change a client integration surface, update the registry, installer, docs, and tests in the same change.
+- Do not create one-off markdown notes in the repo root.
+- One-off research or handoff docs should use dated, slugged filenames under `docs/internal/archive/`, `docs/internal/research/`, or a feature-specific archive folder.
+- Local client state is never repo-owned. Do not commit `.claude/`, `.opencode/`, machine-local MCP config, `settings.local.json`, caches, packaged bundles, reviewer mail, or pitch material.
 
 ## Commands
 
 - Install: `pnpm install`
 - Lint: `pnpm lint`
+- Repo audit: `pnpm repo:check`
 - Typecheck: `pnpm typecheck`
 - Stable CI tests: `pnpm test:stable`
 - Full suite: `pnpm test`
@@ -52,6 +68,7 @@ This is the canonical repository policy for coding agents working in Relay. Clie
 ## Testing Defaults
 
 - Start with the smallest affected tests.
+- For repo cleanup and hygiene changes, run `pnpm repo:check` first.
 - For install / standards / docs / billing work, prefer `pnpm test:stable`.
 - Run the full `pnpm test` only when the changed area warrants it or before high-risk merges.
 - If the full suite is already known to have unrelated failures, do not block useful work on them; report them clearly.

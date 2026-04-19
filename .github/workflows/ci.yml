@@ -27,6 +27,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Repo Hygiene
+        run: pnpm repo:check
+
       - name: Lint
         run: pnpm lint
 

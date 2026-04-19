@@ -19,6 +19,7 @@
     "release:wizard:dry-run": "pnpm --filter @onrelay/wizard pack --pack-destination ../../.tmp/wizard-pack",
     "release:wizard": "pnpm --filter @onrelay/wizard publish --access public",
     "release:dry-run": "pnpm release:cli:dry-run && pnpm release:mcp:dry-run && pnpm release:wizard:dry-run",
+    "repo:check": "node scripts/check-repo-cleanliness.mjs",
     "db:local:start": "docker compose -f docker-compose.local.yml up -d",
     "db:local:stop": "docker compose -f docker-compose.local.yml down",
     "db:local:migrate": "node scripts/db-admin.js migrate",
