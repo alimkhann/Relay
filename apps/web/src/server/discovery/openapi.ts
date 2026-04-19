@@ -182,6 +182,8 @@ export function buildOpenApiDocument() {
       },
       "/api/projects/{id}/bootstrap": {
         post: { summary: "Generate a bootstrap brief", responses: { "200": { description: "Bootstrap generated" } } },
+        patch: { summary: "Edit a cached bootstrap brief", responses: { "200": { description: "Bootstrap updated" } } },
+        delete: { summary: "Delete cached bootstrap briefs or a specific brief", responses: { "200": { description: "Bootstrap cache deleted" } } },
       },
       "/api/projects/{id}/bootstrap/latest": {
         get: { summary: "Get the latest bootstrap brief", responses: { "200": { description: "Bootstrap payload" } } },

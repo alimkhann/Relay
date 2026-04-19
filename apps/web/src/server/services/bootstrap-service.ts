@@ -1233,6 +1233,9 @@ export async function generateBootstrapForProject(userId: string, projectId: str
       },
     }).catch(() => {})
 
+    // Keep one packet per profile+kind so regeneration replaces stale rows.
+    await repositories.bootstrapPackets.clearVariant(projectId, profile.id, parsed.kind, latest.id)
+
     return {
       status: "ready",
       packet: latest,
@@ -1294,6 +1297,9 @@ export async function generateBootstrapForProject(userId: string, projectId: str
     },
     createdBy: userId
   })
+
+  // Keep one packet per profile+kind so regeneration replaces stale rows.
+  await repositories.bootstrapPackets.clearVariant(projectId, profile.id, parsed.kind, packet.id)
 
   if (rawState) {
     await repositories.projectState.markBootstrapped(projectId)

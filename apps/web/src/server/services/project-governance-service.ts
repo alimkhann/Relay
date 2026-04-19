@@ -3,6 +3,7 @@ import type { SessionDigestShape } from "@relay/shared"
 import { projectStateOverrideSchema, sessionArchiveSchema } from "@relay/shared"
 
 import { mergeDigestIntoState } from "./project-state-service"
+import { BadRequestError, NotFoundError } from "@/server/http/errors"
 import { logServerEvent } from "@/server/logging/logger"
 
 async function requireProjectAccess(userId: string, projectId: string) {
@@ -158,4 +159,38 @@ export async function archiveProjectSession(
 export async function clearProjectBriefs(userId: string, projectId: string) {
   const { repositories } = await requireProjectAccess(userId, projectId)
   await repositories.bootstrapPackets.clearProject(projectId)
+}
+
+export async function deleteProjectBrief(userId: string, projectId: string, packetId: string) {
+  const { repositories } = await requireProjectAccess(userId, projectId)
+  const deleted = await repositories.bootstrapPackets.deleteById(projectId, packetId)
+
+  if (!deleted) {
+    throw new NotFoundError("Brief not found.")
+  }
+}
+
+export async function editProjectBrief(userId: string, projectId: string, packetId: string, content: string) {
+  const { repositories } = await requireProjectAccess(userId, projectId)
+
+  if (!content.trim()) {
+    throw new BadRequestError("Brief content cannot be empty.")
+  }
+
+  const packet = await repositories.bootstrapPackets.updateContent({
+    projectId,
+    packetId,
+    content,
+    metadataPatch: {
+      edited_at: new Date().toISOString(),
+      edited_by: userId,
+      edited_via: "web_dashboard",
+    },
+  })
+
+  if (!packet) {
+    throw new NotFoundError("Brief not found.")
+  }
+
+  return packet
 }

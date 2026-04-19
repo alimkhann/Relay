@@ -1,12 +1,22 @@
 import { NextResponse } from "next/server"
 import { bootstrapRequestSchema } from "@relay/shared"
+import { z } from "zod"
 
 import { withApiAuth } from "@/server/http/api-route"
 import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
 import { generateBootstrapForProject } from "@/server/services/bootstrap-service"
-import { consumeMcpReadQuota } from "@/server/services/entitlement-service"
-import { clearProjectBriefs } from "@/server/services/project-governance-service"
+import { consumeMcpReadQuota, consumeMcpWriteQuota } from "@/server/services/entitlement-service"
+import { clearProjectBriefs, deleteProjectBrief, editProjectBrief } from "@/server/services/project-governance-service"
 import { recordSyncMarkForUser } from "@/server/services/sync-mark-service"
+
+const packetIdSchema = z.object({
+  packetId: z.string().uuid(),
+})
+
+const editBriefSchema = z.object({
+  packetId: z.string().uuid(),
+  content: z.string().min(1),
+})
 
 export const POST = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   const viewer = await resolveViewer(request.headers.get("authorization"))
@@ -29,6 +39,34 @@ export const DELETE = withApiAuth(async (request: Request, { params }: { params:
   const viewer = await resolveViewer(request.headers.get("authorization"))
   const { id } = await params
   requireViewerProject(viewer, id, "brief:read")
-  await clearProjectBriefs(viewer.userId, id)
+
+  if (viewer.mode === "mcp") {
+    await consumeMcpWriteQuota(viewer.userId)
+  }
+
+  const { searchParams } = new URL(request.url)
+  const packetId = searchParams.get("packetId")
+
+  if (!packetId) {
+    await clearProjectBriefs(viewer.userId, id)
+    return NextResponse.json({ ok: true })
+  }
+
+  const parsed = packetIdSchema.parse({ packetId })
+  await deleteProjectBrief(viewer.userId, id, parsed.packetId)
   return NextResponse.json({ ok: true })
+})
+
+export const PATCH = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
+  const viewer = await resolveViewer(request.headers.get("authorization"))
+  const { id } = await params
+  requireViewerProject(viewer, id, "brief:read")
+
+  if (viewer.mode === "mcp") {
+    await consumeMcpWriteQuota(viewer.userId)
+  }
+
+  const parsed = editBriefSchema.parse(await request.json())
+  const packet = await editProjectBrief(viewer.userId, id, parsed.packetId, parsed.content)
+  return NextResponse.json({ ok: true, packet })
 })
