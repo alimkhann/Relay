@@ -14,7 +14,7 @@ config format instead of forcing a generic shared JSON file.
 For manual local MCP config, point your client at:
 
 ```bash
-npx -y @onrelay/mcp
+npx -y -p @onrelay/mcp relay-mcp
 ```
 
 The `relay-mcp` binary reads Relay credentials from `~/.relay/mcp.json` or `RELAY_API_TOKEN`.

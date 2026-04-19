@@ -88,6 +88,92 @@ function tomlString(value: string) {
   return JSON.stringify(value)
 }
 
+const CODEX_RELAY_TABLE_HEADER = /^\s*\[mcp_servers(?:\."?relay"?|\.relay)\]\s*$/
+const TOML_TABLE_HEADER = /^\s*\[[^\]]+\]\s*$/
+const CODEX_HTTP_HEADERS_TABLE_HEADER = /^\s*\[mcp_servers\.(?:"[^"]+"|[A-Za-z0-9_-]+)\.http_headers\]\s*$/
+const RELAY_ARGS_SIGNATURE = /@onrelay\/mcp|packages\/mcp\/dist\/index\.js/
+
+function stripCodexRelayTable(raw: string) {
+  const lines = raw.split(/\r?\n/)
+  const kept: string[] = []
+  let inRelayTable = false
+
+  for (const line of lines) {
+    if (!inRelayTable && CODEX_RELAY_TABLE_HEADER.test(line)) {
+      inRelayTable = true
+      continue
+    }
+
+    if (inRelayTable && TOML_TABLE_HEADER.test(line)) {
+      inRelayTable = false
+      kept.push(line)
+      continue
+    }
+
+    if (!inRelayTable) {
+      kept.push(line)
+    }
+  }
+
+  return kept.join("\n")
+}
+
+function isKnownRelayLeakInHeaders(key: string, value: string) {
+  const normalizedKey = key.trim()
+  const normalizedValue = value.trim()
+
+  if (normalizedKey === "args") {
+    return /^\[.*\]$/.test(normalizedValue) && RELAY_ARGS_SIGNATURE.test(normalizedValue)
+  }
+
+  if (normalizedKey === "command") {
+    return /^"(?:node|npx)"$/.test(normalizedValue)
+  }
+
+  if (normalizedKey === "enabled") {
+    return /^(?:true|false)$/.test(normalizedValue)
+  }
+
+  return false
+}
+
+function repairCodexToml(raw: string) {
+  const lines = raw.split(/\r?\n/)
+  const repaired: string[] = []
+  let inHttpHeadersTable = false
+  let changed = false
+
+  for (const line of lines) {
+    if (TOML_TABLE_HEADER.test(line)) {
+      inHttpHeadersTable = CODEX_HTTP_HEADERS_TABLE_HEADER.test(line)
+      repaired.push(line)
+      continue
+    }
+
+    if (!inHttpHeadersTable) {
+      repaired.push(line)
+      continue
+    }
+
+    const kv = line.match(/^\s*([A-Za-z0-9_.-]+)\s*=\s*(.+?)\s*$/)
+    if (!kv) {
+      repaired.push(line)
+      continue
+    }
+
+    const key = kv[1] ?? ""
+    const value = kv[2] ?? ""
+    if (isKnownRelayLeakInHeaders(key, value)) {
+      changed = true
+      continue
+    }
+
+    repaired.push(line)
+  }
+
+  return changed ? repaired.join("\n") : raw
+}
+
 function buildCodexTomlBlock(ide: DetectedIDE, options: Required<InstallMcpConfigOptions>) {
   if (options.mode === "remote") {
     throw new Error("Codex install currently supports Relay local stdio only.")
@@ -104,14 +190,12 @@ function buildCodexTomlBlock(ide: DetectedIDE, options: Required<InstallMcpConfi
 
 function upsertCodexToml(raw: string, block: string) {
   const trimmed = raw.trim()
-  const pattern = /^\[mcp_servers(?:\."?relay"?|\.relay)\]\n[\s\S]*?(?=^\[|\s*$)/gm
-  const withoutRelay = trimmed.replace(pattern, "").trim()
+  const withoutRelay = stripCodexRelayTable(trimmed).trim()
   return `${withoutRelay ? `${withoutRelay}\n\n` : ""}${block}\n`
 }
 
 function removeCodexTomlBlock(raw: string) {
-  const pattern = /^\[mcp_servers(?:\."?relay"?|\.relay)\]\n[\s\S]*?(?=^\[|\s*$)/gm
-  const next = raw.replace(pattern, "").trim()
+  const next = stripCodexRelayTable(raw).trim()
   return next ? `${next}\n` : ""
 }
 
@@ -217,7 +301,8 @@ export async function installMcpConfig(
 
   if (ide.configFormat === "toml-codex") {
     const raw = await loadCodexConfig(ide.mcpConfigPath)
-    const next = upsertCodexToml(raw, buildCodexTomlBlock(ide, normalized))
+    const repaired = repairCodexToml(raw)
+    const next = upsertCodexToml(repaired, buildCodexTomlBlock(ide, normalized))
     await writeFile(ide.mcpConfigPath, next, "utf-8")
     return
   }
@@ -235,7 +320,8 @@ export async function uninstallMcpConfig(ide: DetectedIDE): Promise<boolean> {
   for (const path of targets) {
     if (ide.configFormat === "toml-codex" || path.endsWith(".toml")) {
       const raw = await loadCodexConfig(path)
-      const next = removeCodexTomlBlock(raw)
+      const repaired = repairCodexToml(raw)
+      const next = removeCodexTomlBlock(repaired)
       if (next !== raw) {
         await mkdir(dirname(path), { recursive: true })
         await writeFile(path, next, "utf-8")

@@ -52,7 +52,7 @@ export default function McpDocsPage() {
   "mcpServers": {
     "relay": {
       "command": "npx",
-      "args": ["-y", "@onrelay/mcp"]
+      "args": ["-y", "-p", "@onrelay/mcp", "relay-mcp"]
     }
   }
 }`}</pre>

@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 export { type DetectedIDE, detectIDEs, getClientCompatibilityMatrix } from "./client-registry"
 
+const RELAY_PUBLISHED_MCP_ARGS = ["-y", "-p", "@onrelay/mcp", "relay-mcp"] as const
+
 export function isDevMode(): boolean {
   try {
     const cwd = process.cwd()
@@ -14,7 +16,11 @@ export function isDevMode(): boolean {
 }
 
 export function getMcpCommand(): { command: string; args: string[] } {
-  if (isDevMode()) {
+  const allowLocalDevMcp =
+    process.env.RELAY_LOCAL_MCP_DEV === "1" ||
+    process.env.RELAY_LOCAL_MCP_DEV === "true"
+
+  if (allowLocalDevMcp && isDevMode()) {
     const cwd = process.cwd()
     return {
       command: "node",
@@ -24,6 +30,6 @@ export function getMcpCommand(): { command: string; args: string[] } {
 
   return {
     command: "npx",
-    args: ["-y", "@onrelay/mcp"]
+    args: [...RELAY_PUBLISHED_MCP_ARGS]
   }
 }

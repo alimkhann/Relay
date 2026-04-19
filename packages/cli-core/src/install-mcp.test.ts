@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest"
 import { RELAY_MCP_CLIENTS, getRelayMcpClientDescriptor } from "../../shared/src/index"
 
 import type { DetectedIDE } from "./detect"
+import { getMcpCommand } from "./detect"
 import { installMcpConfig, uninstallMcpConfig, validateInstalledMcpConfig } from "./install-mcp"
 import {
   installClientSetup,
@@ -50,8 +51,42 @@ describe("installMcpConfig", () => {
 
     const raw = await readFile(configPath, "utf-8")
     expect(raw).toContain('[mcp_servers."relay"]')
+    expect(raw).toContain('command = "npx"')
+    expect(raw).toContain('args = ["-y", "-p", "@onrelay/mcp", "relay-mcp"]')
     expect(raw).toContain("enabled = true")
     expect(await validateInstalledMcpConfig(ide)).toBe(true)
+  })
+
+  it("repairs leaked Relay keys inside a Codex http_headers table", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "relay-codex-leak-"))
+    const configPath = join(dir, "config.toml")
+    const ide = buildDetectedIDE("codex-cli", configPath)
+
+    await writeFile(
+      configPath,
+      [
+        '[mcp_servers."Neon"]',
+        'type = "http"',
+        'url = "https://mcp.neon.tech/mcp"',
+        "",
+        '[mcp_servers."Neon".http_headers]',
+        'Authorization = "Bearer neon-token"',
+        'command = "npx"',
+        'args = ["-y", "@onrelay/mcp"]',
+        "enabled = true",
+        "",
+      ].join("\n"),
+      "utf-8"
+    )
+
+    await installMcpConfig(ide, { mode: "local" })
+
+    const raw = await readFile(configPath, "utf-8")
+    expect(raw).toContain('[mcp_servers."Neon".http_headers]')
+    expect(raw).toContain('Authorization = "Bearer neon-token"')
+    expect(raw).not.toContain('args = ["-y", "@onrelay/mcp"]')
+    expect(raw).toContain('args = ["-y", "-p", "@onrelay/mcp", "relay-mcp"]')
+    expect(raw).toContain('[mcp_servers."relay"]')
   })
 
   it("writes OpenCode config into the native mcp shape", async () => {
@@ -65,7 +100,7 @@ describe("installMcpConfig", () => {
       mcp?: Record<string, { type: string; command?: string[]; enabled?: boolean }>
     }
     expect(raw.mcp?.relay?.type).toBe("local")
-    expect(raw.mcp?.relay?.command?.[0]).toBe("node")
+    expect(raw.mcp?.relay?.command).toEqual(["npx", "-y", "-p", "@onrelay/mcp", "relay-mcp"])
     expect(raw.mcp?.relay?.enabled).toBe(true)
   })
 
@@ -80,7 +115,7 @@ describe("installMcpConfig", () => {
       servers?: Record<string, { type?: string; command?: string }>
     }
     expect(raw.servers?.relay?.type).toBe("stdio")
-    expect(raw.servers?.relay?.command).toBe("node")
+    expect(raw.servers?.relay?.command).toBe("npx")
   })
 
   it("removes Relay from legacy config paths during uninstall", async () => {
@@ -99,6 +134,43 @@ describe("installMcpConfig", () => {
     expect(removed).toBe(true)
     expect(await readFile(configPath, "utf-8")).not.toContain('"relay"')
     expect(await readFile(legacyPath, "utf-8")).not.toContain('"relay"')
+  })
+})
+
+describe("getMcpCommand", () => {
+  it("defaults to the published relay-mcp executable even inside the Relay repo", () => {
+    const previous = process.env.RELAY_LOCAL_MCP_DEV
+    delete process.env.RELAY_LOCAL_MCP_DEV
+
+    try {
+      expect(getMcpCommand()).toEqual({
+        command: "npx",
+        args: ["-y", "-p", "@onrelay/mcp", "relay-mcp"],
+      })
+    } finally {
+      if (previous === undefined) {
+        delete process.env.RELAY_LOCAL_MCP_DEV
+      } else {
+        process.env.RELAY_LOCAL_MCP_DEV = previous
+      }
+    }
+  })
+
+  it("uses the local workspace dist build only when explicitly opted in", () => {
+    const previous = process.env.RELAY_LOCAL_MCP_DEV
+    process.env.RELAY_LOCAL_MCP_DEV = "1"
+
+    try {
+      const command = getMcpCommand()
+      expect(command.command).toBe("node")
+      expect(command.args[0]).toContain("packages/mcp/dist/index.js")
+    } finally {
+      if (previous === undefined) {
+        delete process.env.RELAY_LOCAL_MCP_DEV
+      } else {
+        process.env.RELAY_LOCAL_MCP_DEV = previous
+      }
+    }
   })
 })
 
