@@ -1,9 +1,19 @@
 import { createRepositoryBundle } from "@relay/db"
-import type { WorkSessionStructuredState } from "@relay/shared"
+import type { MemoryItemRow, WorkSessionStructuredState } from "@relay/shared"
 
 import type { Viewer } from "@/server/policies/viewer"
-import { composeContextForProject } from "@/server/services/context-service"
+import {
+  getMemoryForExplainability,
+  listBriefsForExplainability,
+  listMemoryForExplainability,
+  listRecentContinuityActivity,
+  listSessionsForExplainability,
+  traceContextSources,
+} from "@/server/services/continuity-explainability-service"
+import { archiveProjectSession, deleteProjectBrief } from "@/server/services/project-governance-service"
+import { generateBootstrapForProject, getLatestBootstrapForProject } from "@/server/services/bootstrap-service"
 import { upsertProjectStateFromMcp } from "@/server/services/mcp-project-state-service"
+import { recordSyncMarkForUser } from "@/server/services/sync-mark-service"
 import { flushWorkSession } from "@/server/services/work-session-flush-service"
 
 /**
@@ -29,14 +39,36 @@ export class RelayHttpMcpClient {
   }
 
   async getBrief(projectId: string, args: Record<string, unknown>) {
-    const result = await composeContextForProject(this.viewer.userId, projectId, {
-      targetProfileKey: (args.targetProfileKey as string) ?? "claude_code_build",
-      kind: (args.kind as string) === "quick_continuity" ? "quick_continuity" : "fresh_chat_bootstrap",
-      include: (args.include as string[]) ?? [],
-      since: args.since as string | undefined,
-      syncSurface: (args.syncSurface as string) ?? "mcp",
-    })
-    return result.packet.content
+    const targetProfileKey = (args.targetProfileKey as string) ?? "claude_code_build"
+    const kind = (args.kind as string) === "quick_continuity" ? "quick_continuity" : "fresh_chat_bootstrap"
+    const syncSurface = (args.syncSurface as string) ?? "mcp"
+    const include = ((args.include as string[] | undefined) ?? []) as Array<"state" | "memory">
+    const generate = args.generate !== false
+
+    if (generate) {
+      const result = await generateBootstrapForProject(this.viewer.userId, projectId, {
+        targetProfileKey,
+        kind,
+        since: args.since as string | undefined,
+        syncSurface,
+      })
+      if (result.status === "ready" && result.packet) {
+        await recordSyncMarkForUser(this.viewer.userId, projectId, syncSurface as Parameters<typeof recordSyncMarkForUser>[2])
+        return include.length > 0
+          ? this.appendIncludeSections(projectId, result.packet.content, include)
+          : result.packet.content
+      }
+      return `Brief generation is in progress. ${result.reason ?? "Please try again in a moment."}`
+    }
+
+    const packet = await getLatestBootstrapForProject(this.viewer.userId, projectId, targetProfileKey, kind)
+    if (!packet) {
+      return "No cached brief available. Try calling with generate=true to create one."
+    }
+    await recordSyncMarkForUser(this.viewer.userId, projectId, syncSurface as Parameters<typeof recordSyncMarkForUser>[2])
+    return include.length > 0
+      ? this.appendIncludeSections(projectId, packet.content, include)
+      : packet.content
   }
 
   async getProjectState(projectId: string) {
@@ -48,9 +80,52 @@ export class RelayHttpMcpClient {
     return { state, memory }
   }
 
+  private async appendIncludeSections(
+    projectId: string,
+    briefText: string,
+    include: Array<"state" | "memory">,
+  ) {
+    if (include.length === 0) return briefText
+    const repositories = createRepositoryBundle(this.viewer.userId)
+    const [state, memory] = await Promise.all([
+      repositories.projectState.getByProject(projectId),
+      repositories.memory.listByProject(projectId),
+    ])
+    const sections: string[] = [briefText, "", "---"]
+    if (include.includes("state") && state) {
+      sections.push("", "## Raw State (JSON)", JSON.stringify(state, null, 2))
+    }
+    if (include.includes("memory") && memory.length > 0) {
+      sections.push("", "## Memory Items (JSON)", JSON.stringify(memory, null, 2))
+    }
+    return sections.join("\n")
+  }
+
   async searchMemory(projectId: string, query: string, options?: { types?: string[]; tags?: string[]; limit?: number }) {
     const repositories = createRepositoryBundle(this.viewer.userId)
     return repositories.memory.search(projectId, query, options)
+  }
+
+  async listMemory(projectId: string, options?: {
+    archived?: boolean
+    pinned?: boolean
+    tag?: string
+    types?: string[]
+    limit?: number
+    sort?: "updated_desc" | "created_desc"
+  }) {
+    return listMemoryForExplainability(this.viewer.userId, projectId, {
+      archived: options?.archived,
+      pinned: options?.pinned,
+      tag: options?.tag,
+      types: options?.types as MemoryItemRow["type"][] | undefined,
+      limit: options?.limit,
+      sort: options?.sort,
+    })
+  }
+
+  async getMemory(memoryId: string, projectId?: string) {
+    return getMemoryForExplainability(this.viewer.userId, memoryId, projectId)
   }
 
   async addMemory(projectId: string, input: { type: string; content: string; title?: string; tags?: string[] }) {
@@ -169,13 +244,19 @@ export class RelayHttpMcpClient {
 
   async manageMemory(args: Record<string, unknown>) {
     const repositories = createRepositoryBundle(this.viewer.userId)
-    const memoryId = args.memoryId as string
+    const memoryIds = Array.isArray(args.memoryId) ? args.memoryId as string[] : [args.memoryId as string]
     const action = args.action as string
 
-    if (action === "delete" || action === "archive") {
-      await repositories.memory.remove(memoryId)
+    if (action === "delete") {
+      for (const memoryId of memoryIds) {
+        await repositories.memory.remove(memoryId)
+      }
+    } else if (action === "archive") {
+      for (const memoryId of memoryIds) {
+        await repositories.memory.update(memoryId, { isArchived: true })
+      }
     } else if (action === "update") {
-      await repositories.memory.update(memoryId, {
+      await repositories.memory.update(memoryIds[0]!, {
         content: args.content as string | undefined,
         title: args.title as string | undefined,
         tags: args.tags as string[] | undefined,
@@ -189,6 +270,51 @@ export class RelayHttpMcpClient {
       name: input.name,
       description: input.description,
     })
+  }
+
+  async listSessions(projectId: string, options?: {
+    includeArchived?: boolean
+    limit?: number
+    surfaces?: string[]
+  }) {
+    return listSessionsForExplainability(this.viewer.userId, projectId, options)
+  }
+
+  async archiveSession(projectId: string, sessionId: string, archived = true) {
+    return archiveProjectSession(this.viewer.userId, projectId, sessionId, { archived })
+  }
+
+  async listBriefs(projectId: string, options?: { limit?: number }) {
+    return listBriefsForExplainability(this.viewer.userId, projectId, options)
+  }
+
+  async regenerateBrief(projectId: string, args: Record<string, unknown>) {
+    const result = await generateBootstrapForProject(this.viewer.userId, projectId, {
+      targetProfileKey: (args.targetProfileKey as string) ?? "claude_code_build",
+      kind: (args.kind as string) === "quick_continuity" ? "quick_continuity" : "fresh_chat_bootstrap",
+      since: args.since as string | undefined,
+      syncSurface: (args.syncSurface as string) ?? "mcp",
+    })
+    if (result.status === "ready" && result.packet) {
+      await recordSyncMarkForUser(
+        this.viewer.userId,
+        projectId,
+        ((args.syncSurface as string) ?? "mcp") as Parameters<typeof recordSyncMarkForUser>[2],
+      )
+    }
+    return result
+  }
+
+  async deleteBrief(projectId: string, packetId: string) {
+    await deleteProjectBrief(this.viewer.userId, projectId, packetId)
+  }
+
+  async traceContext(projectId: string, options: { query?: string; stateField?: string; limit?: number }) {
+    return traceContextSources(this.viewer.userId, projectId, options)
+  }
+
+  async listRecentActivity(projectId: string, options?: { limit?: number }) {
+    return listRecentContinuityActivity(this.viewer.userId, projectId, options)
   }
 
   async recallContext(projectId: string, query: string): Promise<string> {

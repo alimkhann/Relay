@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server"
 
 import { withApiAuth } from "@/server/http/api-route"
-import { rejectMcpViewer, resolveViewer } from "@/server/policies/viewer"
+import { requireViewerProject, rejectMcpViewer, resolveViewer } from "@/server/policies/viewer"
+import { listRecentContinuityActivity } from "@/server/services/continuity-explainability-service"
+import { consumeMcpReadQuota } from "@/server/services/entitlement-service"
 import { listGroupedActivityForProject } from "@/server/services/activity-service"
 
 /**
@@ -15,15 +17,26 @@ import { listGroupedActivityForProject } from "@/server/services/activity-servic
 export const GET = withApiAuth(
   async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
     const viewer = await resolveViewer(request.headers.get("authorization"))
-    rejectMcpViewer(viewer)
     const { id: projectId } = await params
     const url = new URL(request.url)
+    const mode = url.searchParams.get("mode")
 
     const limit = Math.min(
       Math.max(1, parseInt(url.searchParams.get("limit") ?? "20", 10) || 20),
       100,
     )
     const includeArchived = url.searchParams.get("includeArchived") === "true"
+
+    if (mode === "continuity") {
+      requireViewerProject(viewer, projectId, "project:read")
+      if (viewer.mode === "mcp") {
+        await consumeMcpReadQuota(viewer.userId)
+      }
+      const activity = await listRecentContinuityActivity(viewer.userId, projectId, { limit })
+      return NextResponse.json({ activity })
+    }
+
+    rejectMcpViewer(viewer)
 
     const activity = await listGroupedActivityForProject(viewer.userId, projectId, {
       limit,

@@ -1,4 +1,4 @@
-import type { CreateMemoryItemInput, MemoryItemRow, MemoryRelationRow, MemoryRelationType, UpdateMemoryItemInput } from "@relay/shared"
+import type { CreateMemoryItemInput, MemoryItemRow, MemoryItemType, MemoryRelationRow, MemoryRelationType, UpdateMemoryItemInput } from "@relay/shared"
 
 import { toMemoryRelationRow, toMemoryRow } from "../mappers/memory-mapper"
 import type { DatabaseProvider } from "../store/provider"
@@ -45,14 +45,59 @@ export class MemoryRepository {
     return row ? toMemoryRow(row as Record<string, unknown>) : null
   }
 
-  async listByProject(projectId: string): Promise<MemoryItemRow[]> {
+  async listByProject(
+    projectId: string,
+    options: {
+      includeArchived?: boolean
+      types?: MemoryItemType[]
+      tag?: string
+      pinned?: boolean
+      limit?: number
+      sort?: "updated_desc" | "created_desc"
+    } = {},
+  ): Promise<MemoryItemRow[]> {
+    const conditions = ["project_id = $1"]
+    const params: unknown[] = [projectId]
+    let paramIndex = 2
+
+    if (!options.includeArchived) {
+      conditions.push("is_archived = false")
+    }
+
+    if (options.types?.length) {
+      conditions.push(`type = ANY($${paramIndex}::text[])`)
+      params.push(options.types)
+      paramIndex += 1
+    }
+
+    if (options.tag) {
+      conditions.push(`$${paramIndex} = ANY(tags)`)
+      params.push(options.tag)
+      paramIndex += 1
+    }
+
+    if (typeof options.pinned === "boolean") {
+      conditions.push(`pinned = $${paramIndex}`)
+      params.push(options.pinned)
+      paramIndex += 1
+    }
+
+    const orderBy = options.sort === "created_desc"
+      ? "pinned desc, created_at desc"
+      : "pinned desc, updated_at desc"
+
+    let limitClause = ""
+    if (typeof options.limit === "number") {
+      params.push(options.limit)
+      limitClause = ` limit $${paramIndex}`
+    }
+
     const rows = await this.provider.query(
       `select ${MEMORY_COLS}
        from memory_items
-       where project_id = $1
-         and is_archived = false
-       order by pinned desc, updated_at desc`,
-      [projectId]
+       where ${conditions.join(" and ")}
+       order by ${orderBy}${limitClause}`,
+      params
     )
 
     return rows.map((record) => toMemoryRow(record as Record<string, unknown>))

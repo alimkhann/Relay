@@ -150,7 +150,10 @@ Call this at the start of every coding session to restore project memory.`,
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
       kind: z.string().optional().describe("Brief kind: fresh_chat_bootstrap or quick_continuity"),
       targetProfileKey: z.string().optional().describe("Target profile key for formatting"),
+      generate: z.boolean().optional().describe("Whether to generate a new brief or fetch the latest cached one."),
       include: z.array(z.string()).optional().describe("Extra sections to include in the brief"),
+      since: z.string().optional().describe("Only include context updated since this ISO timestamp."),
+      syncSurface: z.string().optional().describe("Surface label used to update last-sync markers."),
     },
     { readOnlyHint: true, destructiveHint: false },
     async (args) => {
@@ -180,6 +183,46 @@ Call this at the start of every coding session to restore project memory.`,
 
   server.tool(
     RELAY_MCP_TOOL_NAMES[4],
+    "List project memory items with filters for type, archive state, pinned status, or tag. Use this when the user asks what Relay currently knows, or before choosing a memory item to update or archive.",
+    {
+      projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
+      archived: z.boolean().optional().describe("Include archived memory items."),
+      pinned: z.boolean().optional().describe("Filter by pinned status."),
+      tag: z.string().optional().describe("Filter by a specific tag."),
+      types: z.array(z.string()).optional().describe("Filter by memory item types."),
+      limit: z.number().optional().describe("Maximum number of items to return."),
+      sort: z.enum(["updated_desc", "created_desc"]).optional().describe("Sort order."),
+    },
+    { readOnlyHint: true, destructiveHint: false },
+    async (args) => {
+      const pid = await resolveProjectId(args.projectId)
+      const items = await client.listMemory(pid, args)
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(items, null, 2) }]
+      }
+    }
+  )
+
+  server.tool(
+    RELAY_MCP_TOOL_NAMES[5],
+    "Get one memory item by ID, including provenance, conflict status, and relation metadata. Use after list_memory or search_context when you need to inspect an item before mutating it.",
+    {
+      memoryId: z.string().uuid().describe("Memory item ID."),
+    },
+    { readOnlyHint: true, destructiveHint: false },
+    async (args) => {
+      const item = await client.getMemory(args.memoryId, viewer.projectId ?? undefined)
+      if (!item) {
+        throw new Error("Memory item not found or not accessible to the current MCP user.")
+      }
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(item, null, 2) }]
+      }
+    }
+  )
+
+  server.tool(
+    RELAY_MCP_TOOL_NAMES[6],
     "Search memory items by keyword or semantic query. Returns matching decisions, constraints, tasks, notes, and other memory items.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -203,7 +246,137 @@ Call this at the start of every coding session to restore project memory.`,
   )
 
   server.tool(
-    RELAY_MCP_TOOL_NAMES[5],
+    RELAY_MCP_TOOL_NAMES[7],
+    "List captured source sessions and Relay work sessions that currently influence continuity. Use this when the user asks what captures Relay has, or when debugging stale context.",
+    {
+      projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
+      includeArchived: z.boolean().optional().describe("Include archived source sessions and closed work sessions."),
+      surfaces: z.array(z.string()).optional().describe("Optional surface filters."),
+      limit: z.number().optional().describe("Maximum number of sessions to return per session family."),
+    },
+    { readOnlyHint: true, destructiveHint: false },
+    async (args) => {
+      const pid = await resolveProjectId(args.projectId)
+      const sessions = await client.listSessions(pid, args)
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(sessions, null, 2) }]
+      }
+    }
+  )
+
+  server.tool(
+    RELAY_MCP_TOOL_NAMES[8],
+    "Archive or restore a captured source session. Use this to detach stale or polluted captures from the continuity pipeline.",
+    {
+      projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
+      sessionId: z.string().uuid().describe("Source session ID to archive or restore."),
+      archived: z.boolean().optional().describe("Archive when true, restore when false."),
+    },
+    { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+    async (args) => {
+      const pid = await resolveProjectId(args.projectId)
+      const session = await client.archiveSession(pid, args.sessionId, args.archived !== false)
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(session, null, 2) }]
+      }
+    }
+  )
+
+  server.tool(
+    RELAY_MCP_TOOL_NAMES[9],
+    "List generated Relay brief packets for the current project, including profile, kind, created time, and edited status.",
+    {
+      projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
+      limit: z.number().optional().describe("Maximum number of brief packets to return."),
+    },
+    { readOnlyHint: true, destructiveHint: false },
+    async (args) => {
+      const pid = await resolveProjectId(args.projectId)
+      const packets = await client.listBriefs(pid, args)
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(packets, null, 2) }]
+      }
+    }
+  )
+
+  server.tool(
+    RELAY_MCP_TOOL_NAMES[10],
+    "Regenerate a project brief packet explicitly. Use this after cleanup or when the user wants a fresh brief instead of reusing cached continuity.",
+    {
+      projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
+      kind: z.string().optional().describe("Brief kind: fresh_chat_bootstrap or quick_continuity"),
+      targetProfileKey: z.string().optional().describe("Target profile key for formatting"),
+      since: z.string().optional().describe("Only include context updated since this ISO timestamp."),
+      syncSurface: z.string().optional().describe("Surface label used to update last-sync markers."),
+    },
+    { readOnlyHint: false, destructiveHint: false },
+    async (args) => {
+      const pid = await resolveProjectId(args.projectId)
+      const packet = await client.regenerateBrief(pid, args as Record<string, unknown>)
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(packet, null, 2) }]
+      }
+    }
+  )
+
+  server.tool(
+    RELAY_MCP_TOOL_NAMES[11],
+    "Delete a specific brief packet by ID. Use this to remove stale or polluted generated briefs before regenerating.",
+    {
+      projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
+      packetId: z.string().uuid().describe("Brief packet ID to delete."),
+    },
+    { readOnlyHint: false, destructiveHint: true },
+    async (args) => {
+      const pid = await resolveProjectId(args.projectId)
+      await client.deleteBrief(pid, args.packetId)
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify({ ok: true, packetId: args.packetId }, null, 2) }]
+      }
+    }
+  )
+
+  server.tool(
+    RELAY_MCP_TOOL_NAMES[12],
+    "Trace why a phrase or project-state field appears in Relay context. Returns likely contributing memory items, digests, canon entries, sessions, summary snapshots, and briefs.",
+    {
+      projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
+      query: z.string().optional().describe("Phrase or brief text to trace back to likely sources."),
+      stateField: z.string().optional().describe("Structured project-state field to trace, such as currentObjective or decisions[0]."),
+      limit: z.number().optional().describe("Maximum number of matches per source family."),
+    },
+    { readOnlyHint: true, destructiveHint: false },
+    async (args) => {
+      const pid = await resolveProjectId(args.projectId)
+      if (!args.query && !args.stateField) {
+        throw new Error("Provide query or stateField.")
+      }
+      const trace = await client.traceContext(pid, args)
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(trace, null, 2) }]
+      }
+    }
+  )
+
+  server.tool(
+    RELAY_MCP_TOOL_NAMES[13],
+    "List recent continuity activity such as captures, digests, memory mutations, work-session events, and brief generation. Use this to answer what changed recently.",
+    {
+      projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
+      limit: z.number().optional().describe("Maximum number of activity entries to return."),
+    },
+    { readOnlyHint: true, destructiveHint: false },
+    async (args) => {
+      const pid = await resolveProjectId(args.projectId)
+      const activity = await client.listRecentActivity(pid, args)
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(activity, null, 2) }]
+      }
+    }
+  )
+
+  server.tool(
+    RELAY_MCP_TOOL_NAMES[14],
     "Add a memory item to the project. Use this to persist decisions, constraints, tasks, or notes discovered during the session.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -228,7 +401,7 @@ Call this at the start of every coding session to restore project memory.`,
   )
 
   server.tool(
-    RELAY_MCP_TOOL_NAMES[6],
+    RELAY_MCP_TOOL_NAMES[15],
     `Push a structured session snapshot into Relay and run it through the digest + reconcile pipeline. You do NOT need to call this at natural break points — Relay auto-flushes via supported client hooks (relay-flush), stdio shutdown, and an opportunistic server-side sweep that runs before every MCP request. Call explicitly only for an immediate checkpoint or when ending a session on a hookless client. Set finalize=false to record state without closing the session.`,
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -262,7 +435,7 @@ Call this at the start of every coding session to restore project memory.`,
   )
 
   server.tool(
-    RELAY_MCP_TOOL_NAMES[7],
+    RELAY_MCP_TOOL_NAMES[16],
     "Mid-session snapshot: identical payload to save_context but never closes the work session. Relay will flush automatically at the next hook/shutdown/sweep.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -289,7 +462,7 @@ Call this at the start of every coding session to restore project memory.`,
   )
 
   server.tool(
-    RELAY_MCP_TOOL_NAMES[8],
+    RELAY_MCP_TOOL_NAMES[17],
     "Update, delete, or archive an existing memory item by its ID.",
     {
       action: z.string().describe("Action to perform: update, delete, or archive"),
@@ -308,7 +481,7 @@ Call this at the start of every coding session to restore project memory.`,
   )
 
   server.tool(
-    RELAY_MCP_TOOL_NAMES[9],
+    RELAY_MCP_TOOL_NAMES[18],
     "Upsert the high-level project state used for briefs and dashboard overview. Use this when bootstrapping or correcting canonical project context from an agent session. Omitted scalar fields stay unchanged; list fields merge uniquely unless replaceLists is true.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -333,7 +506,7 @@ Call this at the start of every coding session to restore project memory.`,
   )
 
   server.tool(
-    RELAY_MCP_TOOL_NAMES[10],
+    RELAY_MCP_TOOL_NAMES[19],
     "Update a project's name or description.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -354,7 +527,7 @@ Call this at the start of every coding session to restore project memory.`,
   )
 
   server.tool(
-    RELAY_MCP_TOOL_NAMES[11],
+    RELAY_MCP_TOOL_NAMES[20],
     "Search memory and retrieve project state in one call. Use before making decisions to check for existing constraints and context.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
@@ -387,6 +560,8 @@ You have access to Relay, a project memory system that keeps context synchronize
 - Before making architectural decisions, call \`recall_context\` to check for existing decisions or constraints.
 - When the user makes a new decision or identifies a task, call \`add_memory\` to persist it immediately.
 - Use \`search_context\` to check for duplicates before adding.
+- If Relay context looks stale or wrong, inspect it before mutating:
+  use \`list_memory\`, \`list_sessions\`, \`list_briefs\`, \`trace_context_sources\`, and \`list_recent_activity\`.
 
 ### At Session End
 - Call \`memory.save_context\` with a structured summary of what was accomplished, new decisions, and next steps.

@@ -2,12 +2,13 @@ import { NextResponse } from "next/server"
 
 import { withApiAuth } from "@/server/http/api-route"
 import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
+import { listMemoryForExplainability } from "@/server/services/continuity-explainability-service"
 import {
   consumeExtensionMemoryWriteQuota,
   consumeMcpReadQuota,
   consumeMcpWriteQuota,
 } from "@/server/services/entitlement-service"
-import { createMemoryItem, listProjectMemory } from "@/server/services/memory-service"
+import { createMemoryItem } from "@/server/services/memory-service"
 
 export const GET = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   const viewer = await resolveViewer(request.headers.get("authorization"))
@@ -16,7 +17,16 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
   if (viewer.mode === "mcp") {
     await consumeMcpReadQuota(viewer.userId)
   }
-  const memory = await listProjectMemory(viewer.userId, id)
+  const { searchParams } = new URL(request.url)
+  const types = searchParams.getAll("type")
+  const memory = await listMemoryForExplainability(viewer.userId, id, {
+    archived: searchParams.get("archived") === "true",
+    pinned: searchParams.has("pinned") ? searchParams.get("pinned") === "true" : undefined,
+    tag: searchParams.get("tag") ?? undefined,
+    limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : undefined,
+    sort: searchParams.get("sort") === "created_desc" ? "created_desc" : "updated_desc",
+    types: types.length > 0 ? types as Array<"note" | "decision" | "constraint" | "requirement" | "task" | "artifact"> : undefined,
+  })
   return NextResponse.json({ memory })
 })
 

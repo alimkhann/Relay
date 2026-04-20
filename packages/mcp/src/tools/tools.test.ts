@@ -3,7 +3,16 @@ import type { RelayClient } from "../client.js"
 import { listProjects } from "./list-projects.js"
 import { getBrief } from "./get-brief.js"
 import { getProjectState } from "./get-project-state.js"
+import { listMemory } from "./list-memory.js"
+import { getMemory } from "./get-memory.js"
 import { searchContext } from "./search-context.js"
+import { listSessions } from "./list-sessions.js"
+import { archiveSession } from "./archive-session.js"
+import { listBriefs } from "./list-briefs.js"
+import { regenerateBrief } from "./regenerate-brief.js"
+import { deleteBrief } from "./delete-brief.js"
+import { traceContextSources } from "./trace-context-sources.js"
+import { listRecentActivity } from "./list-recent-activity.js"
 import { addMemory } from "./add-memory.js"
 import { saveContext } from "./save-context.js"
 import { manageMemory } from "./manage-memory.js"
@@ -31,6 +40,19 @@ function mockClient(overrides: Record<string, unknown> = {}) {
         // Simulate server-side search not available (forces fallback)
         return Promise.reject(new Error("404 Not Found"))
       }
+      if (path === "/api/memory/mem-1") {
+        return Promise.resolve({
+          item: {
+            id: "mem-1",
+            type: "decision",
+            title: "Use React",
+            content: "We chose React for the frontend",
+            provenance: { sourceSurface: "mcp" },
+            status: { conflictStatus: null },
+            relations: [{ relationType: "supersedes", otherMemoryId: "mem-0" }],
+          }
+        })
+      }
       if (path.includes("/memory")) {
         return Promise.resolve({
           memory: [
@@ -43,6 +65,41 @@ function mockClient(overrides: Record<string, unknown> = {}) {
       if (path.includes("/bootstrap/latest")) {
         return Promise.resolve({
           packet: { content: "# Project Brief\n\nThis is the brief." }
+        })
+      }
+      if (path.includes("/bootstrap?")) {
+        return Promise.resolve({
+          packets: [
+            {
+              id: "pkt-1",
+              kind: "fresh_chat_bootstrap",
+              targetProfileKey: "claude_code_build",
+              renderer: "gemini",
+              createdAt: "2026-01-01T00:00:00Z",
+            }
+          ]
+        })
+      }
+      if (path.includes("/sessions")) {
+        return Promise.resolve({
+          groupedSessions: [{ conversationId: "conv-1", captureCount: 2 }],
+          sourceSessions: [{ id: "sess-1", platform: "chatgpt", title: "Relay work" }],
+          workSessions: [{ id: "ws-1", surface: "mcp", status: "active" }],
+        })
+      }
+      if (path.includes("/trace?")) {
+        return Promise.resolve({
+          trace: {
+            query: "react",
+            memory: [{ id: "mem-1" }],
+            digests: [{ id: "dig-1" }],
+            briefs: [{ id: "pkt-1" }],
+          }
+        })
+      }
+      if (path.includes("/activity?mode=continuity")) {
+        return Promise.resolve({
+          activity: [{ kind: "digest_created", sourceId: "dig-1" }]
         })
       }
       if (path.match(/\/api\/projects\/[^/]+$/)) {
@@ -66,8 +123,16 @@ function mockClient(overrides: Record<string, unknown> = {}) {
       packet: { id: "pkt-1", kind: "fresh_chat_bootstrap", content: "# Generated Brief", targetProfileKey: "claude_code_build", createdAt: "2026-01-01T00:00:00Z" },
       item: { id: "mem-new", type: "note", title: null, content: "test" }
     }),
-    patch: vi.fn().mockResolvedValue({
-      item: { id: "mem-1", type: "decision", title: "Use Vue", content: "Switched to Vue", pinned: false, updatedAt: "2026-01-02T00:00:00Z" }
+    getDefaultSyncSurface: vi.fn().mockReturnValue("mcp"),
+    patch: vi.fn().mockImplementation((path: string) => {
+      if (path.includes("/sessions/")) {
+        return Promise.resolve({
+          session: { id: "11111111-1111-1111-1111-111111111111", archived: true, title: "Relay work" }
+        })
+      }
+      return Promise.resolve({
+        item: { id: "mem-1", type: "decision", title: "Use Vue", content: "Switched to Vue", pinned: false, updatedAt: "2026-01-02T00:00:00Z" }
+      })
     }),
     delete: vi.fn().mockResolvedValue(undefined),
     ...overrides
@@ -141,6 +206,26 @@ describe("get_project_state", () => {
   })
 })
 
+describe("list_memory", () => {
+  it("returns filtered memory inventory", async () => {
+    const client = mockClient()
+    const result = await listMemory(client, { archived: true, types: ["decision"] }, "proj-1")
+    const parsed = JSON.parse(result.content[0]!.text)
+    expect(parsed[0].id).toBe("mem-1")
+    expect(client.get).toHaveBeenCalledWith("/api/projects/proj-1/memory?archived=true&type=decision")
+  })
+})
+
+describe("get_memory", () => {
+  it("returns one memory item with provenance and relations", async () => {
+    const client = mockClient()
+    const result = await getMemory(client, { memoryId: "mem-1" })
+    const parsed = JSON.parse(result.content[0]!.text)
+    expect(parsed.id).toBe("mem-1")
+    expect(parsed.relations).toHaveLength(1)
+  })
+})
+
 describe("search_context", () => {
   it("filters memory by keyword", async () => {
     const client = mockClient()
@@ -177,6 +262,66 @@ describe("search_context", () => {
     )
 
     expect(result.content[0]!.text).toContain("No memory items found")
+  })
+})
+
+describe("sessions and briefs explainability tools", () => {
+  it("lists sessions influencing continuity", async () => {
+    const client = mockClient()
+    const result = await listSessions(client, { includeArchived: true }, "proj-1")
+    const parsed = JSON.parse(result.content[0]!.text)
+    expect(parsed.groupedSessions).toHaveLength(1)
+    expect(parsed.workSessions[0].id).toBe("ws-1")
+  })
+
+  it("archives a source session", async () => {
+    const client = mockClient()
+    const result = await archiveSession(client, { sessionId: "11111111-1111-1111-1111-111111111111", archived: true }, "proj-1")
+    expect(client.patch).toHaveBeenCalledWith(
+      "/api/projects/proj-1/sessions/11111111-1111-1111-1111-111111111111",
+      { archived: true }
+    )
+    expect(result.content[0]!.text).toContain("Relay work")
+  })
+
+  it("lists briefs", async () => {
+    const client = mockClient()
+    const result = await listBriefs(client, { limit: 10 }, "proj-1")
+    const parsed = JSON.parse(result.content[0]!.text)
+    expect(parsed[0].id).toBe("pkt-1")
+  })
+
+  it("regenerates a brief", async () => {
+    const client = mockClient()
+    const result = await regenerateBrief(client, { targetProfileKey: "claude_code_build", kind: "fresh_chat_bootstrap" }, "proj-1")
+    const parsed = JSON.parse(result.content[0]!.text)
+    expect(parsed.packet.id).toBe("pkt-1")
+  })
+
+  it("deletes a brief packet", async () => {
+    const client = mockClient()
+    const result = await deleteBrief(client, { packetId: "11111111-1111-1111-1111-111111111111" }, "proj-1")
+    expect(client.delete).toHaveBeenCalledWith(
+      "/api/projects/proj-1/bootstrap?packetId=11111111-1111-1111-1111-111111111111"
+    )
+    expect(result.content[0]!.text).toContain("11111111-1111-1111-1111-111111111111")
+  })
+})
+
+describe("trace_context_sources and list_recent_activity", () => {
+  it("traces likely source families for a phrase", async () => {
+    const client = mockClient()
+    const result = await traceContextSources(client, { query: "react" }, "proj-1")
+    const parsed = JSON.parse(result.content[0]!.text)
+    expect(parsed.memory[0].id).toBe("mem-1")
+    expect(parsed.digests[0].id).toBe("dig-1")
+  })
+
+  it("lists recent continuity activity", async () => {
+    const client = mockClient()
+    const result = await listRecentActivity(client, { limit: 5 }, "proj-1")
+    const parsed = JSON.parse(result.content[0]!.text)
+    expect(parsed[0].kind).toBe("digest_created")
   })
 })
 

@@ -3,8 +3,20 @@ import { NextResponse } from "next/server"
 import { createRepositoryBundle } from "@relay/db"
 import { withApiAuth } from "@/server/http/api-route"
 import { requireViewerScope, resolveViewer } from "@/server/policies/viewer"
+import { getMemoryForExplainability } from "@/server/services/continuity-explainability-service"
 import { consumeMcpWriteQuota } from "@/server/services/entitlement-service"
 import { deleteMemoryItem, updateMemoryItem } from "@/server/services/memory-service"
+
+export const GET = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
+  const viewer = await resolveViewer(request.headers.get("authorization"))
+  requireViewerScope(viewer, "memory:read")
+  const { id } = await params
+  const item = await getMemoryForExplainability(viewer.userId, id, viewer.mode === "mcp" ? viewer.projectId ?? undefined : undefined)
+  if (!item) {
+    return NextResponse.json({ error: "Memory item not found." }, { status: 404 })
+  }
+  return NextResponse.json({ item })
+})
 
 export const PATCH = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   const viewer = await resolveViewer(request.headers.get("authorization"))

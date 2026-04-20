@@ -112,7 +112,16 @@ export default function McpDocsPage() {
             {[
               { name: "get_brief", desc: "Load current project context and recent decisions" },
               { name: "get_project_state", desc: "Get full project state including objectives and constraints" },
+              { name: "list_memory", desc: "Inspect the current memory items Relay is carrying forward" },
+              { name: "get_memory", desc: "Inspect one memory item with provenance, status, and relations" },
               { name: "list_projects", desc: "List all Relay projects" },
+              { name: "list_sessions", desc: "Inspect captured source sessions and work sessions affecting continuity" },
+              { name: "archive_session", desc: "Detach or restore a captured source session" },
+              { name: "list_briefs", desc: "Inspect generated brief packets and their target profiles" },
+              { name: "regenerate_brief", desc: "Force a fresh brief packet after cleanup or new capture" },
+              { name: "delete_brief", desc: "Remove one stale or polluted brief packet" },
+              { name: "trace_context_sources", desc: "Explain why a phrase or state field appears in Relay context" },
+              { name: "list_recent_activity", desc: "See recent captures, digests, memory mutations, and brief generation" },
               { name: "add_memory", desc: "Save a decision, constraint, or note to project memory" },
               { name: "checkpoint_context", desc: "Save a mid-session snapshot without finalizing the work session" },
               { name: "manage_memory", desc: "Update, archive, or delete a memory item" },
@@ -129,6 +138,10 @@ export default function McpDocsPage() {
               </div>
             ))}
           </div>
+          <p className="text-[13px] text-[var(--relay-muted)]">
+            Relay&apos;s MCP surface is intentionally split between resume tools, writeback tools, and explainability tools.
+            The explainability layer is what lets coding agents inspect why a brief or project state looks the way it does before mutating anything.
+          </p>
         </section>
 
       <Suspense fallback={null}>

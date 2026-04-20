@@ -161,6 +161,28 @@ export class WorkSessionRepository {
     return rows.map((row) => toWorkSessionRow(row as Record<string, unknown>))
   }
 
+  async listByProject(input: {
+    projectId: string
+    statuses?: WorkSessionRow["status"][]
+    limit?: number
+  }): Promise<WorkSessionRow[]> {
+    const rows = await this.provider.query(
+      `select *
+       from work_sessions
+       where project_id = $1
+         and ($2::text[] is null or status = ANY($2::text[]))
+       order by updated_at desc
+       limit coalesce($3::int, 50)`,
+      [
+        input.projectId,
+        input.statuses?.length ? input.statuses : null,
+        input.limit ?? null,
+      ],
+    )
+
+    return rows.map((row) => toWorkSessionRow(row as Record<string, unknown>))
+  }
+
   async markStaleOlderThan(input: {
     projectId: string
     surface: WorkSessionRow["surface"]

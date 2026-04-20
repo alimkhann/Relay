@@ -3,6 +3,8 @@ import type { RelayClient } from "../client.js"
 import { listProjectsSchema, listProjects } from "./list-projects.js"
 import { getBriefSchema, getBrief } from "./get-brief.js"
 import { getProjectStateSchema, getProjectState } from "./get-project-state.js"
+import { listMemorySchema, listMemory } from "./list-memory.js"
+import { getMemorySchema, getMemory } from "./get-memory.js"
 import { searchContextSchema, searchContext } from "./search-context.js"
 import { addMemorySchema, addMemory } from "./add-memory.js"
 import { saveContextSchema, saveContext } from "./save-context.js"
@@ -10,6 +12,13 @@ import { manageMemorySchema, manageMemory } from "./manage-memory.js"
 import { updateProjectSchema, updateProject } from "./update-project.js"
 import { recallContextSchema, recallContext } from "./recall-context.js"
 import { setProjectStateSchema, setProjectState } from "./set-project-state.js"
+import { listSessionsSchema, listSessions } from "./list-sessions.js"
+import { archiveSessionSchema, archiveSession } from "./archive-session.js"
+import { listBriefsSchema, listBriefs } from "./list-briefs.js"
+import { regenerateBriefSchema, regenerateBrief } from "./regenerate-brief.js"
+import { deleteBriefSchema, deleteBrief } from "./delete-brief.js"
+import { traceContextSourcesSchema, traceContextSources } from "./trace-context-sources.js"
+import { listRecentActivitySchema, listRecentActivity } from "./list-recent-activity.js"
 import { z } from "zod"
 
 interface ToolRegistrationContext {
@@ -93,6 +102,23 @@ Call this at the start of every coding session to restore project memory.`,
   )
 
   server.tool(
+    "list_memory",
+    "List project memory items with filters for type, archive state, pinned status, or tag. Use this when the user asks what Relay currently knows, or before choosing a memory item to update or archive.",
+    listMemorySchema.shape,
+    async (args) => {
+      const projectId = await resolveProjectId(args.projectId)
+      return listMemory(client, args, projectId)
+    }
+  )
+
+  server.tool(
+    "get_memory",
+    "Get one memory item by ID, including provenance, conflict status, and relation metadata. Use after list_memory or search_context when you need to inspect an item before mutating it.",
+    getMemorySchema.shape,
+    async (args) => getMemory(client, args)
+  )
+
+  server.tool(
     "search_context",
     "Search memory items and project context by keyword. Supports stemming (e.g., 'auth' matches 'authentication') and tag filtering. Use to check if a decision or constraint already exists before adding duplicates.",
     searchContextSchema.shape,
@@ -105,6 +131,76 @@ Call this at the start of every coding session to restore project memory.`,
         tags: args.tags ?? [],
       }).catch(() => {})
       return result
+    }
+  )
+
+  server.tool(
+    "list_sessions",
+    "List captured source sessions and Relay work sessions that currently influence continuity. Use this when the user asks what captures Relay has, or when debugging stale context.",
+    listSessionsSchema.shape,
+    async (args) => {
+      const projectId = await resolveProjectId(args.projectId)
+      return listSessions(client, args, projectId)
+    }
+  )
+
+  server.tool(
+    "archive_session",
+    "Archive or restore a captured source session. Use this to detach stale or polluted captures from the continuity pipeline.",
+    archiveSessionSchema.shape,
+    async (args) => {
+      const projectId = await resolveProjectId(args.projectId)
+      return archiveSession(client, args, projectId)
+    }
+  )
+
+  server.tool(
+    "list_briefs",
+    "List generated Relay brief packets for the current project, including profile, kind, created time, and edited status.",
+    listBriefsSchema.shape,
+    async (args) => {
+      const projectId = await resolveProjectId(args.projectId)
+      return listBriefs(client, args, projectId)
+    }
+  )
+
+  server.tool(
+    "regenerate_brief",
+    "Regenerate a project brief packet explicitly. Use this after cleanup or when the user wants a fresh brief instead of reusing cached continuity.",
+    regenerateBriefSchema.shape,
+    async (args) => {
+      const projectId = await resolveProjectId(args.projectId)
+      return regenerateBrief(client, args, projectId)
+    }
+  )
+
+  server.tool(
+    "delete_brief",
+    "Delete a specific brief packet by ID. Use this to remove stale or polluted generated briefs before regenerating.",
+    deleteBriefSchema.shape,
+    async (args) => {
+      const projectId = await resolveProjectId(args.projectId)
+      return deleteBrief(client, args, projectId)
+    }
+  )
+
+  server.tool(
+    "trace_context_sources",
+    "Trace why a phrase or project-state field appears in Relay context. Returns likely contributing memory items, digests, canon entries, sessions, summary snapshots, and briefs.",
+    traceContextSourcesSchema.shape,
+    async (args) => {
+      const projectId = await resolveProjectId(args.projectId)
+      return traceContextSources(client, args, projectId)
+    }
+  )
+
+  server.tool(
+    "list_recent_activity",
+    "List recent continuity activity such as captures, digests, memory mutations, work-session events, and brief generation. Use this to answer what changed recently.",
+    listRecentActivitySchema.shape,
+    async (args) => {
+      const projectId = await resolveProjectId(args.projectId)
+      return listRecentActivity(client, args, projectId)
     }
   )
 

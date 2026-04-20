@@ -43,4 +43,20 @@ export class WorkSessionEventRepository {
 
     return toWorkSessionEventRow(rows[0] as Record<string, unknown>)
   }
+
+  async listRecentByProject(input: {
+    projectId: string
+    limit?: number
+  }): Promise<WorkSessionEventRow[]> {
+    const rows = await this.provider.query(
+      `select *
+       from work_session_events
+       where project_id = $1
+       order by created_at desc
+       limit coalesce($2::int, 50)`,
+      [input.projectId, input.limit ?? null],
+    )
+
+    return rows.map((row) => toWorkSessionEventRow(row as Record<string, unknown>))
+  }
 }

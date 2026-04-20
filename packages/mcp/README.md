@@ -33,6 +33,19 @@ Relay does not promise a universal pre-rate-limit save hook. The fallback model
 is best-effort pre-loss protection: native hooks where supported, opportunistic
 server sweeps, and explicit checkpoints for hookless clients.
 
+## Explainability tools
+
+Relay now exposes a small explainability layer in MCP so coding agents can
+inspect and repair continuity instead of treating project memory as a black box:
+
+- `list_memory` / `get_memory`
+- `list_sessions` / `archive_session`
+- `list_briefs` / `regenerate_brief` / `delete_brief`
+- `trace_context_sources`
+- `list_recent_activity`
+
+These complement the core resume and writeback tools rather than replacing them.
+
 ## Behavior bridges
 
 Relay also installs behavior guidance by client so agents use Relay early but

@@ -5,6 +5,7 @@ You have access to Relay, a project memory system that keeps context synchronize
 ## Recommended Workflow
 
 ### At Session Start
+- Call \`list_projects\` first, then \`set_current_project\` if the active project is ambiguous.
 - Call \`get_brief\` to load the current project context, decisions, constraints, and recent progress.
 - This prevents you from re-discovering things the user has already decided.
 
@@ -12,6 +13,8 @@ You have access to Relay, a project memory system that keeps context synchronize
 - Before making architectural decisions or suggesting approaches, call \`recall_context\` with a relevant query to check for existing decisions or constraints that may apply.
 - When the user makes a new decision, records a constraint, or identifies a task, call \`add_memory\` to persist it immediately. Don't wait until the end of the session.
 - Use \`search_context\` to check if a decision or constraint already exists before adding duplicates.
+- If Relay context looks stale or wrong, inspect it before mutating:
+  use \`list_memory\`, \`list_sessions\`, \`list_briefs\`, \`trace_context_sources\`, and \`list_recent_activity\`.
 
 ### At Session End
 - Call \`save_context\` with a structured summary of what was accomplished, any new decisions made, constraints discovered, and next steps identified.
