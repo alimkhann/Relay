@@ -1,7 +1,7 @@
 import { APP_ORIGIN } from "@/lib/site-config"
 
 export const RELAY_MCP_SERVER_NAME = "relay"
-export const RELAY_MCP_SERVER_VERSION = "0.4.0"
+export const RELAY_MCP_SERVER_VERSION = "0.4.1"
 export const RELAY_MCP_TRANSPORT_ENDPOINT = `${APP_ORIGIN}/api/mcp/stream`
 export const RELAY_MCP_DOCUMENTATION_URL = `${APP_ORIGIN}/docs/mcp`
 

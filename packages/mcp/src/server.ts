@@ -21,7 +21,7 @@ interface ListProjectsResponse {
 export function createServer(client: RelayClient, config: RelayConfig): McpServer {
   const server = new McpServer({
     name: "relay",
-    version: "0.1.0"
+    version: "0.4.1"
   })
 
   // Cache for resolved project ID
