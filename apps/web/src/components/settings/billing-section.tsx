@@ -101,7 +101,7 @@ function PlanCard({
   return (
     <div
       className={cn(
-        "relative rounded-[var(--relay-radius)] border p-5",
+        "relative flex flex-col rounded-[var(--relay-radius)] border p-5",
         tone === "accent"
           ? "border-[var(--relay-accent)]/30 bg-[var(--relay-accent)]/[0.03] ring-1 ring-[var(--relay-accent)]/20"
           : "border-[var(--relay-line)] bg-[var(--relay-bg)]",
@@ -135,7 +135,7 @@ function PlanCard({
           </li>
         ))}
       </ul>
-      {actions ? <div className="mt-5 space-y-2">{actions}</div> : null}
+      {actions ? <div className="mt-auto pt-5 space-y-2">{actions}</div> : null}
     </div>
   )
 }

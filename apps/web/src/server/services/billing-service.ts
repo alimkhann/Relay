@@ -78,7 +78,7 @@ async function fireTransitionEmail(
   try {
     switch (transition) {
       case "free_to_trial":
-        await sendTrialStartedEmail(recipient.email, recipient.name, 7)
+        await sendTrialStartedEmail(recipient.email, recipient.name, 3)
         return
       case "free_to_pro":
       case "trial_to_pro":
@@ -200,7 +200,7 @@ export async function createPolarCheckoutForUser(user: {
       plan: `${parsed.plan}_${parsed.interval === "year" ? "yearly" : "monthly"}`,
     },
     trialInterval: "day",
-    trialIntervalCount: 7,
+    trialIntervalCount: 3,
   })
 
   await repositories.billingCustomers.upsert({
