@@ -585,6 +585,15 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
               actions={
                 entitlements.plan === "free" ? (
                   <p className="text-[12px] text-[var(--relay-muted)]">You&apos;re on the Free plan.</p>
+                ) : entitlements.isPaid ? (
+                  <button
+                    type="button"
+                    onClick={() => void handlePortal()}
+                    disabled={loading !== null}
+                    className="w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-4 py-2 text-[13px] font-medium text-[var(--relay-muted)] transition hover:bg-[var(--relay-soft)] disabled:opacity-50"
+                  >
+                    {loading === "portal" ? "Opening portal..." : "Downgrade to Free"}
+                  </button>
                 ) : null
               }
             />
@@ -613,28 +622,24 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
                         : "Cancel anytime from the customer portal."}
                     </p>
                   </div>
-                ) : entitlements.isPaid ? (
-                  <div className="space-y-2">
-                    <button
-                      type="button"
-                      onClick={() => void handlePortal()}
-                      disabled={loading !== null}
-                      className="w-full rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
-                    >
-                      {loading === "portal" ? "Opening portal..." : "Manage subscription"}
-                    </button>
-                  </div>
+                ) : entitlements.plan === "pro" ? (
+                  <button
+                    type="button"
+                    onClick={() => void handlePortal()}
+                    disabled={loading !== null}
+                    className="w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-4 py-2 text-[13px] font-medium text-[var(--relay-muted)] transition hover:bg-[var(--relay-soft)] disabled:opacity-50"
+                  >
+                    {loading === "portal" ? "Opening portal..." : "Downgrade to Starter"}
+                  </button>
                 ) : (
-                  <div className="space-y-2">
-                    <button
-                      type="button"
-                      onClick={() => void handleCheckout(yearly ? "year" : "month", "starter")}
-                      disabled={loading !== null}
-                      className="w-full rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
-                    >
-                      {loading ? "Starting..." : "Get Starter"}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleCheckout(yearly ? "year" : "month", "starter")}
+                    disabled={loading !== null}
+                    className="w-full rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
+                  >
+                    {loading ? "Starting..." : "Get Starter"}
+                  </button>
                 )
               }
             />
@@ -666,17 +671,24 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
                           : "Cancel anytime from the customer portal."}
                     </p>
                   </div>
+                ) : entitlements.plan === "starter" ? (
+                  <button
+                    type="button"
+                    onClick={() => void handlePortal()}
+                    disabled={loading !== null}
+                    className="w-full rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
+                  >
+                    {loading === "portal" ? "Opening portal..." : "Upgrade to Pro"}
+                  </button>
                 ) : (
-                  <div className="space-y-2">
-                    <button
-                      type="button"
-                      onClick={() => void handleCheckout(yearly ? "year" : "month", "pro")}
-                      disabled={loading !== null}
-                      className="w-full rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
-                    >
-                      {loading ? "Starting..." : "Get Pro"}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleCheckout(yearly ? "year" : "month", "pro")}
+                    disabled={loading !== null}
+                    className="w-full rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
+                  >
+                    {loading ? "Starting..." : "Get Pro"}
+                  </button>
                 )
               }
             />
