@@ -630,11 +630,10 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
                       type="button"
                       onClick={() => void handleCheckout(yearly ? "year" : "month", "starter")}
                       disabled={loading !== null}
-                      className="w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition hover:bg-[var(--relay-soft)] disabled:opacity-50"
+                      className="w-full rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
                     >
-                      {loading ? "Starting..." : `Get Starter — ${yearly ? `$${PRICING.starter.yearlyPrice}/yr` : `$${PRICING.starter.monthlyPrice}/mo`}`}
+                      {loading ? "Starting..." : "Get Starter"}
                     </button>
-                    <p className="text-[12px] text-[var(--relay-muted)]">7-day trial included. Cancel anytime.</p>
                   </div>
                 )
               }
@@ -675,9 +674,8 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
                       disabled={loading !== null}
                       className="w-full rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
                     >
-                      {loading ? "Starting..." : `Get Pro — ${yearly ? `$${PRICING.pro.yearlyPrice}/yr` : `$${PRICING.pro.monthlyPrice}/mo`}`}
+                      {loading ? "Starting..." : "Get Pro"}
                     </button>
-                    <p className="text-[12px] text-[var(--relay-muted)]">7-day trial included. Cancel anytime.</p>
                   </div>
                 )
               }
