@@ -14,13 +14,12 @@ Use this skill when you are resuming work, switching projects, or deciding wheth
 
 ## Recommended Relay flow
 
-1. Start with `list_projects`.
-2. If the active project is ambiguous, call `set_current_project`.
-3. Call `get_brief` to load the current working context.
-4. Use `search_context` or `recall_context` before major decisions when local context may be incomplete.
-5. Save back deliberately:
+1. Start or resume with `get_brief`.
+2. Only if Relay reports project ambiguity or resolves to the wrong project, call `list_projects` and then `set_current_project`.
+3. Use `search_context` or `recall_context` before major architecture, product, or process decisions when local context may be incomplete.
+4. Save back deliberately:
    - `add_memory` for durable single facts
-   - `checkpoint_context` for milestones
+   - `checkpoint_context` for meaningful milestones or before compaction-equivalent risk
    - `save_context` when wrapping a meaningful unit of work
 
 ## What to avoid
@@ -28,3 +27,4 @@ Use this skill when you are resuming work, switching projects, or deciding wheth
 - Do not read Relay repeatedly when the current local conversation already has enough context.
 - Do not write after every turn.
 - Do not call `save_context` just to restate work that is still in progress.
+- Do not save speculative brainstorming until it becomes a confirmed decision, constraint, task, or stable product truth.

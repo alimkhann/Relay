@@ -106,6 +106,11 @@ interface ClaudeSettings {
 }
 
 const RELAY_MARK_COMMAND_PREFIX = "relay-flush"
+const RELAY_FLUSH_BASE_COMMAND = "npx -y -p @onrelay/mcp relay-flush"
+
+function buildRelayFlushCommand(reason: FlushReason) {
+  return `${RELAY_FLUSH_BASE_COMMAND} ${reason} --quiet`
+}
 
 async function loadBundledClaudeHooks(): Promise<Record<string, HookMatcher[]>> {
   const bundledHooksPath = resolve(
@@ -124,16 +129,16 @@ async function loadBundledClaudeHooks(): Promise<Record<string, HookMatcher[]>> 
     // even when the packaged docs directory isn't adjacent to dist/.
     return {
       PreCompact: [
-        { matcher: "*", hooks: [{ type: "command", command: "relay-flush precompact --quiet" }] },
+        { matcher: "*", hooks: [{ type: "command", command: buildRelayFlushCommand("precompact") }] },
       ],
       SessionEnd: [
-        { matcher: "*", hooks: [{ type: "command", command: "relay-flush session_end --quiet" }] },
+        { matcher: "*", hooks: [{ type: "command", command: buildRelayFlushCommand("session_end") }] },
       ],
       Stop: [
-        { matcher: "*", hooks: [{ type: "command", command: "relay-flush stop --quiet" }] },
+        { matcher: "*", hooks: [{ type: "command", command: buildRelayFlushCommand("stop") }] },
       ],
       StopFailure: [
-        { matcher: "*", hooks: [{ type: "command", command: "relay-flush stop_failure --quiet" }] },
+        { matcher: "*", hooks: [{ type: "command", command: buildRelayFlushCommand("stop_failure") }] },
       ],
     }
   }
@@ -263,7 +268,7 @@ async function main() {
   if (!projectId) {
     if (!args.quiet) {
       console.error(
-        "[relay-flush] skipped: no project configured. Set RELAY_PROJECT_ID, pass --project=<uuid>, or run relay-mcp to configure.",
+        "[relay-flush] skipped: no project configured. Set RELAY_PROJECT_ID, pass --project=<uuid>, or run relay-mcp or get_brief to configure the correct project.",
       )
     }
     process.exit(0)

@@ -1,7 +1,8 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js"
+import { resolveRelayProjectSelection, type RelayProjectResolutionResult } from "@relay/shared"
 import type { RelayClient } from "./client.js"
 import type { RelayConfig } from "./config.js"
-import { detectProjectId } from "./utils/project-detection.js"
+import { detectProjectSelection } from "./utils/project-detection.js"
 import { registerTools } from "./tools/register.js"
 import { readProjectBrief } from "./resources/project-brief.js"
 import { SESSION_GUIDELINES } from "./prompts/session-guidelines.js"
@@ -9,6 +10,7 @@ import { SESSION_GUIDELINES } from "./prompts/session-guidelines.js"
 interface ProjectSummary {
   id: string
   name: string
+  slug?: string | null
   routingContext: { keywords: string[] } | null
 }
 
@@ -29,8 +31,26 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
   let explicitSwitch = false
   const PROJECT_DETECTION_CACHE_MS = 5 * 60 * 1000
 
-  async function resolveProjectId(explicitId?: string): Promise<string> {
-    if (explicitId) return explicitId
+  async function listProjectsForResolution() {
+    const data = await client.get<ListProjectsResponse>("/api/projects")
+    return data.projects.map((p) => ({
+      id: p.id,
+      name: p.name,
+      slug: p.slug ?? null,
+      keywords: p.routingContext?.keywords ?? [],
+    }))
+  }
+
+  async function resolveProjectSelection(explicitId?: string): Promise<RelayProjectResolutionResult> {
+    if (explicitId) {
+      return {
+        status: "resolved",
+        projectId: explicitId,
+        source: "explicit",
+        confidence: 1,
+        needsUserIntervention: false,
+      }
+    }
 
     // If the working directory changed between tool calls, invalidate the
     // cache so we re-detect for the new project — unless the user has
@@ -41,30 +61,44 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
       projectDetectionAttemptedAt = 0
     }
 
-    if (cachedProjectId) return cachedProjectId
+    if (cachedProjectId) {
+      return {
+        status: "resolved",
+        projectId: cachedProjectId,
+        source: "cached",
+        confidence: explicitSwitch ? 1 : 0.99,
+        needsUserIntervention: false,
+      }
+    }
 
     if (Date.now() - projectDetectionAttemptedAt > PROJECT_DETECTION_CACHE_MS) {
       projectDetectionAttemptedAt = Date.now()
       lastDetectionCwd = currentCwd
       try {
-        const data = await client.get<ListProjectsResponse>("/api/projects")
-        const candidates = data.projects.map((p) => ({
-          id: p.id,
-          name: p.name,
-          keywords: p.routingContext?.keywords ?? []
-        }))
-        const detected = await detectProjectId(candidates)
-        if (detected) {
-          cachedProjectId = detected
+        const candidates = await listProjectsForResolution()
+        const detected = await detectProjectSelection(candidates)
+        if (detected.status === "resolved") {
+          cachedProjectId = detected.projectId
           return detected
         }
+        return detected
       } catch {
         // Detection failed, will require explicit projectId
       }
     }
 
+    const projects = await listProjectsForResolution().catch(() => [])
+    return resolveRelayProjectSelection({
+      cachedProjectId,
+      projects,
+    })
+  }
+
+  async function resolveProjectId(explicitId?: string): Promise<string> {
+    const result = await resolveProjectSelection(explicitId)
+    if (result.status === "resolved") return result.projectId
     throw new Error(
-      "Could not determine project from the current working directory. Call list_projects to see your projects, then set_current_project to choose one — or pass projectId explicitly."
+      "Relay could not confidently determine the active project. Call list_projects to inspect candidates, then set_current_project with the correct projectId."
     )
   }
 
@@ -72,6 +106,7 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
   registerTools(server, {
     client,
     resolveProjectId,
+    resolveProjectSelection,
     getCachedProjectId: () => cachedProjectId,
     setCachedProjectId: (projectId: string) => {
       cachedProjectId = projectId

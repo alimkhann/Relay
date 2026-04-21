@@ -38,7 +38,7 @@ Relay prints the approval URL and session code so you can open it manually on an
 - Detects supported MCP client config locations
 - Writes Relay MCP config using each client's native config format
 - Installs client setup only where the client exposes an official support surface
-- Adds Claude Code, Gemini CLI, and Windsurf hooks where supported
+- Adds Claude Code and Gemini CLI hooks where supported
 - Saves Relay auth in `~/.relay/mcp.json`
 
 ## Uninstall

@@ -40,7 +40,7 @@ this one-line shell task so you can run it via `Ctrl/Cmd+Shift+P → Run Task`:
     {
       "label": "Relay: flush session",
       "type": "shell",
-      "command": "relay-flush explicit --quiet",
+      "command": "npx -y -p @onrelay/mcp relay-flush explicit --quiet",
       "problemMatcher": [],
       "presentation": { "reveal": "silent", "panel": "dedicated" }
     }
@@ -48,9 +48,7 @@ this one-line shell task so you can run it via `Ctrl/Cmd+Shift+P → Run Task`:
 }
 ```
 
-2. Make sure `relay-flush` is on your PATH (`pnpm add -g @onrelay/mcp`).
-
-3. Optional: bind the task to a keybinding in `keybindings.json`:
+2. Optional: bind the task to a keybinding in `keybindings.json`:
 
 ```json
 [
@@ -62,7 +60,7 @@ this one-line shell task so you can run it via `Ctrl/Cmd+Shift+P → Run Task`:
 ]
 ```
 
-4. Hit the binding any time you're about to compact, exit, or start a new
+3. Hit the binding any time you're about to compact, exit, or start a new
    thread. The flush is synchronous and fast (~200 ms typical).
 
 ---
@@ -74,8 +72,8 @@ agent to call Relay's `checkpoint_context` tool at natural break points.
 Paste this into your project's `.cursorrules` (or the top of your prompt):
 
 ```
-When you finish a logical unit of work — a refactor, a feature, a bug fix
-or before summarizing context — call the Relay MCP tool `checkpoint_context`
+When you finish a logical unit of work — a refactor, a feature, a bug fix,
+or before compaction-equivalent risk — call the Relay MCP tool `checkpoint_context`
 with the current decisions, constraints, and next steps. This keeps Relay
 in sync with your progress so that the next session picks up exactly where
 this one left off.

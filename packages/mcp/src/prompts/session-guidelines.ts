@@ -5,20 +5,21 @@ You have access to Relay, a project memory system that keeps context synchronize
 ## Recommended Workflow
 
 ### At Session Start
-- Call \`list_projects\` first, then \`set_current_project\` if the active project is ambiguous.
-- Call \`get_brief\` to load the current project context, decisions, constraints, and recent progress.
+- Call \`get_brief\` first. Relay will try to resolve the correct project automatically.
+- Only call \`list_projects\` and then \`set_current_project\` if \`get_brief\` reports project ambiguity or clearly resolves to the wrong project.
 - This prevents you from re-discovering things the user has already decided.
 
 ### During the Session
-- Before making architectural decisions or suggesting approaches, call \`recall_context\` with a relevant query to check for existing decisions or constraints that may apply.
-- When the user makes a new decision, records a constraint, or identifies a task, call \`add_memory\` to persist it immediately. Don't wait until the end of the session.
-- Use \`search_context\` to check if a decision or constraint already exists before adding duplicates.
+- Before making architectural, product, or process decisions, call \`search_context\` or \`recall_context\` when local context may be incomplete.
+- When the user confirms a durable decision, constraint, task, or stable product truth, call \`add_memory\` to persist that single fact.
+- Do not save speculative brainstorming, partial ideas, or every conversational turn.
 - If Relay context looks stale or wrong, inspect it before mutating:
   use \`list_memory\`, \`list_sessions\`, \`list_briefs\`, \`trace_context_sources\`, and \`list_recent_activity\`.
 
 ### At Session End
-- Call \`save_context\` with a structured summary of what was accomplished, any new decisions made, constraints discovered, and next steps identified.
-- This ensures the next coding session (in any AI tool) can pick up where you left off.
+- Use \`checkpoint_context\` only at meaningful boundaries: before compaction-equivalent actions, before switching tasks, or after finishing a logical milestone.
+- Use \`save_context\` when wrapping a meaningful unit of work, not after every turn.
+- This keeps Relay current without turning it into a noisy per-turn write path.
 
 ## Memory Types
 - **decision**: Architectural or implementation choices (e.g., "Use PostgreSQL for the database")

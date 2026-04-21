@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
+import { resolveRelayProjectSelection, type RelayProjectResolutionResult } from "@relay/shared"
 import { z } from "zod"
 
 import { isAuthRequiredError, resolveViewer, type Viewer } from "@/server/policies/viewer"
@@ -67,17 +68,38 @@ function createHttpMcpServer(viewer: Viewer) {
     version: RELAY_MCP_SERVER_VERSION
   })
 
-  const projectId = viewer.projectId
+  let currentProjectId = viewer.projectId ?? null
+
+  async function resolveProjectSelection(explicitId?: string): Promise<RelayProjectResolutionResult> {
+    if (explicitId) {
+      return {
+        status: "resolved",
+        projectId: explicitId,
+        source: "explicit",
+        confidence: 1,
+        needsUserIntervention: false,
+      }
+    }
+
+    const projects = await client.listProjects()
+    return resolveRelayProjectSelection({
+      cachedProjectId: currentProjectId,
+      tokenProjectId: viewer.projectId ?? null,
+      projects,
+    })
+  }
 
   async function resolveProjectId(explicitId?: string): Promise<string> {
-    if (explicitId) return explicitId
-    if (projectId) return projectId
+    const result = await resolveProjectSelection(explicitId)
+    if (result.status === "resolved") return result.projectId
     throw new Error(
-      "Could not determine project. Call list_projects to see your projects, then call set_current_project with the correct projectId — or pass projectId explicitly."
+      "Relay could not confidently determine the active project. Call list_projects to inspect candidates, then call set_current_project with the correct projectId."
     )
   }
 
-  registerHttpTools(server, client, resolveProjectId, viewer)
+  registerHttpTools(server, client, resolveProjectId, resolveProjectSelection, viewer, () => currentProjectId, (projectId) => {
+    currentProjectId = projectId
+  })
   registerHttpPrompts(server)
   registerHttpResources(server)
 
@@ -88,17 +110,24 @@ function registerHttpTools(
   server: McpServer,
   client: RelayHttpMcpClient,
   resolveProjectId: (explicitId?: string) => Promise<string>,
-  viewer: Viewer
+  resolveProjectSelection: (explicitId?: string) => Promise<RelayProjectResolutionResult>,
+  viewer: Viewer,
+  getCurrentProjectId: () => string | null,
+  setCurrentProjectId: (projectId: string) => void,
 ) {
   server.tool(
     RELAY_MCP_TOOL_NAMES[0],
-    "List all Relay projects you have access to. Returns project IDs, names, slugs, and descriptions. Call this first to find a project ID and to match the user's current working directory or repository against project names and slugs before calling get_brief.",
+    "List all Relay projects you have access to. Returns project IDs, names, slugs, routing keywords, and which project is currently active for this MCP session. Use this only when Relay reports project ambiguity or when you need to switch projects manually.",
     {
       limit: z.number().optional().describe("Maximum number of projects to return"),
     },
     { readOnlyHint: true, destructiveHint: false },
     async (args) => {
       let projects = await client.listProjects()
+      projects = projects.map((project) => ({
+        ...project,
+        isCurrent: getCurrentProjectId() === project.id,
+      }))
       if (args.limit && args.limit > 0) projects = projects.slice(0, args.limit)
       return {
         content: [{ type: "text" as const, text: JSON.stringify(projects, null, 2) }]
@@ -124,6 +153,7 @@ function registerHttpTools(
         throw new Error("Project not found or not accessible to the current MCP user.")
       }
       await repositories.mcpTokens.setProjectId(viewer.mcpTokenId, args.projectId)
+      setCurrentProjectId(args.projectId)
       return {
         content: [
           {
@@ -137,15 +167,11 @@ function registerHttpTools(
 
   server.tool(
     RELAY_MCP_TOOL_NAMES[2],
-    `Fetch a project context brief from Relay. Returns a markdown document with project state, decisions, constraints, tasks, and key memory items formatted for an AI coding session.
+    `Fetch a project context brief from Relay. This is the default session-start tool.
 
-IMPORTANT — before calling get_brief, always verify which project the user is working on:
-1. Call list_projects to see all available projects.
-2. Match the current working directory / git repository against the project names and slugs.
-3. If the cached project is wrong, call set_current_project with the correct projectId.
-4. Only then call get_brief.
-
-Call this at the start of every coding session to restore project memory.`,
+- If projectId is omitted, Relay first tries the cached or token-scoped project.
+- If that fails, Relay resolves the project only when there is a single obvious candidate.
+- Only call list_projects and set_current_project if get_brief reports ambiguity or the wrong project.`,
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
       kind: z.string().optional().describe("Brief kind: fresh_chat_bootstrap or quick_continuity"),
@@ -157,10 +183,25 @@ Call this at the start of every coding session to restore project memory.`,
     },
     { readOnlyHint: true, destructiveHint: false },
     async (args) => {
-      const pid = await resolveProjectId(args.projectId)
-      const brief = await client.getBrief(pid, args as Record<string, unknown>)
+      const resolution = await resolveProjectSelection(args.projectId)
+      if (resolution.status !== "resolved") {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "Relay could not confidently determine the active project. Call list_projects to inspect candidates, then call set_current_project with the correct projectId before retrying get_brief.",
+            },
+          ],
+          structuredContent: resolution as unknown as Record<string, unknown>,
+        }
+      }
+
+      const brief = await client.getBrief(resolution.projectId, args as Record<string, unknown>)
       return {
-        content: [{ type: "text" as const, text: brief }]
+        content: [{ type: "text" as const, text: brief }],
+        structuredContent: {
+          projectResolution: resolution,
+        } as Record<string, unknown>,
       }
     }
   )
@@ -211,7 +252,7 @@ Call this at the start of every coding session to restore project memory.`,
     },
     { readOnlyHint: true, destructiveHint: false },
     async (args) => {
-      const item = await client.getMemory(args.memoryId, viewer.projectId ?? undefined)
+      const item = await client.getMemory(args.memoryId, getCurrentProjectId() ?? undefined)
       if (!item) {
         throw new Error("Memory item not found or not accessible to the current MCP user.")
       }
@@ -402,7 +443,7 @@ Call this at the start of every coding session to restore project memory.`,
 
   server.tool(
     RELAY_MCP_TOOL_NAMES[15],
-    `Push a structured session snapshot into Relay and run it through the digest + reconcile pipeline. You do NOT need to call this at natural break points — Relay auto-flushes via supported client hooks (relay-flush), stdio shutdown, and an opportunistic server-side sweep that runs before every MCP request. Call explicitly only for an immediate checkpoint or when ending a session on a hookless client. Set finalize=false to record state without closing the session.`,
+    `Push a structured session snapshot into Relay and run it through the digest + reconcile pipeline. You do NOT need to call this at natural break points — Relay auto-flushes via supported client hooks, stdio shutdown, and an opportunistic server-side sweep that runs before MCP requests. Call explicitly only for an immediate checkpoint, a meaningful wrap-up, or when ending a session on a hookless client. Set finalize=false to record state without closing the session.`,
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
       summary: z.string().optional().describe("High-level session summary"),
@@ -551,20 +592,21 @@ You have access to Relay, a project memory system that keeps context synchronize
 ## Recommended Workflow
 
 ### At Session Start
-1. Call \`list_projects\` to see all available projects.
-2. Match the user's current working directory / git repository against the project names and slugs.
+1. Call \`get_brief\` first to load the current project context, decisions, constraints, and recent progress.
+2. Only if Relay reports project ambiguity, call \`list_projects\`.
 3. If the cached project is wrong, call \`set_current_project\` with the correct projectId.
-4. Call \`get_brief\` to load the current project context, decisions, constraints, and recent progress.
+4. Retry \`get_brief\`.
 
 ### During the Session
-- Before making architectural decisions, call \`recall_context\` to check for existing decisions or constraints.
-- When the user makes a new decision or identifies a task, call \`add_memory\` to persist it immediately.
-- Use \`search_context\` to check for duplicates before adding.
+- Before making architectural, product, or process decisions, call \`search_context\` or \`recall_context\` when local context may be incomplete.
+- When the user confirms a durable decision, constraint, task, or stable product truth, call \`add_memory\` to persist that single fact.
+- Do not save speculative brainstorming, partial ideas, or every conversational turn.
 - If Relay context looks stale or wrong, inspect it before mutating:
   use \`list_memory\`, \`list_sessions\`, \`list_briefs\`, \`trace_context_sources\`, and \`list_recent_activity\`.
 
 ### At Session End
-- Call \`memory.save_context\` with a structured summary of what was accomplished, new decisions, and next steps.
+- Use \`checkpoint_context\` only at meaningful boundaries: before compaction-equivalent actions, before switching tasks, or after finishing a logical milestone.
+- Use \`save_context\` when wrapping a meaningful unit of work, not after every turn.
 
 ## Memory Types
 - **decision**: Architectural or implementation choices

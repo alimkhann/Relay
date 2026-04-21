@@ -2,7 +2,7 @@
 
 Autonomous save-before-compact / session-end for Claude Code users of Relay.
 
-These hooks call `relay-flush`, which walks any open Relay work sessions in
+These hooks call `relay-flush` through an explicit `npx -y -p @onrelay/mcp` command, which walks any open Relay work sessions in
 your current project through the digest → reconcile → close pipeline before
 Claude Code compacts context or ends the session.
 
@@ -15,20 +15,13 @@ if the session crashes mid-thought.
 
 ### Prerequisites
 
-1. **`@onrelay/mcp` installed** — the relay-flush binary ships with it:
-   ```bash
-   npm install -g @onrelay/mcp
-   # or
-   pnpm add -g @onrelay/mcp
-   ```
-
-2. **Relay config exists** — run `npx @onrelay/wizard` once to log in, pick a project.
+1. **Relay config exists** — run `npx @onrelay/wizard` once to log in and configure MCP.
    This writes `~/.relay/mcp.json` with your token and project id.
 
 ### One-line install
 
 ```bash
-relay-flush install-client-setup
+npx -y -p @onrelay/mcp relay-flush install-client-setup
 ```
 
 This merges the hook config below into `~/.claude/settings.json`. Re-run
@@ -48,7 +41,7 @@ project directory to scope it to that project):
         "hooks": [
           {
             "type": "command",
-            "command": "relay-flush precompact --quiet"
+            "command": "npx -y -p @onrelay/mcp relay-flush precompact --quiet"
           }
         ]
       }
@@ -59,7 +52,7 @@ project directory to scope it to that project):
         "hooks": [
           {
             "type": "command",
-            "command": "relay-flush session_end --quiet"
+            "command": "npx -y -p @onrelay/mcp relay-flush session_end --quiet"
           }
         ]
       }
@@ -70,7 +63,7 @@ project directory to scope it to that project):
         "hooks": [
           {
             "type": "command",
-            "command": "relay-flush stop --quiet"
+            "command": "npx -y -p @onrelay/mcp relay-flush stop --quiet"
           }
         ]
       }
@@ -81,7 +74,7 @@ project directory to scope it to that project):
         "hooks": [
           {
             "type": "command",
-            "command": "relay-flush stop_failure --quiet"
+            "command": "npx -y -p @onrelay/mcp relay-flush stop_failure --quiet"
           }
         ]
       }
@@ -118,7 +111,7 @@ workspace, set `RELAY_PROJECT_ID` in your shell:
 export RELAY_PROJECT_ID=<project-uuid>
 ```
 
-Or pass explicitly in the hook command: `relay-flush precompact --project=<uuid>`
+Or pass explicitly in the hook command: `npx -y -p @onrelay/mcp relay-flush precompact --project=<uuid>`
 
 ---
 

@@ -20,10 +20,12 @@ import { deleteBriefSchema, deleteBrief } from "./delete-brief.js"
 import { traceContextSourcesSchema, traceContextSources } from "./trace-context-sources.js"
 import { listRecentActivitySchema, listRecentActivity } from "./list-recent-activity.js"
 import { z } from "zod"
+import type { RelayProjectResolutionResult } from "@relay/shared"
 
 interface ToolRegistrationContext {
   client: RelayClient
   resolveProjectId: (explicitId?: string) => Promise<string>
+  resolveProjectSelection?: (explicitId?: string) => Promise<RelayProjectResolutionResult>
   getCachedProjectId: () => string | null
   setCachedProjectId: (projectId: string) => void
 }
@@ -33,13 +35,13 @@ interface ToolRegistrationContext {
  * Shared between local stdio and remote HTTP MCP servers.
  */
 export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
-  const { client, resolveProjectId, getCachedProjectId, setCachedProjectId } = ctx
+  const { client, resolveProjectId, resolveProjectSelection, getCachedProjectId, setCachedProjectId } = ctx
 
   server.tool(
     "list_projects",
-    "List all Relay projects you have access to. Returns project IDs, names, slugs, and routing keywords. Call this first to find a project ID and to match the current working directory against project names/slugs/keywords before calling get_brief.",
+    "List all Relay projects you have access to. Returns project IDs, names, slugs, routing keywords, and which project is currently active for this MCP session. Use this only when Relay reports project ambiguity or when you need to switch projects manually.",
     listProjectsSchema.shape,
-    async () => listProjects(client)
+    async () => listProjects(client, getCachedProjectId())
   )
 
   server.tool(
@@ -63,30 +65,33 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "get_brief",
-    `Fetch a project context brief from Relay. Returns a markdown document with project state, decisions, constraints, tasks, and key notes.
+    `Fetch a project context brief from Relay. This is the default session-start tool.
 
-IMPORTANT — before calling get_brief, always verify which project the user is working on:
-1. Call list_projects to see all available projects.
-2. Match the current working directory / git repository against the project names, slugs, and routing keywords.
-3. If the auto-detected or cached project is wrong, call set_current_project with the correct projectId.
-4. Only then call get_brief.
-
-Call this at the start of every coding session to restore project memory.`,
+- If projectId is omitted, Relay first tries the cached or configured project.
+- If that is missing, Relay tries to resolve the project from the current workspace.
+- Only call list_projects and set_current_project if get_brief reports ambiguity or the wrong project.`,
     getBriefSchema.shape,
     async (args) => {
+      if (resolveProjectSelection) {
+        const resolution = await resolveProjectSelection(args.projectId)
+        if (resolution.status !== "resolved") {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "Relay could not confidently determine the active project. Call list_projects to inspect candidates, then call set_current_project with the correct projectId before retrying get_brief.",
+              },
+            ],
+            structuredContent: resolution as unknown as Record<string, unknown>,
+          }
+        }
+
+        const result = await getBrief(client, args, resolution.projectId, resolution)
+        return result
+      }
+
       const projectId = await resolveProjectId(args.projectId)
-      const syncSurface = args.syncSurface ?? client.getDefaultSyncSurface()
-      const since = args.kind === "quick_continuity"
-        ? await client.getDefaultSince(projectId, args.since)
-        : args.since
-      const result = await getBrief(client, { ...args, since, syncSurface }, projectId)
-      await client.recordSessionEvent(projectId, "brief_read", {
-        kind: args.kind,
-        targetProfileKey: args.targetProfileKey,
-        since: since ?? null,
-        syncSurface,
-      }).catch(() => {})
-      return result
+      return getBrief(client, args, projectId)
     }
   )
 
@@ -96,7 +101,6 @@ Call this at the start of every coding session to restore project memory.`,
     getProjectStateSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
-      await client.recordSessionEvent(projectId, "project_state_read", {}).catch(() => {})
       return getProjectState(client, projectId)
     }
   )
@@ -124,13 +128,7 @@ Call this at the start of every coding session to restore project memory.`,
     searchContextSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
-      const result = await searchContext(client, args, projectId)
-      await client.recordSessionEvent(projectId, "context_search", {
-        query: args.query,
-        types: args.types ?? [],
-        tags: args.tags ?? [],
-      }).catch(() => {})
-      return result
+      return searchContext(client, args, projectId)
     }
   )
 
@@ -230,7 +228,7 @@ Call this at the start of every coding session to restore project memory.`,
     "save_context",
     `Push a structured session snapshot (summary, decisions, progress, constraints, next steps, notes) into Relay's active work session and run it through the digest + reconcile pipeline.
 
-You DO NOT need to call this at natural break points — Relay auto-flushes on supported client hooks (for example Claude Code, Gemini CLI, and Windsurf via relay-flush), on stdio shutdown, and opportunistically on the server before any MCP request. Call it explicitly only when the agent or user wants an immediate checkpoint (e.g. "save this decision now") or when ending a session from a client without hooks.
+You DO NOT need to call this at natural break points — Relay auto-flushes on supported client hooks, on stdio shutdown, and opportunistically on the server before MCP requests. Call it explicitly only when the agent or user wants an immediate checkpoint (e.g. "save this decision now"), when wrapping a meaningful unit of work, or when ending a session from a client without hooks.
 
 Set finalize=false to record state without closing the session — useful for mid-session snapshots. Default finalize=true flushes and closes.`,
     saveContextSchema.shape,

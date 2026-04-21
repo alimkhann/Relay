@@ -18,7 +18,7 @@ interface ListProjectsResponse {
   projects: ProjectSummary[]
 }
 
-export async function listProjects(client: RelayClient) {
+export async function listProjects(client: RelayClient, currentProjectId: string | null = null) {
   const data = await client.get<ListProjectsResponse>("/api/projects")
 
   const projects = data.projects.map((p) => ({
@@ -28,7 +28,8 @@ export async function listProjects(client: RelayClient) {
     description: p.description,
     memoryCount: p.memoryCount,
     sessionCount: p.sessionCount,
-    keywords: p.routingContext?.keywords ?? []
+    keywords: p.routingContext?.keywords ?? [],
+    isCurrent: currentProjectId === p.id,
   }))
 
   return {

@@ -9,6 +9,12 @@ interface WorkSessionResponse {
   }
 }
 
+interface SyncMarkResponse {
+  syncMark: {
+    lastSyncAt: string
+  } | null
+}
+
 interface WorkSessionAggregateState {
   summary?: string | null
   progress?: string | null
@@ -168,8 +174,10 @@ export class RelayClient {
   async getDefaultSince(projectId: string, explicitSince?: string) {
     if (explicitSince) return explicitSince
     try {
-      const session = await this.ensureWorkSession(projectId)
-      return session?.baseSyncMarkAt ?? undefined
+      const response = await this.get<SyncMarkResponse>(
+        `/api/projects/${projectId}/sync-mark?surface=${encodeURIComponent(this.getDefaultSyncSurface())}`,
+      )
+      return response.syncMark?.lastSyncAt ?? undefined
     } catch {
       return undefined
     }

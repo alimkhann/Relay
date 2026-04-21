@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "relay-flush precompact --quiet"
+            "command": "npx -y -p @onrelay/mcp relay-flush precompact --quiet"
           }
         ]
       }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "relay-flush session_end --quiet"
+            "command": "npx -y -p @onrelay/mcp relay-flush session_end --quiet"
           }
         ]
       }
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "relay-flush stop --quiet"
+            "command": "npx -y -p @onrelay/mcp relay-flush stop --quiet"
           }
         ]
       }
@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "relay-flush stop_failure --quiet"
+            "command": "npx -y -p @onrelay/mcp relay-flush stop_failure --quiet"
           }
         ]
       }
