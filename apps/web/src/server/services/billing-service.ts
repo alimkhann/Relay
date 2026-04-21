@@ -167,8 +167,8 @@ function derivePlanFromProductId(productId: string | null | undefined) {
 }
 
 function deriveIntervalFromProductId(productId: string | null | undefined) {
-  if (productId === PLAN_PRODUCT_IDS.pro.year) return "year" as const
-  if (productId === PLAN_PRODUCT_IDS.pro.month) return "month" as const
+  if (productId === PLAN_PRODUCT_IDS.starter.year || productId === PLAN_PRODUCT_IDS.pro.year) return "year" as const
+  if (productId === PLAN_PRODUCT_IDS.starter.month || productId === PLAN_PRODUCT_IDS.pro.month) return "month" as const
   return null
 }
 
