@@ -32,6 +32,7 @@ export function CreateProjectForm({ onSuccess, initialName = "", initialDescript
     }
 
     const flowId = createClientFlowId("project")
+    let receivedResponse = false
     setPending(true)
     setStatus("Creating project…")
 
@@ -58,6 +59,7 @@ export function CreateProjectForm({ onSuccess, initialName = "", initialDescript
           description: description.trim() || null
         })
       })
+      receivedResponse = true
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => ({}))) as {
@@ -72,32 +74,24 @@ export function CreateProjectForm({ onSuccess, initialName = "", initialDescript
           slug: string
         }
       }
-
-      logClientEvent({
-        level: "info",
-        surface: "web-dashboard",
-        area: "projects",
-        event: "project_create.succeeded",
-        flowId,
-        message: `Created project ${result.project.id}.`,
-        context: {
-          projectId: result.project.id,
-          slug: result.project.slug
-        }
-      })
       onSuccess?.()
       router.push(`/dashboard?project=${result.project.id}`)
       router.refresh()
     } catch (cause) {
-      logClientEvent({
-        level: "error",
-        surface: "web-dashboard",
-        area: "projects",
-        event: "project_create.failed",
-        flowId,
-        message: "Project creation failed from the dashboard form.",
-        error: cause
-      })
+      if (!receivedResponse) {
+        logClientEvent({
+          level: "error",
+          surface: "web-dashboard",
+          area: "projects",
+          event: "project_create.failed",
+          flowId,
+          message: "Project creation failed before the projects API responded.",
+          context: {
+            failureStage: "request",
+          },
+          error: cause
+        })
+      }
       setStatus(cause instanceof Error ? cause.message : "Project creation failed.")
       setPending(false)
     }

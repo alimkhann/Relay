@@ -1,10 +1,13 @@
 "use client"
 
 import type { TelemetryEventInput } from "@relay/shared/types/telemetry"
-import { buildPosthogEvent, buildPosthogExceptionProperties, shouldCapturePosthogException } from "@relay/shared/utils/posthog"
+import { buildPosthogExceptionProperties, shouldCapturePosthogException } from "@relay/shared/utils/posthog"
 import posthog from "posthog-js"
 
+import { buildRelayAnalyticsPayload } from "./analytics"
+
 let initialized = false
+const PREVIOUS_PATH_KEY = "relay.previous_path"
 
 function resolveBrowserEnvironment() {
   if (typeof window === "undefined") {
@@ -93,8 +96,35 @@ export function capturePosthogTelemetry(input: TelemetryEventInput) {
     return
   }
 
-  const payload = buildPosthogEvent(input)
+  const url = new URL(window.location.href)
+  const previousPath =
+    typeof window === "undefined" ? null : window.sessionStorage.getItem(PREVIOUS_PATH_KEY)
+  const payload = buildRelayAnalyticsPayload(input, {
+    mode: "client",
+    pathname: url.pathname,
+    referrer: document.referrer || null,
+    fromPath: previousPath,
+    utmSource: url.searchParams.get("utm_source"),
+    utmMedium: url.searchParams.get("utm_medium"),
+    utmCampaign: url.searchParams.get("utm_campaign"),
+    userId:
+      ((posthog as unknown as { get_property?: (key: string) => unknown }).get_property?.("user_id") as string | null | undefined) ??
+      null,
+    sessionId:
+      ((posthog as unknown as { get_session_id?: () => string | null }).get_session_id?.() as string | null | undefined) ??
+      null,
+    plan:
+      ((posthog as unknown as { get_property?: (key: string) => unknown }).get_property?.("plan") as string | null | undefined) ??
+      null,
+    isAuthenticated:
+      ((posthog as unknown as { get_property?: (key: string) => unknown }).get_property?.("is_authenticated") as boolean | null | undefined) ??
+      null,
+  })
   posthog.capture(payload.event, payload.properties)
+
+  if (payload.event === "page_viewed") {
+    window.sessionStorage.setItem(PREVIOUS_PATH_KEY, url.pathname)
+  }
 }
 
 export function capturePosthogException(input: TelemetryEventInput) {
@@ -107,12 +137,26 @@ export function capturePosthogException(input: TelemetryEventInput) {
   posthog.captureException(error, buildPosthogExceptionProperties(input))
 }
 
-export function identifyPosthogUser(userId: string) {
+export function identifyPosthogUser(
+  userId: string,
+  properties: {
+    email?: string | null
+    plan?: string | null
+    created_at?: string | null
+    is_extension_installed?: boolean | null
+  } = {}
+) {
   if (!ensurePosthog()) {
     return
   }
 
-  posthog.identify(userId)
+  posthog.identify(userId, properties)
+  posthog.register({
+    user_id: userId,
+    plan: properties.plan ?? null,
+    is_authenticated: true,
+    is_extension_installed: properties.is_extension_installed ?? null,
+  })
 }
 
 export function resetPosthogUser() {
@@ -121,6 +165,12 @@ export function resetPosthogUser() {
   }
 
   posthog.reset()
+  posthog.register({
+    user_id: null,
+    plan: null,
+    is_authenticated: false,
+    is_extension_installed: null,
+  })
 }
 
 export { posthog }

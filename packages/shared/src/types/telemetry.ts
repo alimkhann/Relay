@@ -9,7 +9,8 @@ export const telemetrySurfaces = [
   "extension-sidebar",
   "extension-inline-chip",
   "cli",
-  "mcp"
+  "mcp",
+  "wizard",
 ] as const
 
 export type TelemetryLevel = (typeof telemetryLevels)[number]

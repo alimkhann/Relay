@@ -46,7 +46,8 @@ export default async function SignInPage({
       <PageTelemetry
         surface="web-auth"
         area="page"
-        event="auth_page_viewed"
+        pageName="sign_in"
+        pageGroup="auth"
         message="Rendered the sign-in page."
       />
 
@@ -147,7 +148,7 @@ export default async function SignInPage({
           <SignInAnimatedItem delay={0.25} className="mt-8">
             {authConfigured ? (
               authProvider === "local" ? (
-                <LocalSignInForm nextPath={nextPath} />
+                <LocalSignInForm nextPath={nextPath} intent={intent} />
               ) : (
                 <GoogleSignInButton nextPath={nextPath} intent={intent} />
               )

@@ -9,6 +9,7 @@ export interface NeonAuthUser {
   email: string
   name?: string | null
   image?: string | null
+  isNewUser?: boolean
 }
 
 export interface GoogleUserInfo {
@@ -104,6 +105,7 @@ export async function resolveOrProvisionAuthUser(input: {
   googleUser: GoogleUserInfo
 }) {
   const repositories = createRepositoryBundle()
+  let isNewUser = false
 
   const linkedAccountRows = await repositories.provider.query<{
     id: string
@@ -163,6 +165,7 @@ export async function resolveOrProvisionAuthUser(input: {
       ]
     )
     userId = insertedRows[0]?.id ?? null
+    isNewUser = true
   } else {
     await repositories.provider.query(
       `update neon_auth."user"
@@ -195,7 +198,8 @@ export async function resolveOrProvisionAuthUser(input: {
     id: userId,
     email: input.googleUser.email,
     name: input.googleUser.name ?? null,
-    image: input.googleUser.picture ?? null
+    image: input.googleUser.picture ?? null,
+    isNewUser,
   } satisfies NeonAuthUser
 }
 
@@ -207,6 +211,7 @@ export async function resolveGoogleAuthUser(input: {
 }) {
   const googleUser = await verifyGoogleIdentity(input.googleAccessToken)
   let authUser: NeonAuthUser | null = null
+  let isNewUser = false
 
   try {
     const signInResult = await requireAuthServer().signIn.social({
@@ -255,6 +260,7 @@ export async function resolveGoogleAuthUser(input: {
     authUser = await resolveOrProvisionAuthUser({
       googleUser
     })
+    isNewUser = "isNewUser" in authUser ? Boolean((authUser as NeonAuthUser & { isNewUser?: boolean }).isNewUser) : false
   }
 
   if (!authUser) {
@@ -265,6 +271,7 @@ export async function resolveGoogleAuthUser(input: {
 
   return {
     authUser,
-    googleUser
+    googleUser,
+    isNewUser,
   }
 }

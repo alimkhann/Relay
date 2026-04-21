@@ -64,12 +64,42 @@ export async function POST(request: Request) {
         )
       }
 
-      const { authUser, googleUser } = await resolveGoogleAuthUser({
+      const { authUser, googleUser, isNewUser } = await resolveGoogleAuthUser({
         googleAccessToken: body.googleAccessToken,
         googleIdToken: body.googleIdToken,
         flowId,
         allowProvisionFallback: true
       })
+
+      await logServerEvent({
+        level: "info",
+        surface: "web-api",
+        area: "auth",
+        event: "extension_auth_completed",
+        flowId,
+        message: "Completed extension Google auth.",
+        userId: authUser.id,
+        context: {
+          authMethod: "google",
+          deviceName: body.deviceName ?? "Chrome Extension",
+          isNewUser,
+        }
+      })
+
+      if (isNewUser) {
+        await logServerEvent({
+          level: "info",
+          surface: "web-api",
+          area: "auth",
+          event: "account_created",
+          flowId,
+          message: `Created a new Google account for ${googleUser.email}.`,
+          userId: authUser.id,
+          context: {
+            authMethod: "google",
+          }
+        })
+      }
 
       await logServerEvent({
         level: "info",
@@ -121,6 +151,7 @@ export async function POST(request: Request) {
             {
               token: tokenResult.token,
               apiBase: appUrl,
+              userId: authUser.id,
               projects,
               settings,
               onboarding,
@@ -133,6 +164,18 @@ export async function POST(request: Request) {
         request.headers.get("origin")
       )
     } catch (error) {
+      await logServerEvent({
+        level: "error",
+        surface: "web-api",
+        area: "auth",
+        event: "extension_auth_failed",
+        flowId,
+        message: "Google sign-in for extension failed.",
+        context: {
+          authMethod: "google",
+        },
+        error
+      })
       await logServerEvent({
         level: "error",
         surface: "web-api",

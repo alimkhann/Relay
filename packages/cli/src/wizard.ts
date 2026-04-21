@@ -44,9 +44,26 @@ export async function runWizard(options: { apiBase?: string; analytics?: RelayCl
   p.intro(pc.bold("Let's connect Relay MCP to your coding tools"))
 
   step(options.openBrowser === false ? "Starting manual authorization..." : "Starting browser authorization...")
-  const auth = await startUnifiedAuthFlow(apiBase, existing?.projectId, { openBrowser: options.openBrowser })
-  await options.analytics?.identify(auth.apiBase, auth.token)
-  success("Authenticated successfully!")
+  let auth
+  try {
+    auth = await startUnifiedAuthFlow(apiBase, existing?.projectId, { openBrowser: options.openBrowser })
+    await options.analytics?.identify(auth.apiBase, auth.token)
+    options.analytics?.capture("wizard_auth_completed", {
+      success: true,
+      project_id: auth.projectId ?? existing?.projectId ?? null,
+    })
+    success("Authenticated successfully!")
+  } catch (error) {
+    options.analytics?.capture("wizard_auth_failed", {
+      success: false,
+      project_id: existing?.projectId ?? null,
+    })
+    options.analytics?.capture("cli_install_failed", {
+      success: false,
+      project_id: existing?.projectId ?? null,
+    })
+    throw error
+  }
 
   if (!auth.accessToken) {
     warn("Relay could not mint a scoped MCP token yet. Create a project in Relay, then re-run the installer.")

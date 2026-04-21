@@ -24,6 +24,10 @@ async function main() {
 }
 
 main().catch(async (error) => {
+  analytics.capture("mcp_server_failed", {
+    project_id: null,
+    success: false,
+  })
   analytics.captureException(error, {
     project_id: null,
     success: false,

@@ -4,6 +4,7 @@ import type {
   BillingWebhookRawDeliveryRow,
   BillingWebhookRawDeliveryStatus,
   EntitlementRow,
+  ProviderCounterSnapshotRow,
   SubscriptionRow,
   UsageCounterRow,
 } from "@relay/shared"
@@ -76,6 +77,22 @@ export function toUsageCounterRow(record: Record<string, unknown>): UsageCounter
     windowEnd: toTimestamp(record.window_end),
     count: Number(record.count ?? 0),
     updatedAt: toTimestamp(record.updated_at),
+  }
+}
+
+export function toProviderCounterSnapshotRow(record: Record<string, unknown>): ProviderCounterSnapshotRow {
+  return {
+    id: String(record.id),
+    provider: (record.provider as ProviderCounterSnapshotRow["provider"]) ?? "neon",
+    externalProjectId: String(record.external_project_id),
+    snapshotDate: toTimestamp(record.snapshot_date),
+    periodStart: toTimestamp(record.period_start),
+    periodEnd: toTimestamp(record.period_end),
+    billingMode: record.billing_mode ? String(record.billing_mode) : null,
+    estimationMethod: String(record.estimation_method),
+    costUsd: Number(record.cost_usd ?? 0),
+    metrics: (record.metrics as Record<string, unknown>) ?? {},
+    createdAt: toTimestamp(record.created_at),
   }
 }
 

@@ -139,6 +139,32 @@ export async function saveCapture(userId: string, input: unknown) {
     },
   }).catch(() => {})
 
+  const activationRows = await repositories.provider.query<{ count: number }>(
+    `select count(*)::int as count
+     from capture_events
+     where user_id = $1
+       and event_type = 'session_captured'`,
+    [userId]
+  )
+  const totalCaptures = Number(activationRows[0]?.count ?? 0)
+
+  if (totalCaptures === 1) {
+    await logServerEvent({
+      level: "info",
+      surface: "web-api",
+      area: "capture",
+      event: "activation_completed",
+      message: "User completed the first successful Relay capture.",
+      userId,
+      projectId: normalizedInput.projectId,
+      sessionId: session.id,
+      context: {
+        activationSource: normalizedInput.platform,
+        captureCount: totalCaptures,
+      },
+    }).catch(() => {})
+  }
+
   return {
     session,
     turns,

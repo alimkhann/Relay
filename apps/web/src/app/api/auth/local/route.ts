@@ -24,13 +24,16 @@ export async function POST(request: Request) {
     }
 
     const flowId = request.headers.get("x-relay-flow-id") ?? createFlowId("local-auth")
+    let authIntent: "sign-in" | "sign-up" = "sign-in"
 
     try {
       await assertIpRateLimit(request, "local_auth_ip", 5)
       const body = (await request.json()) as {
         email?: string
         name?: string | null
+        intent?: "sign-in" | "sign-up"
       }
+      authIntent = body.intent ?? "sign-in"
       const user = await resolveOrCreateLocalAuthUser({
         email: body.email,
         name: body.name ?? null,
@@ -40,11 +43,32 @@ export async function POST(request: Request) {
         level: "info",
         surface: "web-api",
         area: "auth",
-        event: "local_auth.succeeded",
+        event: "sign_in_completed",
         flowId,
         message: `Signed in locally as ${user.email}.`,
         userId: user.id,
+        context: {
+          authMethod: "local",
+          authIntent,
+          isNewUser: user.isNewUser,
+        },
       })
+
+      if (user.isNewUser) {
+        await logServerEvent({
+          level: "info",
+          surface: "web-api",
+          area: "auth",
+          event: "account_created",
+          flowId,
+          message: `Created a new local account for ${user.email}.`,
+          userId: user.id,
+          context: {
+            authMethod: "local",
+            authIntent,
+          },
+        })
+      }
 
       return withRequestId(
         applyLocalSessionCookie(
@@ -60,9 +84,13 @@ export async function POST(request: Request) {
         level: "error",
         surface: "web-api",
         area: "auth",
-        event: "local_auth.failed",
+        event: "sign_in_failed",
         flowId,
         message: "Local sign-in failed.",
+        context: {
+          authMethod: "local",
+          authIntent,
+        },
         error,
       })
 

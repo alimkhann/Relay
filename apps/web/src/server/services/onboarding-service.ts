@@ -6,6 +6,8 @@ import type {
   UserOnboardingRow
 } from "@relay/shared"
 
+import { logServerEvent } from "@/server/logging/logger"
+
 function toState(row: UserOnboardingRow): RelayOnboardingState {
   return {
     status: row.status,
@@ -48,13 +50,29 @@ export async function completeOnboardingForUser(
   projectId: string,
   via: RelayOnboardingCompletionSurface
 ) {
-  return setOnboardingState({
+  const state = await setOnboardingState({
     userId,
     status: "completed",
     completedProjectId: projectId,
     completedVia: via,
     completedAt: new Date().toISOString()
   })
+
+  await logServerEvent({
+    level: "info",
+    surface: "web-api",
+    area: "onboarding",
+    event: "onboarding_step_completed",
+    message: "Completed Relay onboarding.",
+    userId,
+    projectId,
+    context: {
+      onboardingStep: "project_created",
+      completionVia: via,
+    },
+  }).catch(() => {})
+
+  return state
 }
 
 export async function getResolvedOnboardingStateForUser(

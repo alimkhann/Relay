@@ -50,6 +50,34 @@ export async function POST(request: Request) {
         email: body.email,
         name: body.name ?? null,
       })
+      await logServerEvent({
+        level: "info",
+        surface: "web-api",
+        area: "auth",
+        event: "extension_auth_completed",
+        flowId,
+        message: `Completed extension local auth for ${user.email}.`,
+        userId: user.id,
+        context: {
+          authMethod: "local",
+          isNewUser: user.isNewUser,
+          deviceName: body.deviceName ?? "Chrome Extension",
+        },
+      })
+      if (user.isNewUser) {
+        await logServerEvent({
+          level: "info",
+          surface: "web-api",
+          area: "auth",
+          event: "account_created",
+          flowId,
+          message: `Created a new local account for ${user.email}.`,
+          userId: user.id,
+          context: {
+            authMethod: "local",
+          },
+        })
+      }
       const tokenResult = await createExtensionTokenForUser(user.id, {
         deviceName: body.deviceName || "Chrome Extension",
       })
@@ -87,6 +115,7 @@ export async function POST(request: Request) {
             {
               token: tokenResult.token,
               apiBase: appUrl,
+              userId: user.id,
               projects,
               settings,
               onboarding,
@@ -99,6 +128,18 @@ export async function POST(request: Request) {
         request.headers.get("origin")
       )
     } catch (error) {
+      await logServerEvent({
+        level: "error",
+        surface: "web-api",
+        area: "auth",
+        event: "extension_auth_failed",
+        flowId,
+        message: "Local sign-in for extension failed.",
+        context: {
+          authMethod: "local",
+        },
+        error,
+      })
       await logServerEvent({
         level: "error",
         surface: "web-api",

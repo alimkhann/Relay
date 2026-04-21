@@ -39,7 +39,8 @@ export default async function BriefPage({
       <PageTelemetry
         surface="web-dashboard"
         area="page"
-        event="brief_viewed"
+        pageName="brief"
+        pageGroup="workspace"
         message="Rendered the brief page."
         context={{ projectId: currentProject.id }}
       />
