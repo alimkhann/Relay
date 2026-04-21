@@ -607,21 +607,14 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
               features={[...PRICING.starter.features]}
               actions={
                 entitlements.plan === "starter" ? (
-                  <div className="space-y-2">
-                    <button
-                      type="button"
-                      onClick={() => void handlePortal()}
-                      disabled={loading !== null}
-                      className="w-full rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
-                    >
-                      {loading === "portal" ? "Opening portal..." : "Manage subscription"}
-                    </button>
-                    <p className="text-[12px] text-[var(--relay-muted)]">
-                      {entitlements.currentPeriodEnd
-                        ? `Renews ${new Date(entitlements.currentPeriodEnd).toLocaleDateString()}. Cancel anytime.`
-                        : "Cancel anytime from the customer portal."}
-                    </p>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handlePortal()}
+                    disabled={loading !== null}
+                    className="w-full rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
+                  >
+                    {loading === "portal" ? "Opening portal..." : "Manage subscription"}
+                  </button>
                 ) : entitlements.plan === "pro" ? (
                   <button
                     type="button"
@@ -654,23 +647,14 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
               features={[...PRICING.pro.features]}
               actions={
                 entitlements.plan === "pro" ? (
-                  <div className="space-y-2">
-                    <button
-                      type="button"
-                      onClick={() => void handlePortal()}
-                      disabled={loading !== null}
-                      className="w-full rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
-                    >
-                      {loading === "portal" ? "Opening portal..." : "Manage subscription"}
-                    </button>
-                    <p className="text-[12px] text-[var(--relay-muted)]">
-                      {entitlements.isTrialing && entitlements.trialEndsAt
-                        ? `Trial ends ${new Date(entitlements.trialEndsAt).toLocaleDateString()}. Cancel anytime.`
-                        : entitlements.currentPeriodEnd
-                          ? `Renews ${new Date(entitlements.currentPeriodEnd).toLocaleDateString()}. Cancel anytime.`
-                          : "Cancel anytime from the customer portal."}
-                    </p>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handlePortal()}
+                    disabled={loading !== null}
+                    className="w-full rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
+                  >
+                    {loading === "portal" ? "Opening portal..." : "Manage subscription"}
+                  </button>
                 ) : entitlements.plan === "starter" ? (
                   <button
                     type="button"
