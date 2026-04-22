@@ -3498,7 +3498,7 @@ function registerRelayContextMenu() {
   }
 }
 
-chrome.runtime.onInstalled.addListener((details) => {
+chrome.runtime.onInstalled.addListener((details: { reason: string; previousVersion?: string }) => {
   recordBackgroundTelemetry({
     level: "info",
     surface: "extension-background",
