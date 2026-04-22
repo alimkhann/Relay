@@ -23,7 +23,7 @@ export function CliOnboardingConfirm({ sessionCode }: CliOnboardingConfirmProps)
         telemetry: {
           surface: "web-auth",
           area: "cli-onboarding",
-          event: "cli_auth_completed",
+          event: "cli_authorization_completed",
           flowId,
           logSuccess: true
         },

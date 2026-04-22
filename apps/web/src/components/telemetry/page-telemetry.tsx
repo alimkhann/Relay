@@ -4,31 +4,72 @@ import { useEffect } from "react"
 
 import type { TelemetrySurface } from "@relay/shared"
 
-import { logClientEvent } from "@/lib/telemetry/client"
+import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client"
+
+const SESSION_STARTED_KEY = "relay.web.session_started"
 
 export function PageTelemetry({
   surface,
   area,
-  event,
+  pageName,
+  pageGroup,
   message,
-  context
+  context,
+  secondaryEvent,
 }: {
   surface: TelemetrySurface
   area: string
-  event: string
+  pageName: string
+  pageGroup?: string
   message: string
   context?: Record<string, unknown>
+  secondaryEvent?: string
 }) {
   useEffect(() => {
+    if (typeof window !== "undefined" && !window.sessionStorage.getItem(SESSION_STARTED_KEY)) {
+      window.sessionStorage.setItem(SESSION_STARTED_KEY, "1")
+      logClientEvent({
+        level: "info",
+        surface,
+        area,
+        event: "session_started",
+        flowId: createClientFlowId("web-session"),
+        message: "Started a web session.",
+        context: {
+          pageName,
+          pageGroup: pageGroup ?? area,
+        },
+      })
+    }
+
     logClientEvent({
       level: "info",
       surface,
       area,
-      event,
+      event: "page_viewed",
       message,
-      context
+      context: {
+        pageName,
+        pageGroup: pageGroup ?? area,
+        ...(context ?? {}),
+      }
     })
-  }, [area, context, event, message, surface])
+
+    if (secondaryEvent) {
+      logClientEvent({
+        level: "info",
+        surface,
+        area,
+        event: secondaryEvent,
+        message,
+        context: {
+          pageName,
+          pageGroup: pageGroup ?? area,
+          ...(context ?? {}),
+        },
+      })
+    }
+  }, [area, context, message, pageGroup, pageName, secondaryEvent, surface])
 
   return null
 }

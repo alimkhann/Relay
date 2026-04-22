@@ -1,6 +1,7 @@
 import type { MemoryItemRow, MemoryRelationRow, MemoryRelationType } from "@relay/shared"
 import type { MemoryRepository } from "@relay/db"
 
+import { emitAiRequestCompleted } from "./ai-analytics-service"
 import { GEMINI_MODELS, runGeminiJsonWithFallback } from "./gemini-service"
 
 const LOG_PREFIX = "[relation-service]"
@@ -22,6 +23,7 @@ export async function classifyRelation(
   itemA: ClassificationInput,
   itemB: ClassificationInput
 ): Promise<ClassificationResult | null> {
+  const startedAtMs = Date.now()
   try {
     const result = await runGeminiJsonWithFallback<{
       relationType?: MemoryRelationType | null
@@ -50,14 +52,46 @@ export async function classifyRelation(
     const { relationType, confidence } = result.data
 
     if (!relationType || !["supersedes", "extends", "derives"].includes(relationType)) {
+      await emitAiRequestCompleted({
+        operation: "memory_relation_classification",
+        jobKind: "relation_adjudication",
+        primaryModel: result.primaryModel,
+        actualModel: result.actualModel,
+        fallbackUsed: result.fallbackUsed,
+        tokenUsage: result.tokenUsage,
+        latencyMs: Math.max(0, Date.now() - startedAtMs),
+        success: true,
+      })
       return null
     }
+
+    await emitAiRequestCompleted({
+      operation: "memory_relation_classification",
+      jobKind: "relation_adjudication",
+      primaryModel: result.primaryModel,
+      actualModel: result.actualModel,
+      fallbackUsed: result.fallbackUsed,
+      tokenUsage: result.tokenUsage,
+      latencyMs: Math.max(0, Date.now() - startedAtMs),
+      success: true,
+    })
 
     return {
       relationType,
       confidence: typeof confidence === "number" ? Math.min(1, Math.max(0, confidence)) : 0.5,
     }
   } catch (error) {
+    await emitAiRequestCompleted({
+      operation: "memory_relation_classification",
+      jobKind: "relation_adjudication",
+      primaryModel: GEMINI_MODELS.adjudication.primary,
+      actualModel: null,
+      fallbackUsed: false,
+      tokenUsage: null,
+      latencyMs: Math.max(0, Date.now() - startedAtMs),
+      success: false,
+      failurePhase: "relation_classification",
+    })
     console.log(LOG_PREFIX, "classification failed, skipping pair:", (error as Error).message)
     return null
   }

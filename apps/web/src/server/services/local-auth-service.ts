@@ -37,6 +37,7 @@ export interface LocalAuthUser {
   email: string
   name: string | null
   image: null
+  isNewUser: boolean
 }
 
 export async function resolveOrCreateLocalAuthUser(input: unknown): Promise<LocalAuthUser> {
@@ -60,6 +61,7 @@ export async function resolveOrCreateLocalAuthUser(input: unknown): Promise<Loca
       email: parsed.email,
       name: displayName,
       image: null,
+      isNewUser: false,
     }
   }
 
@@ -77,5 +79,6 @@ export async function resolveOrCreateLocalAuthUser(input: unknown): Promise<Loca
     email: parsed.email,
     name: created.displayName,
     image: null,
+    isNewUser: true,
   }
 }

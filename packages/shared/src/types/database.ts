@@ -611,6 +611,20 @@ export interface UsageCounterRow {
   updatedAt: string
 }
 
+export interface ProviderCounterSnapshotRow {
+  id: string
+  provider: "neon" | "vercel" | "gemini" | "total"
+  externalProjectId: string
+  snapshotDate: string
+  periodStart: string
+  periodEnd: string
+  billingMode: string | null
+  estimationMethod: string
+  costUsd: number
+  metrics: Record<string, unknown>
+  createdAt: string
+}
+
 export interface BillingWebhookEventRow {
   id: string
   provider: "polar"

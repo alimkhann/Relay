@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 
+import { logClientEvent } from "@/lib/telemetry/client";
+
 /**
  * LogoPreloader — first-session and post-OAuth dashboard load animation.
  *
@@ -55,6 +57,8 @@ export function LogoPreloader() {
 
     const params = new URLSearchParams(window.location.search);
     const isAuthCallback = params.get("auth_callback") === "1";
+    const authMethod = params.get("auth_method");
+    const authIntent = params.get("auth_intent");
 
     // Mark as shown for this session
     sessionStorage.setItem("relay_preloader_shown", "1");
@@ -66,8 +70,24 @@ export function LogoPreloader() {
 
     // Clean up auth_callback param
     if (isAuthCallback) {
+      if (authMethod === "google") {
+        logClientEvent({
+          level: "info",
+          surface: "web-dashboard",
+          area: "auth",
+          event: "sign_in_completed",
+          message: "Completed web sign-in and returned from OAuth.",
+          context: {
+            authMethod,
+            authIntent: authIntent === "sign-up" ? "sign-up" : "sign-in",
+          },
+        });
+      }
+
       const url = new URL(window.location.href);
       url.searchParams.delete("auth_callback");
+      url.searchParams.delete("auth_method");
+      url.searchParams.delete("auth_intent");
       window.history.replaceState({}, "", url.toString());
     }
 

@@ -190,8 +190,11 @@ export class RelayClient {
   ) {
     const session = await this.ensureWorkSession(projectId)
     if (!session) return
-    this.analytics?.capture(`mcp_${eventType}`, {
+    this.analytics?.capture("mcp_tool_called", {
       project_id: projectId,
+      tool_name: eventType,
+      agent_name: this.detectAgentName(),
+      client_name: this.detectClientName(),
       success: true,
     })
     await this.post(`/api/projects/${projectId}/work-sessions/checkpoint`, {
@@ -221,8 +224,11 @@ export class RelayClient {
   ) {
     const session = await this.ensureWorkSession(projectId)
     if (!session) return
-    this.analytics?.capture(`mcp_${input.eventType}`, {
+    this.analytics?.capture("mcp_tool_completed", {
       project_id: projectId,
+      tool_name: input.eventType,
+      agent_name: this.detectAgentName(),
+      client_name: this.detectClientName(),
       success: true,
       saved_via: input.eventPayload?.["savedVia"] === "relay_save_context" ? "relay_save_context" : null,
     })
@@ -284,6 +290,11 @@ export class RelayClient {
         reason,
         summaryShort: this.buildSummaryShort() ?? null,
         structuredState: this.hasMeaningfulState() ? this.workSessionState : null,
+      })
+      this.analytics?.capture("mcp_session_flushed", {
+        project_id: projectId,
+        reason,
+        success: true,
       })
     } catch {
       // Best-effort flush
@@ -433,6 +444,12 @@ export class RelayClient {
         method,
         path,
       })
+      this.analytics?.capture("mcp_tool_failed", {
+        project_id: this.workSession?.projectId ?? this.projectId ?? null,
+        tool_name: path,
+        failure_stage: "request_exception",
+        success: false,
+      })
       this.analytics?.captureException(error, {
         project_id: this.workSession?.projectId ?? this.projectId ?? null,
         method,
@@ -488,6 +505,13 @@ export class RelayClient {
           path,
           status: response.status,
         })
+        this.analytics?.capture("mcp_tool_failed", {
+          project_id: this.workSession?.projectId ?? this.projectId ?? null,
+          tool_name: path,
+          failure_stage: "rate_limit",
+          status: response.status,
+          success: false,
+        })
         throw new Error(message)
       }
 
@@ -508,6 +532,13 @@ export class RelayClient {
         method,
         path,
         status: response.status,
+      })
+      this.analytics?.capture("mcp_tool_failed", {
+        project_id: this.workSession?.projectId ?? this.projectId ?? null,
+        tool_name: path,
+        failure_stage: "http_response",
+        status: response.status,
+        success: false,
       })
 
       throw new Error(message)
@@ -624,6 +655,10 @@ export class RelayClient {
       this.token = data.accessToken
       this.refreshToken = data.refreshToken
       this.accessTokenExpiresAt = data.accessExpiresAt
+      this.analytics?.capture("mcp_token_refreshed", {
+        project_id: this.workSession?.projectId ?? this.projectId ?? null,
+        success: true,
+      })
 
       await saveConfig({
         apiBase: data.apiBase,

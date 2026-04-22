@@ -4,12 +4,16 @@ import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
 
 import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client"
+import { withAuthCallbackParams } from "@/lib/auth/auth-callback"
 import { Button } from "@/components/ui/button"
+import type { WebAuthIntent } from "@/server/policies/viewer"
 
 export function LocalSignInForm({
   nextPath = "/dashboard",
+  intent = "sign-in",
 }: {
   nextPath?: string
+  intent?: WebAuthIntent
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -25,6 +29,7 @@ export function LocalSignInForm({
         startTransition(async () => {
           setError(null)
           const flowId = createClientFlowId("local-auth")
+          let receivedResponse = false
 
           logClientEvent({
             level: "info",
@@ -33,6 +38,10 @@ export function LocalSignInForm({
             event: "local_sign_in.started",
             flowId,
             message: "User started local sign-in from the web app.",
+            context: {
+              authMethod: "local",
+              authIntent: intent,
+            },
           })
 
           try {
@@ -45,8 +54,10 @@ export function LocalSignInForm({
               body: JSON.stringify({
                 email,
                 name: name || null,
+                intent,
               }),
             })
+            receivedResponse = true
 
             if (!response.ok) {
               const payload = (await response.json().catch(() => null)) as {
@@ -55,18 +66,25 @@ export function LocalSignInForm({
               throw new Error(payload?.error ?? "Local sign-in failed.")
             }
 
-            router.replace(nextPath)
+            router.replace(withAuthCallbackParams(nextPath, { method: "local", intent }))
             router.refresh()
           } catch (cause) {
-            logClientEvent({
-              level: "error",
-              surface: "web-auth",
-              area: "auth",
-              event: "local_sign_in.failed",
-              flowId,
-              message: "Local sign-in failed before navigation completed.",
-              error: cause,
-            })
+            if (!receivedResponse) {
+              logClientEvent({
+                level: "error",
+                surface: "web-auth",
+                area: "auth",
+                event: "local_sign_in.failed",
+                flowId,
+                message: "Local sign-in failed before the auth API responded.",
+                context: {
+                  authMethod: "local",
+                  authIntent: intent,
+                  failureStage: "request",
+                },
+                error: cause,
+              })
+            }
             setError(cause instanceof Error ? cause.message : "Local sign-in failed.")
           }
         })

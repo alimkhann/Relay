@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { createRepositoryBundle } from "@relay/db"
 
 import { runContinuityMaintenanceForUser } from "@/server/services/continuity-maintenance-service"
+import { emitDailyCostSnapshots } from "@/server/services/cost-snapshot-service"
 import { drainDigestJobs } from "@/server/services/digest-service"
 
 const MAX_USERS_PER_INVOCATION = 10
@@ -46,5 +47,9 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ processed: results.length, results })
+  const costSnapshots = await emitDailyCostSnapshots().catch((error) => ({
+    error: error instanceof Error ? error.message : "Unknown error",
+  }))
+
+  return NextResponse.json({ processed: results.length, results, costSnapshots })
 }

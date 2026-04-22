@@ -18,7 +18,8 @@ export default function LandingPage() {
       <PageTelemetry
         surface="web-landing"
         area="page"
-        event="landing_page_viewed"
+        pageName="landing"
+        pageGroup="landing"
         message="Rendered the landing page."
       />
       <Nav />

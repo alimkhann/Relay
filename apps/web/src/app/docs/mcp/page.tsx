@@ -1,11 +1,20 @@
 import { Suspense } from "react"
 import { RELAY_MCP_CLIENTS } from "@relay/shared"
 
+import { PageTelemetry } from "@/components/telemetry/page-telemetry"
 import { DocsFooterNav } from "@/components/docs/docs-footer-nav"
 
 export default function McpDocsPage() {
   return (
     <div className="max-w-2xl space-y-8">
+        <PageTelemetry
+          surface="web-dashboard"
+          area="docs"
+          pageName="mcp_docs"
+          pageGroup="docs"
+          message="Viewed Relay MCP docs."
+          secondaryEvent="docs_mcp_viewed"
+        />
         <div>
           <h1 className="text-2xl font-bold text-[var(--relay-ink)]">Relay MCP</h1>
           <p className="mt-2 text-[15px] leading-relaxed text-[var(--relay-muted)]">

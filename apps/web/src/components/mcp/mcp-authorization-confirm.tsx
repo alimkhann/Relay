@@ -29,7 +29,7 @@ export function McpAuthorizationConfirm({
         telemetry: {
           surface: "web-auth",
           area: "mcp-authorization",
-          event: "mcp_access_approved",
+          event: "mcp_authorization_completed",
           flowId,
           context: { success: true },
           logSuccess: true,

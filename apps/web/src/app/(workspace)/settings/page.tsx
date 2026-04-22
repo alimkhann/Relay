@@ -43,7 +43,8 @@ export default async function SettingsPage({
       <PageTelemetry
         surface="web-settings"
         area="page"
-        event="settings_viewed"
+        pageName="settings"
+        pageGroup="workspace"
         message="Rendered the settings page."
         context={{ section }}
       />

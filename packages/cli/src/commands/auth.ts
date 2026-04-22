@@ -21,26 +21,35 @@ export async function runAuthCommand(subcommand: string | null, options: { apiBa
     case "login": {
       const apiBase = options.apiBase ?? process.env["RELAY_API_BASE"] ?? DEFAULT_API_BASE
       const existing = await loadConfig()
-      const auth = await startAuthFlow(apiBase, { openBrowser })
-      await options.analytics?.identify(auth.apiBase, auth.token)
-      const scopedAuth = existing?.projectId
-        ? await startScopedMcpAuthFlow(auth.apiBase, existing.projectId, { openBrowser })
-        : null
-      await saveConfig({
-        apiBase: auth.apiBase,
-        token: auth.token,
-        projectId: existing?.projectId,
-        accessToken: scopedAuth?.accessToken,
-        refreshToken: scopedAuth?.refreshToken,
-        accessTokenExpiresAt: scopedAuth?.accessExpiresAt,
-        refreshTokenExpiresAt: scopedAuth?.refreshExpiresAt
-      })
-      options.analytics?.capture("cli_auth_completed", {
-        success: true,
-        project_id: existing?.projectId ?? null,
-      })
-      success(`Authenticated successfully. Config saved to ${pc.dim(getConfigPath())}`)
-      return
+      try {
+        const auth = await startAuthFlow(apiBase, { openBrowser })
+        await options.analytics?.identify(auth.apiBase, auth.token)
+        const scopedAuth = existing?.projectId
+          ? await startScopedMcpAuthFlow(auth.apiBase, existing.projectId, { openBrowser })
+          : null
+        await saveConfig({
+          apiBase: auth.apiBase,
+          token: auth.token,
+          projectId: existing?.projectId,
+          accessToken: scopedAuth?.accessToken,
+          refreshToken: scopedAuth?.refreshToken,
+          accessTokenExpiresAt: scopedAuth?.accessExpiresAt,
+          refreshTokenExpiresAt: scopedAuth?.refreshExpiresAt
+        })
+        options.analytics?.capture("cli_auth_completed", {
+          success: true,
+          project_id: existing?.projectId ?? null,
+        })
+        success(`Authenticated successfully. Config saved to ${pc.dim(getConfigPath())}`)
+        return
+      } catch (error) {
+        options.analytics?.capture("cli_auth_failed", {
+          success: false,
+          project_id: existing?.projectId ?? null,
+          open_browser: openBrowser,
+        })
+        throw error
+      }
     }
     case "logout": {
       const existing = await loadConfig()

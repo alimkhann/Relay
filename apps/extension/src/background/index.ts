@@ -75,6 +75,7 @@ import {
 } from "./tab-state";
 import {
   flushBackgroundTelemetry,
+  identifyExtensionUser,
   initializeBackgroundTelemetry,
   recordBackgroundTelemetry,
 } from "./telemetry";
@@ -106,6 +107,7 @@ interface RemoteSettingsResponsePayload {
 interface ExtensionAuthSessionPayload {
   token: string;
   apiBase: string;
+  userId?: string;
   projectId: string;
   projects?: RelayProjectOption[];
   onboarding?: RelayOnboardingState;
@@ -387,6 +389,7 @@ async function storeAuthenticatedExtensionSession(
   await setRelaySession({
     apiBase: payload.apiBase,
     token: payload.token,
+    userId: payload.userId ?? "",
     projectId: payload.projectId,
     targetMode: "auto",
     targetProfileKey: "",
@@ -1138,6 +1141,22 @@ async function loadSessionData() {
       projectOptions: projects,
       onboarding,
     });
+    await identifyExtensionUser(sessionPayload.userId);
+
+    recordBackgroundTelemetry({
+      level: "info",
+      surface: "extension-background",
+      area: "session",
+      event: "extension_session_refreshed",
+      message: "Refreshed extension session state from Relay.",
+      userId: sessionPayload.userId,
+      projectId: nextProjectId || null,
+      context: {
+        connected: true,
+        projectCount: projects.length,
+        onboardingStatus: onboarding.status,
+      },
+    });
 
     let entitlements: UserEntitlementsDto | null = null;
     if (billingResponse && billingResponse.ok) {
@@ -1875,6 +1894,7 @@ async function archiveChatAssociation(
   archived: boolean,
 ) {
   const state = getOrCreateTabState(tabId);
+  const previousStatus = state.chatAssociation.status;
   const response = await relayFetch(`/api/projects/${projectId}/sessions/${sessionId}`, {
     method: "PATCH",
     body: JSON.stringify({ archived }),
@@ -1916,11 +1936,27 @@ async function archiveChatAssociation(
     force: true,
     reason: archived ? "chat_detached" : "chat_restored",
   });
+  recordBackgroundTelemetry({
+    level: "info",
+    surface: "extension-background",
+    area: "association",
+    event: "chat_association_updated",
+    message: archived ? "Archived chat association." : "Restored chat association.",
+    projectId,
+    tabId,
+    context: {
+      sessionId,
+      statusFrom: previousStatus,
+      statusTo: archived ? "archived" : "saved",
+      source: "sidebar",
+    },
+  });
 }
 
 async function dismissCaptureReview(tabId: number) {
   const state = getOrCreateTabState(tabId);
   const chatKey = buildAssociationKey(state.page);
+  const previousStatus = state.chatAssociation.status;
   clearPendingAssociation(state, { clearChatAssociation: true });
   clearAssociationToast(state);
   await rememberIgnoredChatKey(chatKey);
@@ -1940,6 +1976,19 @@ async function dismissCaptureReview(tabId: number) {
     capturedAt: null,
   };
   await broadcastActiveProjectState(tabId);
+  recordBackgroundTelemetry({
+    level: "info",
+    surface: "extension-background",
+    area: "association",
+    event: "chat_association_updated",
+    message: "Ignored chat association review.",
+    tabId,
+    context: {
+      statusFrom: previousStatus,
+      statusTo: "ignored",
+      source: "review_dismissed",
+    },
+  });
 }
 
 function shouldRequestAssociationAdjudication(decision: RelayRoutingDecision) {
@@ -2363,6 +2412,20 @@ async function retargetAssociation(
   updateAssociationProjectState(state, project.projectId, project.projectName);
   state.lastError = null;
   await broadcastActiveProjectState(tabId);
+  recordBackgroundTelemetry({
+    level: "info",
+    surface: "extension-background",
+    area: "projects",
+    event: "project_selected",
+    message: `Moved chat association to ${project.projectName}.`,
+    projectId: project.projectId,
+    tabId,
+    context: {
+      source,
+      projectName: project.projectName,
+      associationAware: true,
+    },
+  });
 
   return {
     ok: true,
@@ -2390,6 +2453,7 @@ async function captureObservedChange(
     return { ok: false, reason: "Capture already in progress for this tab." };
   }
   state.capturePending = true;
+  const flowId = createFlowId("ext-capture");
   let session = await getRelaySession();
   hydrateTabStateFromSession(state, session);
   const chatKey = buildAssociationKey(state.page);
@@ -2397,6 +2461,23 @@ async function captureObservedChange(
   const skipAssociationToast = Boolean(options.skipAssociationToast);
   const autoCapture = Boolean(options.autoCapture);
   const previousAssociationProjectName = state.chatAssociation.projectName;
+  recordBackgroundTelemetry({
+    level: "info",
+    surface: "extension-background",
+    area: "capture",
+    event: "capture_started",
+    flowId,
+    message: "Started extension capture orchestration.",
+    projectId: explicitProjectId ?? state.projectId ?? null,
+    tabId,
+    context: {
+      trigger: autoCapture ? "auto" : manualSelection ? "manual" : "association",
+      chatProvider: state.page.platform ?? null,
+      captureSignature: state.page.captureSignature ?? null,
+      turnCount: state.page.turns ?? 0,
+      sourceUrl: state.page.url ?? null,
+    },
+  });
   console.warn("[Relay BG] captureObservedChange start", {
     tabId,
     explicitProjectId: explicitProjectId ?? null,
@@ -2434,6 +2515,22 @@ async function captureObservedChange(
       });
 
       if (!stillEligible) {
+        recordBackgroundTelemetry({
+          level: "info",
+          surface: "extension-background",
+          area: "capture",
+          event: "capture_skipped",
+          flowId,
+          message: "Skipped extension capture while waiting for the chat to settle.",
+          projectId: explicitProjectId ?? state.projectId ?? null,
+          tabId,
+          context: {
+            trigger: "auto",
+            reason: "waiting_for_settle",
+            captureSignature: latestState.page.captureSignature ?? null,
+            turnCount: latestState.page.turns ?? 0,
+          },
+        });
         return {
           ok: true,
           deferred: true,
@@ -2444,6 +2541,20 @@ async function captureObservedChange(
     }
 
     if (!session.connected || !session.token || (!explicitProjectId && !session.autoCapture)) {
+      recordBackgroundTelemetry({
+        level: "info",
+        surface: "extension-background",
+        area: "capture",
+        event: "capture_skipped",
+        flowId,
+        message: "Skipped extension capture because session or auto-capture was not ready.",
+        projectId: explicitProjectId ?? state.projectId ?? null,
+        tabId,
+        context: {
+          trigger: autoCapture ? "auto" : manualSelection ? "manual" : "association",
+          reason: "capture_not_ready",
+        },
+      });
       return { ok: false, reason: "Auto-capture is not ready." };
     }
 
@@ -2587,6 +2698,19 @@ async function captureObservedChange(
 
         if (!state.projectOptions.length && !session.projectOptions.length) {
           state.routingReview = null;
+          recordBackgroundTelemetry({
+            level: "info",
+            surface: "extension-background",
+            area: "capture",
+            event: "capture_skipped",
+            flowId,
+            message: "Skipped extension capture because no projects were available yet.",
+            tabId,
+            context: {
+              trigger: autoCapture ? "auto" : manualSelection ? "manual" : "association",
+              reason: "waiting_for_project_routing",
+            },
+          });
           return {
             ok: true,
             deferred: true,
@@ -2624,6 +2748,19 @@ async function captureObservedChange(
             capturedAt: null,
           };
           logRoutingDecision("ignored", state, routingDecision);
+          recordBackgroundTelemetry({
+            level: "info",
+            surface: "extension-background",
+            area: "capture",
+            event: "capture_skipped",
+            flowId,
+            message: ignoredReason,
+            tabId,
+            context: {
+              trigger: autoCapture ? "auto" : manualSelection ? "manual" : "association",
+              reason: "routing_ignored",
+            },
+          });
           return {
             ok: true,
             ignored: true,
@@ -2649,6 +2786,20 @@ async function captureObservedChange(
             routingDecision.candidateProjectId,
             routingDecision.candidateProjectName,
           );
+          recordBackgroundTelemetry({
+            level: "info",
+            surface: "extension-background",
+            area: "capture",
+            event: "capture_skipped",
+            flowId,
+            message: "Held extension capture pending association review.",
+            projectId: routingDecision.candidateProjectId,
+            tabId,
+            context: {
+              trigger: autoCapture ? "auto" : manualSelection ? "manual" : "association",
+              reason: "association_review_required",
+            },
+          });
           return {
             ok: true,
             held: true,
@@ -2666,6 +2817,19 @@ async function captureObservedChange(
     }
 
     if (!projectId) {
+      recordBackgroundTelemetry({
+        level: "info",
+        surface: "extension-background",
+        area: "capture",
+        event: "capture_skipped",
+        flowId,
+        message: "Skipped extension capture because no project was selected.",
+        tabId,
+        context: {
+          trigger: autoCapture ? "auto" : manualSelection ? "manual" : "association",
+          reason: "missing_project",
+        },
+      });
       return { ok: false, reason: "Choose a project first." };
     }
 
@@ -2838,6 +3002,39 @@ async function captureObservedChange(
       if (result.budgetStatus) {
         state.lastBudgetStatus = result.budgetStatus;
       }
+      recordBackgroundTelemetry({
+        level: "info",
+        surface: "extension-background",
+        area: "capture",
+        event: "capture_completed",
+        flowId,
+        message: "Completed extension capture.",
+        projectId,
+        tabId,
+        context: {
+          trigger: autoCapture ? "auto" : manualSelection ? "manual" : "association",
+          sessionId: result.sessionId ?? null,
+          digestQueued: Boolean(result.digestQueued),
+          turnCount: result.turns ?? state.page.turns ?? 0,
+          captureSignature: state.page.captureSignature ?? null,
+        },
+      });
+      recordBackgroundTelemetry({
+        level: "info",
+        surface: "extension-background",
+        area: "association",
+        event: "chat_association_updated",
+        flowId,
+        message: "Saved chat association after capture.",
+        projectId,
+        tabId,
+        context: {
+          statusFrom: autoAssociated ? "pending" : "none",
+          statusTo: "saved",
+          sessionId: result.sessionId ?? null,
+          source: autoCapture ? "auto_capture" : manualSelection ? "manual_capture" : "association",
+        },
+      });
 
       return {
         ok: true,
@@ -2853,6 +3050,21 @@ async function captureObservedChange(
     clearPendingAssociation(state, { clearChatAssociation: true });
     clearAssociationToast(state);
     state.lastError = result?.reason ?? "Capture failed.";
+    recordBackgroundTelemetry({
+      level: "error",
+      surface: "extension-background",
+      area: "capture",
+      event: "capture_failed",
+      flowId,
+      message: result?.reason ?? "Capture failed.",
+      projectId: explicitProjectId ?? state.projectId ?? null,
+      tabId,
+      context: {
+        trigger: autoCapture ? "auto" : manualSelection ? "manual" : "association",
+        captureSignature: state.page.captureSignature ?? null,
+        turnCount: state.page.turns ?? 0,
+      },
+    });
     return result ?? { ok: false, reason: "Capture failed." };
   } finally {
     state.capturePending = false;
@@ -3033,6 +3245,7 @@ async function insertProjectBrief(
   if (!projectId) {
     return { ok: false, reason: "Choose a project first." };
   }
+  const flowId = createFlowId("ext-insert");
 
   clearInsertStateTimer(state);
   setInsertState(state, {
@@ -3041,6 +3254,22 @@ async function insertProjectBrief(
     message: "Inserting project brief…",
   });
   await broadcastActiveProjectState(tabId);
+  recordBackgroundTelemetry({
+    level: "info",
+    surface: "extension-background",
+    area: "brief",
+    event: "brief_insert_started",
+    flowId,
+    message: "Started project brief insertion.",
+    projectId,
+    tabId,
+    context: {
+      source,
+      targetSurface: source,
+      chatProvider: pageState.platform ?? null,
+      sourceUrl: pageState.url ?? null,
+    },
+  });
 
   const targetProfileKey = resolveTargetProfile({
     platform: pageState.platform,
@@ -3077,6 +3306,21 @@ async function insertProjectBrief(
     });
     await broadcastActiveProjectState(tabId);
     scheduleInsertStateReset(tabId);
+    recordBackgroundTelemetry({
+      level: "error",
+      surface: "extension-background",
+      area: "brief",
+      event: "brief_insert_failed",
+      flowId,
+      message: reason,
+      projectId,
+      tabId,
+      context: {
+        source,
+        targetSurface: source,
+        failureStage: "bootstrap_request",
+      },
+    });
     return { ok: false, reason };
   }
 
@@ -3103,6 +3347,22 @@ async function insertProjectBrief(
     });
     await broadcastActiveProjectState(tabId);
     scheduleInsertStateReset(tabId);
+    recordBackgroundTelemetry({
+      level: "error",
+      surface: "extension-background",
+      area: "brief",
+      event: "brief_insert_failed",
+      flowId,
+      message:
+        generated.reason ?? "Relay is still preparing your project brief.",
+      projectId,
+      tabId,
+      context: {
+        source,
+        targetSurface: source,
+        failureStage: "bootstrap_pending",
+      },
+    });
     return {
       ok: false,
       reason:
@@ -3123,6 +3383,21 @@ async function insertProjectBrief(
     });
     await broadcastActiveProjectState(tabId);
     scheduleInsertStateReset(tabId);
+    recordBackgroundTelemetry({
+      level: "error",
+      surface: "extension-background",
+      area: "brief",
+      event: "brief_insert_failed",
+      flowId,
+      message: inserted?.reason ?? "Insert failed.",
+      projectId,
+      tabId,
+      context: {
+        source,
+        targetSurface: source,
+        failureStage: "content_insert",
+      },
+    });
     return { ok: false, reason: inserted?.reason ?? "Insert failed." };
   }
 
@@ -3164,6 +3439,23 @@ async function insertProjectBrief(
   scheduleInsertStateReset(tabId);
 
   await syncTabRemoteState(tabId, { force: true, reason: "insert_complete" });
+  recordBackgroundTelemetry({
+    level: "info",
+    surface: "extension-background",
+    area: "brief",
+    event: "brief_insert_completed",
+    flowId,
+    message: "Inserted the project brief into the chat input.",
+    projectId,
+    tabId,
+    context: {
+      source,
+      targetSurface: source,
+      limitedMode,
+      kind,
+      actualModel: actualModel || null,
+    },
+  });
 
   return {
     ok: true,
@@ -3206,7 +3498,22 @@ function registerRelayContextMenu() {
   }
 }
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener((details) => {
+  recordBackgroundTelemetry({
+    level: "info",
+    surface: "extension-background",
+    area: "lifecycle",
+    event: details.reason === "update" ? "extension_updated" : "extension_installed",
+    message:
+      details.reason === "update"
+        ? "Relay extension updated."
+        : "Relay extension installed.",
+    context: {
+      previousVersion: details.previousVersion ?? null,
+      reason: details.reason,
+    },
+  });
+
   chrome.sidePanel
     .setPanelBehavior({ openPanelOnActionClick: true })
     .catch(() => undefined);
@@ -3466,6 +3773,7 @@ async function handleSaveSelectionToRelay(
     projectIdOverride,
     trigger,
   } = params;
+  const flowId = createFlowId("ext-save");
 
   console.info("[relay] save_to_relay:start", {
     trigger,
@@ -3477,6 +3785,19 @@ async function handleSaveSelectionToRelay(
   const trimmed = selectionText.trim();
   if (!trimmed) {
     await showFailureToastInTab(tabId, "Select text on the page first.");
+    recordBackgroundTelemetry({
+      level: "error",
+      surface: "extension-background",
+      area: "memory",
+      event: "selection_save_failed",
+      flowId,
+      message: "Selection save failed because no text was selected.",
+      tabId,
+      context: {
+        trigger,
+        failureStage: "selection_missing",
+      },
+    });
     return { ok: false, reason: "Select text in the page first." };
   }
 
@@ -3502,6 +3823,19 @@ async function handleSaveSelectionToRelay(
       tabId,
       "Pick a project in the Relay sidepanel, then try again.",
     );
+    recordBackgroundTelemetry({
+      level: "error",
+      surface: "extension-background",
+      area: "memory",
+      event: "selection_save_failed",
+      flowId,
+      message: "Selection save failed because no project was selected.",
+      tabId,
+      context: {
+        trigger,
+        failureStage: "project_missing",
+      },
+    });
     return { ok: false, reason: "Choose a project first." };
   }
 
@@ -3555,6 +3889,23 @@ async function handleSaveSelectionToRelay(
       },
       error: cause,
     });
+    recordBackgroundTelemetry({
+      level: "error",
+      surface: "extension-background",
+      area: "memory",
+      event: "selection_save_failed",
+      flowId,
+      message: reason,
+      projectId,
+      tabId,
+      context: {
+        trigger,
+        hostname,
+        failureStage: "network",
+        textLength: trimmed.length,
+      },
+      error: cause,
+    });
     return { ok: false, reason };
   }
 
@@ -3572,6 +3923,23 @@ async function handleSaveSelectionToRelay(
       context: {
         trigger,
         hostname,
+        textLength: trimmed.length,
+        status: response.status,
+      },
+    });
+    recordBackgroundTelemetry({
+      level: "error",
+      surface: "extension-background",
+      area: "memory",
+      event: "selection_save_failed",
+      flowId,
+      message: reason,
+      projectId,
+      tabId,
+      context: {
+        trigger,
+        hostname,
+        failureStage: "http_response",
         textLength: trimmed.length,
         status: response.status,
       },
@@ -3614,6 +3982,23 @@ async function handleSaveSelectionToRelay(
       trigger,
       hostname,
       textLength: trimmed.length,
+    },
+  });
+  recordBackgroundTelemetry({
+    level: "info",
+    surface: "extension-background",
+    area: "memory",
+    event: "selection_save_completed",
+    flowId,
+    message: `Saved selection to project ${projectId}.`,
+    projectId,
+    tabId,
+    context: {
+      trigger,
+      hostname,
+      textLength: trimmed.length,
+      sourceUrl: pageUrl,
+      chatProvider: platform,
     },
   });
 
@@ -3736,6 +4121,17 @@ chrome.runtime.onMessage.addListener(
                 flowId,
                 message: reason,
               });
+              recordBackgroundTelemetry({
+                level: "error",
+                surface: "extension-background",
+                area: "auth",
+                event: "extension_auth_failed",
+                flowId,
+                message: reason,
+                context: {
+                  authMethod: "google",
+                },
+              });
               sendResponse({ ok: false, reason });
               return;
             }
@@ -3743,6 +4139,7 @@ chrome.runtime.onMessage.addListener(
             const payload = (await response.json()) as {
               token: string;
               apiBase: string;
+              userId?: string;
               projectId: string;
               projects?: RelayProjectOption[];
               onboarding?: RelayOnboardingState;
@@ -3774,7 +4171,9 @@ chrome.runtime.onMessage.addListener(
               "Signed in with Google.",
             );
             authGraceUntil = Date.now() + 5_000;
+            await loadSessionData();
             const storedSession = await getRelaySession();
+            await identifyExtensionUser(storedSession.userId);
             console.log("[Relay BG] stored session after Google auth:", {
               connected: storedSession.connected,
               apiBase: storedSession.apiBase,
@@ -3794,6 +4193,20 @@ chrome.runtime.onMessage.addListener(
                 hasToken: Boolean(storedSession.token),
               },
             });
+            recordBackgroundTelemetry({
+              level: "info",
+              surface: "extension-background",
+              area: "auth",
+              event: "extension_auth_completed",
+              flowId,
+              message: "Extension Google sign-in completed.",
+              userId: storedSession.userId || null,
+              projectId: storedSession.projectId || null,
+              context: {
+                authMethod: "google",
+                connected: storedSession.connected,
+              },
+            });
 
             sendResponse({ ok: true });
           } catch (cause) {
@@ -3804,6 +4217,17 @@ chrome.runtime.onMessage.addListener(
               area: "auth",
               event: "google_sign_in.exception",
               message: "Google sign-in threw an exception in the background worker.",
+              error: cause,
+            });
+            recordBackgroundTelemetry({
+              level: "error",
+              surface: "extension-background",
+              area: "auth",
+              event: "extension_auth_failed",
+              message: "Extension Google sign-in failed.",
+              context: {
+                authMethod: "google",
+              },
               error: cause,
             });
             sendResponse({
@@ -3894,6 +4318,17 @@ chrome.runtime.onMessage.addListener(
                   status: response.status,
                 },
               });
+              recordBackgroundTelemetry({
+                level: "error",
+                surface: "extension-background",
+                area: "auth",
+                event: "extension_auth_failed",
+                flowId,
+                message: reason,
+                context: {
+                  authMethod: "local",
+                },
+              });
               sendResponse({ ok: false, reason });
               return;
             }
@@ -3912,6 +4347,23 @@ chrome.runtime.onMessage.addListener(
               "Signed in locally.",
             );
             authGraceUntil = Date.now() + 5_000;
+            await loadSessionData();
+            const storedSession = await getRelaySession();
+            await identifyExtensionUser(storedSession.userId);
+            recordBackgroundTelemetry({
+              level: "info",
+              surface: "extension-background",
+              area: "auth",
+              event: "extension_auth_completed",
+              flowId,
+              message: "Extension local sign-in completed.",
+              userId: storedSession.userId || null,
+              projectId: storedSession.projectId || null,
+              context: {
+                authMethod: "local",
+                connected: storedSession.connected,
+              },
+            });
             sendResponse({ ok: true });
           } catch (cause) {
             recordBackgroundTelemetry({
@@ -3920,6 +4372,17 @@ chrome.runtime.onMessage.addListener(
               area: "auth",
               event: "local_sign_in.exception",
               message: "Local sign-in threw an exception in the background worker.",
+              error: cause,
+            });
+            recordBackgroundTelemetry({
+              level: "error",
+              surface: "extension-background",
+              area: "auth",
+              event: "extension_auth_failed",
+              message: "Extension local sign-in failed.",
+              context: {
+                authMethod: "local",
+              },
               error: cause,
             });
             sendResponse({
@@ -4179,6 +4642,19 @@ chrome.runtime.onMessage.addListener(
             await syncTabRemoteState(tabId, {
               force: true,
               reason: "project_switch",
+            });
+            recordBackgroundTelemetry({
+              level: "info",
+              surface: "extension-background",
+              area: "projects",
+              event: "project_selected",
+              message: `Selected project ${message.payload.projectId} in the extension.`,
+              projectId: message.payload.projectId,
+              tabId,
+              context: {
+                projectName: nextProjectName ?? null,
+                associationAware: false,
+              },
             });
             sendResponse(await buildActiveProjectState(tabId));
           } else {

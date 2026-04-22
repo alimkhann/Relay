@@ -254,6 +254,29 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
   useEffect(() => {
     void (async () => {
+      const flowId = createExtensionFlowId("ext-open");
+      logExtensionEvent({
+        level: "info",
+        surface: "extension-sidebar",
+        area: "lifecycle",
+        event: "extension_opened",
+        flowId,
+        message: "Opened the Relay extension UI.",
+        context: {
+          targetSurface: compact ? "popup" : "sidepanel",
+        },
+      });
+      logExtensionEvent({
+        level: "info",
+        surface: "extension-sidebar",
+        area: "session",
+        event: "session_started",
+        flowId,
+        message: "Started an extension UI session.",
+        context: {
+          targetSurface: compact ? "popup" : "sidepanel",
+        },
+      });
       setDeviceName(defaultDeviceName());
       const nextThemeMode = await getRelayThemeMode();
       setThemeMode(nextThemeMode);
@@ -261,7 +284,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       await refreshLocalSession();
       await refreshActiveProjectState();
     })();
-  }, []);
+  }, [compact]);
 
   useEffect(() => {
     if (panelMode === "settings" && session?.connected && !userSettings) {
@@ -521,6 +544,17 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       const data = (await response.json()) as { settings?: UserSettingsRow["settings"] };
       if (data.settings) setUserSettings(data.settings);
       if (patch.autoCapture !== undefined) {
+        logExtensionEvent({
+          level: "info",
+          surface: "extension-sidebar",
+          area: "settings",
+          event: "auto_capture_toggled",
+          message: patch.autoCapture ? "Enabled auto-capture." : "Disabled auto-capture.",
+          context: {
+            enabled: patch.autoCapture,
+            source: "settings",
+          },
+        });
         await setRelaySession({ autoCapture: patch.autoCapture });
         await refreshLocalSession();
       }
@@ -642,6 +676,21 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       await setRelaySession({
         autoCapture: action === "activate" ? true : session.autoCapture,
         autoCapturePrompt: nextPrompt,
+      });
+      logExtensionEvent({
+        level: "info",
+        surface: "extension-sidebar",
+        area: "settings",
+        event: "auto_capture_toggled",
+        message:
+          action === "activate"
+            ? "Enabled auto-capture from onboarding prompt."
+            : "Dismissed auto-capture onboarding prompt.",
+        context: {
+          enabled: action === "activate" ? true : session.autoCapture,
+          source: "onboarding_prompt",
+          action,
+        },
       });
       await refreshLocalSession();
       await refreshActiveProjectState();

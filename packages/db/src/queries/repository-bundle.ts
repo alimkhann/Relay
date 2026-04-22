@@ -19,6 +19,7 @@ import { MemoryRepository } from "../repositories/memory-repository"
 import { McpAuthSessionRepository } from "../repositories/mcp-auth-session-repository"
 import { McpTokenRepository } from "../repositories/mcp-token-repository"
 import { ProfileRepository } from "../repositories/profile-repository"
+import { ProviderCounterSnapshotRepository } from "../repositories/provider-counter-snapshot-repository"
 import { ProjectRepository } from "../repositories/project-repository"
 import { ProjectSummarySnapshotRepository } from "../repositories/project-summary-snapshot-repository"
 import { ProjectSettingsRepository } from "../repositories/project-settings-repository"
@@ -44,6 +45,7 @@ export interface RepositoryBundle {
   billingWebhookEvents: BillingWebhookEventRepository
   billingWebhookRawDeliveries: BillingWebhookRawDeliveryRepository
   profiles: ProfileRepository
+  providerCounterSnapshots: ProviderCounterSnapshotRepository
   projects: ProjectRepository
   members: MemberRepository
   sessions: SessionRepository
@@ -92,6 +94,7 @@ export function createRepositoryBundle(
     billingWebhookEvents: new BillingWebhookEventRepository(provider),
     billingWebhookRawDeliveries: new BillingWebhookRawDeliveryRepository(provider),
     profiles: new ProfileRepository(provider),
+    providerCounterSnapshots: new ProviderCounterSnapshotRepository(provider),
     projects: new ProjectRepository(provider),
     members: new MemberRepository(provider),
     sessions: new SessionRepository(provider),

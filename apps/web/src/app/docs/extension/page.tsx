@@ -1,10 +1,19 @@
 import { Suspense } from "react"
 
+import { PageTelemetry } from "@/components/telemetry/page-telemetry"
 import { DocsFooterNav } from "@/components/docs/docs-footer-nav"
 
 export default function ExtensionDocsPage() {
   return (
     <div className="max-w-2xl space-y-8">
+      <PageTelemetry
+        surface="web-dashboard"
+        area="docs"
+        pageName="extension_docs"
+        pageGroup="docs"
+        message="Viewed Relay extension docs."
+        secondaryEvent="docs_extension_viewed"
+      />
       <div>
         <h1 className="text-2xl font-bold text-[var(--relay-ink)]">Chrome Extension</h1>
         <p className="mt-2 text-[15px] leading-relaxed text-[var(--relay-muted)]">

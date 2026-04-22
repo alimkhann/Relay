@@ -27,9 +27,13 @@ export default async function DashboardPage({
       level: "info",
       surface: "web-dashboard",
       area: "onboarding",
-      event: "dashboard.onboarding_pending",
+      event: "onboarding_viewed",
       message: "Rendered the dashboard onboarding state for a user with pending setup.",
       userId: viewer.userId,
+      context: {
+        onboardingStep: "project_setup",
+        onboardingStatus: onboarding.status,
+      },
     })
 
     return (
@@ -37,7 +41,8 @@ export default async function DashboardPage({
         <PageTelemetry
           surface="web-dashboard"
           area="page"
-          event="dashboard_viewed"
+          pageName="dashboard"
+          pageGroup="workspace"
           message="Rendered the dashboard."
           context={{
             hasProject: false,
@@ -85,7 +90,8 @@ export default async function DashboardPage({
       <PageTelemetry
         surface="web-dashboard"
         area="page"
-        event="dashboard_viewed"
+        pageName="dashboard"
+        pageGroup="workspace"
         message="Rendered the dashboard."
         context={{
           hasProject: Boolean(currentProject),

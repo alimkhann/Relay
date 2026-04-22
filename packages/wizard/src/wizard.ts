@@ -16,13 +16,23 @@ import {
   warn,
   step,
   startUnifiedAuthFlow,
+  RelayNodeAnalytics,
 } from "@relay/cli-core"
 import { runUninstall } from "./uninstall"
 
 const DEFAULT_API_BASE = "https://www.onrelay.app"
+const analytics = new RelayNodeAnalytics({
+  app: "wizard",
+  appSource: "relay-wizard",
+  anonymousPrefix: "relay-wizard",
+})
 
 export async function runWizardFlow(options: { apiBase?: string; openBrowser?: boolean } = {}) {
   printBanner()
+  analytics.capture("wizard_started", {
+    success: true,
+    open_browser: options.openBrowser !== false,
+  })
 
   const apiBase = options.apiBase ?? process.env["RELAY_API_BASE"] ?? DEFAULT_API_BASE
 
@@ -52,8 +62,26 @@ export async function runWizardFlow(options: { apiBase?: string; openBrowser?: b
   p.intro(pc.bold("Let's connect Relay MCP to your coding tools"))
 
   step(options.openBrowser === false ? "Starting manual authorization..." : "Starting browser authorization...")
-  const auth = await startUnifiedAuthFlow(apiBase, existing?.projectId, { openBrowser: options.openBrowser })
-  success("Authenticated successfully!")
+  let auth
+  try {
+    auth = await startUnifiedAuthFlow(apiBase, existing?.projectId, { openBrowser: options.openBrowser })
+    await analytics.identify(auth.apiBase, auth.token)
+    analytics.capture("wizard_auth_completed", {
+      success: true,
+      project_id: auth.projectId ?? existing?.projectId ?? null,
+    })
+    success("Authenticated successfully!")
+  } catch (error) {
+    analytics.capture("wizard_auth_failed", {
+      success: false,
+      project_id: existing?.projectId ?? null,
+    })
+    analytics.capture("wizard_failed", {
+      success: false,
+      stage: "auth",
+    } as Record<string, string | number | boolean | null>)
+    throw error
+  }
 
   if (!auth.accessToken) {
     warn("Relay could not mint a scoped MCP token yet. Create a project in Relay, then re-run the wizard.")
@@ -116,6 +144,11 @@ export async function runWizardFlow(options: { apiBase?: string; openBrowser?: b
             success(`${ide.name} ${artifact.kind} (${statusLabel}) → ${pc.dim(artifact.path)}`)
           }
         }
+        analytics.capture("wizard_client_configured", {
+          success: true,
+          client_name: ide.id,
+          support_tier: ide.supportTier,
+        } as Record<string, string | number | boolean | null>)
       }
     }
   }
@@ -129,4 +162,9 @@ export async function runWizardFlow(options: { apiBase?: string; openBrowser?: b
   console.log(pc.dim("  2. Your coding agent should load Relay MCP and its client-native guidance"))
   console.log(pc.dim("  3. Start with get_brief; only use list_projects if Relay reports ambiguity"))
   console.log()
+  analytics.capture("wizard_completed", {
+    success: true,
+    project_id: auth.projectId ?? existing?.projectId ?? null,
+  })
+  await analytics.shutdown()
 }

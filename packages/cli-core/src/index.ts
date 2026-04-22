@@ -1,4 +1,5 @@
 export { RelayApiClient } from "./api-client"
+export { RelayNodeAnalytics, type RelayNodeAnalyticsProperties } from "./analytics"
 export {
   type RelayCliConfig,
   loadConfig,

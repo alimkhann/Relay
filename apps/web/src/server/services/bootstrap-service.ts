@@ -20,6 +20,7 @@ import { bootstrapRequestSchema, buildEffectiveProjectState, computeDecayScore, 
 import { NotFoundError } from "@/server/http/errors"
 import { buildBootstrapCanonView } from "./canon-autonomy-service"
 import { logServerEvent } from "@/server/logging/logger"
+import { emitAiRequestCompleted } from "./ai-analytics-service"
 import { drainDigestJobsForProject } from "./digest-service"
 import { resolveViewerEntitlements } from "./entitlement-service"
 import { GEMINI_MODELS, runGeminiJsonWithFallback } from "./gemini-service"
@@ -888,6 +889,8 @@ function describeJobStage(stage: string | null) {
 }
 
 async function generateGeminiBootstrap(input: {
+  userId: string
+  projectId: string
   state: ProjectStateRow | null
   digests: SessionDigestRow[]
   canonContext: BootstrapCanonContext
@@ -900,60 +903,92 @@ async function generateGeminiBootstrap(input: {
     fallbackModel: string
   }
 }) {
-  const result = await runGeminiJsonWithFallback<BootstrapModelShape>({
-    primaryModel: input.modelConfig.primaryModel,
-    fallbackModel: input.modelConfig.fallbackModel,
-    maxInputTokens: GEMINI_MODELS.bootstrap.maxInputTokens,
-    maxOutputTokens: GEMINI_MODELS.bootstrap.maxOutputTokens,
-    systemInstruction:
-      input.packetMode === "agent_full_bootstrap"
-        ? "You write execution briefs for coding agents. Return only JSON. Prefer durable truths, operational tasks, constraints, relevant tools, and precise next actions."
-        : input.packetMode === "agent_quick_continuity"
-          ? "You write short operational continuity briefs for coding agents. Return only JSON. Prefer current objective, recent progress, tasks, constraints, and next action."
-          : input.kind === "quick_continuity"
-            ? "You write short continuation briefs for ongoing AI chats. Return only JSON. Prefer immediate task continuity, recent progress, constraints, and the next action."
-            : "You write explanatory project briefs for fresh AI chats. Return only JSON. Prefer durable project state, clear tasks, and concise sections over transcript detail.",
-    prompt: [
-      "Return a JSON object with these keys exactly:",
-      "projectOverview, currentObjective, recentProgress, decisions, constraints, openTasks, relevantTools, firstAction.",
-      "Do not include markdown in the JSON values.",
-      input.packetMode === "agent_full_bootstrap"
-        ? "Make this execution brief operational and source-aware for a coding agent."
-        : input.packetMode === "agent_quick_continuity"
-          ? "Make this continuity brief compact but operational for a coding agent."
-          : input.kind === "quick_continuity"
-            ? "Make this continuation brief short, immediate, and task-focused."
-            : "Make this fresh-chat brief explanatory enough that a new chat can continue without a re-brief.",
-      `Target profile: ${input.profile.name}`,
-      ...(input.state?.projectOverview ? [`Project overview: ${input.state.projectOverview}`] : []),
-      ...(input.state?.currentObjective ? [`Current objective: ${input.state.currentObjective}`] : []),
-      ...(input.state?.recentProgress ? [`Recent progress: ${input.state.recentProgress}`] : []),
-      ...(input.canonContext.latestProjectSummary ? [`Latest project summary: ${input.canonContext.latestProjectSummary}`] : []),
-      ...(input.canonContext.latestCurrentFocusSummary ? [`Latest current focus: ${input.canonContext.latestCurrentFocusSummary}`] : []),
-      ...((input.state?.decisions ?? []).length ? [`Decisions: ${input.state!.decisions.join(" | ")}`] : []),
-      ...((input.state?.constraints ?? []).length ? [`Constraints: ${input.state!.constraints.join(" | ")}`] : []),
-      ...((input.state?.openTasks ?? []).length ? [`Open tasks: ${input.state!.openTasks.join(" | ")}`] : []),
-      ...((input.state?.relevantTools ?? []).length ? [`Relevant tools: ${input.state!.relevantTools.join(" | ")}`] : []),
-      ...(input.settings.includeTentativeUpdatesInPackets && (input.canonContext.tentativeEntries ?? []).length
-        ? [`Tentative updates: ${input.canonContext.tentativeEntries.slice(0, 4).map((entry) => entry.content).join(" | ")}`]
-        : []),
-      ...(() => {
-        const summaries = input.digests
-          .filter((digest) => !isLowSignalDigestSummary(digest.summaryShort))
-          .slice(0, 6)
-          .map((digest, index) => `${index + 1}. ${digest.summaryShort}`)
-          .join("\n")
-        return summaries ? ["Recent digest summaries:", summaries] : []
-      })()
-    ].join("\n\n")
-  })
+  const startedAtMs = Date.now()
 
-  return {
-    shape: sanitizeBootstrapShape(result.data, input.state),
-    actualModel: result.actualModel,
-    primaryModel: result.primaryModel,
-    fallbackUsed: result.fallbackUsed,
-    tokenUsage: result.tokenUsage
+  try {
+    const result = await runGeminiJsonWithFallback<BootstrapModelShape>({
+      primaryModel: input.modelConfig.primaryModel,
+      fallbackModel: input.modelConfig.fallbackModel,
+      maxInputTokens: GEMINI_MODELS.bootstrap.maxInputTokens,
+      maxOutputTokens: GEMINI_MODELS.bootstrap.maxOutputTokens,
+      systemInstruction:
+        input.packetMode === "agent_full_bootstrap"
+          ? "You write execution briefs for coding agents. Return only JSON. Prefer durable truths, operational tasks, constraints, relevant tools, and precise next actions."
+          : input.packetMode === "agent_quick_continuity"
+            ? "You write short operational continuity briefs for coding agents. Return only JSON. Prefer current objective, recent progress, tasks, constraints, and next action."
+            : input.kind === "quick_continuity"
+              ? "You write short continuation briefs for ongoing AI chats. Return only JSON. Prefer immediate task continuity, recent progress, constraints, and the next action."
+              : "You write explanatory project briefs for fresh AI chats. Return only JSON. Prefer durable project state, clear tasks, and concise sections over transcript detail.",
+      prompt: [
+        "Return a JSON object with these keys exactly:",
+        "projectOverview, currentObjective, recentProgress, decisions, constraints, openTasks, relevantTools, firstAction.",
+        "Do not include markdown in the JSON values.",
+        input.packetMode === "agent_full_bootstrap"
+          ? "Make this execution brief operational and source-aware for a coding agent."
+          : input.packetMode === "agent_quick_continuity"
+            ? "Make this continuity brief compact but operational for a coding agent."
+            : input.kind === "quick_continuity"
+              ? "Make this continuation brief short, immediate, and task-focused."
+              : "Make this fresh-chat brief explanatory enough that a new chat can continue without a re-brief.",
+        `Target profile: ${input.profile.name}`,
+        ...(input.state?.projectOverview ? [`Project overview: ${input.state.projectOverview}`] : []),
+        ...(input.state?.currentObjective ? [`Current objective: ${input.state.currentObjective}`] : []),
+        ...(input.state?.recentProgress ? [`Recent progress: ${input.state.recentProgress}`] : []),
+        ...(input.canonContext.latestProjectSummary ? [`Latest project summary: ${input.canonContext.latestProjectSummary}`] : []),
+        ...(input.canonContext.latestCurrentFocusSummary ? [`Latest current focus: ${input.canonContext.latestCurrentFocusSummary}`] : []),
+        ...((input.state?.decisions ?? []).length ? [`Decisions: ${input.state!.decisions.join(" | ")}`] : []),
+        ...((input.state?.constraints ?? []).length ? [`Constraints: ${input.state!.constraints.join(" | ")}`] : []),
+        ...((input.state?.openTasks ?? []).length ? [`Open tasks: ${input.state!.openTasks.join(" | ")}`] : []),
+        ...((input.state?.relevantTools ?? []).length ? [`Relevant tools: ${input.state!.relevantTools.join(" | ")}`] : []),
+        ...(input.settings.includeTentativeUpdatesInPackets && (input.canonContext.tentativeEntries ?? []).length
+          ? [`Tentative updates: ${input.canonContext.tentativeEntries.slice(0, 4).map((entry) => entry.content).join(" | ")}`]
+          : []),
+        ...(() => {
+          const summaries = input.digests
+            .filter((digest) => !isLowSignalDigestSummary(digest.summaryShort))
+            .slice(0, 6)
+            .map((digest, index) => `${index + 1}. ${digest.summaryShort}`)
+            .join("\n")
+          return summaries ? ["Recent digest summaries:", summaries] : []
+        })()
+      ].join("\n\n")
+    })
+
+    await emitAiRequestCompleted({
+      userId: input.userId,
+      projectId: input.projectId,
+      operation: input.packetMode,
+      jobKind: input.kind,
+      primaryModel: result.primaryModel,
+      actualModel: result.actualModel,
+      fallbackUsed: result.fallbackUsed,
+      tokenUsage: result.tokenUsage,
+      latencyMs: Math.max(0, Date.now() - startedAtMs),
+      success: true,
+    })
+
+    return {
+      shape: sanitizeBootstrapShape(result.data, input.state),
+      actualModel: result.actualModel,
+      primaryModel: result.primaryModel,
+      fallbackUsed: result.fallbackUsed,
+      tokenUsage: result.tokenUsage
+    }
+  } catch (error) {
+    await emitAiRequestCompleted({
+      userId: input.userId,
+      projectId: input.projectId,
+      operation: input.packetMode,
+      jobKind: input.kind,
+      primaryModel: input.modelConfig.primaryModel,
+      actualModel: null,
+      fallbackUsed: false,
+      tokenUsage: null,
+      latencyMs: Math.max(0, Date.now() - startedAtMs),
+      success: false,
+      failurePhase: "bootstrap_generation",
+    })
+    throw error
   }
 }
 
@@ -1262,7 +1297,18 @@ export async function generateBootstrapForProject(userId: string, projectId: str
 
   if (modelConfig.renderer === "gemini") {
     try {
-      const generated = await generateGeminiBootstrap({ state, digests: scopedDigests, canonContext, settings, profile, kind: parsed.kind, packetMode, modelConfig })
+      const generated = await generateGeminiBootstrap({
+        userId,
+        projectId,
+        state,
+        digests: scopedDigests,
+        canonContext,
+        settings,
+        profile,
+        kind: parsed.kind,
+        packetMode,
+        modelConfig,
+      })
       shape = generated.shape
       renderer = "gemini"
       actualModel = generated.actualModel

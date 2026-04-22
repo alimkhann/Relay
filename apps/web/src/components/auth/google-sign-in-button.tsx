@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 
 import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client";
 import { authClient } from "@/lib/auth/client";
+import { withAuthCallbackParams } from "@/lib/auth/auth-callback";
 import { Button } from "@/components/ui/button";
 import type { WebAuthIntent } from "@/server/policies/viewer";
 
@@ -34,22 +35,17 @@ export function GoogleSignInButton({
               event: "google_sign_in.started",
               flowId,
               message: "User started Google sign-in from the web app.",
+              context: {
+                authMethod: "google",
+                authIntent: intent,
+              },
             });
 
             try {
-              // Append auth_callback=1 so the LogoPreloader fires after OAuth return
-              function withAuthCallback(path: string) {
-                try {
-                  const base = window.location.origin;
-                  const url = new URL(path.startsWith("/") ? `${base}${path}` : path);
-                  url.searchParams.set("auth_callback", "1");
-                  return url.pathname + url.search;
-                } catch {
-                  return path;
-                }
-              }
-
-              const callbackPath = withAuthCallback(nextPath);
+              const callbackPath = withAuthCallbackParams(nextPath, {
+                method: "google",
+                intent,
+              });
 
               const signInResult = await authClient.signIn.social({
                 provider: "google",
@@ -79,6 +75,10 @@ export function GoogleSignInButton({
                 event: "google_sign_in.failed",
                 flowId,
                 message: "Google sign-in failed before redirect completed.",
+                context: {
+                  authMethod: "google",
+                  authIntent: intent,
+                },
                 error: cause,
               });
               setError(

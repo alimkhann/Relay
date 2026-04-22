@@ -11,6 +11,7 @@ import { describeGeminiError, GEMINI_MODELS, runGeminiJsonWithFallback, type Gem
 import { embedAndRelateItems, emitMemoryEvent } from "./memory-service"
 import { mergeDigestIntoState } from "./project-state-service"
 import { resolveProjectAiBudget } from "./ai-budget-service"
+import { emitAiRequestCompleted } from "./ai-analytics-service"
 import { logServerEvent } from "@/server/logging/logger"
 
 interface DigestModelShape extends SessionDigestShape {
@@ -713,6 +714,8 @@ async function runDigestJobInternal(
   let currentModel: string | null = null
   let currentFallbackUsed = false
   let lastGeminiStage: GeminiStage | null = null
+  let finalStatus: DigestJobOutcome["status"] | "unknown" = "unknown"
+  let failurePhase: string | null = null
   let tokenUsage = {
     inputTokens: 0,
     outputTokens: 0,
@@ -768,6 +771,7 @@ async function runDigestJobInternal(
           reason: "Digest already exists for this signature."
         })
       })
+      finalStatus = "completed"
       return {
         status: "completed",
         digestId: existingDigest.id,
@@ -828,6 +832,7 @@ async function runDigestJobInternal(
       })
     })
 
+    finalStatus = "completed"
     return {
       status: "completed",
       digestId: digest.id,
@@ -837,7 +842,7 @@ async function runDigestJobInternal(
   } catch (error) {
     const geminiError = describeGeminiError(error)
     const failureMessage = geminiError?.message ?? (error instanceof Error ? error.message : "Digest job failed.")
-    const failurePhase = geminiError?.phase ?? null
+    failurePhase = geminiError?.phase ?? null
 
     if (isTimeoutError(error) || controller.signal.aborted) {
       await repositories.aiJobs.markTimedOut(job.id, {
@@ -853,6 +858,7 @@ async function runDigestJobInternal(
           lastGeminiStage
         })
       })
+      finalStatus = "timed_out"
       return {
         status: "timed_out",
         digestId: null,
@@ -876,6 +882,7 @@ async function runDigestJobInternal(
       })
     })
 
+    finalStatus = "failed"
     return {
       status: "failed",
       digestId: null,
@@ -883,6 +890,16 @@ async function runDigestJobInternal(
       errorMessage: failureMessage,
     }
   } finally {
+    const currentRunDurationMs = Math.max(0, Date.now() - runStartedAtMs)
+    const persistedStatus =
+      finalStatus === "unknown"
+        ? await repositories.aiJobs.listByProject(job.projectId, {
+            jobKind: "session_digest",
+            limit: 1,
+            statuses: ["completed", "failed", "timed_out", "running", "pending", "deferred"],
+          }).then((jobs) => jobs.find((candidate) => candidate.id === job.id)?.status ?? "unknown")
+        : finalStatus
+
     await logServerEvent({
       level: "info",
       surface: "web-api",
@@ -893,18 +910,34 @@ async function runDigestJobInternal(
       context: {
         projectId: job.projectId,
         jobId: job.id,
-        status: await repositories.aiJobs.listByProject(job.projectId, {
-          jobKind: "session_digest",
-          limit: 1,
-          statuses: ["completed", "failed", "timed_out", "running", "pending", "deferred"],
-        }).then((jobs) => jobs.find((candidate) => candidate.id === job.id)?.status ?? "unknown"),
+        status: persistedStatus,
         queueDelayMs: Math.max(0, runStartedAtMs - queuedAtMs),
-        runDurationMs: Math.max(0, Date.now() - runStartedAtMs),
+        runDurationMs: currentRunDurationMs,
         model: currentModel,
         fallbackUsed: currentFallbackUsed,
         lastGeminiStage,
       },
     }).catch(() => {})
+
+    if (currentModel) {
+      await emitAiRequestCompleted({
+        userId,
+        projectId: job.projectId,
+        sessionId: job.sessionId,
+        requestId: null,
+        flowId: null,
+        operation: "session_digest",
+        jobKind: job.jobKind,
+        primaryModel: job.primaryModel,
+        actualModel: currentModel,
+        fallbackUsed: currentFallbackUsed,
+        tokenUsage,
+        latencyMs: currentRunDurationMs,
+        success: persistedStatus === "completed",
+        failurePhase,
+      })
+    }
+
     clearTimeout(timeoutHandle)
   }
 }
@@ -930,8 +963,11 @@ export async function runBatchDigestForProject(
   const controller = new AbortController()
   const timeoutHandle = setTimeout(() => controller.abort(createDigestTimeoutError(timeoutMs)), timeoutMs)
 
+  const batchStartedAtMs = Date.now()
   let currentModel: string | null = null
   let currentFallbackUsed = false
+  let failurePhase: string | null = null
+  let batchSucceeded = false
   let tokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
 
   try {
@@ -1068,7 +1104,9 @@ export async function runBatchDigestForProject(
         })
       })
     }
+    batchSucceeded = true
   } catch (error) {
+    failurePhase = describeGeminiError(error)?.phase ?? null
     const failureMessage = error instanceof Error ? error.message : "Batch digest failed."
 
     for (const job of deferredJobs) {
@@ -1092,6 +1130,21 @@ export async function runBatchDigestForProject(
       }
     }
   } finally {
+    if (currentModel) {
+      await emitAiRequestCompleted({
+        userId,
+        projectId,
+        operation: "batch_session_digest",
+        jobKind: "session_digest",
+        primaryModel: GEMINI_MODELS.digest.primary,
+        actualModel: currentModel,
+        fallbackUsed: currentFallbackUsed,
+        tokenUsage,
+        latencyMs: Math.max(0, Date.now() - batchStartedAtMs),
+        success: batchSucceeded,
+        failurePhase,
+      })
+    }
     clearTimeout(timeoutHandle)
   }
 }

@@ -5,6 +5,7 @@ import { sanitizeTelemetryEvent } from "@relay/shared/utils/telemetry";
 import { getRelaySession } from "../storage/session";
 
 const DISTINCT_ID_STORAGE_KEY = "relay.analyticsDistinctId";
+const IDENTIFIED_USER_STORAGE_KEY = "relay.analyticsIdentifiedUserId";
 
 const pendingRequests = new Set<Promise<void>>();
 
@@ -57,6 +58,46 @@ function getExtensionRuntimeProperties() {
     app_version: version,
     environment: process.env.NODE_ENV === "development" ? "development" : "production",
   };
+}
+
+async function queueRawPosthogEvent(input: {
+  event: string;
+  properties: Record<string, string | number | boolean | null>;
+  distinctId?: string | null;
+}) {
+  const config = getPosthogConfig();
+  if (!config) {
+    return;
+  }
+
+  const request = (async () => {
+    try {
+      const distinctId = input.distinctId ?? (await getDistinctId());
+
+      await fetch(`${config.host}/capture/`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          api_key: config.key,
+          event: input.event,
+          properties: {
+            distinct_id: distinctId,
+            ...getExtensionRuntimeProperties(),
+            ...input.properties,
+          },
+        }),
+      });
+    } catch {
+      // Best-effort analytics only.
+    }
+  })();
+
+  pendingRequests.add(request);
+  void request.finally(() => {
+    pendingRequests.delete(request);
+  });
 }
 
 function queueBackgroundPosthog(input: TelemetryEventInput) {
@@ -163,6 +204,36 @@ function writeConsoleEvent(event: TelemetryEventInput) {
 
 export async function flushBackgroundTelemetry() {
   await Promise.allSettled(Array.from(pendingRequests));
+}
+
+export async function identifyExtensionUser(userId: string | null | undefined) {
+  if (!userId || typeof chrome === "undefined" || !chrome.storage?.local) {
+    return;
+  }
+
+  const [anonymousDistinctId, stored] = await Promise.all([
+    getAnonymousDistinctId(),
+    chrome.storage.local.get([IDENTIFIED_USER_STORAGE_KEY]),
+  ]);
+  const previousUserId = stored[IDENTIFIED_USER_STORAGE_KEY];
+
+  if (previousUserId === userId) {
+    return;
+  }
+
+  await queueRawPosthogEvent({
+    event: "$identify",
+    distinctId: userId,
+    properties: {
+      $anon_distinct_id: anonymousDistinctId,
+      identified_user_id: userId,
+      platform: "extension",
+    },
+  });
+
+  await chrome.storage.local.set({
+    [IDENTIFIED_USER_STORAGE_KEY]: userId,
+  });
 }
 
 export function recordBackgroundTelemetry(input: TelemetryEventInput) {
