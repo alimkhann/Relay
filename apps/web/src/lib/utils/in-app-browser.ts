@@ -3,9 +3,23 @@ export type InAppBrowserPlatform = "android" | "ios" | null;
 export function detectInAppBrowser(): InAppBrowserPlatform {
   if (typeof navigator === "undefined") return null;
   const ua = navigator.userAgent;
-  const isInApp =
-    /\b(FBAN|FBAV|FB_IAB|Instagram|LinkedInApp|TikTok|Twitter|Line|MicroMessenger)\b/i.test(ua) ||
-    /; wv\)/.test(ua);
+
+  // App-specific UA tokens (sourced from inapp-spy + confirmed UA samples)
+  // Threads uses "Barcelona", not "Instagram"
+  const isKnownInApp =
+    /\b(Instagram|Barcelona|FBAN|FBAV|FB_IAB|Facebook|Twitter|LinkedInApp|Snapchat|GSA)\b/i.test(ua) ||
+    /\b(musical_ly|Bytedance)\b/i.test(ua) ||   // TikTok
+    /\b(WAiOS|WA4A)\//i.test(ua) ||              // WhatsApp
+    /\bLine\//i.test(ua) ||
+    /\bMicroMessenger\//i.test(ua);              // WeChat
+
+  // Catch-all: iPhone/iPad without Safari/ = WebView
+  const isIOSWebView = /(iPhone|iPod|iPad)/.test(ua) && !/Safari\//.test(ua);
+
+  // Android WebView marker
+  const isAndroidWebView = /Android.*wv\)/.test(ua) || /; wv\)/.test(ua);
+
+  const isInApp = isKnownInApp || isIOSWebView || isAndroidWebView;
   if (!isInApp) return null;
   return /android/i.test(ua) ? "android" : "ios";
 }
