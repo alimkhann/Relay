@@ -1,12 +1,17 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useEffect, useTransition } from "react";
 
 import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client";
 import { authClient } from "@/lib/auth/client";
 import { withAuthCallbackParams } from "@/lib/auth/auth-callback";
 import { Button } from "@/components/ui/button";
 import type { WebAuthIntent } from "@/server/policies/viewer";
+import {
+  detectInAppBrowser,
+  buildAndroidChromeIntent,
+  type InAppBrowserPlatform,
+} from "@/lib/utils/in-app-browser";
 
 export function GoogleSignInButton({
   nextPath = "/dashboard",
@@ -17,6 +22,22 @@ export function GoogleSignInButton({
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [inAppPlatform, setInAppPlatform] = useState<InAppBrowserPlatform>(null);
+  const [iosHint, setIosHint] = useState(false);
+
+  useEffect(() => {
+    const platform = detectInAppBrowser();
+    if (!platform) return;
+    setInAppPlatform(platform);
+    logClientEvent({
+      level: "info",
+      surface: "web-auth",
+      area: "auth",
+      event: "in_app_browser.detected",
+      message: "User is in an in-app browser where Google OAuth is blocked.",
+      context: { platform },
+    });
+  }, []);
 
   return (
     <div className="space-y-3">
@@ -27,6 +48,40 @@ export function GoogleSignInButton({
           startTransition(async () => {
             setError(null);
             const flowId = createClientFlowId("auth");
+
+            if (inAppPlatform === "android") {
+              logClientEvent({
+                level: "info",
+                surface: "web-auth",
+                area: "auth",
+                event: "google_sign_in.in_app_redirect",
+                flowId,
+                message: "Redirecting Android in-app browser to Chrome.",
+                context: { platform: "android" },
+              });
+              window.location.href = buildAndroidChromeIntent(window.location.href);
+              return;
+            }
+
+            if (inAppPlatform === "ios") {
+              logClientEvent({
+                level: "info",
+                surface: "web-auth",
+                area: "auth",
+                event: "google_sign_in.in_app_redirect",
+                flowId,
+                message: "Attempting iOS in-app browser escape.",
+                context: { platform: "ios" },
+              });
+              try {
+                await navigator.clipboard.writeText(window.location.href);
+              } catch {
+                // clipboard permission denied — user can still use "Copy link again"
+              }
+              window.open(window.location.href, "_blank");
+              setIosHint(true);
+              return;
+            }
 
             logClientEvent({
               level: "info",
@@ -90,8 +145,34 @@ export function GoogleSignInButton({
           })
         }
       >
-        {pending ? "Opening Google…" : "Continue with Google"}
+        {pending
+          ? inAppPlatform
+            ? "Opening browser…"
+            : "Opening Google…"
+          : "Continue with Google"}
       </Button>
+      {iosHint ? (
+        <p className="text-sm text-[var(--relay-muted)]">
+          Link copied. Tap{" "}
+          <strong className="text-[var(--relay-ink)]">···</strong> (top right) →{" "}
+          <strong className="text-[var(--relay-ink)]">Open in Safari</strong>, then paste.{" "}
+          <button
+            type="button"
+            className="underline underline-offset-2 hover:text-[var(--relay-ink)] transition"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(window.location.href);
+              } catch {}
+            }}
+          >
+            Copy link again
+          </button>
+        </p>
+      ) : inAppPlatform ? (
+        <p className="text-xs text-[var(--relay-faint)]">
+          Best experience in Safari or Chrome.
+        </p>
+      ) : null}
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
     </div>
   );
