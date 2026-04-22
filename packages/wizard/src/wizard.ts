@@ -127,6 +127,6 @@ export async function runWizardFlow(options: { apiBase?: string; openBrowser?: b
   info("Next steps:")
   console.log(pc.dim("  1. Open a new terminal session in your project"))
   console.log(pc.dim("  2. Your coding agent should load Relay MCP and its client-native guidance"))
-  console.log(pc.dim("  3. Start by calling list_projects, then get_brief"))
+  console.log(pc.dim("  3. Start with get_brief; only use list_projects if Relay reports ambiguity"))
   console.log()
 }

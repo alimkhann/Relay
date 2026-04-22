@@ -17,6 +17,11 @@ import { addMemory } from "./add-memory.js"
 import { saveContext } from "./save-context.js"
 import { manageMemory } from "./manage-memory.js"
 
+function getBriefStatus(result: { structuredContent?: unknown }) {
+  const structured = result.structuredContent as { brief?: { status?: string } } | undefined
+  return structured?.brief?.status
+}
+
 function mockClient(overrides: Record<string, unknown> = {}) {
   return {
     get: vi.fn().mockImplementation((path: string) => {
@@ -118,6 +123,7 @@ function mockClient(overrides: Record<string, unknown> = {}) {
       }
       return Promise.resolve({})
     }),
+    getDefaultSince: vi.fn().mockResolvedValue(undefined),
     post: vi.fn().mockResolvedValue({
       status: "ready",
       packet: { id: "pkt-1", kind: "fresh_chat_bootstrap", content: "# Generated Brief", targetProfileKey: "claude_code_build", createdAt: "2026-01-01T00:00:00Z" },
@@ -142,16 +148,36 @@ function mockClient(overrides: Record<string, unknown> = {}) {
 describe("list_projects", () => {
   it("returns formatted project list", async () => {
     const client = mockClient()
-    const result = await listProjects(client)
+    const result = await listProjects(client, "proj-1")
 
     const parsed = JSON.parse(result.content[0]!.text)
     expect(parsed).toHaveLength(1)
     expect(parsed[0].name).toBe("Test Project")
     expect(parsed[0].keywords).toEqual(["test"])
+    expect(parsed[0].isCurrent).toBe(true)
   })
 })
 
 describe("get_brief", () => {
+  it("defaults to quick continuity when the project is warm and clean", async () => {
+    const client = mockClient({
+      getDefaultSince: vi.fn().mockResolvedValue("2026-01-01T00:00:00.000Z"),
+    })
+
+    await getBrief(
+      client,
+      { targetProfileKey: "claude_code_build", generate: true, syncSurface: "mcp" },
+      "proj-1"
+    )
+
+    expect(client.post).toHaveBeenCalledWith("/api/projects/proj-1/bootstrap", {
+      targetProfileKey: "claude_code_build",
+      kind: "quick_continuity",
+      since: "2026-01-01T00:00:00.000Z",
+      syncSurface: "mcp"
+    })
+  })
+
   it("generates a new brief", async () => {
     const client = mockClient()
     const result = await getBrief(
@@ -161,6 +187,7 @@ describe("get_brief", () => {
     )
 
     expect(result.content[0]!.text).toBe("# Generated Brief")
+    expect(getBriefStatus(result)).toBe("ready")
     expect(client.post).toHaveBeenCalledWith("/api/projects/proj-1/bootstrap", {
       targetProfileKey: "claude_code_build",
       kind: "fresh_chat_bootstrap",
@@ -178,6 +205,7 @@ describe("get_brief", () => {
     )
 
     expect(result.content[0]!.text).toBe("# Project Brief\n\nThis is the brief.")
+    expect(getBriefStatus(result)).toBe("ready")
     expect(client.get).toHaveBeenCalled()
   })
 
@@ -192,6 +220,7 @@ describe("get_brief", () => {
     )
 
     expect(result.content[0]!.text).toContain("in progress")
+    expect(getBriefStatus(result)).toBe("pending")
   })
 })
 

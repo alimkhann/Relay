@@ -1,5 +1,6 @@
-import { createRepositoryBundle } from "@relay/db"
+import { createRepositoryBundle, getProjectDashboard } from "@relay/db"
 import type { MemoryItemRow, WorkSessionStructuredState } from "@relay/shared"
+import type { ProjectSummaryDto } from "@relay/shared"
 
 import type { Viewer } from "@/server/policies/viewer"
 import {
@@ -13,7 +14,8 @@ import {
 import { archiveProjectSession, deleteProjectBrief } from "@/server/services/project-governance-service"
 import { generateBootstrapForProject, getLatestBootstrapForProject } from "@/server/services/bootstrap-service"
 import { upsertProjectStateFromMcp } from "@/server/services/mcp-project-state-service"
-import { recordSyncMarkForUser } from "@/server/services/sync-mark-service"
+import { listProjectsForUser } from "@/server/services/project-service"
+import { getSyncMarkForUser, recordSyncMarkForUser } from "@/server/services/sync-mark-service"
 import { flushWorkSession } from "@/server/services/work-session-flush-service"
 
 /**
@@ -28,28 +30,35 @@ export class RelayHttpMcpClient {
   }
 
   async listProjects() {
-    const repositories = createRepositoryBundle(this.viewer.userId)
-    const projects = await repositories.projects.listByOwner(this.viewer.userId)
-    return projects.map((p) => ({
+    const projects = await listProjectsForUser(this.viewer.userId)
+    return projects.map((p: ProjectSummaryDto) => ({
       id: p.id,
       name: p.name,
       slug: p.slug,
       description: p.description,
+      memoryCount: p.memoryCount,
+      sessionCount: p.sessionCount,
+      keywords: p.routingContext?.keywords ?? [],
+      updatedAt: p.updatedAt,
     }))
   }
 
   async getBrief(projectId: string, args: Record<string, unknown>) {
     const targetProfileKey = (args.targetProfileKey as string) ?? "claude_code_build"
-    const kind = (args.kind as string) === "quick_continuity" ? "quick_continuity" : "fresh_chat_bootstrap"
     const syncSurface = (args.syncSurface as string) ?? "mcp"
     const include = ((args.include as string[] | undefined) ?? []) as Array<"state" | "memory">
     const generate = args.generate !== false
+    const since = await this.resolveDefaultSince(projectId, args.since as string | undefined)
+    const kind = await this.resolveBriefKind(projectId, {
+      kind: args.kind as string | undefined,
+      since,
+    })
 
     if (generate) {
       const result = await generateBootstrapForProject(this.viewer.userId, projectId, {
         targetProfileKey,
         kind,
-        since: args.since as string | undefined,
+        since: kind === "quick_continuity" ? since : args.since as string | undefined,
         syncSurface,
       })
       if (result.status === "ready" && result.packet) {
@@ -69,6 +78,36 @@ export class RelayHttpMcpClient {
     return include.length > 0
       ? this.appendIncludeSections(projectId, packet.content, include)
       : packet.content
+  }
+
+  private async resolveDefaultSince(projectId: string, explicitSince?: string) {
+    if (explicitSince) return explicitSince
+    const syncMark = await getSyncMarkForUser(this.viewer.userId, projectId, "mcp")
+    return syncMark?.lastSyncAt ?? undefined
+  }
+
+  private async resolveBriefKind(
+    projectId: string,
+    input: { kind?: string; since?: string },
+  ) {
+    if (input.kind === "quick_continuity" || input.kind === "fresh_chat_bootstrap") {
+      return input.kind
+    }
+
+    const repositories = createRepositoryBundle(this.viewer.userId)
+    const dashboard = await getProjectDashboard(repositories, this.viewer.userId, projectId).catch(() => null)
+    const state = dashboard?.projectState ?? dashboard?.derivedProjectState ?? null
+    const stateDirty = Boolean(state?.dirty)
+    const stateStatus = dashboard?.stateStatus
+
+    const isQuickCandidate =
+      Boolean(input.since) &&
+      Boolean(stateStatus?.projectStateReady) &&
+      !stateDirty &&
+      stateStatus?.rawCapturePresent !== true &&
+      !["pending", "running", "failed", "timed_out"].includes(stateStatus?.digestStatus ?? "idle")
+
+    return isQuickCandidate ? "quick_continuity" : "fresh_chat_bootstrap"
   }
 
   async getProjectState(projectId: string) {

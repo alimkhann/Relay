@@ -1,11 +1,12 @@
 import { z } from "zod"
+import type { RelayProjectResolutionResult } from "@relay/shared"
 import type { RelayClient } from "../client.js"
 
 export const getBriefSchema = z.object({
   projectId: z.string().optional().describe("Project ID. Auto-detected if not provided."),
   kind: z
     .enum(["quick_continuity", "fresh_chat_bootstrap"])
-    .default("fresh_chat_bootstrap")
+    .optional()
     .describe("Brief kind: quick_continuity for short updates, fresh_chat_bootstrap for full context"),
   targetProfileKey: z
     .string()
@@ -43,8 +44,19 @@ interface LatestResponse {
 }
 
 interface DashboardResponse {
+  project: {
+    id: string
+    name: string
+    slug: string
+  }
   dashboard: {
     projectState: Record<string, unknown> | null
+    derivedProjectState?: Record<string, unknown> | null
+    stateStatus?: {
+      rawCapturePresent?: boolean
+      digestStatus?: string
+      projectStateReady?: boolean
+    }
     memory: Array<{
       id: string
       type: string
@@ -54,6 +66,10 @@ interface DashboardResponse {
       updatedAt: string
     }>
   }
+}
+
+function toStructuredRecord(value: unknown): Record<string, unknown> {
+  return value as Record<string, unknown>
 }
 
 async function appendIncludeSections(
@@ -86,45 +102,123 @@ async function appendIncludeSections(
   }
 }
 
+function isStateDirty(state: Record<string, unknown> | null | undefined) {
+  return Boolean(state && typeof state["dirty"] === "boolean" && state["dirty"])
+}
+
+async function resolveBriefMode(
+  client: RelayClient,
+  resolvedProjectId: string,
+  args: z.infer<typeof getBriefSchema>,
+) {
+  const syncSurface = args.syncSurface ?? client.getDefaultSyncSurface()
+  const defaultSince = await client.getDefaultSince(resolvedProjectId, args.since)
+
+  if (args.kind) {
+    return {
+      kind: args.kind,
+      since: args.kind === "quick_continuity" ? defaultSince : args.since,
+      syncSurface,
+    }
+  }
+
+  try {
+    const data = await client.get<DashboardResponse>(`/api/projects/${resolvedProjectId}`)
+    const state = data.dashboard.projectState ?? data.dashboard.derivedProjectState ?? null
+    const stateStatus = data.dashboard.stateStatus
+    const isQuickCandidate =
+      Boolean(defaultSince) &&
+      Boolean(stateStatus?.projectStateReady) &&
+      !isStateDirty(state) &&
+      stateStatus?.rawCapturePresent !== true &&
+      !["pending", "running", "failed", "timed_out"].includes(stateStatus?.digestStatus ?? "idle")
+
+    return {
+      kind: isQuickCandidate ? "quick_continuity" as const : "fresh_chat_bootstrap" as const,
+      since: isQuickCandidate ? defaultSince : args.since,
+      syncSurface,
+    }
+  } catch {
+    return {
+      kind: defaultSince ? "quick_continuity" as const : "fresh_chat_bootstrap" as const,
+      since: defaultSince ?? args.since,
+      syncSurface,
+    }
+  }
+}
+
 export async function getBrief(
   client: RelayClient,
   args: z.infer<typeof getBriefSchema>,
-  resolvedProjectId: string
+  resolvedProjectId: string,
+  resolution?: RelayProjectResolutionResult
 ) {
-  const syncSurface = args.syncSurface ?? client.getDefaultSyncSurface()
+  const { kind, since, syncSurface } = await resolveBriefMode(client, resolvedProjectId, args)
 
   if (args.generate) {
     const data = await client.post<BootstrapResponse>(
       `/api/projects/${resolvedProjectId}/bootstrap`,
         {
           targetProfileKey: args.targetProfileKey,
-          kind: args.kind,
-          since: args.since,
+          kind,
+          since,
           syncSurface
         }
       )
 
     if (data.status === "pending") {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Brief generation is in progress. ${data.reason ?? "Please try again in a moment."}`
-          }
-        ]
-      }
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: `Brief generation is in progress. ${data.reason ?? "Please try again in a moment."}`
+        }
+      ],
+      structuredContent: toStructuredRecord({
+        projectResolution: resolution ?? {
+          status: "resolved",
+          projectId: resolvedProjectId,
+          source: args.projectId ? "explicit" : "cached",
+          confidence: 1,
+          needsUserIntervention: false,
+        },
+        brief: {
+          status: "pending",
+          kind,
+          syncSurface,
+          since: since ?? null,
+          targetProfileKey: data.resolvedTargetProfileKey,
+        },
+      }),
     }
+  }
 
     if (!data.packet) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: "No brief available yet. The project may not have enough context captured."
-          }
-        ]
-      }
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: "No brief available yet. The project may not have enough context captured."
+        }
+      ],
+      structuredContent: toStructuredRecord({
+        projectResolution: resolution ?? {
+          status: "resolved",
+          projectId: resolvedProjectId,
+          source: args.projectId ? "explicit" : "cached",
+          confidence: 1,
+          needsUserIntervention: false,
+        },
+        brief: {
+          status: "missing",
+          kind,
+          syncSurface,
+          since: since ?? null,
+          targetProfileKey: data.resolvedTargetProfileKey,
+        },
+      }),
     }
+  }
 
     let text = data.packet.content
     if (args.include?.length) {
@@ -132,13 +226,30 @@ export async function getBrief(
     }
 
     return {
-      content: [{ type: "text" as const, text }]
+      content: [{ type: "text" as const, text }],
+      structuredContent: toStructuredRecord({
+        projectResolution: resolution ?? {
+          status: "resolved",
+          projectId: resolvedProjectId,
+          source: args.projectId ? "explicit" : "cached",
+          confidence: 1,
+          needsUserIntervention: false,
+        },
+        brief: {
+          status: "ready",
+          kind,
+          syncSurface,
+          since: since ?? null,
+          packetId: data.packet.id,
+          targetProfileKey: data.packet.targetProfileKey,
+        },
+      }),
     }
   }
 
   // Fetch latest cached brief
   const data = await client.get<LatestResponse>(
-    `/api/projects/${resolvedProjectId}/bootstrap/latest?targetProfileKey=${encodeURIComponent(args.targetProfileKey)}&kind=${encodeURIComponent(args.kind)}&syncSurface=${encodeURIComponent(syncSurface)}`
+    `/api/projects/${resolvedProjectId}/bootstrap/latest?targetProfileKey=${encodeURIComponent(args.targetProfileKey)}&kind=${encodeURIComponent(kind)}&syncSurface=${encodeURIComponent(syncSurface)}`
   )
 
   if (!data.packet) {
@@ -148,7 +259,22 @@ export async function getBrief(
           type: "text" as const,
           text: "No cached brief available. Try calling with generate=true to create one."
         }
-      ]
+      ],
+      structuredContent: toStructuredRecord({
+        projectResolution: resolution ?? {
+          status: "resolved",
+          projectId: resolvedProjectId,
+          source: args.projectId ? "explicit" : "cached",
+          confidence: 1,
+          needsUserIntervention: false,
+        },
+        brief: {
+          status: "missing",
+          kind,
+          syncSurface,
+          since: since ?? null,
+        },
+      }),
     }
   }
 
@@ -158,6 +284,23 @@ export async function getBrief(
   }
 
   return {
-    content: [{ type: "text" as const, text }]
+    content: [{ type: "text" as const, text }],
+    structuredContent: toStructuredRecord({
+      projectResolution: resolution ?? {
+        status: "resolved",
+        projectId: resolvedProjectId,
+        source: args.projectId ? "explicit" : "cached",
+        confidence: 1,
+        needsUserIntervention: false,
+      },
+      brief: {
+        status: "ready",
+        kind,
+        syncSurface,
+        since: since ?? null,
+        packetId: data.packet.id,
+        targetProfileKey: data.packet.targetProfileKey,
+      },
+    }),
   }
 }

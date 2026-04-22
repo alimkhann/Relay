@@ -79,19 +79,30 @@ export interface ClientSetupResult {
 const RELAY_FLUSH_PREFIX = "relay-flush"
 const RELAY_BLOCK_PREFIX = "RELAY MANAGED BLOCK"
 const RELAY_SKILL_NAME = "relay-context"
+const RELAY_FLUSH_BASE_COMMAND = "npx -y -p @onrelay/mcp relay-flush"
+
+function buildRelayFlushCommand(
+  reason: "precompact" | "session_end" | "stop" | "stop_failure" | "precompress" | "failure",
+  options: { quiet?: boolean; failureOnly?: boolean } = {},
+) {
+  const parts = [RELAY_FLUSH_BASE_COMMAND, reason]
+  if (options.failureOnly) parts.push("--failure-only")
+  if (options.quiet !== false) parts.push("--quiet")
+  return parts.join(" ")
+}
 
 const CLAUDE_HOOKS: Record<string, ClaudeHookMatcher[]> = {
   PreCompact: [
-    { matcher: "*", hooks: [{ type: "command", command: "relay-flush precompact --quiet" }] },
+    { matcher: "*", hooks: [{ type: "command", command: buildRelayFlushCommand("precompact") }] },
   ],
   SessionEnd: [
-    { matcher: "*", hooks: [{ type: "command", command: "relay-flush session_end --quiet" }] },
+    { matcher: "*", hooks: [{ type: "command", command: buildRelayFlushCommand("session_end") }] },
   ],
   Stop: [
-    { matcher: "*", hooks: [{ type: "command", command: "relay-flush stop --quiet" }] },
+    { matcher: "*", hooks: [{ type: "command", command: buildRelayFlushCommand("stop") }] },
   ],
   StopFailure: [
-    { matcher: "*", hooks: [{ type: "command", command: "relay-flush stop_failure --quiet" }] },
+    { matcher: "*", hooks: [{ type: "command", command: buildRelayFlushCommand("stop_failure") }] },
   ],
 }
 
@@ -103,7 +114,7 @@ const GEMINI_HOOKS: Record<string, GeminiHookGroup[]> = {
         {
           name: "relay-precompress",
           type: "command",
-          command: "relay-flush precompress --quiet",
+          command: buildRelayFlushCommand("precompress"),
           timeout: 5000,
         },
       ],
@@ -116,7 +127,7 @@ const GEMINI_HOOKS: Record<string, GeminiHookGroup[]> = {
         {
           name: "relay-session-end",
           type: "command",
-          command: "relay-flush session_end --quiet",
+          command: buildRelayFlushCommand("session_end"),
           timeout: 5000,
         },
       ],
@@ -129,7 +140,7 @@ const GEMINI_HOOKS: Record<string, GeminiHookGroup[]> = {
         {
           name: "relay-after-agent-failure",
           type: "command",
-          command: "relay-flush failure --quiet --failure-only",
+          command: buildRelayFlushCommand("failure", { failureOnly: true }),
           timeout: 4000,
         },
       ],
@@ -137,31 +148,22 @@ const GEMINI_HOOKS: Record<string, GeminiHookGroup[]> = {
   ],
 }
 
-const WINDSURF_HOOKS: Record<string, WindsurfHookEntry[]> = {
-  post_cascade_response_with_transcript: [
-    {
-      command: "relay-flush failure --quiet --failure-only",
-      show_output: false,
-    },
-  ],
-  post_mcp_tool_use: [
-    {
-      command: "relay-flush mcp_tool_use --quiet --idle=5m",
-      show_output: false,
-    },
-  ],
-}
+const WINDSURF_HOOKS: Record<string, WindsurfHookEntry[]> = {}
 
 function isRelayHookCommand(command: string) {
-  return command.startsWith(RELAY_FLUSH_PREFIX)
+  return /\brelay-flush\b/.test(command)
+}
+
+function isManagedRelayFlushCommand(command: string) {
+  return command.startsWith(RELAY_FLUSH_BASE_COMMAND)
 }
 
 function isClaudeRelayHook(hook: ClaudeHookEntry) {
-  return hook.type === "command" && isRelayHookCommand(hook.command)
+  return hook.type === "command" && isManagedRelayFlushCommand(hook.command)
 }
 
 function isGeminiRelayHook(hook: GeminiHookEntry) {
-  return hook.type === "command" && isRelayHookCommand(hook.command)
+  return hook.type === "command" && isManagedRelayFlushCommand(hook.command)
 }
 
 function isWindsurfRelayHook(hook: WindsurfHookEntry) {
@@ -319,10 +321,11 @@ function buildRelayBehaviorBody(clientName: string, options: { hooks?: string[];
   return [
     `## Relay for ${clientName}`,
     "",
-    "- When starting fresh work or resuming after a break, use Relay early: `list_projects`, `set_current_project` if needed, then `get_brief`.",
-    "- Before architecture changes or uncertain decisions, prefer `search_context` or `recall_context` over guessing.",
+    "- Start or resume with `get_brief`. Only call `list_projects` and `set_current_project` if Relay reports project ambiguity or the wrong project.",
+    "- Before architecture, product, or process decisions, prefer `search_context` or `recall_context` when local context may be incomplete.",
     "- Use `get_project_state` when you need the structured objective, constraints, or open tasks instead of a prose brief.",
-    "- Use `add_memory` only for durable single facts. Use `checkpoint_context` for a mid-task milestone. Use `save_context` when wrapping up a meaningful unit of work.",
+    "- Use `add_memory` only for clearly confirmed durable facts: decisions, constraints, tasks, and stable product truths. Do not save speculative brainstorming until it is confirmed.",
+    "- Use `checkpoint_context` only before compaction-equivalent risk, task switches, or explicit milestone saves. Use `save_context` only when wrapping up a meaningful unit of work.",
     hookLine,
     skillLine,
   ].join("\n")
@@ -336,9 +339,9 @@ alwaysApply: true
 
 The canonical repository policy is in \`AGENTS.md\`. Follow it first.
 
-- Use Relay early when resuming a task: \`list_projects\`, \`set_current_project\` if needed, then \`get_brief\`.
-- Prefer \`search_context\` or \`recall_context\` before architectural changes when local context may be incomplete.
-- Use \`add_memory\` for durable single facts, \`checkpoint_context\` for milestones, and \`save_context\` when wrapping a meaningful unit of work.
+- Start or resume with \`get_brief\`. Only call \`list_projects\` and \`set_current_project\` if Relay reports project ambiguity or the wrong project.
+- Prefer \`search_context\` or \`recall_context\` before architectural, product, or process decisions when local context may be incomplete.
+- Use \`add_memory\` only for clearly confirmed durable facts. Use \`checkpoint_context\` before compaction risk, task switches, or explicit milestone saves, and \`save_context\` only when wrapping a meaningful unit of work.
 - Do not read or write Relay repeatedly when the current conversation already has the context you need.
 - Cursor has no Relay-managed hook flow here, so checkpoint only at meaningful boundaries.
 `
@@ -349,19 +352,19 @@ function buildWindsurfRule() {
 
 The canonical repository policy is in \`AGENTS.md\`. Follow it first.
 
-- Start or resume work with Relay: \`list_projects\`, \`set_current_project\` if needed, then \`get_brief\`.
-- Use \`search_context\` or \`recall_context\` before making architecture or workflow decisions that might conflict with prior context.
-- Use \`add_memory\` for durable facts, \`checkpoint_context\` for milestones, and \`save_context\` when ending a meaningful unit of work.
-- Relay installs Windsurf hooks for transcript and MCP activity. Let those hooks handle normal autosave and avoid noisy manual writes.
+- Start or resume with \`get_brief\`. Only call \`list_projects\` and \`set_current_project\` if Relay reports project ambiguity or the wrong project.
+- Use \`search_context\` or \`recall_context\` before making architecture, product, or workflow decisions that might conflict with prior context.
+- Use \`add_memory\` only for clearly confirmed durable facts. Use \`checkpoint_context\` before compaction risk, task switches, or milestone saves, and \`save_context\` only when ending a meaningful unit of work.
+- Relay does not install noisy per-tool Windsurf autosave hooks by default. Keep saves deliberate and boundary-oriented.
 `
 }
 
 function buildProjectRelayInstructions() {
   return `# Relay Guidance
 
-- Start with Relay when resuming work: \`list_projects\`, \`set_current_project\` if needed, then \`get_brief\`.
-- Use \`search_context\` or \`recall_context\` before major architectural changes.
-- Use \`add_memory\` for durable single facts, \`checkpoint_context\` for milestones, and \`save_context\` when you finish a meaningful unit of work.
+- Start or resume with \`get_brief\`. Only call \`list_projects\` and \`set_current_project\` if Relay reports project ambiguity or the wrong project.
+- Use \`search_context\` or \`recall_context\` before major architecture, product, or process decisions.
+- Use \`add_memory\` only for clearly confirmed durable facts. Use \`checkpoint_context\` before compaction risk, task switches, or milestone saves, and \`save_context\` when you finish a meaningful unit of work.
 - Do not overuse Relay when the current conversation already contains the necessary context.
 `
 }
@@ -383,19 +386,19 @@ Use this skill when you are resuming work, switching projects, or deciding wheth
 
 ## Recommended Relay flow
 
-1. Start with \`list_projects\`.
-2. If the active project is ambiguous, call \`set_current_project\`.
-3. Call \`get_brief\` to load the current working context.
-4. Use \`search_context\` or \`recall_context\` before major decisions when local context may be incomplete.
-5. Save back deliberately:
-   - \`add_memory\` for durable single facts
-   - \`checkpoint_context\` for milestones
+1. Start with \`get_brief\`.
+2. Only if Relay reports project ambiguity or the wrong project, call \`list_projects\` and then \`set_current_project\`.
+3. Use \`search_context\` or \`recall_context\` before major architecture, product, or process decisions when local context may be incomplete.
+4. Save back deliberately:
+   - \`add_memory\` only for clearly confirmed durable facts
+   - \`checkpoint_context\` before compaction risk, task switches, or explicit milestones
    - \`save_context\` when wrapping a meaningful unit of work
 
 ## What to avoid
 
 - Do not read Relay repeatedly when the current local conversation already has enough context.
 - Do not write after every turn.
+- Do not save speculative brainstorming until it is clearly confirmed.
 - Do not call \`save_context\` just to restate work that is still in progress.
 `
 }
@@ -515,19 +518,19 @@ async function installWindsurfSetup(ide: DetectedIDE): Promise<ClientSetupResult
 
   if (ide.clientSetupPath) {
     const existing = await loadJsonConfig<WindsurfSettings>(ide.clientSetupPath)
-    const nextHooks: Record<string, WindsurfHookEntry[]> = { ...(existing.data.hooks ?? {}) }
-
-    for (const [event, incoming] of Object.entries(WINDSURF_HOOKS)) {
-      nextHooks[event] = mergeWindsurfHookEvent(nextHooks[event], incoming)
-    }
-
-    const next = applyJsoncEdits(existing.raw, [{ path: ["hooks"], value: nextHooks }])
+    const nextHooks = Object.fromEntries(
+      Object.entries(existing.data.hooks ?? {})
+        .map(([event, hooks]) => {
+          const keptHooks = hooks.filter((hook) => !isWindsurfRelayHook(hook))
+          return [event, keptHooks] as const
+        })
+        .filter(([, hooks]) => hooks.length > 0),
+    )
+    const next = applyJsoncEdits(existing.raw, [{ path: ["hooks"], value: Object.keys(nextHooks).length > 0 ? nextHooks : undefined }])
     if (next.changed) {
       await mkdir(dirname(ide.clientSetupPath), { recursive: true })
       await writeFile(ide.clientSetupPath, next.text, "utf-8")
-      artifacts.push({ kind: "hooks", path: ide.clientSetupPath, status: existing.raw.trim() ? "updated" : "installed" })
-    } else {
-      artifacts.push({ kind: "hooks", path: ide.clientSetupPath, status: "already-configured" })
+      artifacts.push({ kind: "hooks", path: ide.clientSetupPath, status: "updated" })
     }
   }
 
@@ -814,13 +817,11 @@ export async function validateInstalledClientSetup(ide: DetectedIDE): Promise<bo
       return hasManagedBlock(instructions, "copilot")
     }
     case "windsurf": {
-      const settingsPath = ide.clientSetupPath
-      if (!settingsPath) return false
-      const settings = await loadJsonConfig<WindsurfSettings>(settingsPath)
       const rule = await readText(resolveWindsurfRulePath(ide))
-      return Boolean(settings.data.hooks?.post_cascade_response_with_transcript?.some((hook) => isWindsurfRelayHook(hook)))
-        && Boolean(settings.data.hooks?.post_mcp_tool_use?.some((hook) => isWindsurfRelayHook(hook)))
-        && rule.includes("Relay Windsurf Guidance")
+      if (!rule.includes("Relay Windsurf Guidance")) return false
+      if (!ide.clientSetupPath) return true
+      const settings = await loadJsonConfig<WindsurfSettings>(ide.clientSetupPath)
+      return !Object.values(settings.data.hooks ?? {}).flat().some((hook) => isWindsurfRelayHook(hook))
     }
     case "gemini-cli": {
       const settings = await loadJsonConfig<GeminiSettings>(ide.clientSetupPath ?? ide.mcpConfigPath)

@@ -13,10 +13,11 @@ Additional VS Code / Copilot guidance for this repo:
 <!-- BEGIN RELAY MANAGED BLOCK: copilot -->
 ## Relay for VS Code / Copilot
 
-- When starting fresh work or resuming after a break, use Relay early: `list_projects`, `set_current_project` if needed, then `get_brief`.
+- When starting fresh work or resuming after a break, start with `get_brief`. Only call `list_projects` and `set_current_project` if Relay reports project ambiguity or resolves to the wrong project.
 - Before architecture changes or uncertain decisions, prefer `search_context` or `recall_context` over guessing.
 - Use `get_project_state` when you need the structured objective, constraints, or open tasks instead of a prose brief.
-- Use `add_memory` only for durable single facts. Use `checkpoint_context` for a mid-task milestone. Use `save_context` when wrapping up a meaningful unit of work.
+- Use `add_memory` only for clearly confirmed durable single facts. Use `checkpoint_context` for a mid-task milestone or before compaction-equivalent risk. Use `save_context` when wrapping up a meaningful unit of work.
 - Use `checkpoint_context` only at meaningful milestones, before switching tasks, or before compaction-equivalent actions.
+- Do not save speculative brainstorming until it becomes a confirmed durable fact.
 - Avoid repeated Relay reads or writes when the current local conversation already contains the needed context.
 <!-- END RELAY MANAGED BLOCK: copilot -->

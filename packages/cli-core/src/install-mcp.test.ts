@@ -221,8 +221,8 @@ describe("installClientSetup", () => {
     const installed = JSON.parse(await readFile(settingsPath, "utf-8")) as {
       hooks?: Record<string, Array<{ matcher: string; hooks: Array<{ command: string }> }>>
     }
-    expect(installed.hooks?.PreCompact?.[0]?.hooks?.[0]?.command).toContain("relay-flush precompact")
-    expect(installed.hooks?.StopFailure?.[0]?.hooks?.[0]?.command).toContain("relay-flush stop_failure")
+    expect(installed.hooks?.PreCompact?.[0]?.hooks?.[0]?.command).toBe("npx -y -p @onrelay/mcp relay-flush precompact --quiet")
+    expect(installed.hooks?.StopFailure?.[0]?.hooks?.[0]?.command).toBe("npx -y -p @onrelay/mcp relay-flush stop_failure --quiet")
 
     const removed = await uninstallClientSetup(ide)
     expect(removed).toBe(true)
@@ -243,7 +243,7 @@ describe("installClientSetup", () => {
     const installed = JSON.parse(await readFile(settingsPath, "utf-8")) as {
       hooks?: Record<string, Array<{ hooks: Array<{ command: string }> }>>
     }
-    expect(installed.hooks?.PreCompress?.[0]?.hooks?.[0]?.command).toContain("relay-flush precompress")
+    expect(installed.hooks?.PreCompress?.[0]?.hooks?.[0]?.command).toBe("npx -y -p @onrelay/mcp relay-flush precompress --quiet")
     expect(installed.hooks?.AfterAgent?.[0]?.hooks?.[0]?.command).toContain("--failure-only")
 
     const removed = await uninstallClientSetup(ide)
@@ -253,7 +253,7 @@ describe("installClientSetup", () => {
     expect(uninstalled.hooks).toBeUndefined()
   })
 
-  it("installs and removes Windsurf hooks", async () => {
+  it("installs Windsurf rules and removes stale Relay hooks", async () => {
     const workspaceDir = await mkdtemp(join(tmpdir(), "relay-windsurf-workspace-"))
     const dir = await mkdtemp(join(tmpdir(), "relay-windsurf-"))
     const hooksPath = join(dir, "hooks.json")
@@ -262,6 +262,20 @@ describe("installClientSetup", () => {
       workspaceRoot: workspaceDir,
     }
 
+    await writeFile(
+      hooksPath,
+      JSON.stringify(
+        {
+          hooks: {
+            post_mcp_tool_use: [{ command: "relay-flush mcp_tool_use --quiet" }],
+            post_cascade_response_with_transcript: [{ command: "relay-flush failure --quiet --failure-only" }],
+          },
+        },
+        null,
+        2,
+      ),
+    )
+
     const result = await installClientSetup(ide)
     expect(result.artifacts.some((artifact) => artifact.kind === "rules")).toBe(true)
     expect(await validateInstalledClientSetup(ide)).toBe(true)
@@ -269,8 +283,8 @@ describe("installClientSetup", () => {
     const installed = JSON.parse(await readFile(hooksPath, "utf-8")) as {
       hooks?: Record<string, Array<{ command: string }>>
     }
-    expect(installed.hooks?.post_cascade_response_with_transcript?.[0]?.command).toContain("--failure-only")
-    expect(installed.hooks?.post_mcp_tool_use?.[0]?.command).toContain("mcp_tool_use")
+    expect(installed.hooks?.post_cascade_response_with_transcript).toBeUndefined()
+    expect(installed.hooks?.post_mcp_tool_use).toBeUndefined()
 
     const removed = await uninstallClientSetup(ide)
     expect(removed).toBe(true)
@@ -292,6 +306,7 @@ describe("installClientSetup", () => {
 
     const instructions = await readFile(join(homeDir, "AGENTS.md"), "utf-8")
     expect(instructions).toContain("BEGIN RELAY MANAGED BLOCK: codex")
+    expect(instructions).toContain("Start or resume with `get_brief`")
   })
 
   it("installs a Cursor rule file", async () => {

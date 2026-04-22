@@ -27,7 +27,6 @@ Relay installs extra client setup only where the client has an official hook sur
 
 - Claude Code: `PreCompact`, `SessionEnd`, `Stop`, `StopFailure`
 - Gemini CLI: `PreCompress`, `SessionEnd`, `AfterAgent`
-- Windsurf: `post_cascade_response_with_transcript`, `post_mcp_tool_use`
 
 Relay does not promise a universal pre-rate-limit save hook. The fallback model
 is best-effort pre-loss protection: native hooks where supported, opportunistic
@@ -48,16 +47,23 @@ These complement the core resume and writeback tools rather than replacing them.
 
 ## Behavior bridges
 
-Relay also installs behavior guidance by client so agents use Relay early but
-not noisily:
+Relay also installs behavior guidance by client so agents use Relay cheaply and
+autonomously:
 
 - Claude Code: managed `CLAUDE.md` block + hooks
 - Codex: managed user `AGENTS.md` block
 - Cursor: `.cursor/rules/relay.mdc`
-- Windsurf: `.windsurf/rules/relay.md` + hooks
+- Windsurf: `.windsurf/rules/relay.md`
 - Gemini CLI: managed `GEMINI.md` block + hooks
 - OpenCode: managed `instructions` entries + project skill
 - VS Code / Copilot: managed `.github/copilot-instructions.md` block
+
+The default agent flow is:
+
+- start or resume with `get_brief`
+- only call `list_projects` and `set_current_project` if Relay reports ambiguity
+- search before high-impact decisions when local context is incomplete
+- save only at meaningful boundaries or for clearly confirmed durable facts
 
 ## Troubleshooting
 

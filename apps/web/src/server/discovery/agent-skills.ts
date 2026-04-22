@@ -68,7 +68,7 @@ npx @onrelay/wizard
 
 - Relay's hosted streamable HTTP MCP endpoint is \`https://www.onrelay.app/api/mcp/stream\`.
 - The safest default is the setup wizard, not manual token editing.
-- Once connected, start sessions by calling \`list_projects\` and then \`get_brief\`.
+- Once connected, start sessions with \`get_brief\`. Only use \`list_projects\` and \`set_current_project\` if Relay reports ambiguity or the wrong project.
 `,
   }),
   buildSkillDocument({
@@ -82,10 +82,10 @@ Use this skill when a coding agent needs the current Relay context before making
 
 ## Workflow
 
-1. Call \`list_projects\`.
-2. Match the current repository or working directory to the most likely Relay project.
-3. If needed, call \`set_current_project\` with the matching project ID.
-4. Call \`get_brief\` to load the current project brief.
+1. Call \`get_brief\` first.
+2. If Relay reports project ambiguity, call \`list_projects\`.
+3. Only then call \`set_current_project\` with the matching project ID.
+4. Retry \`get_brief\` to load the current project brief.
 
 ## Guidance
 
@@ -111,9 +111,10 @@ Use this skill when a coding session produced new durable context that should be
 
 ## Preferred write pattern
 
-- Use \`add_memory\` immediately for important individual decisions, constraints, or tasks.
+- Use \`add_memory\` immediately for clearly confirmed individual decisions, constraints, or tasks.
 - Use \`checkpoint_context\` for a mid-session snapshot that should not close the work session.
 - Use \`save_context\` when you want to finalize the session summary.
+- Do not save speculative brainstorming until it becomes confirmed durable context.
 
 ## Minimum end-of-session payload
 

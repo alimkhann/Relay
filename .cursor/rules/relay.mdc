@@ -5,8 +5,8 @@ alwaysApply: true
 
 The canonical repository policy is in `AGENTS.md`. Follow it first.
 
-- Use Relay early when resuming a task: `list_projects`, `set_current_project` if needed, then `get_brief`.
-- Prefer `search_context` or `recall_context` before architectural changes when local context may be incomplete.
-- Use `add_memory` for durable single facts, `checkpoint_context` for milestones, and `save_context` when wrapping a meaningful unit of work.
+- Start or resume with `get_brief`. Only call `list_projects` and `set_current_project` if Relay reports project ambiguity or resolves to the wrong project.
+- Prefer `search_context` or `recall_context` before architectural, product, or process decisions when local context may be incomplete.
+- Use `add_memory` only for clearly confirmed durable facts. Use `checkpoint_context` for meaningful milestones or before compaction-equivalent risk. Use `save_context` when wrapping a meaningful unit of work.
 - Do not read or write Relay repeatedly when the current conversation already has the context you need.
 - Cursor has no Relay-managed hook flow here, so checkpoint only at meaningful boundaries.
