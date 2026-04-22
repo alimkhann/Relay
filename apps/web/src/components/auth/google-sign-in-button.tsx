@@ -23,20 +23,9 @@ export function GoogleSignInButton({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [inAppPlatform, setInAppPlatform] = useState<InAppBrowserPlatform>(null);
-  const [iosHint, setIosHint] = useState(false);
 
   useEffect(() => {
-    const platform = detectInAppBrowser();
-    if (!platform) return;
-    setInAppPlatform(platform);
-    logClientEvent({
-      level: "info",
-      surface: "web-auth",
-      area: "auth",
-      event: "in_app_browser.detected",
-      message: "User is in an in-app browser where Google OAuth is blocked.",
-      context: { platform },
-    });
+    setInAppPlatform(detectInAppBrowser());
   }, []);
 
   return (
@@ -60,26 +49,6 @@ export function GoogleSignInButton({
                 context: { platform: "android" },
               });
               window.location.href = buildAndroidChromeIntent(window.location.href);
-              return;
-            }
-
-            if (inAppPlatform === "ios") {
-              logClientEvent({
-                level: "info",
-                surface: "web-auth",
-                area: "auth",
-                event: "google_sign_in.in_app_redirect",
-                flowId,
-                message: "Attempting iOS in-app browser escape.",
-                context: { platform: "ios" },
-              });
-              try {
-                await navigator.clipboard.writeText(window.location.href);
-              } catch {
-                // clipboard permission denied — user can still use "Copy link again"
-              }
-              window.open(window.location.href, "_blank");
-              setIosHint(true);
               return;
             }
 
@@ -145,34 +114,8 @@ export function GoogleSignInButton({
           })
         }
       >
-        {pending
-          ? inAppPlatform
-            ? "Opening browser…"
-            : "Opening Google…"
-          : "Continue with Google"}
+        {pending ? "Opening Google…" : "Continue with Google"}
       </Button>
-      {iosHint ? (
-        <p className="text-sm text-[var(--relay-muted)]">
-          Link copied. Tap{" "}
-          <strong className="text-[var(--relay-ink)]">···</strong> (top right) →{" "}
-          <strong className="text-[var(--relay-ink)]">Open in Safari</strong>, then paste.{" "}
-          <button
-            type="button"
-            className="underline underline-offset-2 hover:text-[var(--relay-ink)] transition"
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(window.location.href);
-              } catch {}
-            }}
-          >
-            Copy link again
-          </button>
-        </p>
-      ) : inAppPlatform ? (
-        <p className="text-xs text-[var(--relay-faint)]">
-          Best experience in Safari or Chrome.
-        </p>
-      ) : null}
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
     </div>
   );

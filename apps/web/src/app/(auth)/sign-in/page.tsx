@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
+import { InAppBrowserBanner } from "@/components/auth/in-app-browser-banner";
 import { LocalSignInForm } from "@/components/auth/local-sign-in-form";
 import { PostHogIdentity } from "@/components/telemetry/posthog-identity";
 import { SignInAnimatedItem } from "@/components/auth/sign-in-animated";
@@ -42,6 +43,7 @@ export default async function SignInPage({
 
   return (
     <main className="flex min-h-screen bg-[var(--relay-bg)]">
+      <InAppBrowserBanner />
       <PostHogIdentity userId={null} />
       <PageTelemetry
         surface="web-auth"
