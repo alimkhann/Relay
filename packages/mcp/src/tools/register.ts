@@ -36,10 +36,100 @@ interface ToolRegistrationContext {
  */
 export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
   const { client, resolveProjectId, resolveProjectSelection, getCachedProjectId, setCachedProjectId } = ctx
+  const writeTools = new Set([
+    "set_current_project",
+    "archive_session",
+    "regenerate_brief",
+    "delete_brief",
+    "add_memory",
+    "save_context",
+    "checkpoint_context",
+    "manage_memory",
+    "set_project_state",
+    "update_project",
+  ])
+  const originalTool = server.tool.bind(server)
+
+  ;(server as McpServer & { tool: typeof server.tool }).tool = ((name: string, description: string, schema: unknown, maybeHintsOrHandler: unknown, maybeHandler?: unknown) => {
+    const hasHints = typeof maybeHandler === "function"
+    const hints = hasHints ? maybeHintsOrHandler : undefined
+    const handler = (hasHints ? maybeHandler : maybeHintsOrHandler) as (args: Record<string, unknown>) => Promise<unknown>
+
+    const wrapped = async (args: Record<string, unknown>) => {
+      const initialProjectId =
+        typeof args?.projectId === "string"
+          ? args.projectId
+          : getCachedProjectId()
+      const initialResolutionSource =
+        typeof args?.projectId === "string"
+          ? "explicit"
+          : getCachedProjectId()
+            ? "cached"
+            : null
+      const readOrWrite = writeTools.has(name) ? "write" : "read"
+
+      client.captureAnalytics("mcp_tool_called", {
+        tool_name: name,
+        transport: "stdio",
+        read_or_write: readOrWrite,
+        project_id: initialProjectId ?? null,
+        project_resolution_source: initialResolutionSource,
+        agent_name: client.getAgentName(),
+        client_name: client.getClientName(),
+        success: true,
+      })
+
+      try {
+        const result = await handler(args)
+        const structuredContent = result && typeof result === "object" && "structuredContent" in result
+          ? (result as { structuredContent?: Record<string, unknown> }).structuredContent
+          : undefined
+        const resolution = structuredContent?.projectResolution as Record<string, unknown> | undefined
+        const resolvedProjectId =
+          typeof resolution?.projectId === "string"
+            ? resolution.projectId
+            : initialProjectId
+        const resolutionSource =
+          typeof resolution?.source === "string"
+            ? resolution.source
+            : initialResolutionSource
+
+        client.captureAnalytics("mcp_tool_completed", {
+          tool_name: name,
+          transport: "stdio",
+          read_or_write: readOrWrite,
+          project_id: resolvedProjectId ?? null,
+          project_resolution_source: resolutionSource,
+          agent_name: client.getAgentName(),
+          client_name: client.getClientName(),
+          success: true,
+        })
+
+        return result
+      } catch (error) {
+        client.captureAnalytics("mcp_tool_failed", {
+          tool_name: name,
+          transport: "stdio",
+          read_or_write: readOrWrite,
+          project_id: initialProjectId ?? null,
+          project_resolution_source: initialResolutionSource,
+          agent_name: client.getAgentName(),
+          client_name: client.getClientName(),
+          success: false,
+        })
+        throw error
+      }
+    }
+
+    if (hasHints) {
+      return originalTool(name, description, schema as never, hints as never, wrapped as never)
+    }
+    return originalTool(name, description, schema as never, wrapped as never)
+  }) as typeof server.tool
 
   server.tool(
     "list_projects",
-    "List all Relay projects you have access to. Returns project IDs, names, slugs, routing keywords, and which project is currently active for this MCP session. Use this only when Relay reports project ambiguity or when you need to switch projects manually.",
+    "List all Relay projects you have access to. Returns project IDs, names, slugs, routing keywords, and which project is currently active for this MCP session. Do not call this before the first get_brief unless Relay explicitly reports project ambiguity or resolves to the wrong project.",
     listProjectsSchema.shape,
     async () => listProjects(client, getCachedProjectId())
   )
@@ -97,7 +187,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "get_project_state",
-    "Get full structured project state including overview, objectives, decisions, constraints, tasks, and all memory items grouped by type. Use for debugging or when you need raw structured data.",
+    "Get full structured project state including overview, objectives, decisions, constraints, tasks, and all memory items grouped by type. Use this only when the brief is stale, contradictory, or you specifically need raw structured data for debugging.",
     getProjectStateSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -124,7 +214,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "search_context",
-    "Search memory items and project context by keyword. Supports stemming (e.g., 'auth' matches 'authentication') and tag filtering. Use to check if a decision or constraint already exists before adding duplicates.",
+    "Search memory items and project context by keyword. Supports stemming (e.g., 'auth' matches 'authentication') and tag filtering. Use this before high-impact decisions or when local context is incomplete, not as a default follow-up to a coherent get_brief result.",
     searchContextSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -134,7 +224,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "list_sessions",
-    "List captured source sessions and Relay work sessions that currently influence continuity. Use this when the user asks what captures Relay has, or when debugging stale context.",
+    "List captured source sessions and Relay work sessions that currently influence continuity. Use this when the user explicitly asks what Relay captured, or when debugging stale or contradictory continuity. Do not call this for a normal resume when get_brief is coherent.",
     listSessionsSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -154,7 +244,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "list_briefs",
-    "List generated Relay brief packets for the current project, including profile, kind, created time, and edited status.",
+    "List generated Relay brief packets for the current project, including profile, kind, created time, and edited status. Use this for debugging stale or contradictory continuity, not for a normal resume when get_brief succeeded.",
     listBriefsSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)

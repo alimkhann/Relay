@@ -2,15 +2,17 @@ import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { Analytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 import { APP_ORIGIN } from "@/lib/site-config";
 
 import { ThemeProvider } from "@/components/theme-provider";
 import { GlobalTelemetryBootstrap } from "@/components/telemetry/global-telemetry-bootstrap";
 import { PostHogProvider } from "@/components/telemetry/posthog-provider";
+import { SampledSpeedInsights } from "@/components/telemetry/sampled-speed-insights";
 import { LogoPreloader } from "@/components/ui/logo-preloader";
 
 import "./globals.css";
+
+const vercelTelemetryEnabled = process.env.VERCEL === "1";
 
 export const metadata: Metadata = {
   metadataBase: new URL(APP_ORIGIN),
@@ -94,8 +96,12 @@ export default function RootLayout({
             {children}
           </ThemeProvider>
         </PostHogProvider>
-        <Analytics />
-        <SpeedInsights />
+        {vercelTelemetryEnabled ? (
+          <>
+            <Analytics />
+            <SampledSpeedInsights />
+          </>
+        ) : null}
       </body>
     </html>
   );

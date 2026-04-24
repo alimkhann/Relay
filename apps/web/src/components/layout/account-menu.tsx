@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import * as Popover from "@radix-ui/react-popover";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { Settings, LogOut, CreditCard } from "lucide-react";
@@ -18,7 +17,6 @@ interface AccountMenuProps {
 
 export function AccountMenu({ name, email, collapsed = false }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
-  const router = useRouter();
   const initial = (name || email || "U").charAt(0).toUpperCase();
 
   const avatar = (
@@ -102,7 +100,7 @@ export function AccountMenu({ name, email, collapsed = false }: AccountMenuProps
               >
                 <Link
                   href="/settings"
-                  onMouseEnter={() => router.prefetch("/settings")}
+                  prefetch={false}
                   onClick={() => {
                     setOpen(false);
                   }}
@@ -113,7 +111,7 @@ export function AccountMenu({ name, email, collapsed = false }: AccountMenuProps
                 </Link>
                 <Link
                   href="/settings?section=billing"
-                  onMouseEnter={() => router.prefetch("/settings?section=billing")}
+                  prefetch={false}
                   onClick={() => {
                     setOpen(false);
                   }}

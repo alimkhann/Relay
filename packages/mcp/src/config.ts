@@ -38,7 +38,10 @@ async function loadConfigFile(): Promise<ConfigFile> {
 export async function loadConfig(): Promise<RelayConfig> {
   const file = await loadConfigFile()
 
-  const token = process.env["RELAY_API_TOKEN"] ?? file.accessToken ?? file.token
+  const envToken = process.env["RELAY_API_TOKEN"]
+  const accessTokenExpiresAt = file.accessTokenExpiresAt ? new Date(file.accessTokenExpiresAt).getTime() : Number.NaN
+  const accessTokenIsFresh = file.accessToken && Number.isFinite(accessTokenExpiresAt) && accessTokenExpiresAt - Date.now() > 60_000
+  const token = envToken ?? (accessTokenIsFresh ? file.accessToken : file.token ?? file.accessToken)
   if (!token) {
     throw new Error(
       "Relay API token not configured. Set RELAY_API_TOKEN env var or add token to ~/.relay/mcp.json"

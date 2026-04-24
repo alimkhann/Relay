@@ -1,6 +1,6 @@
 export const LANDING_BACKGROUND_IMAGES = [
-  "/images/hero-bg.jpg",
-  "/images/hero-bg-gold.jpg",
+  "/images/hero-bg.webp",
+  "/images/hero-bg-gold.webp",
 ] as const
 
 export type LandingBackgroundImage = (typeof LANDING_BACKGROUND_IMAGES)[number]
@@ -13,7 +13,7 @@ export function pickRandomLandingBackground() {
 export function pickOppositeLandingBackground(
   current: LandingBackgroundImage,
 ) {
-  return current === "/images/hero-bg-gold.jpg"
-    ? "/images/hero-bg.jpg"
-    : "/images/hero-bg-gold.jpg"
+  return current === "/images/hero-bg-gold.webp"
+    ? "/images/hero-bg.webp"
+    : "/images/hero-bg-gold.webp"
 }

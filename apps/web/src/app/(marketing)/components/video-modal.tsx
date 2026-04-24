@@ -10,10 +10,12 @@ const ease = [0.25, 0.1, 0.25, 1] as const
 interface VideoModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  videoSrc: string
+  videoMp4: string
+  videoWebm?: string
+  poster: string
 }
 
-export function VideoModal({ open, onOpenChange, videoSrc }: VideoModalProps) {
+export function VideoModal({ open, onOpenChange, videoMp4, videoWebm, poster }: VideoModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
@@ -62,14 +64,18 @@ export function VideoModal({ open, onOpenChange, videoSrc }: VideoModalProps) {
                 >
                   <video
                     ref={videoRef}
-                    src={videoSrc}
                     className="w-full h-full object-cover"
+                    poster={poster}
                     autoPlay
                     loop
                     muted
                     playsInline
                     controls
-                  />
+                    preload="metadata"
+                  >
+                    {videoWebm ? <source src={videoWebm} type="video/webm" /> : null}
+                    <source src={videoMp4} type="video/mp4" />
+                  </video>
                   <Dialog.Close asChild>
                     <button
                       className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-black/60 border border-white/[0.12] backdrop-blur-sm flex items-center justify-center text-white/70 hover:text-white transition-colors duration-150"

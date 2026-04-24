@@ -27,11 +27,48 @@ export async function listMemory(
   }
 
   const suffix = params.toString()
-  const data = await client.get<{ memory: unknown[] }>(
-    `/api/projects/${resolvedProjectId}/memory${suffix ? `?${suffix}` : ""}`
-  )
+  try {
+    const data = await client.get<{ memory: unknown[] }>(
+      `/api/projects/${resolvedProjectId}/memory${suffix ? `?${suffix}` : ""}`
+    )
 
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify(data.memory, null, 2) }]
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify(data.memory, null, 2) }]
+    }
+  } catch (error) {
+    if (process.env.RELAY_MCP_DEBUG) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.warn(
+        `[relay-mcp] list_memory primary path failed, falling back to dashboard: ${message}`,
+      )
+    }
+    const dashboard = await client.get<{
+      dashboard?: {
+        memory?: Array<{
+          id: string
+          type: string
+          title: string | null
+          content: string
+          pinned?: boolean
+          updatedAt?: string
+          tags?: string[]
+        }>
+      }
+    }>(`/api/projects/${resolvedProjectId}`)
+
+    const filtered = (dashboard.dashboard?.memory ?? [])
+      .filter((item) => (typeof args.pinned === "boolean" ? Boolean(item.pinned) === args.pinned : true))
+      .filter((item) => (args.tag ? (item.tags ?? []).includes(args.tag) : true))
+      .filter((item) => (args.types?.length ? args.types.includes(item.type as (typeof args.types)[number]) : true))
+      .sort((left, right) => {
+        const leftTime = new Date(left.updatedAt ?? 0).getTime()
+        const rightTime = new Date(right.updatedAt ?? 0).getTime()
+        return rightTime - leftTime
+      })
+      .slice(0, args.limit ?? 100)
+
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify(filtered, null, 2) }]
+    }
   }
 }

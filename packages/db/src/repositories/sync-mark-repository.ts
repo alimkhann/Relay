@@ -8,9 +8,9 @@ function toSurfaceSyncMarkRow(record: Record<string, unknown>): SurfaceSyncMarkR
     projectId: String(record.project_id),
     userId: String(record.user_id),
     surface: String(record.surface) as SyncSurface,
-    lastSyncAt: String(record.last_sync_at),
-    createdAt: String(record.created_at),
-    updatedAt: String(record.updated_at)
+    lastSyncAt: new Date(record.last_sync_at as string).toISOString(),
+    createdAt: new Date(record.created_at as string).toISOString(),
+    updatedAt: new Date(record.updated_at as string).toISOString()
   }
 }
 

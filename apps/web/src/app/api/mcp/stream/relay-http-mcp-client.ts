@@ -1,5 +1,5 @@
 import { createRepositoryBundle, getProjectDashboard } from "@relay/db"
-import type { MemoryItemRow, WorkSessionStructuredState } from "@relay/shared"
+import { resolveDefaultTargetProfileKey, type MemoryItemRow, type WorkSessionStructuredState } from "@relay/shared"
 import type { ProjectSummaryDto } from "@relay/shared"
 
 import type { Viewer } from "@/server/policies/viewer"
@@ -43,15 +43,46 @@ export class RelayHttpMcpClient {
     }))
   }
 
+  private getDefaultTargetProfileKey(syncSurface?: string | null) {
+    return resolveDefaultTargetProfileKey({
+      syncSurface: (syncSurface ?? "mcp") as never,
+      clientName: "relay-mcp-http",
+    })
+  }
+
   async getBrief(projectId: string, args: Record<string, unknown>) {
-    const targetProfileKey = (args.targetProfileKey as string) ?? "claude_code_build"
     const syncSurface = (args.syncSurface as string) ?? "mcp"
+    const targetProfileKey = (args.targetProfileKey as string) ?? this.getDefaultTargetProfileKey(syncSurface)
     const include = ((args.include as string[] | undefined) ?? []) as Array<"state" | "memory">
     const generate = args.generate !== false
     const since = await this.resolveDefaultSince(projectId, args.since as string | undefined)
     const kind = await this.resolveBriefKind(projectId, {
       kind: args.kind as string | undefined,
       since,
+    })
+    const dashboard = await getProjectDashboard(createRepositoryBundle(this.viewer.userId), this.viewer.userId, projectId).catch(() => null)
+
+    const buildResumeMetadata = (resolvedTargetProfileKey: string) => ({
+      project: dashboard ? { id: dashboard.project.id, name: dashboard.project.name, slug: dashboard.project.slug } : null,
+      latestDurableDecisions: (dashboard?.projectState?.decisions ?? []).slice(0, 4),
+      freshness: {
+        driftHint: dashboard?.stateStatus?.rawCapturePresent
+          ? "Recent raw captures are present and may not be fully reflected in the generated brief yet."
+          : dashboard?.stateStatus?.digestStatus && ["pending", "running", "failed", "timed_out"].includes(dashboard.stateStatus.digestStatus)
+            ? `Digest status is ${dashboard.stateStatus.digestStatus}, so newer continuity may still be settling.`
+            : dashboard?.projectState?.dirty
+              ? "Relay project state is marked dirty, so treat this brief as provisional and inspect context before mutating."
+              : null,
+        stateStatus: dashboard?.stateStatus ?? null,
+        since: since ?? null,
+      },
+      briefPolicy: {
+        targetProfileKey: resolvedTargetProfileKey,
+        kind,
+        syncSurface,
+        resumeGuidance:
+          "If this brief is coherent and on the correct project, do not call list_projects, set_current_project, get_project_state, list_sessions, list_briefs, or search_context just to restate the same continuity.",
+      },
     })
 
     if (generate) {
@@ -63,21 +94,71 @@ export class RelayHttpMcpClient {
       })
       if (result.status === "ready" && result.packet) {
         await recordSyncMarkForUser(this.viewer.userId, projectId, syncSurface as Parameters<typeof recordSyncMarkForUser>[2])
-        return include.length > 0
-          ? this.appendIncludeSections(projectId, result.packet.content, include)
-          : result.packet.content
+        return {
+          text: include.length > 0
+            ? await this.appendIncludeSections(projectId, result.packet.content, include)
+            : result.packet.content,
+          structured: {
+            brief: {
+              status: "ready",
+              kind,
+              syncSurface,
+              since: since ?? null,
+              packetId: result.packet.id,
+              targetProfileKey: result.resolvedTargetProfileKey,
+            },
+            resumeMetadata: buildResumeMetadata(result.resolvedTargetProfileKey),
+          },
+        }
       }
-      return `Brief generation is in progress. ${result.reason ?? "Please try again in a moment."}`
+      return {
+        text: `Brief generation is in progress. ${result.reason ?? "Please try again in a moment."}`,
+        structured: {
+          brief: {
+            status: "pending",
+            kind,
+            syncSurface,
+            since: since ?? null,
+            targetProfileKey: result.resolvedTargetProfileKey,
+          },
+          resumeMetadata: buildResumeMetadata(result.resolvedTargetProfileKey),
+        },
+      }
     }
 
     const packet = await getLatestBootstrapForProject(this.viewer.userId, projectId, targetProfileKey, kind)
     if (!packet) {
-      return "No cached brief available. Try calling with generate=true to create one."
+      return {
+        text: "No cached brief available. Try calling with generate=true to create one.",
+        structured: {
+          brief: {
+            status: "missing",
+            kind,
+            syncSurface,
+            since: since ?? null,
+            targetProfileKey,
+          },
+          resumeMetadata: buildResumeMetadata(targetProfileKey),
+        },
+      }
     }
     await recordSyncMarkForUser(this.viewer.userId, projectId, syncSurface as Parameters<typeof recordSyncMarkForUser>[2])
-    return include.length > 0
-      ? this.appendIncludeSections(projectId, packet.content, include)
-      : packet.content
+    return {
+      text: include.length > 0
+        ? await this.appendIncludeSections(projectId, packet.content, include)
+        : packet.content,
+      structured: {
+        brief: {
+          status: "ready",
+          kind,
+          syncSurface,
+          since: since ?? null,
+          packetId: packet.id,
+          targetProfileKey,
+        },
+        resumeMetadata: buildResumeMetadata(targetProfileKey),
+      },
+    }
   }
 
   private async resolveDefaultSince(projectId: string, explicitSince?: string) {
@@ -329,7 +410,7 @@ export class RelayHttpMcpClient {
 
   async regenerateBrief(projectId: string, args: Record<string, unknown>) {
     const result = await generateBootstrapForProject(this.viewer.userId, projectId, {
-      targetProfileKey: (args.targetProfileKey as string) ?? "claude_code_build",
+      targetProfileKey: (args.targetProfileKey as string) ?? this.getDefaultTargetProfileKey((args.syncSurface as string) ?? "mcp"),
       kind: (args.kind as string) === "quick_continuity" ? "quick_continuity" : "fresh_chat_bootstrap",
       since: args.since as string | undefined,
       syncSurface: (args.syncSurface as string) ?? "mcp",

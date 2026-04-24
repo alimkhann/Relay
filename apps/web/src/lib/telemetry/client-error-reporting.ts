@@ -6,6 +6,9 @@ import { sanitizeTelemetryEvent } from "@relay/shared/utils/telemetry"
 
 import { capturePosthogException } from "./posthog"
 
+const REPORT_WINDOW_MS = 60_000
+const recentReports = new Map<string, number>()
+
 function resolveClientErrorSurface(pathname: string): TelemetrySurface {
   if (pathname === "/") return "web-landing"
   if (pathname.startsWith("/sign-in")) return "web-auth"
@@ -33,6 +36,21 @@ export function reportClientError(
   if (shouldCapturePosthogException(event)) {
     capturePosthogException(event)
   }
+
+  const reportKey = [
+    event.event,
+    event.message,
+    event.url,
+    typeof event.error === "object" && event.error && "message" in event.error
+      ? String((event.error as { message?: unknown }).message)
+      : String(event.error ?? ""),
+  ].join("|")
+  const now = Date.now()
+  const lastReportedAt = recentReports.get(reportKey) ?? 0
+  if (now - lastReportedAt < REPORT_WINDOW_MS) {
+    return
+  }
+  recentReports.set(reportKey, now)
 
   void fetch("/api/client-errors", {
     method: "POST",

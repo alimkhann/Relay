@@ -98,13 +98,12 @@ const CLAUDE_HOOKS: Record<string, ClaudeHookMatcher[]> = {
   SessionEnd: [
     { matcher: "*", hooks: [{ type: "command", command: buildRelayFlushCommand("session_end") }] },
   ],
-  Stop: [
-    { matcher: "*", hooks: [{ type: "command", command: buildRelayFlushCommand("stop") }] },
-  ],
   StopFailure: [
     { matcher: "*", hooks: [{ type: "command", command: buildRelayFlushCommand("stop_failure") }] },
   ],
 }
+
+const CLAUDE_STALE_EVENTS = ["Stop"] as const
 
 const GEMINI_HOOKS: Record<string, GeminiHookGroup[]> = {
   PreCompress: [
@@ -155,7 +154,7 @@ function isRelayHookCommand(command: string) {
 }
 
 function isManagedRelayFlushCommand(command: string) {
-  return command.startsWith(RELAY_FLUSH_BASE_COMMAND)
+  return isRelayHookCommand(command)
 }
 
 function isClaudeRelayHook(hook: ClaudeHookEntry) {
@@ -451,6 +450,22 @@ async function installClaudeSetup(ide: DetectedIDE): Promise<ClientSetupResult> 
       nextHooks[event] = mergeClaudeHookEvent(nextHooks[event], incoming)
     }
 
+    for (const event of CLAUDE_STALE_EVENTS) {
+      const groups = nextHooks[event]
+      if (!groups) continue
+      const scrubbed = groups
+        .map((group) => ({
+          matcher: group.matcher,
+          hooks: group.hooks.filter((hook) => !isClaudeRelayHook(hook)),
+        }))
+        .filter((group) => group.hooks.length > 0)
+      if (scrubbed.length > 0) {
+        nextHooks[event] = scrubbed
+      } else {
+        delete nextHooks[event]
+      }
+    }
+
     const next = applyJsoncEdits(existing.raw, [{ path: ["hooks"], value: nextHooks }])
     if (next.changed) {
       await mkdir(dirname(ide.clientSetupPath), { recursive: true })
@@ -465,7 +480,7 @@ async function installClaudeSetup(ide: DetectedIDE): Promise<ClientSetupResult> 
     await upsertManagedMarkdownFile(
       resolveClaudeInstructionsPath(ide),
       "claude-code",
-      buildRelayBehaviorBody("Claude Code", { hooks: ["PreCompact", "SessionEnd", "Stop", "StopFailure"] })
+      buildRelayBehaviorBody("Claude Code", { hooks: ["PreCompact", "SessionEnd", "StopFailure"] })
     )
   )
 

@@ -1,3 +1,4 @@
+import { resolveDefaultTargetProfileKey } from "@relay/shared"
 import type { RelayMcpAnalytics } from "./analytics.js"
 import { loadConfig, saveConfig, type RelayConfig } from "./config.js"
 
@@ -190,13 +191,6 @@ export class RelayClient {
   ) {
     const session = await this.ensureWorkSession(projectId)
     if (!session) return
-    this.analytics?.capture("mcp_tool_called", {
-      project_id: projectId,
-      tool_name: eventType,
-      agent_name: this.detectAgentName(),
-      client_name: this.detectClientName(),
-      success: true,
-    })
     await this.post(`/api/projects/${projectId}/work-sessions/checkpoint`, {
       sessionId: session.id,
       eventType,
@@ -224,14 +218,6 @@ export class RelayClient {
   ) {
     const session = await this.ensureWorkSession(projectId)
     if (!session) return
-    this.analytics?.capture("mcp_tool_completed", {
-      project_id: projectId,
-      tool_name: input.eventType,
-      agent_name: this.detectAgentName(),
-      client_name: this.detectClientName(),
-      success: true,
-      saved_via: input.eventPayload?.["savedVia"] === "relay_save_context" ? "relay_save_context" : null,
-    })
 
     if (input.summary !== undefined) this.workSessionState.summary = input.summary
     if (input.progress !== undefined) this.workSessionState.progress = input.progress
@@ -353,6 +339,7 @@ export class RelayClient {
 
   private detectAgentName() {
     if (process.env["RELAY_AGENT_NAME"]) return process.env["RELAY_AGENT_NAME"]
+    if (process.env["CODEX_CI"] || process.env["CODEX_SHELL"] || process.env["CODEX_THREAD_ID"]) return "codex"
     if (process.env["CLAUDECODE"] || process.env["CLAUDE_CODE"]) return "claude-code"
     if (process.env["CURSOR_TRACE_ID"] || process.env["CURSOR_AGENT"]) return "cursor"
     if (process.env["WINDSURF"] || process.env["WINDSURF_AGENT"]) return "windsurf"
@@ -379,6 +366,26 @@ export class RelayClient {
 
   getDefaultSyncSurface() {
     return this.detectSyncSurface()
+  }
+
+  getDefaultTargetProfileKey() {
+    return resolveDefaultTargetProfileKey({
+      syncSurface: this.getDefaultSyncSurface(),
+      agentName: this.detectAgentName(),
+      clientName: this.detectClientName(),
+    })
+  }
+
+  getAgentName() {
+    return this.detectAgentName()
+  }
+
+  getClientName() {
+    return this.detectClientName()
+  }
+
+  captureAnalytics(event: string, properties: Record<string, string | number | boolean | null>) {
+    this.analytics?.capture(event, properties)
   }
 
   private registerShutdownHooks() {
@@ -444,12 +451,6 @@ export class RelayClient {
         method,
         path,
       })
-      this.analytics?.capture("mcp_tool_failed", {
-        project_id: this.workSession?.projectId ?? this.projectId ?? null,
-        tool_name: path,
-        failure_stage: "request_exception",
-        success: false,
-      })
       this.analytics?.captureException(error, {
         project_id: this.workSession?.projectId ?? this.projectId ?? null,
         method,
@@ -505,13 +506,6 @@ export class RelayClient {
           path,
           status: response.status,
         })
-        this.analytics?.capture("mcp_tool_failed", {
-          project_id: this.workSession?.projectId ?? this.projectId ?? null,
-          tool_name: path,
-          failure_stage: "rate_limit",
-          status: response.status,
-          success: false,
-        })
         throw new Error(message)
       }
 
@@ -533,13 +527,6 @@ export class RelayClient {
         path,
         status: response.status,
       })
-      this.analytics?.capture("mcp_tool_failed", {
-        project_id: this.workSession?.projectId ?? this.projectId ?? null,
-        tool_name: path,
-        failure_stage: "http_response",
-        status: response.status,
-        success: false,
-      })
 
       throw new Error(message)
     }
@@ -549,6 +536,13 @@ export class RelayClient {
 
   private async refreshIfNeeded() {
     if (this.refreshFailed) {
+      if (this.fallbackToken && this.token !== this.fallbackToken) {
+        this.token = this.fallbackToken
+        this.refreshFailed = false
+        this.refreshToken = undefined
+        this.accessTokenExpiresAt = undefined
+        return
+      }
       throw new Error("Relay authentication expired. Run 'npx @onrelay/wizard' to re-authenticate.")
     }
 
@@ -561,7 +555,22 @@ export class RelayClient {
       return
     }
 
-    await this.refreshAccessToken()
+    try {
+      await this.refreshAccessToken()
+    } catch (error) {
+      if (this.fallbackToken && this.token !== this.fallbackToken) {
+        this.token = this.fallbackToken
+        this.refreshFailed = false
+        this.refreshToken = undefined
+        this.accessTokenExpiresAt = undefined
+        this.analytics?.capture("mcp_token_refresh_fallback", {
+          project_id: this.workSession?.projectId ?? this.projectId ?? null,
+          success: true,
+        })
+        return
+      }
+      throw error
+    }
   }
 
   private async refreshAccessToken() {
@@ -634,13 +643,19 @@ export class RelayClient {
 
       if (!response.ok) {
         const text = await response.text().catch(() => "")
-        this.refreshFailed = true
-        this.refreshToken = undefined
         this.analytics?.capture("mcp_token_refresh_failed", {
           project_id: this.workSession?.projectId ?? this.projectId ?? null,
           success: false,
           status: response.status,
         })
+        if (this.fallbackToken && this.token !== this.fallbackToken) {
+          this.token = this.fallbackToken
+          this.refreshToken = undefined
+          this.accessTokenExpiresAt = undefined
+          return
+        }
+        this.refreshFailed = true
+        this.refreshToken = undefined
         throw new Error("Relay authentication expired. Run 'npx @onrelay/wizard' to re-authenticate.")
       }
 

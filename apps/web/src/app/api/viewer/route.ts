@@ -10,5 +10,7 @@ export const GET = withApiAuth(async (request: Request) => {
     userId: viewer.userId,
     mode: viewer.mode,
     projectId: viewer.projectId ?? null,
+    name: viewer.name ?? null,
+    email: viewer.email ?? null,
   })
 })

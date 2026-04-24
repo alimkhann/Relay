@@ -1,6 +1,6 @@
 import type { WebAuthIntent } from "@/server/policies/viewer"
 
-export type RelayAuthMethod = "google" | "local"
+export type RelayAuthMethod = "google" | "email" | "local"
 
 export function withAuthCallbackParams(
   path: string,

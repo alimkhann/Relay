@@ -1,6 +1,6 @@
 {
   "name": "@onrelay/wizard",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "One-command installer for Relay MCP — cross-AI memory sync for coding tools",
   "license": "UNLICENSED",
   "type": "module",

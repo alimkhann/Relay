@@ -25,6 +25,7 @@ import { drainDigestJobsForProject } from "./digest-service"
 import { resolveViewerEntitlements } from "./entitlement-service"
 import { GEMINI_MODELS, runGeminiJsonWithFallback } from "./gemini-service"
 import { getProjectStateStatus } from "./state-status-service"
+import { fireUserMilestone } from "./user-milestones-service"
 import { stripArrowNotation, truncateSentence, escapeMarkdownInline } from "@relay/shared"
 
 interface BootstrapCanonContext {
@@ -1346,6 +1347,12 @@ export async function generateBootstrapForProject(userId: string, projectId: str
 
   // Keep one packet per profile+kind so regeneration replaces stale rows.
   await repositories.bootstrapPackets.clearVariant(projectId, profile.id, parsed.kind, packet.id)
+
+  await fireUserMilestone(userId, "first_brief_generated", {
+    project_id: projectId,
+    profile_key: profile.key ?? null,
+    kind: parsed.kind,
+  }).catch(() => {})
 
   if (rawState) {
     await repositories.projectState.markBootstrapped(projectId)

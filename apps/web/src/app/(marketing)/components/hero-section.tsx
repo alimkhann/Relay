@@ -35,7 +35,7 @@ export function HeroSection() {
           alt=""
           fill
           priority
-          quality={90}
+          quality={72}
           className="object-cover object-center"
           sizes="100vw"
         />

@@ -286,7 +286,7 @@ export function buildRelayAnalyticsPayload(
 
   return {
     event: canonicalEvent,
-    distinctId: userId ?? "relay-web-anonymous",
+    distinctId: userId ?? `anon-${crypto.randomUUID()}`,
     properties,
   }
 }

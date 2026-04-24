@@ -25,7 +25,7 @@ export function BottomCta() {
           src={backgroundSrc}
           alt=""
           fill
-          quality={80}
+          quality={72}
           className="object-cover object-center"
           sizes="100vw"
         />

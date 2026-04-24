@@ -21,23 +21,26 @@ function includesMatch(haystack: string | null | undefined, needle: string) {
 }
 
 function summarizeMemory(item: MemoryItemRow, relations: MemoryRelationRow[] = []) {
-  const metadata = item.metadata ?? {}
+  const metadata = (item.metadata ?? {}) as Record<string, unknown>
+  const tags = Array.isArray(item.tags) ? item.tags : []
+  const derivedFrom = Array.isArray(item.derivedFrom) ? item.derivedFrom : []
+  const relationList = Array.isArray(relations) ? relations : []
   return {
     id: item.id,
     type: item.type,
-    title: item.title,
-    content: item.content,
-    pinned: item.pinned,
-    isArchived: item.isArchived,
-    tags: item.tags,
+    title: item.title ?? null,
+    content: item.content ?? "",
+    pinned: Boolean(item.pinned),
+    isArchived: Boolean(item.isArchived),
+    tags,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
     provenance: {
-      sourceSurface: item.sourceSurface,
-      sourceConversationId: item.sourceConversationId,
-      sourceUrl: item.sourceUrl,
-      capturedAt: item.capturedAt,
-      derivedFrom: item.derivedFrom ?? [],
+      sourceSurface: item.sourceSurface ?? null,
+      sourceConversationId: item.sourceConversationId ?? null,
+      sourceUrl: item.sourceUrl ?? null,
+      capturedAt: item.capturedAt ?? null,
+      derivedFrom,
       digestId: typeof metadata.digestId === "string" ? metadata.digestId : null,
       source: typeof metadata.source === "string" ? metadata.source : null,
       parentBullet: typeof metadata.parentBullet === "string" ? metadata.parentBullet : null,
@@ -47,10 +50,10 @@ function summarizeMemory(item: MemoryItemRow, relations: MemoryRelationRow[] = [
       validationState: typeof metadata.validationState === "string" ? metadata.validationState : null,
       archivedReason: typeof metadata.archivedReason === "string" ? metadata.archivedReason : null,
       compactionState: typeof metadata.compactionState === "string" ? metadata.compactionState : null,
-      lastReaffirmedAt: item.lastReaffirmedAt,
-      forgetAfter: item.forgetAfter,
+      lastReaffirmedAt: item.lastReaffirmedAt ?? null,
+      forgetAfter: item.forgetAfter ?? null,
     },
-    relations: relations.map((relation) => ({
+    relations: relationList.map((relation) => ({
       id: relation.id,
       relationType: relation.relationType,
       confidence: relation.confidence,
@@ -217,7 +220,18 @@ export async function listMemoryForExplainability(
     limit: input.limit,
     sort: input.sort,
   })
-  return items.map((item) => summarizeMemory(item))
+  const summaries: ReturnType<typeof summarizeMemory>[] = []
+  for (const item of items) {
+    try {
+      summaries.push(summarizeMemory(item))
+    } catch (error) {
+      console.error(
+        `[continuity-explainability] summarizeMemory failed for item ${item?.id ?? "<unknown>"} in project ${projectId}:`,
+        error instanceof Error ? error.stack ?? error.message : error,
+      )
+    }
+  }
+  return summaries
 }
 
 export async function getMemoryForExplainability(

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
+import { EmailSignInForm } from "@/components/auth/email-sign-in-form";
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 import { InAppBrowserBanner } from "@/components/auth/in-app-browser-banner";
 import { LocalSignInForm } from "@/components/auth/local-sign-in-form";
@@ -152,7 +153,15 @@ export default async function SignInPage({
               authProvider === "local" ? (
                 <LocalSignInForm nextPath={nextPath} intent={intent} />
               ) : (
-                <GoogleSignInButton nextPath={nextPath} intent={intent} />
+                <div className="space-y-4">
+                  <GoogleSignInButton nextPath={nextPath} intent={intent} />
+                  <div className="flex items-center gap-3">
+                    <div className="h-px flex-1 bg-[var(--relay-border)]" />
+                    <span className="text-xs text-[var(--relay-faint)]">or</span>
+                    <div className="h-px flex-1 bg-[var(--relay-border)]" />
+                  </div>
+                  <EmailSignInForm nextPath={nextPath} intent={intent} />
+                </div>
               )
             ) : (
               <p className="rounded-[var(--relay-radius)] bg-[var(--relay-soft)] px-4 py-4 text-sm text-[var(--relay-muted)]">

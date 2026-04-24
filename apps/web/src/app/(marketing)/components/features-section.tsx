@@ -1,7 +1,9 @@
 "use client"
 
+import Image from "next/image"
 import { motion, useInView } from "motion/react"
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import type { KeyboardEvent, RefObject } from "react"
 import {
   Zap,
   FileText,
@@ -16,6 +18,13 @@ import type { LucideIcon } from "lucide-react"
 
 const ease = [0.25, 0.1, 0.25, 1] as const
 
+const LAUNCH_VIDEO = {
+  href: "https://youtu.be/15aqzManX-0",
+  poster: "/images/video-posters/relay-launch.webp",
+  previewMp4: "/videos/relay-launch-preview.mp4",
+  previewWebm: "/videos/relay-launch-preview.webm",
+}
+
 const FEATURES = [
   {
     icon: Zap,
@@ -23,7 +32,9 @@ const FEATURES = [
     title: "Quietly saves what matters from every AI chat",
     description:
       "Work in ChatGPT, Claude, or Gemini. Relay captures decisions, tasks, and constraints automatically — no manual saving.",
-    video: "/videos/auto-capture.mp4",
+    videoMp4: "/videos/auto-capture.mp4",
+    videoWebm: "/videos/auto-capture.webm",
+    poster: "/images/video-posters/auto-capture.webp",
   },
   {
     icon: FileText,
@@ -31,7 +42,9 @@ const FEATURES = [
     title: "One-click context restoration in fresh chats",
     description:
       "Your project brief updates itself as you work. Open a new chat and inject the full context instantly.",
-    video: "/videos/project-briefs.mp4",
+    videoMp4: "/videos/project-briefs.mp4",
+    videoWebm: "/videos/project-briefs.webm",
+    poster: "/images/video-posters/project-briefs.webp",
   },
   {
     icon: Terminal,
@@ -39,7 +52,9 @@ const FEATURES = [
     title: "Your coding agent reads and writes project memory",
     description:
       "Claude Code, Cursor, and any MCP-compatible agent connect directly. They share the same brief as your browser chats.",
-    video: "/videos/mcp-integration.mp4",
+    videoMp4: "/videos/mcp-integration.mp4",
+    videoWebm: "/videos/mcp-integration.webm",
+    poster: "/images/video-posters/mcp-integration.webp",
   },
   {
     icon: ArrowLeftRight,
@@ -47,9 +62,38 @@ const FEATURES = [
     title: "Decisions flow between tools automatically",
     description:
       "A choice made in ChatGPT surfaces in Cursor. A constraint set in Claude Code stays in sync with your next browser session.",
-    video: "/videos/cross-surface-sync.mp4",
+    videoMp4: "/videos/cross-surface-sync.mp4",
+    videoWebm: "/videos/cross-surface-sync.webm",
+    poster: "/images/video-posters/cross-surface-sync.webp",
   },
 ]
+
+function useElementSeen(ref: RefObject<Element | null>, rootMargin = "160px") {
+  const [seen, setSeen] = useState(false)
+
+  useEffect(() => {
+    const element = ref.current
+    if (!element || seen) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setSeen(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin, threshold: 0.01 },
+    )
+
+    observer.observe(element)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [ref, rootMargin, seen])
+
+  return seen
+}
 
 /* ------------------------------------------------------------------ */
 /*  Feature Card — video-first layout with hover-play + modal         */
@@ -61,31 +105,56 @@ interface FeatureCardProps {
     label: string
     title: string
     description: string
-    video: string
+    videoMp4: string
+    videoWebm?: string
+    poster: string
   }
   inView: boolean
   index: number
 }
 
 function FeatureCard({ feature, inView, index }: FeatureCardProps) {
-  const videoRef = useRef<HTMLVideoElement>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [isHovering, setIsHovering] = useState(false)
+  const [videoRequested, setVideoRequested] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const shouldLoadHoverVideo = videoRequested
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    if (isHovering && shouldLoadHoverVideo) {
+      void video.play().catch(() => {})
+      return
+    }
+
+    video.pause()
+  }, [isHovering, shouldLoadHoverVideo])
 
   const handleMouseEnter = useCallback(() => {
     setIsHovering(true)
-    videoRef.current?.play().catch(() => {})
+    setVideoRequested(true)
   }, [])
 
   const handleMouseLeave = useCallback(() => {
     setIsHovering(false)
-    videoRef.current?.pause()
   }, [])
 
   const handleCardClick = useCallback(() => {
     setModalOpen(true)
     trackMarketingEvent("feature_video_opened", { feature: feature.label })
   }, [feature.label])
+
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault()
+        handleCardClick()
+      }
+    },
+    [handleCardClick],
+  )
 
   return (
     <>
@@ -98,25 +167,45 @@ function FeatureCard({ feature, inView, index }: FeatureCardProps) {
           ease,
         }}
         className="rounded-2xl border border-white/[0.07] bg-[#111] overflow-hidden cursor-pointer group hover:border-white/[0.12] transition-colors duration-300"
+        role="button"
+        tabIndex={0}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
+        onFocus={() => setVideoRequested(true)}
         onClick={handleCardClick}
+        onKeyDown={handleKeyDown}
       >
-        {/* Video — flush with card top edge */}
+        {/* Poster first: hover sources are attached only after pointer/focus intent. */}
         <div className="aspect-video relative bg-black/40">
-          <video
-            ref={videoRef}
-            src={feature.video}
-            muted
-            playsInline
-            loop
-            preload="metadata"
-            className="w-full h-full object-cover"
+          <Image
+            src={feature.poster}
+            alt=""
+            fill
+            className="object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+            sizes="(min-width: 768px) 480px, 100vw"
           />
+          {shouldLoadHoverVideo ? (
+            <video
+              ref={videoRef}
+              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${
+                isHovering ? "opacity-100" : "opacity-0"
+              }`}
+              poster={feature.poster}
+              muted
+              loop
+              playsInline
+              preload="none"
+              aria-hidden="true"
+              tabIndex={-1}
+            >
+              {feature.videoWebm ? <source src={feature.videoWebm} type="video/webm" /> : null}
+              <source src={feature.videoMp4} type="video/mp4" />
+            </video>
+          ) : null}
           {/* Play icon overlay — fades out on hover */}
           <div
             className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 pointer-events-none ${
-              isHovering ? "opacity-0" : "opacity-100"
+              isHovering && shouldLoadHoverVideo ? "opacity-0" : "opacity-100"
             }`}
           >
             <div className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-sm border border-white/[0.12] flex items-center justify-center">
@@ -152,9 +241,88 @@ function FeatureCard({ feature, inView, index }: FeatureCardProps) {
       <VideoModal
         open={modalOpen}
         onOpenChange={setModalOpen}
-        videoSrc={feature.video}
+        videoMp4={feature.videoMp4}
+        videoWebm={feature.videoWebm}
+        poster={feature.poster}
       />
     </>
+  )
+}
+
+function LaunchVideoCard() {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const cardRef = useRef<HTMLAnchorElement>(null)
+  const shouldLoadPreview = useElementSeen(cardRef, "240px")
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || !shouldLoadPreview) return
+
+    void video.play().catch(() => {})
+  }, [shouldLoadPreview])
+
+  return (
+    <a
+      ref={cardRef}
+      href={LAUNCH_VIDEO.href}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={() =>
+        trackMarketingEvent("launch_video_clicked", {
+          source: "features_section",
+        })
+      }
+      className="block relative group rounded-2xl overflow-hidden border border-white/[0.07] hover:border-white/[0.14] transition-colors duration-300 aspect-video"
+    >
+      <Image
+        src={LAUNCH_VIDEO.poster}
+        alt=""
+        fill
+        className="object-cover transition-transform duration-500 group-hover:scale-[1.01]"
+        sizes="(min-width: 1024px) 1024px, 100vw"
+      />
+      {shouldLoadPreview ? (
+        <video
+          ref={videoRef}
+          className="absolute inset-0 h-full w-full object-cover"
+          poster={LAUNCH_VIDEO.poster}
+          muted
+          loop
+          playsInline
+          preload="none"
+          aria-hidden="true"
+          tabIndex={-1}
+        >
+          <source src={LAUNCH_VIDEO.previewWebm} type="video/webm" />
+          <source src={LAUNCH_VIDEO.previewMp4} type="video/mp4" />
+        </video>
+      ) : null}
+
+      {/* Gradient overlay for depth */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/10 pointer-events-none" />
+
+      {/* Play button — visible before the teaser loads and on coarse pointers */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div
+          className={`w-16 h-16 md:w-20 md:h-20 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center transition-opacity duration-300 shadow-[0_0_40px_rgba(255,255,255,0.1)] ${
+            shouldLoadPreview ? "opacity-0 group-hover:opacity-100" : "opacity-100"
+          }`}
+        >
+          <Play
+            size={28}
+            className="text-white ml-1"
+            fill="currentColor"
+          />
+        </div>
+      </div>
+
+      {/* Bottom label */}
+      <div className="absolute bottom-4 left-4 pointer-events-none">
+        <span className="text-xs font-medium text-white/60 group-hover:text-white/80 transition-colors">
+          Watch the launch video
+        </span>
+      </div>
+    </a>
   )
 }
 
@@ -184,55 +352,14 @@ export function FeaturesSection() {
           </h2>
         </motion.div>
 
-        {/* Launch video — auto-looping local MP4, click opens YouTube */}
+        {/* Launch teaser loads only when the section is viewed on capable devices. */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={inView ? { opacity: 1, y: 0 } : undefined}
           transition={{ duration: 0.5, delay: 0.05, ease }}
           className="mb-10"
         >
-          <a
-            href="https://youtu.be/15aqzManX-0"
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() =>
-              trackMarketingEvent("launch_video_clicked", {
-                source: "features_section",
-              })
-            }
-            className="block relative group rounded-2xl overflow-hidden border border-white/[0.07] hover:border-white/[0.14] transition-colors duration-300 aspect-video"
-          >
-            {/* Auto-looping launch video */}
-            <video
-              src="/videos/relay-launch.mp4"
-              autoPlay
-              muted
-              loop
-              playsInline
-              className="w-full h-full object-cover"
-            />
-
-            {/* Gradient overlay for depth */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/10 pointer-events-none" />
-
-            {/* Play button — glassy circle, visible on hover (always on mobile) */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-300 shadow-[0_0_40px_rgba(255,255,255,0.1)]">
-                <Play
-                  size={28}
-                  className="text-white ml-1"
-                  fill="currentColor"
-                />
-              </div>
-            </div>
-
-            {/* Bottom label */}
-            <div className="absolute bottom-4 left-4 pointer-events-none">
-              <span className="text-xs font-medium text-white/60 group-hover:text-white/80 transition-colors">
-                Watch the launch video
-              </span>
-            </div>
-          </a>
+          <LaunchVideoCard />
         </motion.div>
 
         {/* Card grid */}

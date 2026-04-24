@@ -74,6 +74,17 @@ export const relayCanonicalEvents = [
   "mcp_authorization_failed",
   "cli_authorization_completed",
   "cli_authorization_failed",
+  "mcp_connected_first_time",
+  "first_project_detected",
+  "first_brief_generated",
+  "first_brief_inserted",
+  "mcp_request_failed",
+  "mcp_request_exception",
+  "mcp_token_refresh_fallback",
+  "mcp_session_closed",
+  "user_milestone_reached",
+  "profile_identified",
+  "extension_capture_inserted",
 ] as const
 
 export type RelayCanonicalEventName = (typeof relayCanonicalEvents)[number]

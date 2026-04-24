@@ -76,7 +76,11 @@ export function ensurePosthog() {
     ui_host: "https://eu.posthog.com",
     capture_pageview: false,
     autocapture: false,
-    disable_session_recording: true,
+    disable_session_recording: false,
+    session_recording: {
+      maskTextSelector: ".mask-posthog",
+      maskAllInputs: false,
+    },
     persistence: "localStorage+cookie",
     person_profiles: "identified_only",
   })
@@ -140,6 +144,7 @@ export function capturePosthogException(input: TelemetryEventInput) {
 export function identifyPosthogUser(
   userId: string,
   properties: {
+    name?: string | null
     email?: string | null
     plan?: string | null
     created_at?: string | null

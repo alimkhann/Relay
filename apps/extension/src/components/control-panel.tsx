@@ -222,6 +222,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [newProjectDescription, setNewProjectDescription] = useState("");
   const [localAuthEmail, setLocalAuthEmail] = useState("");
   const [localAuthName, setLocalAuthName] = useState("");
+  const [emailAuthEmail, setEmailAuthEmail] = useState("");
+  const [emailAuthPassword, setEmailAuthPassword] = useState("");
+  const [emailAuthName, setEmailAuthName] = useState("");
+  const [emailAuthMode, setEmailAuthMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [activeContextTab, setActiveContextTab] = useState<ContextTab>("all");
   const [expandedSections, setExpandedSections] = useState<
     Record<ContextSection, boolean>
@@ -872,6 +876,77 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     } catch (cause) {
       setStatus(
         cause instanceof Error ? cause.message : "Local sign-in failed.",
+      );
+    } finally {
+      setBusy(false);
+      setAuthenticating(false);
+    }
+  }
+
+  async function signInWithEmail() {
+    setBusy(true);
+    setAuthenticating(true);
+    setStatus(emailAuthMode === "sign-up" ? "Creating account…" : "Signing in…");
+    const flowId = createExtensionFlowId("ext-email-auth");
+    logExtensionEvent({
+      level: "info",
+      surface: "extension-sidebar",
+      area: "auth",
+      event: "email_sign_in.clicked",
+      flowId,
+      message: `User started email ${emailAuthMode} from the extension panel.`,
+      context: { intent: emailAuthMode },
+    });
+
+    try {
+      const result = (await chrome.runtime.sendMessage({
+        type: "RELAY_EMAIL_SIGN_IN",
+        payload: {
+          email: emailAuthEmail.trim(),
+          password: emailAuthPassword,
+          name: emailAuthName.trim() || null,
+          intent: emailAuthMode,
+          deviceName: deviceName || defaultDeviceName(),
+          flowId,
+        },
+      })) as { ok?: boolean; reason?: string };
+
+      if (!result?.ok) {
+        logExtensionEvent({
+          level: "error",
+          surface: "extension-sidebar",
+          area: "auth",
+          event: "email_sign_in.failed",
+          flowId,
+          message: result?.reason ?? "Email sign-in failed.",
+        });
+        setStatus(result?.reason ?? "Email sign-in failed.");
+        return;
+      }
+
+      logExtensionEvent({
+        level: "info",
+        surface: "extension-sidebar",
+        area: "auth",
+        event: "email_sign_in.succeeded",
+        flowId,
+        message: `Email ${emailAuthMode} completed in the extension UI.`,
+      });
+      setStatus("Signed in with email.");
+      await refreshLocalSession();
+      await refreshActiveProjectState();
+    } catch (cause) {
+      logExtensionEvent({
+        level: "error",
+        surface: "extension-sidebar",
+        area: "auth",
+        event: "email_sign_in.exception",
+        flowId,
+        message: "Email sign-in threw an exception in the extension UI.",
+        error: cause,
+      });
+      setStatus(
+        cause instanceof Error ? cause.message : "Email sign-in failed.",
       );
     } finally {
       setBusy(false);
@@ -1794,13 +1869,74 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               </button>
             </>
           ) : (
-            <button
-              className={styles.primaryButton}
-              disabled={busy}
-              onClick={() => void signInWithGoogle()}
-            >
-              {busy ? "Signing in…" : "Sign in with Google"}
-            </button>
+            <>
+              <button
+                className={styles.primaryButton}
+                disabled={busy}
+                onClick={() => void signInWithGoogle()}
+              >
+                {busy ? "Signing in…" : "Sign in with Google"}
+              </button>
+
+              <div className={styles.dividerRow}>
+                <div className={styles.dividerLine} />
+                <span className={styles.dividerLabel}>or</span>
+                <div className={styles.dividerLine} />
+              </div>
+
+              {emailAuthMode === "sign-up" && (
+                <label className={styles.field}>
+                  <span>Name</span>
+                  <input
+                    value={emailAuthName}
+                    onChange={(event) => setEmailAuthName(event.target.value)}
+                    placeholder="Your name (optional)"
+                  />
+                </label>
+              )}
+
+              <label className={styles.field}>
+                <span>Email</span>
+                <input
+                  value={emailAuthEmail}
+                  onChange={(event) => setEmailAuthEmail(event.target.value)}
+                  placeholder="you@example.com"
+                  type="email"
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span>Password</span>
+                <input
+                  value={emailAuthPassword}
+                  onChange={(event) => setEmailAuthPassword(event.target.value)}
+                  placeholder={emailAuthMode === "sign-up" ? "Create a password" : "Password"}
+                  type="password"
+                />
+              </label>
+
+              <button
+                className={styles.primaryButton}
+                disabled={busy || !emailAuthEmail.trim() || emailAuthPassword.length < 8}
+                onClick={() => void signInWithEmail()}
+              >
+                {busy
+                  ? emailAuthMode === "sign-up" ? "Creating account…" : "Signing in…"
+                  : emailAuthMode === "sign-up" ? "Create account" : "Sign in with email"}
+              </button>
+
+              <button
+                className={styles.linkButton}
+                onClick={() => {
+                  setEmailAuthMode(emailAuthMode === "sign-in" ? "sign-up" : "sign-in");
+                  setStatus("");
+                }}
+              >
+                {emailAuthMode === "sign-in"
+                  ? "Don't have an account? Sign up"
+                  : "Already have an account? Sign in"}
+              </button>
+            </>
           )}
         </section>
       ) : activeState.viewState === "connected-empty" ? (

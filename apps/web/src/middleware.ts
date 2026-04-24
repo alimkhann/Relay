@@ -37,20 +37,12 @@ export default function middleware(request: NextRequest) {
     return NextResponse.rewrite(url)
   }
 
-  // API routes handle their own auth via withApiAuth / resolveViewer(),
-  // which returns proper 401 JSON responses. The Neon Auth middleware must
-  // NOT intercept API routes — it would redirect to /sign-in (HTML), causing
-  // redirect loops for dashboard fetches and unparseable HTML for extension
-  // requests that carry Bearer tokens instead of session cookies.
-  if (request.nextUrl.pathname.startsWith("/api/")) {
-    // Still handle CORS preflight for extension origins
-    if (
-      request.method === "OPTIONS" &&
-      isExtensionOrigin(request.headers.get("origin"))
-    ) {
-      return buildExtensionPreflightResponse(request.headers.get("origin"))
-    }
-    return NextResponse.next()
+  if (
+    request.method === "OPTIONS" &&
+    request.nextUrl.pathname.startsWith("/api/") &&
+    isExtensionOrigin(request.headers.get("origin"))
+  ) {
+    return buildExtensionPreflightResponse(request.headers.get("origin"))
   }
 
   const auth = getAuthServer()
@@ -78,6 +70,12 @@ export const config = {
     "/projects/:path*",
     "/settings/:path*",
     "/settings",
-    "/api/:path*",
+    {
+      source: "/api/:path*",
+      has: [
+        { type: "header", key: "origin", value: "chrome-extension://.*" },
+        { type: "header", key: "access-control-request-method" },
+      ],
+    },
   ]
 }

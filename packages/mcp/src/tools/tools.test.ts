@@ -130,6 +130,7 @@ function mockClient(overrides: Record<string, unknown> = {}) {
       item: { id: "mem-new", type: "note", title: null, content: "test" }
     }),
     getDefaultSyncSurface: vi.fn().mockReturnValue("mcp"),
+    getDefaultTargetProfileKey: vi.fn().mockReturnValue("chatgpt_planning"),
     patch: vi.fn().mockImplementation((path: string) => {
       if (path.includes("/sessions/")) {
         return Promise.resolve({
@@ -175,6 +176,25 @@ describe("get_brief", () => {
       kind: "quick_continuity",
       since: "2026-01-01T00:00:00.000Z",
       syncSurface: "mcp"
+    })
+  })
+
+  it("uses the client default target profile when none is provided", async () => {
+    const client = mockClient({
+      getDefaultTargetProfileKey: vi.fn().mockReturnValue("codex_implementation"),
+    })
+
+    await getBrief(
+      client,
+      { generate: true, syncSurface: "codex" },
+      "proj-1",
+    )
+
+    expect(client.post).toHaveBeenCalledWith("/api/projects/proj-1/bootstrap", {
+      targetProfileKey: "codex_implementation",
+      kind: "fresh_chat_bootstrap",
+      since: undefined,
+      syncSurface: "codex",
     })
   })
 
@@ -242,6 +262,32 @@ describe("list_memory", () => {
     const parsed = JSON.parse(result.content[0]!.text)
     expect(parsed[0].id).toBe("mem-1")
     expect(client.get).toHaveBeenCalledWith("/api/projects/proj-1/memory?archived=true&type=decision")
+  })
+
+  it("falls back to dashboard memory if the explainability endpoint errors", async () => {
+    const client = mockClient({
+      get: vi.fn().mockImplementation((path: string) => {
+        if (path === "/api/projects/proj-1/memory") {
+          return Promise.reject(new Error("500 Internal Server Error"))
+        }
+        if (path === "/api/projects/proj-1") {
+          return Promise.resolve({
+            dashboard: {
+              memory: [
+                { id: "mem-1", type: "decision", title: "Use React", content: "We chose React", pinned: false, updatedAt: "2026-01-01T00:00:00Z", tags: ["frontend"] },
+              ],
+            },
+          })
+        }
+        return Promise.resolve({})
+      }),
+    })
+
+    const result = await listMemory(client, {}, "proj-1")
+    const parsed = JSON.parse(result.content[0]!.text)
+
+    expect(parsed[0].id).toBe("mem-1")
+    expect(client.get).toHaveBeenCalledWith("/api/projects/proj-1")
   })
 })
 

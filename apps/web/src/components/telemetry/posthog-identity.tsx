@@ -6,12 +6,14 @@ import { identifyPosthogUser, resetPosthogUser } from "@/lib/telemetry/posthog"
 
 export function PostHogIdentity({
   userId,
+  name,
   email,
   plan,
   createdAt,
   isExtensionInstalled,
 }: {
   userId: string | null
+  name?: string | null
   email?: string | null
   plan?: string | null
   createdAt?: string | null
@@ -20,6 +22,7 @@ export function PostHogIdentity({
   useEffect(() => {
     if (userId) {
       identifyPosthogUser(userId, {
+        name: name ?? null,
         email: email ?? null,
         plan: plan ?? null,
         created_at: createdAt ?? null,
@@ -29,7 +32,7 @@ export function PostHogIdentity({
     }
 
     resetPosthogUser()
-  }, [createdAt, email, isExtensionInstalled, plan, userId])
+  }, [createdAt, email, isExtensionInstalled, name, plan, userId])
 
   return null
 }

@@ -92,7 +92,7 @@ export function captureServerException(
 
   captureServerEvent({
     event: "$exception",
-    distinctId: context.distinctId ?? "relay-server",
+    distinctId: context.distinctId ?? `anon-${crypto.randomUUID()}`,
     properties: {
       ...context.properties,
       path: context.path ?? context.properties?.path ?? null,

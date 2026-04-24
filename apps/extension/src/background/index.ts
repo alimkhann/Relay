@@ -4396,6 +4396,152 @@ chrome.runtime.onMessage.addListener(
           return;
         }
 
+        if (message.type === "RELAY_EMAIL_SIGN_IN") {
+          try {
+            const flowId = message.payload.flowId ?? createFlowId("ext-email-auth");
+            recordBackgroundTelemetry({
+              level: "info",
+              surface: "extension-background",
+              area: "auth",
+              event: "email_sign_in.started",
+              flowId,
+              message: "Received email sign-in request from the extension UI.",
+              context: {
+                deviceName: message.payload.deviceName,
+                intent: message.payload.intent ?? "sign-in",
+              },
+            });
+
+            const session = await getRelaySession();
+            const apiBase = resolveRelayApiBase({
+              storedApiBase: session.apiBase,
+            });
+            const response = await fetch(
+              `${apiBase}/api/extension/auth/email`,
+              {
+                method: "POST",
+                headers: {
+                  "content-type": "application/json",
+                  "x-relay-flow-id": flowId,
+                },
+                body: JSON.stringify({
+                  email: message.payload.email,
+                  password: message.payload.password,
+                  name: message.payload.name ?? null,
+                  intent: message.payload.intent ?? "sign-in",
+                  deviceName: message.payload.deviceName,
+                }),
+              },
+            );
+
+            recordBackgroundTelemetry({
+              level: response.ok ? "info" : "warn",
+              surface: "extension-background",
+              area: "auth",
+              event: "email_sign_in.api_response",
+              flowId,
+              message: `Extension email auth returned ${response.status}.`,
+              context: {
+                status: response.status,
+                apiBase,
+              },
+            });
+
+            if (!response.ok) {
+              const reason = await readErrorResponse(
+                response,
+                "Email sign-in failed.",
+              );
+              recordBackgroundTelemetry({
+                level: "error",
+                surface: "extension-background",
+                area: "auth",
+                event: "email_sign_in.failed",
+                flowId,
+                message: reason,
+                context: {
+                  apiBase,
+                  status: response.status,
+                },
+              });
+              recordBackgroundTelemetry({
+                level: "error",
+                surface: "extension-background",
+                area: "auth",
+                event: "extension_auth_failed",
+                flowId,
+                message: reason,
+                context: {
+                  authMethod: "email",
+                },
+              });
+              sendResponse({ ok: false, reason });
+              return;
+            }
+
+            const payload = (await response.json()) as ExtensionAuthSessionPayload;
+            if (!payload.token || !payload.apiBase) {
+              sendResponse({
+                ok: false,
+                reason: "Email sign-in completed but Relay did not return a valid session.",
+              });
+              return;
+            }
+
+            await storeAuthenticatedExtensionSession(
+              payload,
+              "Signed in with email.",
+            );
+            authGraceUntil = Date.now() + 5_000;
+            await loadSessionData();
+            const storedSession = await getRelaySession();
+            await identifyExtensionUser(storedSession.userId);
+            recordBackgroundTelemetry({
+              level: "info",
+              surface: "extension-background",
+              area: "auth",
+              event: "extension_auth_completed",
+              flowId,
+              message: "Extension email sign-in completed.",
+              userId: storedSession.userId || null,
+              projectId: storedSession.projectId || null,
+              context: {
+                authMethod: "email",
+                connected: storedSession.connected,
+              },
+            });
+            sendResponse({ ok: true });
+          } catch (cause) {
+            recordBackgroundTelemetry({
+              level: "error",
+              surface: "extension-background",
+              area: "auth",
+              event: "email_sign_in.exception",
+              message: "Email sign-in threw an exception in the background worker.",
+              error: cause,
+            });
+            recordBackgroundTelemetry({
+              level: "error",
+              surface: "extension-background",
+              area: "auth",
+              event: "extension_auth_failed",
+              message: "Extension email sign-in failed.",
+              context: {
+                authMethod: "email",
+              },
+              error: cause,
+            });
+            sendResponse({
+              ok: false,
+              reason:
+                cause instanceof Error
+                  ? cause.message
+                  : "Email sign-in failed.",
+            });
+          }
+          return;
+        }
+
         if (message.type === "RELAY_CREATE_PROJECT") {
           try {
             const flowId = message.payload.flowId ?? createFlowId("ext-project");

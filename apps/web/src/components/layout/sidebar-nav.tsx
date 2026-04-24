@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { LayoutDashboard, Activity, Brain, FileDown, BookOpen } from "lucide-react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { cn } from "@/lib/cn";
@@ -24,7 +23,6 @@ export function SidebarNav({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const overviewHref = currentProjectId
     ? `/dashboard?project=${currentProjectId}`
     : "/dashboard";
@@ -68,15 +66,6 @@ export function SidebarNav({
       icon: <BookOpen className="h-4 w-4" />,
     },
   ];
-
-  useEffect(() => {
-    router.prefetch(overviewHref);
-    router.prefetch("/activity");
-    if (currentProjectId) {
-      router.prefetch(memoryHref);
-      router.prefetch(briefHref);
-    }
-  }, [overviewHref, memoryHref, briefHref, currentProjectId, router]);
 
   return (
     <nav className="flex flex-col gap-0.5">
@@ -145,7 +134,7 @@ export function SidebarNav({
           <Link
             key={item.href}
             href={item.href}
-            onMouseEnter={() => router.prefetch(item.href)}
+            prefetch={false}
             onClick={onNavigate}
             className={sharedClassName}
           >

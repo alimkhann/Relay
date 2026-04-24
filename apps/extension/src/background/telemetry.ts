@@ -64,6 +64,7 @@ async function queueRawPosthogEvent(input: {
   event: string;
   properties: Record<string, string | number | boolean | null>;
   distinctId?: string | null;
+  $set?: Record<string, string | number | boolean | null>;
 }) {
   const config = getPosthogConfig();
   if (!config) {
@@ -87,6 +88,7 @@ async function queueRawPosthogEvent(input: {
             ...getExtensionRuntimeProperties(),
             ...input.properties,
           },
+          ...(input.$set ? { $set: input.$set } : {}),
         }),
       });
     } catch {
@@ -206,6 +208,30 @@ export async function flushBackgroundTelemetry() {
   await Promise.allSettled(Array.from(pendingRequests));
 }
 
+const PROFILE_CACHE_KEY = "relay.analyticsProfileCache";
+
+async function fetchAndCacheProfile(apiBase: string, token: string, userId: string) {
+  try {
+    const response = await fetch(`${apiBase}/api/viewer`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { name?: string | null; email?: string | null };
+    const profile = { name: data.name ?? null, email: data.email ?? null };
+    await chrome.storage.local.set({ [PROFILE_CACHE_KEY]: { userId, ...profile } });
+    return profile;
+  } catch {
+    return null;
+  }
+}
+
+async function getCachedProfile(userId: string) {
+  const stored = await chrome.storage.local.get(PROFILE_CACHE_KEY);
+  const cached = stored[PROFILE_CACHE_KEY] as { userId?: string; name?: string | null; email?: string | null } | undefined;
+  if (cached?.userId === userId) return { name: cached.name ?? null, email: cached.email ?? null };
+  return null;
+}
+
 export async function identifyExtensionUser(userId: string | null | undefined) {
   if (!userId || typeof chrome === "undefined" || !chrome.storage?.local) {
     return;
@@ -221,6 +247,18 @@ export async function identifyExtensionUser(userId: string | null | undefined) {
     return;
   }
 
+  const session = await getRelaySession();
+  const profile =
+    (await getCachedProfile(userId)) ??
+    (session.token ? await fetchAndCacheProfile(session.apiBase, session.token, userId) : null);
+
+  const $set: Record<string, string | boolean | null> = {
+    platform: "extension",
+    is_extension_installed: true,
+  };
+  if (profile?.name) $set.name = profile.name;
+  if (profile?.email) $set.email = profile.email;
+
   await queueRawPosthogEvent({
     event: "$identify",
     distinctId: userId,
@@ -229,6 +267,7 @@ export async function identifyExtensionUser(userId: string | null | undefined) {
       identified_user_id: userId,
       platform: "extension",
     },
+    $set,
   });
 
   await chrome.storage.local.set({

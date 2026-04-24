@@ -236,6 +236,17 @@ export type RelayMessage =
       payload: { email: string; name?: string | null; deviceName: string; flowId?: string };
     }
   | {
+      type: "RELAY_EMAIL_SIGN_IN";
+      payload: {
+        email: string;
+        password: string;
+        name?: string | null;
+        intent?: "sign-in" | "sign-up";
+        deviceName: string;
+        flowId?: string;
+      };
+    }
+  | {
       type: "RELAY_CREATE_PROJECT";
       payload: { name: string; slug?: string; description?: string | null; flowId?: string };
     }

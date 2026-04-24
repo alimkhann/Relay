@@ -1,9 +1,9 @@
 /**
  * relay-flush — autonomous save hook entry point.
  *
- * Invoked from Claude Code PreCompact, SessionEnd, and Stop hooks (and from
- * any equivalent client-side hook) to flush all open Relay work sessions
- * for the configured project through the digest + reconcile pipeline.
+ * Invoked from Claude Code PreCompact, SessionEnd, and StopFailure hooks
+ * (and from any equivalent client-side hook) to flush all open Relay work
+ * sessions for the configured project through the digest + reconcile pipeline.
  *
  * Usage:
  *   relay-flush                  # sweep all open sessions (reason=explicit)
@@ -105,8 +105,13 @@ interface ClaudeSettings {
   [key: string]: unknown
 }
 
-const RELAY_MARK_COMMAND_PREFIX = "relay-flush"
 const RELAY_FLUSH_BASE_COMMAND = "npx -y -p @onrelay/mcp relay-flush"
+const RELAY_FLUSH_COMMAND_PATTERN = /\brelay-flush\b/
+const CLAUDE_STALE_HOOK_EVENTS = ["Stop"] as const
+
+function isRelayFlushCommand(command: string) {
+  return RELAY_FLUSH_COMMAND_PATTERN.test(command)
+}
 
 function buildRelayFlushCommand(reason: FlushReason) {
   return `${RELAY_FLUSH_BASE_COMMAND} ${reason} --quiet`
@@ -133,9 +138,6 @@ async function loadBundledClaudeHooks(): Promise<Record<string, HookMatcher[]>> 
       ],
       SessionEnd: [
         { matcher: "*", hooks: [{ type: "command", command: buildRelayFlushCommand("session_end") }] },
-      ],
-      Stop: [
-        { matcher: "*", hooks: [{ type: "command", command: buildRelayFlushCommand("stop") }] },
       ],
       StopFailure: [
         { matcher: "*", hooks: [{ type: "command", command: buildRelayFlushCommand("stop_failure") }] },
@@ -197,7 +199,7 @@ function mergeHookEvent(existing: HookMatcher[] | undefined, incoming: HookMatch
     }
     const current = merged[idx]!
     const filteredHooks = current.hooks.filter(
-      (h) => !(h.type === "command" && h.command.startsWith(RELAY_MARK_COMMAND_PREFIX)),
+      (h) => !(h.type === "command" && isRelayFlushCommand(h.command)),
     )
     merged[idx] = {
       matcher: current.matcher,
@@ -224,6 +226,23 @@ async function installClaudeCodeSetup(quiet: boolean) {
   for (const [event, matchers] of Object.entries(incoming)) {
     nextHooks[event] = mergeHookEvent(nextHooks[event], matchers)
   }
+
+  for (const event of CLAUDE_STALE_HOOK_EVENTS) {
+    const groups = nextHooks[event]
+    if (!groups) continue
+    const scrubbed = groups
+      .map((group) => ({
+        matcher: group.matcher,
+        hooks: group.hooks.filter((h) => !(h.type === "command" && isRelayFlushCommand(h.command))),
+      }))
+      .filter((group) => group.hooks.length > 0)
+    if (scrubbed.length > 0) {
+      nextHooks[event] = scrubbed
+    } else {
+      delete nextHooks[event]
+    }
+  }
+
   settings.hooks = nextHooks
 
   const payload = JSON.stringify(settings, null, 2) + "\n"

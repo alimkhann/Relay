@@ -19,15 +19,23 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
   }
   const { searchParams } = new URL(request.url)
   const types = searchParams.getAll("type")
-  const memory = await listMemoryForExplainability(viewer.userId, id, {
-    archived: searchParams.get("archived") === "true",
-    pinned: searchParams.has("pinned") ? searchParams.get("pinned") === "true" : undefined,
-    tag: searchParams.get("tag") ?? undefined,
-    limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : undefined,
-    sort: searchParams.get("sort") === "created_desc" ? "created_desc" : "updated_desc",
-    types: types.length > 0 ? types as Array<"note" | "decision" | "constraint" | "requirement" | "task" | "artifact"> : undefined,
-  })
-  return NextResponse.json({ memory })
+  try {
+    const memory = await listMemoryForExplainability(viewer.userId, id, {
+      archived: searchParams.get("archived") === "true",
+      pinned: searchParams.has("pinned") ? searchParams.get("pinned") === "true" : undefined,
+      tag: searchParams.get("tag") ?? undefined,
+      limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : undefined,
+      sort: searchParams.get("sort") === "created_desc" ? "created_desc" : "updated_desc",
+      types: types.length > 0 ? types as Array<"note" | "decision" | "constraint" | "requirement" | "task" | "artifact"> : undefined,
+    })
+    return NextResponse.json({ memory })
+  } catch (error) {
+    console.error(
+      `[api/projects/${id}/memory] GET failed for user ${viewer.userId}:`,
+      error instanceof Error ? error.stack ?? error.message : error,
+    )
+    throw error
+  }
 })
 
 export const POST = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {

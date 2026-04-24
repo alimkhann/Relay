@@ -22,17 +22,6 @@
         ]
       }
     ],
-    "Stop": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "npx -y -p @onrelay/mcp relay-flush stop --quiet"
-          }
-        ]
-      }
-    ],
     "StopFailure": [
       {
         "matcher": "*",

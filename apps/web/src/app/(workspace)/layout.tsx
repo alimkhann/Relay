@@ -43,6 +43,7 @@ export default async function WorkspaceLayout({
       <SessionKeepalive />
       <PostHogIdentity
         userId={viewer.userId}
+        name={viewer.name ?? null}
         email={viewer.email ?? null}
         plan={entitlements.plan}
         createdAt={profile?.createdAt ?? null}

@@ -6,6 +6,7 @@ import { logServerEvent } from "@/server/logging/logger"
 import { resolveViewerEntitlements } from "./entitlement-service"
 import { completeOnboardingForUser } from "./onboarding-service"
 import { resolveProjectAiBudget } from "./ai-budget-service"
+import { fireUserMilestone } from "./user-milestones-service"
 
 const PROJECT_SLUG_MAX_LENGTH = 80
 
@@ -97,6 +98,10 @@ export async function createProjectForUser(
           attempt
         }
       })
+      await fireUserMilestone(userId, "first_project_detected", {
+        project_id: guardedProject.id,
+        onboarding_via: options.onboardingVia ?? "web",
+      }).catch(() => {})
       return guardedProject
     } catch (error) {
       if (isUniqueViolation(error)) {

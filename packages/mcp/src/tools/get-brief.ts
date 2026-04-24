@@ -1,5 +1,5 @@
-import { z } from "zod"
 import type { RelayProjectResolutionResult } from "@relay/shared"
+import { z } from "zod"
 import type { RelayClient } from "../client.js"
 
 export const getBriefSchema = z.object({
@@ -10,7 +10,7 @@ export const getBriefSchema = z.object({
     .describe("Brief kind: quick_continuity for short updates, fresh_chat_bootstrap for full context"),
   targetProfileKey: z
     .string()
-    .default("claude_code_build")
+    .optional()
     .describe("Target profile key for brief formatting"),
   generate: z
     .boolean()
@@ -70,6 +70,20 @@ interface DashboardResponse {
 
 function toStructuredRecord(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>
+}
+
+function buildResolvedProjectSelection(
+  args: z.infer<typeof getBriefSchema>,
+  resolvedProjectId: string,
+  resolution?: RelayProjectResolutionResult,
+) {
+  return resolution ?? {
+    status: "resolved" as const,
+    projectId: resolvedProjectId,
+    source: args.projectId ? "explicit" : "cached",
+    confidence: 1,
+    needsUserIntervention: false,
+  }
 }
 
 async function appendIncludeSections(
@@ -147,19 +161,91 @@ async function resolveBriefMode(
   }
 }
 
+async function getDashboardSnapshot(
+  client: RelayClient,
+  resolvedProjectId: string,
+) {
+  try {
+    return await client.get<DashboardResponse>(`/api/projects/${resolvedProjectId}`)
+  } catch {
+    return null
+  }
+}
+
+function getDriftHint(data: DashboardResponse | null) {
+  if (!data) return null
+  const state = data.dashboard.projectState ?? data.dashboard.derivedProjectState ?? null
+  const stateStatus = data.dashboard.stateStatus
+
+  if (isStateDirty(state)) {
+    return "Relay project state is marked dirty, so treat this brief as provisional and inspect context before mutating."
+  }
+
+  if (stateStatus?.rawCapturePresent === true) {
+    return "Recent raw captures are present and may not be fully reflected in the generated brief yet."
+  }
+
+  if (["pending", "running", "failed", "timed_out"].includes(stateStatus?.digestStatus ?? "idle")) {
+    return `Digest status is ${stateStatus?.digestStatus ?? "unknown"}, so newer continuity may still be settling.`
+  }
+
+  return null
+}
+
+function buildResumeMetadata(
+  data: DashboardResponse | null,
+  options: {
+    targetProfileKey: string
+    kind: "quick_continuity" | "fresh_chat_bootstrap"
+    syncSurface: z.infer<typeof getBriefSchema>["syncSurface"]
+    since?: string
+  },
+) {
+  const state = data?.dashboard.projectState ?? data?.dashboard.derivedProjectState ?? null
+  const decisions = Array.isArray(state?.decisions)
+    ? state.decisions.filter((value): value is string => typeof value === "string" && value.trim().length > 0).slice(0, 4)
+    : []
+
+  return {
+    project: data?.project ?? null,
+    latestDurableDecisions: decisions,
+    freshness: {
+      driftHint: getDriftHint(data),
+      stateStatus: data?.dashboard.stateStatus ?? null,
+      since: options.since ?? null,
+    },
+    briefPolicy: {
+      targetProfileKey: options.targetProfileKey,
+      kind: options.kind,
+      syncSurface: options.syncSurface ?? null,
+      resumeGuidance:
+        "If this brief is coherent and on the correct project, do not call list_projects, set_current_project, get_project_state, list_sessions, list_briefs, or search_context just to restate the same continuity.",
+    },
+  }
+}
+
 export async function getBrief(
   client: RelayClient,
   args: z.infer<typeof getBriefSchema>,
   resolvedProjectId: string,
   resolution?: RelayProjectResolutionResult
 ) {
+  const resolvedTargetProfileKey = args.targetProfileKey ?? client.getDefaultTargetProfileKey()
   const { kind, since, syncSurface } = await resolveBriefMode(client, resolvedProjectId, args)
+  const dashboardSnapshot = await getDashboardSnapshot(client, resolvedProjectId)
+  const projectResolution = buildResolvedProjectSelection(args, resolvedProjectId, resolution)
+  const resumeMetadata = buildResumeMetadata(dashboardSnapshot, {
+    targetProfileKey: resolvedTargetProfileKey,
+    kind,
+    syncSurface,
+    since,
+  })
 
   if (args.generate) {
     const data = await client.post<BootstrapResponse>(
       `/api/projects/${resolvedProjectId}/bootstrap`,
         {
-          targetProfileKey: args.targetProfileKey,
+          targetProfileKey: resolvedTargetProfileKey,
           kind,
           since,
           syncSurface
@@ -175,13 +261,7 @@ export async function getBrief(
         }
       ],
       structuredContent: toStructuredRecord({
-        projectResolution: resolution ?? {
-          status: "resolved",
-          projectId: resolvedProjectId,
-          source: args.projectId ? "explicit" : "cached",
-          confidence: 1,
-          needsUserIntervention: false,
-        },
+        projectResolution,
         brief: {
           status: "pending",
           kind,
@@ -189,6 +269,7 @@ export async function getBrief(
           since: since ?? null,
           targetProfileKey: data.resolvedTargetProfileKey,
         },
+        resumeMetadata,
       }),
     }
   }
@@ -202,13 +283,7 @@ export async function getBrief(
         }
       ],
       structuredContent: toStructuredRecord({
-        projectResolution: resolution ?? {
-          status: "resolved",
-          projectId: resolvedProjectId,
-          source: args.projectId ? "explicit" : "cached",
-          confidence: 1,
-          needsUserIntervention: false,
-        },
+        projectResolution,
         brief: {
           status: "missing",
           kind,
@@ -216,6 +291,7 @@ export async function getBrief(
           since: since ?? null,
           targetProfileKey: data.resolvedTargetProfileKey,
         },
+        resumeMetadata,
       }),
     }
   }
@@ -228,13 +304,7 @@ export async function getBrief(
     return {
       content: [{ type: "text" as const, text }],
       structuredContent: toStructuredRecord({
-        projectResolution: resolution ?? {
-          status: "resolved",
-          projectId: resolvedProjectId,
-          source: args.projectId ? "explicit" : "cached",
-          confidence: 1,
-          needsUserIntervention: false,
-        },
+        projectResolution,
         brief: {
           status: "ready",
           kind,
@@ -243,13 +313,20 @@ export async function getBrief(
           packetId: data.packet.id,
           targetProfileKey: data.packet.targetProfileKey,
         },
+        resumeMetadata: {
+          ...resumeMetadata,
+          briefPolicy: {
+            ...resumeMetadata.briefPolicy,
+            targetProfileKey: data.packet.targetProfileKey,
+          },
+        },
       }),
     }
   }
 
   // Fetch latest cached brief
   const data = await client.get<LatestResponse>(
-    `/api/projects/${resolvedProjectId}/bootstrap/latest?targetProfileKey=${encodeURIComponent(args.targetProfileKey)}&kind=${encodeURIComponent(kind)}&syncSurface=${encodeURIComponent(syncSurface)}`
+    `/api/projects/${resolvedProjectId}/bootstrap/latest?targetProfileKey=${encodeURIComponent(resolvedTargetProfileKey)}&kind=${encodeURIComponent(kind)}&syncSurface=${encodeURIComponent(syncSurface)}`
   )
 
   if (!data.packet) {
@@ -261,19 +338,14 @@ export async function getBrief(
         }
       ],
       structuredContent: toStructuredRecord({
-        projectResolution: resolution ?? {
-          status: "resolved",
-          projectId: resolvedProjectId,
-          source: args.projectId ? "explicit" : "cached",
-          confidence: 1,
-          needsUserIntervention: false,
-        },
+        projectResolution,
         brief: {
           status: "missing",
           kind,
           syncSurface,
           since: since ?? null,
         },
+        resumeMetadata,
       }),
     }
   }
@@ -286,13 +358,7 @@ export async function getBrief(
   return {
     content: [{ type: "text" as const, text }],
     structuredContent: toStructuredRecord({
-      projectResolution: resolution ?? {
-        status: "resolved",
-        projectId: resolvedProjectId,
-        source: args.projectId ? "explicit" : "cached",
-        confidence: 1,
-        needsUserIntervention: false,
-      },
+      projectResolution,
       brief: {
         status: "ready",
         kind,
@@ -300,6 +366,13 @@ export async function getBrief(
         since: since ?? null,
         packetId: data.packet.id,
         targetProfileKey: data.packet.targetProfileKey,
+      },
+      resumeMetadata: {
+        ...resumeMetadata,
+        briefPolicy: {
+          ...resumeMetadata.briefPolicy,
+          targetProfileKey: data.packet.targetProfileKey,
+        },
       },
     }),
   }

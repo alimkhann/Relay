@@ -9,7 +9,7 @@ export async function readProjectBrief(
   projectId: string
 ) {
   const data = await client.get<LatestResponse>(
-    `/api/projects/${projectId}/bootstrap/latest?targetProfileKey=claude_code_build&kind=fresh_chat_bootstrap`
+    `/api/projects/${projectId}/bootstrap/latest?targetProfileKey=${encodeURIComponent(client.getDefaultTargetProfileKey())}&kind=fresh_chat_bootstrap`
   )
 
   return {

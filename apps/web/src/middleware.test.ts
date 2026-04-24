@@ -16,7 +16,7 @@ vi.mock("@/lib/auth/server", () => ({
   getAuthServer: getAuthServerMock
 }))
 
-import middleware from "./middleware"
+import middleware, { config } from "./middleware"
 
 describe("middleware", () => {
   beforeEach(() => {
@@ -61,6 +61,17 @@ describe("middleware", () => {
       loginUrl: "/sign-in"
     })
     expect(middlewareFn).toHaveBeenCalledWith(request)
+  })
+
+  it("only matches API routes for extension CORS preflight", () => {
+    expect(config.matcher).not.toContain("/api/:path*")
+    expect(config.matcher).toContainEqual({
+      source: "/api/:path*",
+      has: [
+        { type: "header", key: "origin", value: "chrome-extension://.*" },
+        { type: "header", key: "access-control-request-method" },
+      ],
+    })
   })
 
   it("answers extension api preflight before auth middleware", async () => {

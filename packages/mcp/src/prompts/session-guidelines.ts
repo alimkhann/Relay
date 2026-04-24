@@ -7,6 +7,7 @@ You have access to Relay, a project memory system that keeps context synchronize
 ### At Session Start
 - Call \`get_brief\` first. Relay will try to resolve the correct project automatically.
 - Only call \`list_projects\` and then \`set_current_project\` if \`get_brief\` reports project ambiguity or clearly resolves to the wrong project.
+- If \`get_brief\` succeeds and the brief is coherent, stop there for a basic resume. Do not immediately follow it with \`get_project_state\`, \`list_sessions\`, \`list_briefs\`, or \`search_context\`.
 - This prevents you from re-discovering things the user has already decided.
 
 ### During the Session

@@ -46,7 +46,11 @@ const nextConfig: NextConfig = {
   }
 }
 
-const sourcemapUploadEnabled = Boolean(process.env.POSTHOG_API_KEY && process.env.POSTHOG_PROJECT_ID)
+const sourcemapUploadEnabled = Boolean(
+  process.env.VERCEL_ENV === "production" &&
+    process.env.POSTHOG_API_KEY &&
+    process.env.POSTHOG_PROJECT_ID
+)
 
 export default sourcemapUploadEnabled
   ? withPostHogConfig(nextConfig, {

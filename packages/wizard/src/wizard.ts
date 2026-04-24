@@ -27,9 +27,12 @@ const analytics = new RelayNodeAnalytics({
   anonymousPrefix: "relay-wizard",
 })
 
-export async function runWizardFlow(options: { apiBase?: string; openBrowser?: boolean } = {}) {
+export async function runWizardFlow(
+  options: { apiBase?: string; openBrowser?: boolean } = {},
+  analyticsClient: Pick<RelayNodeAnalytics, "capture" | "captureException" | "identify" | "shutdown"> = analytics,
+) {
   printBanner()
-  analytics.capture("wizard_started", {
+  analyticsClient.capture("wizard_started", {
     success: true,
     open_browser: options.openBrowser !== false,
   })
@@ -65,18 +68,18 @@ export async function runWizardFlow(options: { apiBase?: string; openBrowser?: b
   let auth
   try {
     auth = await startUnifiedAuthFlow(apiBase, existing?.projectId, { openBrowser: options.openBrowser })
-    await analytics.identify(auth.apiBase, auth.token)
-    analytics.capture("wizard_auth_completed", {
+    await analyticsClient.identify(auth.apiBase, auth.token)
+    analyticsClient.capture("wizard_auth_completed", {
       success: true,
       project_id: auth.projectId ?? existing?.projectId ?? null,
     })
     success("Authenticated successfully!")
   } catch (error) {
-    analytics.capture("wizard_auth_failed", {
+    analyticsClient.capture("wizard_auth_failed", {
       success: false,
       project_id: existing?.projectId ?? null,
     })
-    analytics.capture("wizard_failed", {
+    analyticsClient.capture("wizard_failed", {
       success: false,
       stage: "auth",
     } as Record<string, string | number | boolean | null>)
@@ -144,7 +147,7 @@ export async function runWizardFlow(options: { apiBase?: string; openBrowser?: b
             success(`${ide.name} ${artifact.kind} (${statusLabel}) → ${pc.dim(artifact.path)}`)
           }
         }
-        analytics.capture("wizard_client_configured", {
+        analyticsClient.capture("wizard_client_configured", {
           success: true,
           client_name: ide.id,
           support_tier: ide.supportTier,
@@ -162,9 +165,9 @@ export async function runWizardFlow(options: { apiBase?: string; openBrowser?: b
   console.log(pc.dim("  2. Your coding agent should load Relay MCP and its client-native guidance"))
   console.log(pc.dim("  3. Start with get_brief; only use list_projects if Relay reports ambiguity"))
   console.log()
-  analytics.capture("wizard_completed", {
+  analyticsClient.capture("wizard_completed", {
     success: true,
     project_id: auth.projectId ?? existing?.projectId ?? null,
   })
-  await analytics.shutdown()
+  await analyticsClient.shutdown()
 }

@@ -8,6 +8,8 @@ import { assertIpRateLimit } from "@/server/services/rate-limit-service"
 import { createRepositoryBundle } from "@relay/db"
 import { detectCrossSurfaceDrifts } from "@/server/services/drift-reconciler"
 import { sweepOpenWorkSessions } from "@/server/services/work-session-flush-service"
+import { captureServerEvent } from "@/lib/telemetry/posthog-server"
+import { fireUserMilestone } from "@/server/services/user-milestones-service"
 import { RelayHttpMcpClient } from "./relay-http-mcp-client"
 import { RELAY_MCP_PROMPT_NAMES, RELAY_MCP_RESOURCE_URIS, RELAY_MCP_SERVER_NAME, RELAY_MCP_SERVER_VERSION, RELAY_MCP_TOOL_NAMES } from "@/server/mcp/metadata"
 
@@ -18,12 +20,17 @@ import { RELAY_MCP_PROMPT_NAMES, RELAY_MCP_RESOURCE_URIS, RELAY_MCP_SERVER_NAME,
  * fine: the sweep is idempotent and the worst case is "one extra sweep per
  * cold start".
  */
-const SWEEP_THROTTLE_MS = 30_000
+const SWEEP_THROTTLE_MS = 5 * 60 * 1000
 /** Sweep sessions that have been idle for at least this long. */
 const SWEEP_IDLE_MS = 10 * 60 * 1000
 /** Max sessions flushed per sweep — bounds the latency ceiling. */
-const SWEEP_MAX_SESSIONS = 3
+const SWEEP_MAX_SESSIONS = 1
+const MCP_READ_TELEMETRY_SAMPLE_RATE = 0.1
 const lastSweepAt = new Map<string, number>()
+
+function shouldCaptureMcpToolTelemetry(readOrWrite: "read" | "write") {
+  return readOrWrite === "write" || Math.random() < MCP_READ_TELEMETRY_SAMPLE_RATE
+}
 
 async function maybeSweepStaleSessions(viewer: Viewer): Promise<void> {
   const key = viewer.userId
@@ -115,9 +122,116 @@ function registerHttpTools(
   getCurrentProjectId: () => string | null,
   setCurrentProjectId: (projectId: string) => void,
 ) {
+  const writeTools = new Set<string>([
+    RELAY_MCP_TOOL_NAMES[1],
+    RELAY_MCP_TOOL_NAMES[8],
+    RELAY_MCP_TOOL_NAMES[10],
+    RELAY_MCP_TOOL_NAMES[11],
+    RELAY_MCP_TOOL_NAMES[14],
+    RELAY_MCP_TOOL_NAMES[15],
+    RELAY_MCP_TOOL_NAMES[16],
+    RELAY_MCP_TOOL_NAMES[17],
+    RELAY_MCP_TOOL_NAMES[18],
+    RELAY_MCP_TOOL_NAMES[19],
+  ])
+  const originalTool = server.tool.bind(server)
+
+  ;(server as McpServer & { tool: typeof server.tool }).tool = ((name: string, description: string, schema: unknown, maybeHintsOrHandler: unknown, maybeHandler?: unknown) => {
+    const hasHints = typeof maybeHandler === "function"
+    const hints = hasHints ? maybeHintsOrHandler : undefined
+    const handler = (hasHints ? maybeHandler : maybeHintsOrHandler) as (args: Record<string, unknown>) => Promise<unknown>
+
+    const wrapped = async (args: Record<string, unknown>) => {
+      const initialProjectId =
+        typeof args?.projectId === "string"
+          ? args.projectId
+          : getCurrentProjectId()
+      const initialResolutionSource =
+        typeof args?.projectId === "string"
+          ? "explicit"
+          : viewer.projectId
+            ? "token"
+            : getCurrentProjectId()
+              ? "cached"
+              : null
+      const readOrWrite = writeTools.has(name) ? "write" : "read"
+      const captureToolTelemetry = shouldCaptureMcpToolTelemetry(readOrWrite)
+
+      if (captureToolTelemetry) {
+        captureServerEvent({
+          event: "mcp_tool_called",
+          distinctId: viewer.userId,
+          properties: {
+            tool_name: name,
+            transport: "http",
+            read_or_write: readOrWrite,
+            project_id: initialProjectId ?? null,
+            project_resolution_source: initialResolutionSource,
+            client_name: "relay-mcp-http",
+            success: true,
+          },
+        })
+      }
+
+      try {
+        const result = await handler(args)
+        const structuredContent = result && typeof result === "object" && "structuredContent" in result
+          ? (result as { structuredContent?: Record<string, unknown> }).structuredContent
+          : undefined
+        const resolution = structuredContent?.projectResolution as Record<string, unknown> | undefined
+        const resolvedProjectId =
+          typeof resolution?.projectId === "string"
+            ? resolution.projectId
+            : initialProjectId
+        const resolutionSource =
+          typeof resolution?.source === "string"
+            ? resolution.source
+            : initialResolutionSource
+
+        if (captureToolTelemetry) {
+          captureServerEvent({
+            event: "mcp_tool_completed",
+            distinctId: viewer.userId,
+            properties: {
+              tool_name: name,
+              transport: "http",
+              read_or_write: readOrWrite,
+              project_id: resolvedProjectId ?? null,
+              project_resolution_source: resolutionSource,
+              client_name: "relay-mcp-http",
+              success: true,
+            },
+          })
+        }
+
+        return result
+      } catch (error) {
+        captureServerEvent({
+          event: "mcp_tool_failed",
+          distinctId: viewer.userId,
+          properties: {
+            tool_name: name,
+            transport: "http",
+            read_or_write: readOrWrite,
+            project_id: initialProjectId ?? null,
+            project_resolution_source: initialResolutionSource,
+            client_name: "relay-mcp-http",
+            success: false,
+          },
+        })
+        throw error
+      }
+    }
+
+    if (hasHints) {
+      return originalTool(name, description, schema as never, hints as never, wrapped as never)
+    }
+    return originalTool(name, description, schema as never, wrapped as never)
+  }) as typeof server.tool
+
   server.tool(
     RELAY_MCP_TOOL_NAMES[0],
-    "List all Relay projects you have access to. Returns project IDs, names, slugs, routing keywords, and which project is currently active for this MCP session. Use this only when Relay reports project ambiguity or when you need to switch projects manually.",
+    "List all Relay projects you have access to. Returns project IDs, names, slugs, routing keywords, and which project is currently active for this MCP session. Do not call this before the first get_brief unless Relay explicitly reports project ambiguity or resolves to the wrong project.",
     {
       limit: z.number().optional().describe("Maximum number of projects to return"),
     },
@@ -198,9 +312,10 @@ function registerHttpTools(
 
       const brief = await client.getBrief(resolution.projectId, args as Record<string, unknown>)
       return {
-        content: [{ type: "text" as const, text: brief }],
+        content: [{ type: "text" as const, text: brief.text }],
         structuredContent: {
           projectResolution: resolution,
+          ...brief.structured,
         } as Record<string, unknown>,
       }
     }
@@ -208,7 +323,7 @@ function registerHttpTools(
 
   server.tool(
     RELAY_MCP_TOOL_NAMES[3],
-    "Get full structured project state including overview, objectives, decisions, constraints, and tasks.",
+    "Get full structured project state including overview, objectives, decisions, constraints, and tasks. Use this only when the brief is stale, contradictory, or you specifically need raw structured data for debugging.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
     },
@@ -264,7 +379,7 @@ function registerHttpTools(
 
   server.tool(
     RELAY_MCP_TOOL_NAMES[6],
-    "Search memory items by keyword or semantic query. Returns matching decisions, constraints, tasks, notes, and other memory items.",
+    "Search memory items by keyword or semantic query. Returns matching decisions, constraints, tasks, notes, and other memory items. Use this before high-impact decisions or when local context is incomplete, not as a default follow-up to a coherent get_brief result.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
       query: z.string().describe("Search query to find relevant memory items"),
@@ -288,7 +403,7 @@ function registerHttpTools(
 
   server.tool(
     RELAY_MCP_TOOL_NAMES[7],
-    "List captured source sessions and Relay work sessions that currently influence continuity. Use this when the user asks what captures Relay has, or when debugging stale context.",
+    "List captured source sessions and Relay work sessions that currently influence continuity. Use this when the user explicitly asks what Relay captured, or when debugging stale or contradictory continuity. Do not call this for a normal resume when get_brief is coherent.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
       includeArchived: z.boolean().optional().describe("Include archived source sessions and closed work sessions."),
@@ -325,7 +440,7 @@ function registerHttpTools(
 
   server.tool(
     RELAY_MCP_TOOL_NAMES[9],
-    "List generated Relay brief packets for the current project, including profile, kind, created time, and edited status.",
+    "List generated Relay brief packets for the current project, including profile, kind, created time, and edited status. Use this for debugging stale or contradictory continuity, not for a normal resume when get_brief succeeded.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
       limit: z.number().optional().describe("Maximum number of brief packets to return."),
@@ -663,6 +778,12 @@ async function handleMcpRequest(request: Request) {
   // runs so stale state from a prior crashed/orphaned session doesn't leak
   // into the agent's view. Runs at most once per user per SWEEP_THROTTLE_MS.
   await maybeSweepStaleSessions(viewer)
+
+  // First-value funnel: record the first time a user reaches the MCP surface.
+  // Idempotent via user_milestones.
+  void fireUserMilestone(viewer.userId, "mcp_connected_first_time", {
+    transport: "http",
+  }).catch(() => {})
 
   const server = createHttpMcpServer(viewer)
 

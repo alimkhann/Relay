@@ -72,18 +72,7 @@ export function withApiRoute<TArgs extends [Request, ...unknown[]]>(
             NextResponse.json({ error: "Authentication is required." }, { status: 401 })
           )
 
-          await logServerEvent({
-            level: "warn",
-            surface: "web-api",
-            area: "auth",
-            event: "api.unauthorized",
-            message: `${request.method} ${requestContext?.path ?? new URL(request.url).pathname} -> 401`,
-            context: {
-              method: request.method,
-              path: requestContext?.path ?? new URL(request.url).pathname,
-              durationMs: Date.now() - startedAt
-            }
-          })
+          console.warn(`[Relay] api.unauthorized ${request.method} ${requestContext?.path ?? new URL(request.url).pathname} -> 401 (${Date.now() - startedAt}ms)`)
 
           return response
         }
@@ -116,18 +105,7 @@ export function withApiRoute<TArgs extends [Request, ...unknown[]]>(
         }
 
         if (error instanceof UnauthorizedError) {
-          await logServerEvent({
-            level: "warn",
-            surface: "web-api",
-            area: "auth",
-            event: "api.unauthorized",
-            message: error.message,
-            context: {
-              method: request.method,
-              path: requestContext?.path ?? new URL(request.url).pathname,
-              durationMs: Date.now() - startedAt
-            }
-          })
+          console.warn(`[Relay] api.unauthorized ${request.method} ${requestContext?.path ?? new URL(request.url).pathname} — ${error.message} (${Date.now() - startedAt}ms)`)
 
           return finalizeResponse(
             request,

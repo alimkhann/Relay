@@ -5,7 +5,7 @@ import { detectInAppBrowser, buildAndroidChromeIntent } from "@/lib/utils/in-app
 import { logClientEvent } from "@/lib/telemetry/client";
 
 export function InAppBrowserBanner() {
-  const [platform, setPlatform] = useState<"ios" | null>(null);
+  const [platform, setPlatform] = useState<"ios" | "android" | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -21,20 +21,7 @@ export function InAppBrowserBanner() {
       context: { platform: detected },
     });
 
-    if (detected === "android") {
-      logClientEvent({
-        level: "info",
-        surface: "web-auth",
-        area: "auth",
-        event: "google_sign_in.in_app_redirect",
-        message: "Redirecting Android in-app browser to Chrome.",
-        context: { platform: "android" },
-      });
-      window.location.href = buildAndroidChromeIntent(window.location.href);
-      return;
-    }
-
-    setPlatform("ios");
+    setPlatform(detected);
   }, []);
 
   async function copyLink() {
@@ -53,11 +40,13 @@ export function InAppBrowserBanner() {
     <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
       <div className="rounded-2xl bg-[var(--relay-ink)] px-5 py-4 shadow-2xl">
         <p className="text-sm font-semibold text-[var(--relay-bg)]">
-          Open in Safari to continue
+          Google sign-in won't work here
         </p>
         <p className="mt-1 text-xs text-[var(--relay-bg)]/70 leading-relaxed">
-          Google sign-in is blocked in Threads' browser.
-          Tap <strong className="text-[var(--relay-bg)]">···</strong> at the top right → <strong className="text-[var(--relay-bg)]">Open in Safari</strong>.
+          Use <strong className="text-[var(--relay-bg)]">email sign-in</strong> below, or open in{" "}
+          {platform === "ios" ? "Safari" : "Chrome"}: tap{" "}
+          <strong className="text-[var(--relay-bg)]">···</strong> →{" "}
+          <strong className="text-[var(--relay-bg)]">Open in {platform === "ios" ? "Safari" : "Chrome"}</strong>.
         </p>
         <button
           type="button"
