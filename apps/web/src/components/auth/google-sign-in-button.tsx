@@ -32,7 +32,7 @@ export function GoogleSignInButton({
     <div className="space-y-3">
       <Button
         className="w-full rounded-[var(--relay-radius)] bg-[var(--relay-ink)] px-6 py-3 text-[var(--relay-bg)] shadow-sm hover:opacity-90 hover:shadow-md transition-all"
-        disabled={pending}
+        disabled={pending || !!inAppPlatform}
         onClick={() =>
           startTransition(async () => {
             setError(null);
