@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
+import { Eye, EyeOff } from "lucide-react"
 
 import { authClient } from "@/lib/auth/client"
 import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client"
@@ -22,13 +23,16 @@ export function EmailSignInForm({
   const [password, setPassword] = useState("")
   const [name, setName] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [showPassword, setShowPassword] = useState(false)
   const [mode, setMode] = useState<"sign-in" | "sign-up">(
     intent === "sign-up" ? "sign-up" : "sign-in"
   )
+  const fieldClass =
+    "h-14 w-full rounded-[var(--relay-radius)] border border-[var(--relay-line-strong)] bg-[var(--relay-surface-raised)] px-4 text-[15px] text-[var(--relay-ink)] outline-none transition placeholder:text-[var(--relay-faint)] focus:border-[var(--relay-muted)] focus:ring-0 [-webkit-text-fill-color:var(--relay-ink)] [&:-webkit-autofill]:shadow-[inset_0_0_0_1000px_var(--relay-surface-raised)] [&:-webkit-autofill]:[-webkit-text-fill-color:var(--relay-ink)]"
 
   return (
     <form
-      className="space-y-3"
+      className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault()
         startTransition(async () => {
@@ -94,36 +98,58 @@ export function EmailSignInForm({
       }}
     >
       {mode === "sign-up" && (
-        <input
-          className="w-full rounded-[var(--relay-radius)] border border-[var(--relay-border)] bg-transparent px-4 py-3 text-sm text-[var(--relay-ink)] outline-none transition placeholder:text-[var(--relay-faint)] focus:border-[var(--relay-muted)]"
-          type="text"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Your name (optional)"
-          autoComplete="name"
-        />
+        <label className="block space-y-2">
+          <span className="text-[13px] font-medium text-[var(--relay-ink-secondary)]">Full name</span>
+          <input
+            className={fieldClass}
+            type="text"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Your name"
+            autoComplete="name"
+          />
+        </label>
       )}
-      <input
-        className="w-full rounded-[var(--relay-radius)] border border-[var(--relay-border)] bg-transparent px-4 py-3 text-sm text-[var(--relay-ink)] outline-none transition placeholder:text-[var(--relay-faint)] focus:border-[var(--relay-muted)]"
-        type="email"
-        value={email}
-        onChange={(event) => setEmail(event.target.value)}
-        placeholder="you@example.com"
-        autoComplete="email"
-        required
-      />
-      <input
-        className="w-full rounded-[var(--relay-radius)] border border-[var(--relay-border)] bg-transparent px-4 py-3 text-sm text-[var(--relay-ink)] outline-none transition placeholder:text-[var(--relay-faint)] focus:border-[var(--relay-muted)]"
-        type="password"
-        value={password}
-        onChange={(event) => setPassword(event.target.value)}
-        placeholder={mode === "sign-up" ? "Create a password" : "Password"}
-        autoComplete={mode === "sign-up" ? "new-password" : "current-password"}
-        required
-        minLength={8}
-      />
+      <label className="block space-y-2">
+        <span className="text-[13px] font-medium text-[var(--relay-ink-secondary)]">Email address</span>
+        <input
+          className={fieldClass}
+          type="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          placeholder="you@example.com"
+          autoComplete="email"
+          required
+        />
+      </label>
+      <label className="block space-y-2">
+        <span className="text-[13px] font-medium text-[var(--relay-ink-secondary)]">Password</span>
+        <span className="relative block">
+          <input
+            className={`${fieldClass} pr-12`}
+            type={showPassword ? "text" : "password"}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder={mode === "sign-up" ? "Create a password" : "Password"}
+            autoComplete={mode === "sign-up" ? "new-password" : "current-password"}
+            required
+            minLength={8}
+          />
+          <button
+            type="button"
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            onClick={() => setShowPassword((current) => !current)}
+            className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-[var(--relay-radius-sm)] text-[var(--relay-muted)] transition hover:text-[var(--relay-ink)] focus:outline-none"
+          >
+            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </span>
+        {mode === "sign-up" ? (
+          <span className="block text-[12px] text-[var(--relay-muted)]">Must be at least 8 characters.</span>
+        ) : null}
+      </label>
       <Button
-        className="w-full rounded-[var(--relay-radius)] bg-[var(--relay-ink)] px-6 py-3 text-[var(--relay-bg)] shadow-sm transition-all hover:opacity-90 hover:shadow-md"
+        className="h-14 w-full rounded-[var(--relay-radius)] bg-[var(--relay-accent)] px-6 text-[15px] font-semibold text-[var(--relay-accent-text)] shadow-sm transition-all hover:opacity-90 disabled:opacity-40"
         disabled={pending || email.trim().length === 0 || password.length < 8}
         type="submit"
       >
@@ -138,7 +164,7 @@ export function EmailSignInForm({
           setMode(mode === "sign-in" ? "sign-up" : "sign-in")
           setError(null)
         }}
-        className="w-full text-center text-xs text-[var(--relay-muted)] transition hover:text-[var(--relay-ink)]"
+        className="w-full text-center text-[13px] text-[var(--relay-muted)] transition hover:text-[var(--relay-ink)] focus:outline-none"
       >
         {mode === "sign-in" ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
       </button>

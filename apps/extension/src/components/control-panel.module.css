@@ -801,7 +801,104 @@
 .field select:focus,
 .field textarea:focus {
   border-color: var(--ink);
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.06);
+  box-shadow: none;
+}
+
+.field input:-webkit-autofill,
+.field textarea:-webkit-autofill {
+  -webkit-text-fill-color: var(--ink);
+  box-shadow: 0 0 0 1000px var(--bg) inset;
+  caret-color: var(--ink);
+}
+
+.authPanel {
+  padding-top: 18px;
+}
+
+.authTitle {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.15;
+  color: var(--ink);
+}
+
+.authCopy {
+  margin: 8px 0 18px;
+  color: var(--ink-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.authProviderButton,
+.authPrimaryButton {
+  min-height: 46px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.authProviderButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 0;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+}
+
+.authProviderButton:hover:not(:disabled) {
+  border-color: var(--ink-secondary);
+  background: var(--hover);
+  opacity: 1;
+}
+
+.authProviderIcon {
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.authDividerRow {
+  margin: 16px 0 12px;
+}
+
+.authDividerLabel {
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.authField {
+  gap: 8px;
+  margin-top: 14px;
+  color: var(--ink-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.authField input {
+  min-height: 46px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 11px 13px;
+  font-size: 14px;
+}
+
+.authField input:focus {
+  border-color: var(--ink-secondary);
+}
+
+.authField input:-webkit-autofill {
+  box-shadow: 0 0 0 1000px var(--surface) inset;
+}
+
+.authFieldHint {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
 }
 
 /* ── Divider ── */

@@ -31,7 +31,7 @@ export function GoogleSignInButton({
   return (
     <div className="space-y-3">
       <Button
-        className="w-full rounded-[var(--relay-radius)] bg-[var(--relay-ink)] px-6 py-3 text-[var(--relay-bg)] shadow-sm hover:opacity-90 hover:shadow-md transition-all"
+        className="h-14 w-full rounded-[var(--relay-radius)] border border-[var(--relay-line-strong)] bg-transparent px-6 text-[15px] font-semibold text-[var(--relay-ink)] shadow-none transition-all hover:border-[var(--relay-muted)] hover:bg-[var(--relay-soft)] disabled:opacity-45"
         disabled={pending || !!inAppPlatform}
         onClick={() =>
           startTransition(async () => {
@@ -114,6 +114,7 @@ export function GoogleSignInButton({
           })
         }
       >
+        <span aria-hidden="true" className="mr-3 text-[22px] leading-none">G</span>
         {pending ? "Opening Google…" : "Continue with Google"}
       </Button>
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}

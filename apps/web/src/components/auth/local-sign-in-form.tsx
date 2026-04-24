@@ -20,10 +20,12 @@ export function LocalSignInForm({
   const [email, setEmail] = useState("")
   const [name, setName] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const fieldClass =
+    "h-14 w-full rounded-[var(--relay-radius)] border border-[var(--relay-line-strong)] bg-[var(--relay-surface-raised)] px-4 text-[15px] text-[var(--relay-ink)] outline-none transition placeholder:text-[var(--relay-faint)] focus:border-[var(--relay-muted)] focus:ring-0 [-webkit-text-fill-color:var(--relay-ink)] [&:-webkit-autofill]:shadow-[inset_0_0_0_1000px_var(--relay-surface-raised)] [&:-webkit-autofill]:[-webkit-text-fill-color:var(--relay-ink)]"
 
   return (
     <form
-      className="space-y-3"
+      className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault()
         startTransition(async () => {
@@ -90,25 +92,31 @@ export function LocalSignInForm({
         })
       }}
     >
-      <input
-        className="w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-black/30"
-        type="email"
-        value={email}
-        onChange={(event) => setEmail(event.target.value)}
-        placeholder="you@example.com"
-        autoComplete="email"
-        required
-      />
-      <input
-        className="w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-black/30"
-        type="text"
-        value={name}
-        onChange={(event) => setName(event.target.value)}
-        placeholder="Display name (optional)"
-        autoComplete="name"
-      />
+      <label className="block space-y-2">
+        <span className="text-[13px] font-medium text-[var(--relay-ink-secondary)]">Email address</span>
+        <input
+          className={fieldClass}
+          type="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          placeholder="you@example.com"
+          autoComplete="email"
+          required
+        />
+      </label>
+      <label className="block space-y-2">
+        <span className="text-[13px] font-medium text-[var(--relay-ink-secondary)]">Full name</span>
+        <input
+          className={fieldClass}
+          type="text"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Your name"
+          autoComplete="name"
+        />
+      </label>
       <Button
-        className="w-full rounded-xl bg-[#111210] px-6 py-3 text-white shadow-sm transition-all hover:bg-[#2a2d2a] hover:shadow-md"
+        className="h-14 w-full rounded-[var(--relay-radius)] bg-[var(--relay-accent)] px-6 text-[15px] font-semibold text-[var(--relay-accent-text)] shadow-sm transition-all hover:opacity-90 disabled:opacity-40"
         disabled={pending || email.trim().length === 0}
         type="submit"
       >

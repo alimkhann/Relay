@@ -105,14 +105,14 @@ export default async function SignInPage({
 
       {/* Right column — auth */}
       <div className="flex flex-1 items-center justify-center px-6 py-12">
-        <div className="w-full max-w-sm">
+        <div className="w-full max-w-[430px]">
           {/* Back button */}
           <SignInAnimatedItem delay={0}>
             <Link
               href="/"
-              className="mb-6 inline-flex items-center gap-1.5 text-[13px] text-[var(--relay-muted)] transition hover:text-[var(--relay-ink)]"
+              className="mb-8 inline-flex items-center gap-2 text-[15px] text-[var(--relay-muted)] transition hover:text-[var(--relay-ink)]"
             >
-              <ArrowLeft className="h-3.5 w-3.5" />
+              <ArrowLeft className="h-4 w-4" />
               Home
             </Link>
           </SignInAnimatedItem>
@@ -129,7 +129,7 @@ export default async function SignInPage({
           </SignInAnimatedItem>
 
           <SignInAnimatedItem delay={0.1}>
-            <h1 className="text-2xl font-bold tracking-tight text-[var(--relay-ink)] text-center lg:text-left">
+            <h1 className="text-[32px] font-semibold tracking-tight text-[var(--relay-ink)] text-center lg:text-left">
               {intent === "sign-up"
                 ? "Create your Relay account"
                 : "Sign in to Relay"}
@@ -137,7 +137,7 @@ export default async function SignInPage({
           </SignInAnimatedItem>
 
           <SignInAnimatedItem delay={0.15}>
-            <p className="mt-2 text-sm text-[var(--relay-muted)] text-center lg:text-left">
+            <p className="mt-3 text-[17px] leading-relaxed text-[var(--relay-muted)] text-center lg:text-left">
               {intent === "sign-up"
                 ? authProvider === "local"
                   ? "Use local dev auth and land in your dashboard."
@@ -155,10 +155,10 @@ export default async function SignInPage({
               ) : (
                 <div className="space-y-4">
                   <GoogleSignInButton nextPath={nextPath} intent={intent} />
-                  <div className="flex items-center gap-3">
-                    <div className="h-px flex-1 bg-[var(--relay-border)]" />
-                    <span className="text-xs text-[var(--relay-faint)]">or</span>
-                    <div className="h-px flex-1 bg-[var(--relay-border)]" />
+                  <div className="flex items-center gap-4 py-1">
+                    <div className="h-px flex-1 bg-[var(--relay-line)]" />
+                    <span className="text-sm text-[var(--relay-muted)]">Or continue with email</span>
+                    <div className="h-px flex-1 bg-[var(--relay-line)]" />
                   </div>
                   <EmailSignInForm nextPath={nextPath} intent={intent} />
                 </div>

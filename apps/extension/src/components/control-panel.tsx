@@ -1876,16 +1876,16 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         </section>
       ) : activeState.viewState === "disconnected" || !session?.connected ? (
         /* ─── Connect state ─── */
-        <section className={styles.panel}>
-          <h2 className={styles.sectionTitle}>Sign in to Relay</h2>
-          <p className={styles.copy}>
+        <section className={`${styles.panel} ${styles.authPanel}`}>
+          <h2 className={styles.authTitle}>Sign in to Relay</h2>
+          <p className={styles.authCopy}>
             Sign in once. Relay captures useful work quietly and keeps your next
             chat ready.
           </p>
 
           {extensionAuthProvider === "local" ? (
             <>
-              <label className={styles.field}>
+              <label className={`${styles.field} ${styles.authField}`}>
                 <span>Email</span>
                 <input
                   value={localAuthEmail}
@@ -1895,7 +1895,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 />
               </label>
 
-              <label className={styles.field}>
+              <label className={`${styles.field} ${styles.authField}`}>
                 <span>Name</span>
                 <input
                   value={localAuthName}
@@ -1905,7 +1905,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               </label>
 
               <button
-                className={styles.primaryButton}
+                className={`${styles.primaryButton} ${styles.authPrimaryButton}`}
                 disabled={busy || !localAuthEmail.trim()}
                 onClick={() => void signInLocally()}
               >
@@ -1915,52 +1915,59 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           ) : (
             <>
               <button
-                className={styles.primaryButton}
+                className={`${styles.primaryButton} ${styles.authProviderButton}`}
                 disabled={busy}
                 onClick={() => void signInWithGoogle()}
               >
-                {busy ? "Signing in…" : "Sign in with Google"}
+                <span className={styles.authProviderIcon}>G</span>
+                {busy ? "Signing in…" : "Continue with Google"}
               </button>
 
-              <div className={styles.dividerRow}>
+              <div className={`${styles.dividerRow} ${styles.authDividerRow}`}>
                 <div className={styles.dividerLine} />
-                <span className={styles.dividerLabel}>or</span>
+                <span className={styles.authDividerLabel}>Or continue with email</span>
                 <div className={styles.dividerLine} />
               </div>
 
               {emailAuthMode === "sign-up" && (
-                <label className={styles.field}>
-                  <span>Name</span>
+                <label className={`${styles.field} ${styles.authField}`}>
+                  <span>Full name</span>
                   <input
                     value={emailAuthName}
                     onChange={(event) => setEmailAuthName(event.target.value)}
-                    placeholder="Your name (optional)"
+                    placeholder="Your name"
+                    autoComplete="name"
                   />
                 </label>
               )}
 
-              <label className={styles.field}>
-                <span>Email</span>
+              <label className={`${styles.field} ${styles.authField}`}>
+                <span>Email address</span>
                 <input
                   value={emailAuthEmail}
                   onChange={(event) => setEmailAuthEmail(event.target.value)}
                   placeholder="you@example.com"
                   type="email"
+                  autoComplete="email"
                 />
               </label>
 
-              <label className={styles.field}>
+              <label className={`${styles.field} ${styles.authField}`}>
                 <span>Password</span>
                 <input
                   value={emailAuthPassword}
                   onChange={(event) => setEmailAuthPassword(event.target.value)}
                   placeholder={emailAuthMode === "sign-up" ? "Create a password" : "Password"}
                   type="password"
+                  autoComplete={emailAuthMode === "sign-up" ? "new-password" : "current-password"}
                 />
+                {emailAuthMode === "sign-up" ? (
+                  <small className={styles.authFieldHint}>Must be at least 8 characters.</small>
+                ) : null}
               </label>
 
               <button
-                className={styles.primaryButton}
+                className={`${styles.primaryButton} ${styles.authPrimaryButton}`}
                 disabled={busy || !emailAuthEmail.trim() || emailAuthPassword.length < 8}
                 onClick={() => void signInWithEmail()}
               >
