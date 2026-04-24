@@ -8,7 +8,8 @@ import type {
 } from "@relay/shared"
 
 import { observeAndReflectDigestWithRepositories } from "./canon-autonomy-service"
-import { reconcileAfterDigest, type ReconciliationResult } from "./context-reconciliation-service"
+import { reconcileAfterDigest, type ReconciliationResult, type TruthMaintenanceArchiveDecision } from "./context-reconciliation-service"
+import { runTruthMaintenancePass } from "./digest-service"
 import { mergeDigestIntoState } from "./project-state-service"
 
 export interface FlushWorkSessionInput {
@@ -102,6 +103,7 @@ async function runDigestAndReconcile(
   flushUserId: string,
   flushSurface: string | null,
   workSessionId: string,
+  truthMaintenanceArchive: TruthMaintenanceArchiveDecision[] = [],
 ): Promise<{ nextState: ProjectStateRow; reconciliation: ReconciliationResult }> {
   const nextStateShape = mergeDigestIntoState(project, currentState, digest)
   const nextState = await tx.projectState.upsert({
@@ -122,6 +124,7 @@ async function runDigestAndReconcile(
   const reconciliation = await reconcileAfterDigest(tx, projectId, digest, {
     userId: flushUserId,
     sourceSurface: flushSurface,
+    truthMaintenanceArchive,
   })
   await observeAndReflectDigestWithRepositories(tx, flushUserId, {
     projectId,
@@ -149,6 +152,28 @@ export async function flushWorkSession(
   input: FlushWorkSessionInput,
 ): Promise<FlushWorkSessionResult> {
   const repositories = createRepositoryBundle(userId)
+  let truthMaintenanceArchive: TruthMaintenanceArchiveDecision[] = []
+
+  const preflightSession = await repositories.workSessions.getById(input.sessionId)
+  if (
+    preflightSession &&
+    preflightSession.projectId === projectId &&
+    preflightSession.userId === userId &&
+    preflightSession.status !== "closed"
+  ) {
+    const stateToUse: WorkSessionStructuredState = input.structuredState
+      ? input.structuredState
+      : readStructuredStateFromRow(preflightSession)
+
+    if (hasMeaningfulState(stateToUse)) {
+      const digest = structuredStateToDigest(stateToUse, input.summaryShort ?? null)
+      truthMaintenanceArchive = await runTruthMaintenancePass(repositories, userId, {
+        projectId,
+        digest,
+        rawContext: JSON.stringify(stateToUse),
+      })
+    }
+  }
 
   return repositories.provider.transaction(async (provider) => {
     const tx = createRepositoryBundle(userId, provider)
@@ -204,6 +229,7 @@ export async function flushWorkSession(
       userId,
       session.surface,
       session.id,
+      truthMaintenanceArchive,
     )
 
     await tx.workSessionEvents.create({

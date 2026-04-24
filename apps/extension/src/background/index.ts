@@ -4542,6 +4542,80 @@ chrome.runtime.onMessage.addListener(
           return;
         }
 
+        if (message.type === "RELAY_SCAN_PROJECT_URL") {
+          try {
+            const flowId = message.payload.flowId ?? createFlowId("ext-project-scan");
+            recordBackgroundTelemetry({
+              level: "info",
+              surface: "extension-background",
+              area: "projects",
+              event: "project_scan_url.started",
+              flowId,
+              message: "Received project URL scan request from the extension UI.",
+            });
+
+            const response = await relayFetch("/api/projects/scan-url", {
+              method: "POST",
+              headers: {
+                "x-relay-flow-id": flowId,
+              },
+              body: JSON.stringify({
+                url: message.payload.url,
+              }),
+            });
+
+            if (!response.ok) {
+              const reason = await readErrorResponse(response, "URL scan failed.");
+              recordBackgroundTelemetry({
+                level: "warn",
+                surface: "extension-background",
+                area: "projects",
+                event: "project_scan_url.failed",
+                flowId,
+                message: reason,
+                context: {
+                  status: response.status,
+                },
+              });
+              sendResponse({ ok: false, reason });
+              return;
+            }
+
+            const result = (await response.json()) as {
+              name: string | null;
+              description: string | null;
+              url: string;
+            };
+            recordBackgroundTelemetry({
+              level: "info",
+              surface: "extension-background",
+              area: "projects",
+              event: "project_scan_url.succeeded",
+              flowId,
+              message: "Project URL scan completed from the extension.",
+              context: {
+                hasName: Boolean(result.name),
+                hasDescription: Boolean(result.description),
+              },
+            });
+            sendResponse({ ok: true, result });
+          } catch (cause) {
+            recordBackgroundTelemetry({
+              level: "error",
+              surface: "extension-background",
+              area: "projects",
+              event: "project_scan_url.exception",
+              message: "Project URL scan threw an exception in the background worker.",
+              error: cause,
+            });
+            sendResponse({
+              ok: false,
+              reason: cause instanceof Error ? cause.message : "URL scan failed.",
+            });
+          }
+          return;
+        }
+
         if (message.type === "RELAY_CREATE_PROJECT") {
           try {
             const flowId = message.payload.flowId ?? createFlowId("ext-project");
@@ -4568,6 +4642,7 @@ chrome.runtime.onMessage.addListener(
                 name: message.payload.name,
                 slug,
                 description: message.payload.description ?? null,
+                projectUrl: message.payload.projectUrl ?? null,
               }),
             });
             console.log("[Relay BG] create project response status:", response.status);

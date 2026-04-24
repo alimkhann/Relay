@@ -1,9 +1,24 @@
 import { z } from "zod"
 
+export const projectUrlSchema = z
+  .string()
+  .trim()
+  .max(2048)
+  .url()
+  .refine((value) => {
+    try {
+      const url = new URL(value)
+      return url.protocol === "http:" || url.protocol === "https:"
+    } catch {
+      return false
+    }
+  }, "Project URL must start with http:// or https://")
+
 export const projectInputSchema = z.object({
   name: z.string().min(2).max(80),
   slug: z.string().min(2).max(80).optional(),
-  description: z.string().max(200).nullable().optional()
+  description: z.string().max(200).nullable().optional(),
+  projectUrl: projectUrlSchema.nullable().optional()
 })
 
 export const updateProjectSchema = projectInputSchema.partial().extend({

@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic"
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ project?: string; projectName?: string; projectDescription?: string }>
+  searchParams: Promise<{ project?: string; projectName?: string; projectDescription?: string; projectUrl?: string }>
 }) {
   const viewer = await requirePageViewer("/dashboard")
   const projects = await listProjectsForUser(viewer.userId)
@@ -62,6 +62,7 @@ export default async function DashboardPage({
           <CreateProjectForm
             initialName={(await searchParams).projectName ?? ""}
             initialDescription={(await searchParams).projectDescription ?? ""}
+            initialProjectUrl={(await searchParams).projectUrl ?? ""}
           />
         </section>
       </>
@@ -107,6 +108,7 @@ export default async function DashboardPage({
               id: currentProject.id,
               name: currentProject.name,
               description: currentProject.description,
+              projectUrl: currentProject.projectUrl,
             }}
             dashboard={dashboard}
           />

@@ -76,6 +76,7 @@ export async function createProjectForUser(
         name: parsed.name,
         slug: candidateSlug,
         description: parsed.description ?? null,
+        projectUrl: parsed.projectUrl ?? null,
         activeProjectLimit: entitlements.limits.activeProjects,
       })
 
@@ -164,6 +165,7 @@ export async function updateProjectForUser(userId: string, projectId: string, in
     name: parsed.name,
     slug,
     description: parsed.description,
+    projectUrl: parsed.projectUrl,
     isArchived: parsed.isArchived === false ? undefined : parsed.isArchived
   })
 }

@@ -52,6 +52,7 @@ export interface ProjectRow {
   name: string
   slug: string
   description: string | null
+  projectUrl: string | null
   isArchived: boolean
   createdAt: string
   updatedAt: string

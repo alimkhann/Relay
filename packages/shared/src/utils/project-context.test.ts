@@ -10,6 +10,7 @@ function makeDashboard(): ProjectDashboardDto {
       name: "Relay",
       slug: "relay",
       description: null,
+      projectUrl: null,
       memoryCount: 0,
       sessionCount: 0,
       routingContext: null,

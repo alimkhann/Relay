@@ -9,6 +9,7 @@ export interface RelayProjectOption {
   name: string;
   slug?: string | null;
   description?: string | null;
+  projectUrl?: string | null;
   memoryCount?: number;
   sessionCount?: number;
   routingContext?: {
@@ -248,7 +249,11 @@ export type RelayMessage =
     }
   | {
       type: "RELAY_CREATE_PROJECT";
-      payload: { name: string; slug?: string; description?: string | null; flowId?: string };
+      payload: { name: string; slug?: string; description?: string | null; projectUrl?: string | null; flowId?: string };
+    }
+  | {
+      type: "RELAY_SCAN_PROJECT_URL";
+      payload: { url: string; flowId?: string };
     }
   | {
       type: "RELAY_SHOW_ASSOCIATION_TOAST";

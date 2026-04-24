@@ -77,7 +77,7 @@ function groupSessionsByConversation(
 /* ─── Component ─── */
 
 interface DashboardContentProps {
-  project: { id: string; name: string; description?: string | null };
+  project: { id: string; name: string; description?: string | null; projectUrl?: string | null };
   dashboard: ProjectDashboardDto;
 }
 
@@ -87,26 +87,32 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
   const [status, setStatus] = useState("");
   const [editingProject, setEditingProject] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [scanPending, setScanPending] = useState(false);
   const [projectNameDraft, setProjectNameDraft] = useState(project.name);
   const [projectDescriptionDraft, setProjectDescriptionDraft] = useState(
     project.description ?? "",
   );
+  const [projectUrlDraft, setProjectUrlDraft] = useState(project.projectUrl ?? "");
   const [projectMeta, setProjectMeta] = useState({
     name: project.name,
     description: project.description ?? "",
+    projectUrl: project.projectUrl ?? "",
   });
   useEffect(() => {
     setProjectMeta({
       name: project.name,
       description: project.description ?? "",
+      projectUrl: project.projectUrl ?? "",
     });
     setProjectNameDraft(project.name);
     setProjectDescriptionDraft(project.description ?? "");
+    setProjectUrlDraft(project.projectUrl ?? "");
     setEditingProject(false);
   }, [
     project.id,
     project.name,
     project.description,
+    project.projectUrl,
   ]);
 
   const totalContextItems = getProjectContextCounts(dashboard).all;
@@ -158,6 +164,7 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
   function saveProjectMetadata() {
     const nextName = projectNameDraft.trim();
     const nextDescription = projectDescriptionDraft.trim();
+    const nextProjectUrl = projectUrlDraft.trim();
 
     if (nextName.length < 2) {
       setStatus("Project name must be at least 2 characters.");
@@ -171,7 +178,8 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
 
     if (
       nextName === projectMeta.name &&
-      nextDescription === projectMeta.description
+      nextDescription === projectMeta.description &&
+      nextProjectUrl === projectMeta.projectUrl
     ) {
       setEditingProject(false);
       setStatus("No project changes to save.");
@@ -186,6 +194,7 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
           body: JSON.stringify({
             name: nextName,
             description: nextDescription || null,
+            projectUrl: nextProjectUrl || null,
           }),
         });
 
@@ -197,20 +206,64 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
         }
 
         const payload = (await res.json()) as {
-          project: { name: string; description: string | null };
+          project: { name: string; description: string | null; projectUrl: string | null };
         };
 
         setProjectMeta({
           name: payload.project.name,
           description: payload.project.description ?? "",
+          projectUrl: payload.project.projectUrl ?? "",
         });
         setProjectNameDraft(payload.project.name);
         setProjectDescriptionDraft(payload.project.description ?? "");
+        setProjectUrlDraft(payload.project.projectUrl ?? "");
         setEditingProject(false);
       },
       "Saving project…",
       "Project updated.",
     );
+  }
+
+  async function scanProjectUrl() {
+    const url = projectUrlDraft.trim();
+    if (!url) {
+      setStatus("Enter a project URL to scan.");
+      return;
+    }
+
+    setScanPending(true);
+    setStatus("Scanning project URL…");
+    try {
+      const response = await relayClientFetch("/api/projects/scan-url", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(payload.error ?? "URL scan failed.");
+      }
+
+      const result = (await response.json()) as {
+        name: string | null;
+        description: string | null;
+        url: string;
+      };
+
+      setProjectUrlDraft(result.url);
+      if (!projectNameDraft.trim() && result.name) setProjectNameDraft(result.name);
+      if (!projectDescriptionDraft.trim() && result.description) {
+        setProjectDescriptionDraft(result.description);
+      }
+      setStatus("Project URL scanned.");
+    } catch (cause) {
+      setStatus(cause instanceof Error ? cause.message : "URL scan failed.");
+    } finally {
+      setScanPending(false);
+    }
   }
 
   function archiveProject() {
@@ -260,6 +313,25 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
                     }}
                   />
                 </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    className="w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] px-2.5 py-1.5 text-[13px] text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)]"
+                    value={projectUrlDraft}
+                    onChange={(event) => setProjectUrlDraft(event.target.value)}
+                    placeholder="https://example.com"
+                    type="url"
+                    disabled={pending || scanPending}
+                  />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={pending || scanPending || !projectUrlDraft.trim()}
+                    onClick={() => void scanProjectUrl()}
+                    className="h-8 text-[11px] sm:w-auto"
+                  >
+                    {scanPending ? "Scanning…" : "Scan"}
+                  </Button>
+                </div>
                 <textarea
                   className="w-full min-h-[60px] rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] px-2.5 py-1.5 text-[13px] leading-relaxed text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)] resize-none"
                   value={projectDescriptionDraft}
@@ -291,6 +363,7 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
                     onClick={() => {
                       setProjectNameDraft(projectMeta.name);
                       setProjectDescriptionDraft(projectMeta.description);
+                      setProjectUrlDraft(projectMeta.projectUrl);
                       setEditingProject(false);
                     }}
                     className="h-7 text-[11px]"
@@ -316,11 +389,21 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Edit project"
+              className="h-7 w-7 p-0 text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
+              onClick={() => setEditingProject(true)}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
                 <Button
                   variant="ghost"
                   size="sm"
+                  aria-label="Project actions"
                   className="h-7 w-7 p-0 text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
                 >
                   <MoreHorizontal className="h-4 w-4" />

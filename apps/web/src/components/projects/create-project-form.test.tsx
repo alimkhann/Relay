@@ -73,6 +73,12 @@ describe("CreateProjectForm", () => {
     render(<CreateProjectForm />);
 
     fireEvent.change(
+      screen.getByPlaceholderText("https://example.com"),
+      {
+        target: { value: "https://www.onrelay.app" },
+      },
+    );
+    fireEvent.change(
       screen.getByPlaceholderText("E.g., Acapella or Internal Tools"),
       {
         target: { value: "Relay" },
@@ -91,6 +97,56 @@ describe("CreateProjectForm", () => {
     await waitFor(() => {
       expect(push).toHaveBeenCalledWith("/dashboard?project=project_123");
     });
+    expect(relayClientFetch).toHaveBeenCalledWith(
+      "/api/projects",
+      expect.objectContaining({
+        body: JSON.stringify({
+          name: "Relay",
+          slug: "relay",
+          description: "Keep AI project continuity alive.",
+          projectUrl: "https://www.onrelay.app",
+        }),
+      }),
+    );
     expect(refresh).toHaveBeenCalled();
+  });
+
+  it("scans a URL and only fills blank fields", async () => {
+    relayClientFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        name: "Scanned Name",
+        description: "Scanned description.",
+        url: "https://example.com/",
+      }),
+    });
+
+    render(<CreateProjectForm />);
+
+    fireEvent.change(screen.getByPlaceholderText("https://example.com"), {
+      target: { value: "https://example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Scan" }));
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("Scanned Name")).toBeTruthy();
+    });
+    expect(screen.getByDisplayValue("Scanned description.")).toBeTruthy();
+
+    relayClientFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        name: "Replacement",
+        description: "Replacement description.",
+        url: "https://example.com/",
+      }),
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Scan" }));
+
+    await waitFor(() => {
+      expect(relayClientFetch).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.getByDisplayValue("Scanned Name")).toBeTruthy();
+    expect(screen.getByDisplayValue("Scanned description.")).toBeTruthy();
   });
 });

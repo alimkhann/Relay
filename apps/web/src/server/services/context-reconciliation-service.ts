@@ -19,6 +19,11 @@ export interface ReconciliationResult {
   supersedesEdges: number
 }
 
+export interface TruthMaintenanceArchiveDecision {
+  id: string
+  reason: string
+}
+
 function findSupersedingNewItem(
   newItems: MemoryItemRow[] | undefined,
   old: MemoryItemRow,
@@ -48,13 +53,19 @@ export async function reconcileAfterDigest(
   repositories: RepositoryBundle,
   projectId: string,
   digest: SessionDigestShape,
-  options?: { newItems?: MemoryItemRow[]; userId?: string | null; sourceSurface?: string | null }
+  options?: {
+    newItems?: MemoryItemRow[]
+    userId?: string | null
+    sourceSurface?: string | null
+    truthMaintenanceArchive?: TruthMaintenanceArchiveDecision[]
+  }
 ): Promise<ReconciliationResult> {
   const actor = options?.userId ?? null
   const surface = options?.sourceSurface ?? null
   const memoryItems = await repositories.memory.listByProject(projectId)
   const archivedItems: string[] = []
   const disputedItems = new Set<string>()
+  const truthMaintenanceArchivedIds = new Set<string>()
   let supersedesEdges = 0
 
   const reconcilableTypes = new Set(["decision", "constraint", "task"])
@@ -62,7 +73,45 @@ export async function reconcileAfterDigest(
     (item) => reconcilableTypes.has(item.type) && !item.pinned
   )
 
+  if (options?.truthMaintenanceArchive?.length) {
+    const candidatesById = new Map(
+      candidates
+        .filter((item) => !item.isArchived)
+        .map((item) => [item.id, item]),
+    )
+    const seenArchiveIds = new Set<string>()
+
+    for (const decision of options.truthMaintenanceArchive) {
+      if (seenArchiveIds.has(decision.id)) continue
+      seenArchiveIds.add(decision.id)
+      const item = candidatesById.get(decision.id)
+      if (!item || item.projectId !== projectId) continue
+
+      await repositories.memory.update(item.id, {
+        isArchived: true,
+        metadata: mergeMetadata(item, {
+          archivedBy: "truth_maintenance",
+          archivedReason: decision.reason || "truth_maintenance",
+          conflictStatus: "superseded",
+          validationState: "superseded",
+        }),
+      })
+      archivedItems.push(item.content)
+      truthMaintenanceArchivedIds.add(item.id)
+
+      void emitMemoryEvent(repositories, {
+        projectId,
+        memoryItemId: item.id,
+        eventType: "archived",
+        sourceSurface: surface,
+        userId: actor,
+        payload: { type: item.type, reason: decision.reason || "truth_maintenance" },
+      })
+    }
+  }
+
   for (const item of candidates) {
+    if (truthMaintenanceArchivedIds.has(item.id)) continue
     let shouldArchive = false
 
     if (item.type === "decision") {
@@ -187,6 +236,7 @@ export async function reconcileAfterDigest(
   let reaffirmedCount = 0
   const archivedSet = new Set(archivedItems)
   for (const item of candidates) {
+    if (truthMaintenanceArchivedIds.has(item.id)) continue
     if (archivedSet.has(item.content)) continue
     if (disputedItems.has(item.id)) continue
     const reaffirmed = digestTexts.some(

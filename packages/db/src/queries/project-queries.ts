@@ -74,6 +74,7 @@ export async function getProjectSummaries(repositories: RepositoryBundle, ownerI
         project.name,
         project.slug,
         project.description,
+        project.projectUrl,
         projectState?.projectOverview ?? null,
         projectState?.currentObjective ?? null,
         projectState?.recentProgress ?? null,
@@ -89,6 +90,7 @@ export async function getProjectSummaries(repositories: RepositoryBundle, ownerI
         name: project.name,
         slug: project.slug,
         description: project.description,
+        projectUrl: project.projectUrl,
         memoryCount: memoryItems.length,
         sessionCount: conversationCount,
         routingContext: {

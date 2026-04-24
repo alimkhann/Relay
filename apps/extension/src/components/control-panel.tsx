@@ -218,6 +218,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [associationAction, setAssociationAction] = useState<
     null | "approving_held"
   >(null);
+  const [projectScanPending, setProjectScanPending] = useState(false);
+  const [newProjectUrl, setNewProjectUrl] = useState("");
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDescription, setNewProjectDescription] = useState("");
   const [localAuthEmail, setLocalAuthEmail] = useState("");
@@ -958,6 +960,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     const name = newProjectName.trim();
     if (!name) return;
     const description = newProjectDescription.trim();
+    const projectUrl = newProjectUrl.trim();
 
     setBusy(true);
     setStatus("Creating project…");
@@ -979,7 +982,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     try {
       const result = (await chrome.runtime.sendMessage({
         type: "RELAY_CREATE_PROJECT",
-        payload: { name, slug, description: description || null, flowId },
+        payload: { name, slug, description: description || null, projectUrl: projectUrl || null, flowId },
       })) as {
         ok?: boolean;
         reason?: string;
@@ -1015,6 +1018,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           name: result.project?.name ?? name,
         },
       });
+      setNewProjectUrl("");
       setNewProjectName("");
       setNewProjectDescription("");
       setStatus(`Created project "${result.project?.name}".`);
@@ -1035,6 +1039,46 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       );
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function scanProjectUrl() {
+    const url = newProjectUrl.trim();
+    if (!url) {
+      setStatus("Enter a project URL to scan.");
+      return;
+    }
+
+    setProjectScanPending(true);
+    setStatus("Scanning project URL…");
+    const flowId = createExtensionFlowId("ext-project-scan");
+
+    try {
+      const result = (await chrome.runtime.sendMessage({
+        type: "RELAY_SCAN_PROJECT_URL",
+        payload: { url, flowId },
+      })) as {
+        ok?: boolean;
+        reason?: string;
+        result?: { name: string | null; description: string | null; url: string };
+      };
+
+      if (!result?.ok) {
+        setStatus(result?.reason ?? "URL scan failed.");
+        return;
+      }
+
+      const scan = result.result;
+      if (scan?.url) setNewProjectUrl(scan.url);
+      if (!newProjectName.trim() && scan?.name) setNewProjectName(scan.name);
+      if (!newProjectDescription.trim() && scan?.description) {
+        setNewProjectDescription(scan.description);
+      }
+      setStatus("Project URL scanned.");
+    } catch (cause) {
+      setStatus(cause instanceof Error ? cause.message : "URL scan failed.");
+    } finally {
+      setProjectScanPending(false);
     }
   }
 
@@ -1949,6 +1993,24 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             </p>
 
             <label className={styles.field}>
+              <span>Project URL</span>
+              <input
+                value={newProjectUrl}
+                onChange={(event) => setNewProjectUrl(event.target.value)}
+                placeholder="https://example.com"
+                type="url"
+              />
+            </label>
+
+            <button
+              className={styles.secondaryButton}
+              disabled={busy || projectScanPending || !newProjectUrl.trim()}
+              onClick={() => void scanProjectUrl()}
+            >
+              {projectScanPending ? "Scanning…" : "Scan URL"}
+            </button>
+
+            <label className={styles.field}>
               <span>Project name</span>
               <input
                 value={newProjectName}
@@ -1985,6 +2047,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   const params = new URLSearchParams();
                   if (newProjectName.trim()) params.set("projectName", newProjectName.trim());
                   if (newProjectDescription.trim()) params.set("projectDescription", newProjectDescription.trim());
+                  if (newProjectUrl.trim()) params.set("projectUrl", newProjectUrl.trim());
                   const query = params.toString();
                   void openDashboard(query ? `/dashboard?${query}` : "/dashboard");
                 }}

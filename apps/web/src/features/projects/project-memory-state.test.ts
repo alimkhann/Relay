@@ -14,6 +14,7 @@ describe("project memory state helpers", () => {
           name: "Relay",
           slug: "relay",
           description: "Carry-forward memory for AI chats.",
+          projectUrl: null,
           memoryCount: 0,
           sessionCount: 0,
           routingContext: null,

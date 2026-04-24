@@ -19,6 +19,7 @@ export interface Project {
   name: string
   slug: string
   description: string | null
+  projectUrl: string | null
   isArchived: boolean
   createdAt: string
   updatedAt: string
@@ -29,6 +30,7 @@ export interface ProjectSummaryDto {
   name: string
   slug: string
   description: string | null
+  projectUrl: string | null
   memoryCount: number
   sessionCount: number
   routingContext: {

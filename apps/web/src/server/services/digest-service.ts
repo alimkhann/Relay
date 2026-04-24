@@ -2,7 +2,7 @@ import { createRepositoryBundle, type RepositoryBundle } from "@relay/db"
 import type { AiJobRunRow, CreateMemoryItemInput, ProjectStateRow, SessionDigestShape, SourceSessionRow, SourceSurface, SourceTurnRow } from "@relay/shared"
 import { buildCaptureSignature, DECAY_ARCHIVE_THRESHOLD, hasReplacementSignal, isSameTopic, normalizeText, truncateSentence } from "@relay/shared"
 
-import { reconcileAfterDigest } from "./context-reconciliation-service"
+import { reconcileAfterDigest, type TruthMaintenanceArchiveDecision } from "./context-reconciliation-service"
 import { observeAndReflectDigestWithRepositories } from "./canon-autonomy-service"
 import { decomposeBulletWithTraceability } from "./fact-extractor"
 import { runContinuityMaintenanceForProjectWithRepositories } from "./continuity-maintenance-service"
@@ -39,6 +39,13 @@ interface DigestGenerationResult {
     failureMessage?: string | null
     lastGeminiStage?: GeminiStage | null
   }
+}
+
+interface TruthMaintenanceModelShape {
+  archive?: Array<{
+    id?: string
+    reason?: string
+  }>
 }
 
 export interface DigestJobOutcome {
@@ -225,6 +232,125 @@ function countDigestSignals(digest: DigestModelShape) {
     ...digest.newConstraints,
     ...digest.newTasks
   ].filter(Boolean).length
+}
+
+function buildTruthMaintenanceContextForSession(session: SourceSessionRow, turns: SourceTurnRow[]) {
+  return [
+    `Session title: ${session.title ?? "Untitled session"}`,
+    `Session platform: ${session.platform}`,
+    "Recent turns:",
+    summarizeTurns(prepareDigestTurns(turns)),
+  ].join("\n\n")
+}
+
+export function sanitizeTruthMaintenanceOutput(
+  output: TruthMaintenanceModelShape,
+  eligibleIds: Set<string>,
+): TruthMaintenanceArchiveDecision[] {
+  if (!Array.isArray(output.archive)) return []
+
+  const seen = new Set<string>()
+  const decisions: TruthMaintenanceArchiveDecision[] = []
+  for (const item of output.archive) {
+    const id = typeof item.id === "string" ? item.id.trim() : ""
+    if (!id || !eligibleIds.has(id) || seen.has(id)) continue
+    seen.add(id)
+    const reason = normalizeText(String(item.reason ?? "truth_maintenance")).slice(0, 240) || "truth_maintenance"
+    decisions.push({ id, reason })
+  }
+
+  return decisions
+}
+
+export async function runTruthMaintenancePass(
+  repositories: RepositoryBundle,
+  userId: string,
+  input: {
+    projectId: string
+    digest: DigestModelShape | SessionDigestShape
+    rawContext: string
+    signal?: AbortSignal
+  },
+): Promise<TruthMaintenanceArchiveDecision[]> {
+  const existingItems = (await repositories.memory.listByProject(input.projectId))
+    .filter(
+      (item) =>
+        !item.isArchived &&
+        !item.pinned &&
+        (item.type === "decision" || item.type === "constraint" || item.type === "task"),
+    )
+    .slice(0, 80)
+
+  if (existingItems.length <= 5) return []
+
+  const eligibleIds = new Set(existingItems.map((item) => item.id))
+  try {
+    const result = await runGeminiJsonWithFallback<TruthMaintenanceModelShape>({
+      primaryModel: GEMINI_MODELS.adjudication.primary,
+      fallbackModel: GEMINI_MODELS.adjudication.fallback,
+      maxInputTokens: GEMINI_MODELS.adjudication.maxInputTokens,
+      maxOutputTokens: GEMINI_MODELS.adjudication.maxOutputTokens,
+      signal: input.signal,
+      systemInstruction: [
+        "You are a truth maintenance agent for durable project memory. Return only JSON.",
+        "Archive only when new context explicitly reverses, negates, completes, or supersedes an existing memory item.",
+        "When in doubt, keep the existing item.",
+      ].join(" "),
+      prompt: [
+        "Given existing memory items, new conversation context, and extracted new digest items, identify existing items that should be archived.",
+        "Return JSON exactly in this shape: {\"archive\":[{\"id\":\"...\",\"reason\":\"...\"}]}",
+        "Only include IDs from EXISTING MEMORY ITEMS. Do not include pinned or unrelated items.",
+        "EXISTING MEMORY ITEMS:",
+        JSON.stringify(existingItems.map((item) => ({
+          id: item.id,
+          type: item.type,
+          content: truncateSentence(item.content, 240),
+        }))),
+        "NEW CONVERSATION CONTEXT:",
+        input.rawContext,
+        "EXTRACTED NEW ITEMS:",
+        JSON.stringify({
+          newDecisions: input.digest.newDecisions,
+          newConstraints: input.digest.newConstraints,
+          newTasks: input.digest.newTasks,
+          currentObjectiveDelta: input.digest.currentObjectiveDelta,
+          recentProgressDelta: input.digest.recentProgressDelta,
+        }),
+      ].join("\n\n"),
+    })
+
+    const archive = sanitizeTruthMaintenanceOutput(result.data, eligibleIds)
+    if (archive.length > 0) {
+      await logServerEvent({
+        level: "info",
+        surface: "web-api",
+        area: "digest",
+        event: "truth_maintenance.archives_selected",
+        message: `Truth maintenance selected ${archive.length} memory item(s) for archival.`,
+        userId,
+        projectId: input.projectId,
+        context: {
+          archivedCount: archive.length,
+          model: result.actualModel,
+          fallbackUsed: result.fallbackUsed,
+        },
+      }).catch(() => {})
+    }
+
+    return archive
+  } catch (error) {
+    await logServerEvent({
+      level: "warn",
+      surface: "web-api",
+      area: "digest",
+      event: "truth_maintenance.skipped",
+      message: "Truth maintenance pass failed; continuing without explicit archival.",
+      userId,
+      projectId: input.projectId,
+      error,
+    }).catch(() => {})
+    return []
+  }
 }
 
 export async function decideDigestStrategy(
@@ -463,6 +589,7 @@ async function persistDigestResult(
     turns: SourceTurnRow[]
     digest: DigestModelShape
     signature: string
+    truthMaintenanceArchive?: TruthMaintenanceArchiveDecision[]
   }
 ) {
   return repositories.provider.transaction(async (provider) => {
@@ -593,6 +720,7 @@ async function persistDigestResult(
           newItems: digestMemoryItems,
           userId,
           sourceSurface: (input.session.platform as string) ?? null,
+          truthMaintenanceArchive: input.truthMaintenanceArchive,
         })
         await observeAndReflectDigestWithRepositories(tx, userId, {
           projectId: input.projectId,
@@ -798,6 +926,13 @@ async function runDigestJobInternal(
     currentFallbackUsed = generation.fallbackUsed
     tokenUsage = generation.tokenUsage
 
+    const truthMaintenanceArchive = await runTruthMaintenancePass(repositories, userId, {
+      projectId: job.projectId,
+      digest: generation.digest,
+      rawContext: buildTruthMaintenanceContextForSession(session, turns),
+      signal: controller.signal,
+    })
+
     await patchDigestJobStage(repositories, job.id, "merge_state", {
       model: generation.actualModel,
       fallbackUsed: generation.fallbackUsed,
@@ -811,7 +946,8 @@ async function runDigestJobInternal(
       projectState,
       turns,
       digest: generation.digest,
-      signature
+      signature,
+      truthMaintenanceArchive,
     })
 
     // Fire-and-forget: generate embeddings + detect relations for new memory items
@@ -1058,6 +1194,12 @@ export async function runBatchDigestForProject(
     // Persist digest for each session and merge once at the end
     const lastSession = sessionData[sessionData.length - 1]!
     const signature = lastSession.session.captureSignature ?? `batch-${Date.now()}`
+    const truthMaintenanceArchive = await runTruthMaintenancePass(repositories, userId, {
+      projectId,
+      digest,
+      rawContext: sessionSummaries,
+      signal: controller.signal,
+    })
 
     const { digestMemoryItems: batchDigestMemoryItems } = await persistDigestResult(repositories, userId, {
       projectId,
@@ -1065,7 +1207,8 @@ export async function runBatchDigestForProject(
       projectState,
       turns: lastSession.turns,
       digest,
-      signature
+      signature,
+      truthMaintenanceArchive,
     })
 
     // Fire-and-forget: generate embeddings + detect relations for new memory items

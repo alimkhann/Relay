@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import type { ProjectStateRow, SourceSessionRow, SourceTurnRow } from "@relay/shared"
 import { hashContent } from "@relay/shared"
 
-import { deterministicDigest, prepareDigestTurns, sanitizeDigest } from "./digest-service"
+import { deterministicDigest, prepareDigestTurns, sanitizeDigest, sanitizeTruthMaintenanceOutput } from "./digest-service"
 
 function makeSession(): SourceSessionRow {
   return {
@@ -156,5 +156,20 @@ describe("sanitizeDigest", () => {
     })
 
     expect(digest.importanceScore).toBe(90)
+  })
+})
+
+describe("sanitizeTruthMaintenanceOutput", () => {
+  it("keeps only known archive IDs with reasons", () => {
+    expect(sanitizeTruthMaintenanceOutput({
+      archive: [
+        { id: "known", reason: "Superseded by email auth." },
+        { id: "unknown", reason: "Ignore unknown IDs." },
+        { id: "known", reason: "Ignore duplicate." },
+        { reason: "Missing ID." },
+      ],
+    }, new Set(["known"]))).toEqual([
+      { id: "known", reason: "Superseded by email auth." },
+    ])
   })
 })

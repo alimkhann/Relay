@@ -50,6 +50,7 @@ const project = {
   id: "project-1",
   name: "Relay MVP",
   description: "Browser-first project memory sidecar.",
+  projectUrl: "https://www.onrelay.app",
 }
 
 const dashboard = {
@@ -118,14 +119,14 @@ describe("DashboardContent", () => {
         project: {
           name: "Relay",
           description: "Quiet AI continuity layer.",
+          projectUrl: "https://www.onrelay.app",
         },
       }),
     })
 
     render(<DashboardContent project={project} dashboard={dashboard} />)
 
-    fireEvent.mouseEnter(screen.getByText("Relay MVP").parentElement as Element)
-    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0] as Element)
+    fireEvent.click(screen.getByRole("button", { name: "Edit project" }))
     fireEvent.change(screen.getByDisplayValue("Relay MVP"), {
       target: { value: "Relay" },
     })
@@ -147,6 +148,7 @@ describe("DashboardContent", () => {
           body: JSON.stringify({
             name: "Relay",
             description: "Quiet AI continuity layer.",
+            projectUrl: "https://www.onrelay.app",
           }),
         }),
       )
@@ -159,8 +161,7 @@ describe("DashboardContent", () => {
       <DashboardContent project={project} dashboard={dashboard} />,
     )
 
-    fireEvent.mouseEnter(screen.getByText("Relay MVP").parentElement as Element)
-    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0] as Element)
+    fireEvent.click(screen.getByRole("button", { name: "Edit project" }))
 
     const descriptionInput = screen.getByPlaceholderText(
       "Describe the project so Relay can associate the right chats.",
