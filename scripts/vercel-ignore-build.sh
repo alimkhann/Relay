@@ -7,6 +7,8 @@
 
 echo "Checking for changes in apps/web and shared packages..."
 
+cd ../.. || exit 1
+
 # Compare HEAD against the previous successful deployment commit.
 # VERCEL_GIT_PREVIOUS_SHA is set by Vercel; fall back to HEAD~1.
 BASE="${VERCEL_GIT_PREVIOUS_SHA:-HEAD~1}"
