@@ -887,6 +887,11 @@
   font-size: 14px;
 }
 
+.authField input::placeholder {
+  color: var(--muted);
+  opacity: 0.5;
+}
+
 .authField input:focus {
   border-color: var(--ink-secondary);
 }

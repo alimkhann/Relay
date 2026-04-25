@@ -33,10 +33,10 @@ type NormalizedSubscriptionInput = {
 type PlanTransition =
   | "none"
   | "free_to_trial"
-  | "free_to_pro"
-  | "trial_to_pro"
-  | "pro_to_free"
-  | "pro_past_due"
+  | "free_to_paid"
+  | "trial_to_paid"
+  | "paid_to_free"
+  | "paid_past_due"
   | "trial_canceled"
 
 function detectPlanTransition(
@@ -52,26 +52,26 @@ function detectPlanTransition(
     return "free_to_trial"
   }
   if (prevPlan === "free" && next.planKey !== "free" && next.status === "active") {
-    return "free_to_pro"
+    return "free_to_paid"
   }
   if (prevPlan !== "free" && prevStatus === "trialing" && next.planKey !== "free" && next.status === "active") {
-    return "trial_to_pro"
+    return "trial_to_paid"
   }
   if (prevPlan !== "free" && prevStatus === "trialing" && next.planKey === "free") {
     return "trial_canceled"
   }
   if (prevPlan !== "free" && prevStatus !== "past_due" && next.status === "past_due") {
-    return "pro_past_due"
+    return "paid_past_due"
   }
   if (prevPlan !== "free" && next.planKey === "free") {
-    return "pro_to_free"
+    return "paid_to_free"
   }
   return "none"
 }
 
 async function fireTransitionEmail(
   transition: PlanTransition,
-  recipient: { email: string | null; name: string | null; interval: "month" | "year" | null; currentPeriodEnd: string | null },
+  recipient: { email: string | null; name: string | null; planKey: "free" | "starter" | "pro"; interval: "month" | "year" | null; currentPeriodEnd: string | null },
 ) {
   if (!recipient.email) return
 
@@ -80,18 +80,20 @@ async function fireTransitionEmail(
       case "free_to_trial":
         await sendTrialStartedEmail(recipient.email, recipient.name, 3)
         return
-      case "free_to_pro":
-      case "trial_to_pro":
+      case "free_to_paid":
+      case "trial_to_paid":
         await sendWelcomeToProEmail(recipient.email, {
           name: recipient.name,
+          plan: recipient.planKey === "pro" ? "Pro" : "Starter",
           interval: recipient.interval,
           currentPeriodEnd: recipient.currentPeriodEnd,
         })
         return
-      case "pro_to_free":
+      case "paid_to_free":
       case "trial_canceled":
         await sendSubscriptionCanceledEmail(recipient.email, {
           name: recipient.name,
+          plan: recipient.planKey === "pro" ? "Pro" : "Starter",
           currentPeriodEnd: recipient.currentPeriodEnd,
         })
         return
@@ -127,7 +129,7 @@ function normalizePolarStatus(status: unknown): BillingSubscriptionStatus {
   }
 }
 
-function pickProSubscription(subs: NormalizedSubscriptionInput[]): NormalizedSubscriptionInput | null {
+function pickActiveSubscription(subs: NormalizedSubscriptionInput[]): NormalizedSubscriptionInput | null {
   return (
     subs.find(
       (s) =>
@@ -309,24 +311,24 @@ function normalizeSubscriptionPayload(
 async function applyEntitlementAndEmit(opts: {
   userId: string
   providerCustomerId: string | null
-  proSubscription: NormalizedSubscriptionInput | null
+  activeSubscription: NormalizedSubscriptionInput | null
   customerEmail: string | null
   customerName: string | null
 }) {
-  const { userId, providerCustomerId, proSubscription, customerEmail, customerName } = opts
+  const { userId, providerCustomerId, activeSubscription, customerEmail, customerName } = opts
   const repositories = createRepositoryBundle(userId)
 
   const previousEntitlement = await repositories.entitlements.getByUserId(userId)
 
   const entitlement = buildEntitlementRowFromPlan({
     userId,
-    plan: proSubscription ? "pro" : "free",
-    status: (proSubscription?.status ?? "inactive") as BillingSubscriptionStatus,
-    interval: proSubscription?.interval ?? null,
+    plan: activeSubscription ? activeSubscription.planKey : "free",
+    status: (activeSubscription?.status ?? "inactive") as BillingSubscriptionStatus,
+    interval: activeSubscription?.interval ?? null,
     providerCustomerId,
-    providerSubscriptionId: proSubscription?.providerSubscriptionId ?? null,
-    trialEndsAt: proSubscription?.trialEndsAt ?? null,
-    currentPeriodEnd: proSubscription?.currentPeriodEnd ?? null,
+    providerSubscriptionId: activeSubscription?.providerSubscriptionId ?? null,
+    trialEndsAt: activeSubscription?.trialEndsAt ?? null,
+    currentPeriodEnd: activeSubscription?.currentPeriodEnd ?? null,
   })
 
   await repositories.entitlements.upsert(entitlement)
@@ -348,6 +350,7 @@ async function applyEntitlementAndEmit(opts: {
     }
 
     await fireTransitionEmail(transition, {
+      planKey: previousEntitlement?.planKey ?? entitlement.planKey, // use previous so canceled paid returns the old plan type
       email: recipientEmail,
       name: recipientName,
       interval: entitlement.interval,
@@ -410,12 +413,12 @@ export async function syncBillingStateFromCustomerState(payload: Record<string, 
     normalizedSubscriptions.map((subscription) => subscription.providerSubscriptionId),
   )
 
-  const proSubscription = pickProSubscription(normalizedSubscriptions)
+  const activeSubscription = pickActiveSubscription(normalizedSubscriptions)
 
   const entitlement = await applyEntitlementAndEmit({
     userId: externalCustomerId,
     providerCustomerId,
-    proSubscription,
+    activeSubscription,
     customerEmail,
     customerName,
   })
@@ -510,12 +513,12 @@ export async function syncBillingStateFromSubscriptionEvent(event: {
     raw: {},
   }))
 
-  const proSubscription = pickProSubscription(activeNormalized)
+  const activeSubscription = pickActiveSubscription(activeNormalized)
 
   const entitlement = await applyEntitlementAndEmit({
     userId: externalCustomerId,
     providerCustomerId,
-    proSubscription,
+    activeSubscription,
     customerEmail,
     customerName,
   })

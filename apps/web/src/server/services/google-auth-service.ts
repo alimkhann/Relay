@@ -82,7 +82,7 @@ async function ensureGoogleAccountLink(input: {
       `update neon_auth.account
        set "userId" = $2::uuid,
            "updatedAt" = now()
-        where id = $1::uuid`,
+        where id = $1`,
       [existingAccountId, input.userId]
     )
     return
