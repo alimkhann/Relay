@@ -143,4 +143,30 @@ describe("POST /api/extension/auth/email", () => {
     })
     expect(payload.token).toBe("relay-token")
   })
+
+  it("resends signup OTP without trying to create the account again", async () => {
+    sendVerificationOtpMock.mockResolvedValue({ data: { success: true }, error: null })
+
+    const response = await POST(
+      new Request("http://relay.test/api/extension/auth/email", {
+        method: "POST",
+        body: JSON.stringify({
+          email: "ada@example.com",
+          password: "password123",
+          intent: "sign-up",
+          resendOnly: true,
+          deviceName: "Chrome Extension",
+        }),
+      })
+    )
+    const payload = await response.json()
+
+    expect(response.status).toBe(202)
+    expect(payload.requiresOtp).toBe(true)
+    expect(signUpEmailMock).not.toHaveBeenCalled()
+    expect(sendVerificationOtpMock).toHaveBeenCalledWith({
+      email: "ada@example.com",
+      type: "email-verification",
+    })
+  })
 })

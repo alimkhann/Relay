@@ -5,6 +5,8 @@ import { NextResponse } from "next/server"
 
 import { sendEmailVerificationOtp } from "@/server/services/email-service"
 
+const EMAIL_OTP_TTL_SQL = "5 minutes"
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
@@ -26,12 +28,12 @@ export async function POST(request: Request) {
       const db = createRepositoryProvider()
       await db.query(
         `INSERT INTO email_otp_tokens (email, otp_hash, expires_at)
-         VALUES ($1, $2, NOW() + INTERVAL '10 minutes')
+         VALUES ($1, $2, NOW() + $3::interval)
          ON CONFLICT (email) DO UPDATE
            SET otp_hash = $2,
-               expires_at = NOW() + INTERVAL '10 minutes',
+               expires_at = NOW() + $3::interval,
                used_at = NULL`,
-        [email, otpHash]
+        [email, otpHash, EMAIL_OTP_TTL_SQL]
       )
 
       await sendEmailVerificationOtp(email, otp)

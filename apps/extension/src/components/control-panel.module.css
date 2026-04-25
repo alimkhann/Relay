@@ -280,6 +280,13 @@
   color: var(--ink-secondary);
 }
 
+.mutedCopy {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
 /* ── Status row ── */
 
 .statusRow {

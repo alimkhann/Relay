@@ -244,6 +244,7 @@ export type RelayMessage =
         name?: string | null;
         intent?: "sign-in" | "sign-up";
         otp?: string | null;
+        resendOnly?: boolean;
         deviceName: string;
         flowId?: string;
       };

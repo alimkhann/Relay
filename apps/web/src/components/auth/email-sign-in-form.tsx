@@ -154,9 +154,11 @@ function PasswordStrengthBar({ password }: { password: string }) {
 export function EmailSignInForm({
   nextPath = "/dashboard",
   intent = "sign-in",
+  onPendingVerificationChange,
 }: {
   nextPath?: string
   intent?: WebAuthIntent
+  onPendingVerificationChange?: (pending: boolean) => void
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -165,6 +167,7 @@ export function EmailSignInForm({
   const [name, setName] = useState("")
   const [otp, setOtp] = useState("")
   const [pendingVerification, setPendingVerification] = useState(false)
+  const [resendSeconds, setResendSeconds] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [mode, setMode] = useState<"sign-in" | "sign-up">(
@@ -172,6 +175,44 @@ export function EmailSignInForm({
   )
   const fieldClass =
     "h-14 w-full rounded-[var(--relay-radius)] border border-[var(--relay-line-strong)] bg-[var(--relay-surface-raised)] px-4 text-[15px] text-[var(--relay-ink)] outline-none transition placeholder:text-[var(--relay-muted)] placeholder:opacity-50 focus:border-[var(--relay-muted)] focus:ring-0 [-webkit-text-fill-color:var(--relay-ink)] [&:-webkit-autofill]:shadow-[inset_0_0_0_1000px_var(--relay-surface-raised)] [&:-webkit-autofill]:[-webkit-text-fill-color:var(--relay-ink)]"
+
+  useEffect(() => {
+    onPendingVerificationChange?.(pendingVerification)
+  }, [onPendingVerificationChange, pendingVerification])
+
+  useEffect(() => {
+    if (!pendingVerification || resendSeconds <= 0) return
+    const timer = window.setTimeout(() => {
+      setResendSeconds((current) => Math.max(0, current - 1))
+    }, 1000)
+    return () => window.clearTimeout(timer)
+  }, [pendingVerification, resendSeconds])
+
+  async function sendEmailOtp() {
+    const otpRes = await fetch("/api/auth/email-otp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "send", email }),
+    })
+    const otpData = (await otpRes.json()) as { ok?: boolean; error?: string }
+    if (!otpRes.ok || !otpData.ok) {
+      throw new Error(otpData.error ?? "Could not send verification code.")
+    }
+    setResendSeconds(60)
+  }
+
+  function handleResendOtp() {
+    if (pending || resendSeconds > 0) return
+    startTransition(async () => {
+      setError(null)
+      try {
+        await sendEmailOtp()
+        setOtp("")
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Could not resend verification code.")
+      }
+    })
+  }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -215,15 +256,7 @@ export function EmailSignInForm({
             throw new Error(result.error.message ?? "Sign-up failed.")
           }
 
-          const otpRes = await fetch("/api/auth/email-otp", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "send", email }),
-          })
-          const otpData = (await otpRes.json()) as { ok?: boolean; error?: string }
-          if (!otpRes.ok || !otpData.ok) {
-            throw new Error(otpData.error ?? "Could not send verification code.")
-          }
+          await sendEmailOtp()
 
           setPendingVerification(true)
           setOtp("")
@@ -275,6 +308,7 @@ export function EmailSignInForm({
           onClick={() => {
             setPendingVerification(false)
             setOtp("")
+            setResendSeconds(0)
           }}
           className="flex items-center gap-1 text-[13px] text-[var(--relay-muted)] transition hover:text-[var(--relay-ink)] focus:outline-none"
         >
@@ -286,6 +320,7 @@ export function EmailSignInForm({
           <p className="text-[14px] text-[var(--relay-muted)]">
             We sent a 6-digit code to <span className="text-[var(--relay-ink)]">{email}</span>
           </p>
+          <p className="text-[12px] text-[var(--relay-faint)]">Codes expire after 5 minutes.</p>
         </div>
 
         <OtpCells value={otp} onChange={setOtp} />
@@ -297,6 +332,15 @@ export function EmailSignInForm({
         >
           {pending ? "Verifying…" : "Verify email"}
         </Button>
+
+        <button
+          type="button"
+          onClick={handleResendOtp}
+          disabled={pending || resendSeconds > 0}
+          className="w-full text-center text-[13px] font-medium text-[var(--relay-muted)] transition hover:text-[var(--relay-ink)] disabled:cursor-default disabled:opacity-45"
+        >
+          {resendSeconds > 0 ? `Resend code in ${resendSeconds}s` : "Resend code"}
+        </button>
 
         {error ? <p className="text-sm text-rose-500">{error}</p> : null}
       </form>
@@ -381,6 +425,7 @@ export function EmailSignInForm({
           setError(null)
           setPendingVerification(false)
           setOtp("")
+          setResendSeconds(0)
         }}
         className="w-full text-center text-[13px] text-[var(--relay-muted)] transition hover:text-[var(--relay-ink)] focus:outline-none"
       >

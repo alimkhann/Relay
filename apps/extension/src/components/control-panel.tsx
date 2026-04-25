@@ -305,6 +305,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [emailAuthName, setEmailAuthName] = useState("");
   const [emailAuthOtp, setEmailAuthOtp] = useState("");
   const [emailAuthAwaitingOtp, setEmailAuthAwaitingOtp] = useState(false);
+  const [emailAuthResendSeconds, setEmailAuthResendSeconds] = useState(0);
   const [emailAuthMode, setEmailAuthMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [activeContextTab, setActiveContextTab] = useState<ContextTab>("all");
   const [expandedSections, setExpandedSections] = useState<
@@ -329,6 +330,14 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [userSettings, setUserSettings] = useState<UserSettingsRow["settings"] | null>(null);
   const [userSettingsBusy, setUserSettingsBusy] = useState(false);
   const activeStateRequestInFlight = useRef(false);
+
+  useEffect(() => {
+    if (!emailAuthAwaitingOtp || emailAuthResendSeconds <= 0) return undefined;
+    const timer = window.setTimeout(() => {
+      setEmailAuthResendSeconds((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [emailAuthAwaitingOtp, emailAuthResendSeconds]);
 
   function applyResolvedTheme(nextResolvedTheme: RelayResolvedTheme) {
     document.documentElement.dataset.relayTheme = nextResolvedTheme;
@@ -1012,6 +1021,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       if (result.requiresOtp) {
         setEmailAuthAwaitingOtp(true);
         setEmailAuthOtp("");
+        setEmailAuthResendSeconds(60);
         setStatus(result.message ?? "Enter the verification code sent to your email.");
         return;
       }
@@ -1027,6 +1037,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       setStatus("Signed in with email.");
       setEmailAuthAwaitingOtp(false);
       setEmailAuthOtp("");
+      setEmailAuthResendSeconds(0);
       await refreshLocalSession();
       await refreshActiveProjectState();
     } catch (cause) {
@@ -1042,6 +1053,45 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       setStatus(
         cause instanceof Error ? cause.message : "Email sign-in failed.",
       );
+    } finally {
+      setBusy(false);
+      setAuthenticating(false);
+    }
+  }
+
+  async function resendEmailOtp() {
+    if (busy || emailAuthResendSeconds > 0) return;
+
+    setBusy(true);
+    setAuthenticating(true);
+    setStatus("Sending a new code…");
+    const flowId = createExtensionFlowId("ext-email-auth");
+
+    try {
+      const result = (await chrome.runtime.sendMessage({
+        type: "RELAY_EMAIL_SIGN_IN",
+        payload: {
+          email: emailAuthEmail.trim(),
+          password: emailAuthPassword,
+          name: emailAuthName.trim() || null,
+          intent: "sign-up",
+          otp: null,
+          resendOnly: true,
+          deviceName: deviceName || defaultDeviceName(),
+          flowId,
+        },
+      })) as { ok?: boolean; reason?: string; requiresOtp?: boolean; message?: string };
+
+      if (!result?.ok) {
+        setStatus(result?.reason ?? "Could not resend verification code.");
+        return;
+      }
+
+      setEmailAuthOtp("");
+      setEmailAuthResendSeconds(60);
+      setStatus(result.message ?? "Sent a new verification code.");
+    } catch (cause) {
+      setStatus(cause instanceof Error ? cause.message : "Could not resend verification code.");
     } finally {
       setBusy(false);
       setAuthenticating(false);
@@ -2013,6 +2063,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 onClick={() => {
                   setEmailAuthAwaitingOtp(false);
                   setEmailAuthOtp("");
+                  setEmailAuthResendSeconds(0);
                   setStatus("");
                 }}
               >
@@ -2023,6 +2074,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               <p className={styles.copy}>
                 Sent a 6-digit code to {emailAuthEmail}
               </p>
+              <p className={styles.mutedCopy}>Codes expire after 5 minutes.</p>
 
               <div style={{ marginTop: 20 }}>
                 <OtpCells
@@ -2038,6 +2090,16 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 onClick={() => void signInWithEmail()}
               >
                 {busy ? "Verifying…" : "Verify email"}
+              </button>
+
+              <button
+                className={styles.linkButton}
+                disabled={busy || emailAuthResendSeconds > 0}
+                onClick={() => void resendEmailOtp()}
+              >
+                {emailAuthResendSeconds > 0
+                  ? `Resend code in ${emailAuthResendSeconds}s`
+                  : "Resend code"}
               </button>
             </>
           ) : (

@@ -4430,6 +4430,7 @@ chrome.runtime.onMessage.addListener(
                   name: message.payload.name ?? null,
                   intent: message.payload.intent ?? "sign-in",
                   otp: message.payload.otp ?? null,
+                  resendOnly: message.payload.resendOnly ?? false,
                   deviceName: message.payload.deviceName,
                 }),
               },
