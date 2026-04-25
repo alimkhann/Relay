@@ -3,6 +3,7 @@ import { capturePayloadSchema, withCaptureSignature } from "@relay/shared"
 
 import { decideDigestStrategy, drainDigestJobsForProject, enqueueDigestJob } from "./digest-service"
 import { getProjectStateStatus } from "./state-status-service"
+import { fireUserMilestone } from "./user-milestones-service"
 import { logServerEvent } from "@/server/logging/logger"
 
 export async function saveCapture(userId: string, input: unknown) {
@@ -149,6 +150,11 @@ export async function saveCapture(userId: string, input: unknown) {
   const totalCaptures = Number(activationRows[0]?.count ?? 0)
 
   if (totalCaptures === 1) {
+    void fireUserMilestone(userId, "first_session_captured", {
+      project_id: normalizedInput.projectId,
+      platform: normalizedInput.platform,
+    }).catch(() => {})
+
     await logServerEvent({
       level: "info",
       surface: "web-api",

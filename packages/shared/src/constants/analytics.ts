@@ -78,6 +78,8 @@ export const relayCanonicalEvents = [
   "first_project_detected",
   "first_brief_generated",
   "first_brief_inserted",
+  "first_session_captured",
+  "first_brief_viewed",
   "mcp_request_failed",
   "mcp_request_exception",
   "mcp_token_refresh_fallback",

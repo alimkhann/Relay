@@ -1,5 +1,81 @@
 import { useEffect, useRef, useState } from "react";
 
+// ── OTP cell component ──────────────────────────────────────────────────────
+
+interface OtpCellsProps {
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}
+
+function OtpCells({ value, onChange, disabled }: OtpCellsProps) {
+  const [cells, setCells] = useState<string[]>(() => {
+    const arr = value.split("").slice(0, 6);
+    while (arr.length < 6) arr.push("");
+    return arr;
+  });
+  const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
+
+  useEffect(() => {
+    const arr = value.split("").slice(0, 6);
+    while (arr.length < 6) arr.push("");
+    setCells(arr);
+  }, [value]);
+
+  function handleChange(index: number, raw: string) {
+    const digit = raw.replace(/\D/g, "").slice(-1);
+    const next = [...cells];
+    next[index] = digit;
+    setCells(next);
+    onChange(next.join(""));
+    if (digit && index < 5) {
+      inputRefs.current[index + 1]?.focus();
+    }
+  }
+
+  function handleKeyDown(index: number, event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Backspace" && !cells[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    }
+  }
+
+  function handlePaste(event: React.ClipboardEvent<HTMLInputElement>) {
+    event.preventDefault();
+    const pasted = event.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (!pasted) return;
+    const next = [...cells];
+    for (let i = 0; i < 6; i++) {
+      next[i] = pasted[i] ?? "";
+    }
+    setCells(next);
+    onChange(next.join(""));
+    const focusIdx = Math.min(pasted.length, 5);
+    inputRefs.current[focusIdx]?.focus();
+  }
+
+  return (
+    <div className={styles.otpCells}>
+      {cells.map((cell, i) => (
+        <input
+          key={i}
+          ref={(el) => { inputRefs.current[i] = el; }}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]"
+          maxLength={1}
+          value={cell}
+          disabled={disabled}
+          className={styles.otpCell}
+          autoComplete={i === 0 ? "one-time-code" : "off"}
+          onChange={(e) => handleChange(i, e.target.value)}
+          onKeyDown={(e) => handleKeyDown(i, e)}
+          onPaste={handlePaste}
+        />
+      ))}
+    </div>
+  );
+}
+
 import { slugify } from "@relay/shared/utils/text";
 import { supportedPlatforms } from "@relay/shared/constants/platforms";
 import type { SupportedPlatform, UserSettingsRow } from "@relay/shared/types/database";
@@ -1928,6 +2004,42 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 {busy ? "Signing in…" : "Sign in locally"}
               </button>
             </>
+          ) : emailAuthAwaitingOtp ? (
+            <>
+              <button
+                type="button"
+                className={styles.linkButton}
+                style={{ marginTop: 0 }}
+                onClick={() => {
+                  setEmailAuthAwaitingOtp(false);
+                  setEmailAuthOtp("");
+                  setStatus("");
+                }}
+              >
+                ← Back
+              </button>
+
+              <h3 className={styles.sectionTitle} style={{ marginTop: 16 }}>Check your email</h3>
+              <p className={styles.copy}>
+                Sent a 6-digit code to {emailAuthEmail}
+              </p>
+
+              <div style={{ marginTop: 20 }}>
+                <OtpCells
+                  value={emailAuthOtp}
+                  onChange={setEmailAuthOtp}
+                  disabled={busy}
+                />
+              </div>
+
+              <button
+                className={`${styles.primaryButton} ${styles.authPrimaryButton}`}
+                disabled={busy || emailAuthOtp.length < 6}
+                onClick={() => void signInWithEmail()}
+              >
+                {busy ? "Verifying…" : "Verify email"}
+              </button>
+            </>
           ) : (
             <>
               <button
@@ -1965,7 +2077,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   placeholder="you@example.com"
                   type="email"
                   autoComplete="email"
-                  readOnly={emailAuthAwaitingOtp}
                 />
               </label>
 
@@ -1977,45 +2088,45 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   placeholder={emailAuthMode === "sign-up" ? "Create a password" : "Password"}
                   type="password"
                   autoComplete={emailAuthMode === "sign-up" ? "new-password" : "current-password"}
-                  readOnly={emailAuthAwaitingOtp}
                 />
-                {emailAuthMode === "sign-up" ? (
+                {emailAuthMode === "sign-up" && emailAuthPassword.length > 0 ? (() => {
+                  const pw = emailAuthPassword;
+                  const types = [/[A-Z]/, /[a-z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((r) => r.test(pw)).length;
+                  const score = pw.length === 0 ? 0
+                    : pw.length < 6 ? 1
+                    : pw.length < 8 || (pw.length >= 8 && types < 2) ? 2
+                    : pw.length >= 8 && types === 2 ? 3
+                    : 4;
+                  const colors = ["", "#ef4444", "#f97316", "#eab308", "#22c55e"];
+                  const labels = ["", "Weak", "Fair", "Good", "Strong"];
+                  return (
+                    <>
+                      <div
+                        className={styles.strengthBar}
+                        style={{ width: `${score * 25}%`, backgroundColor: colors[score] }}
+                      />
+                      <div className={styles.strengthRow}>
+                        <span className={styles.strengthLabel} style={{ color: colors[score] }}>{labels[score]}</span>
+                      </div>
+                    </>
+                  );
+                })() : emailAuthMode === "sign-up" ? (
                   <small className={styles.authFieldHint}>Must be at least 8 characters.</small>
                 ) : null}
               </label>
-
-              {emailAuthAwaitingOtp ? (
-                <label className={`${styles.field} ${styles.authField}`}>
-                  <span>Verification code</span>
-                  <input
-                    value={emailAuthOtp}
-                    onChange={(event) =>
-                      setEmailAuthOtp(event.target.value.replace(/\D/g, "").slice(0, 8))
-                    }
-                    placeholder="Code from your email"
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                  />
-                  <small className={styles.authFieldHint}>
-                    We sent a one-time code to {emailAuthEmail.trim()}.
-                  </small>
-                </label>
-              ) : null}
 
               <button
                 className={`${styles.primaryButton} ${styles.authPrimaryButton}`}
                 disabled={
                   busy ||
                   !emailAuthEmail.trim() ||
-                  emailAuthPassword.length < 8 ||
-                  (emailAuthAwaitingOtp && emailAuthOtp.trim().length < 4)
+                  emailAuthPassword.length < 8
                 }
                 onClick={() => void signInWithEmail()}
               >
                 {busy
-                  ? emailAuthAwaitingOtp ? "Verifying…" : emailAuthMode === "sign-up" ? "Creating account…" : "Signing in…"
-                  : emailAuthAwaitingOtp ? "Verify email" : emailAuthMode === "sign-up" ? "Create account" : "Sign in with email"}
+                  ? emailAuthMode === "sign-up" ? "Creating account…" : "Signing in…"
+                  : emailAuthMode === "sign-up" ? "Create account" : "Sign in with email"}
               </button>
 
               <button

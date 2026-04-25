@@ -8,6 +8,7 @@ import {
   getProjectDashboardForUser,
   listProjectsForUser,
 } from "@/server/services/project-service"
+import { fireUserMilestone } from "@/server/services/user-milestones-service"
 
 export const dynamic = "force-dynamic"
 
@@ -33,6 +34,12 @@ export default async function BriefPage({
     viewer.userId,
     currentProject.id,
   )
+
+  if (dashboard) {
+    void fireUserMilestone(viewer.userId, "first_brief_viewed", {
+      project_id: currentProject.id,
+    }).catch(() => {})
+  }
 
   return (
     <>

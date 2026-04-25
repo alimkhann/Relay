@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useState, useTransition } from "react"
+import { useState, useTransition, useRef, useEffect } from "react"
 import { Eye, EyeOff } from "lucide-react"
 
 import { authClient } from "@/lib/auth/client"
@@ -9,6 +9,147 @@ import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client"
 import { withAuthCallbackParams } from "@/lib/auth/auth-callback"
 import { Button } from "@/components/ui/button"
 import type { WebAuthIntent } from "@/server/policies/viewer"
+
+// ── OtpCells ──────────────────────────────────────────────────────────────────
+
+function OtpCells({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (val: string) => void
+}) {
+  const [cells, setCells] = useState<string[]>(() => {
+    const arr = value.split("").slice(0, 6)
+    while (arr.length < 6) arr.push("")
+    return arr
+  })
+  const refs = useRef<Array<HTMLInputElement | null>>([])
+
+  // Sync incoming value prop into cells
+  useEffect(() => {
+    const arr = value.split("").slice(0, 6)
+    while (arr.length < 6) arr.push("")
+    setCells(arr)
+  }, [value])
+
+  function update(next: string[]) {
+    setCells(next)
+    onChange(next.join(""))
+  }
+
+  function handleChange(index: number, raw: string) {
+    const digit = raw.replace(/\D/g, "").slice(-1)
+    const next = [...cells]
+    next[index] = digit
+    update(next)
+    if (digit && index < 5) {
+      refs.current[index + 1]?.focus()
+    }
+  }
+
+  function handleKeyDown(index: number, e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Backspace") {
+      if (cells[index] === "" && index > 0) {
+        const next = [...cells]
+        next[index - 1] = ""
+        update(next)
+        refs.current[index - 1]?.focus()
+      } else {
+        const next = [...cells]
+        next[index] = ""
+        update(next)
+      }
+    }
+  }
+
+  function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
+    e.preventDefault()
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6)
+    if (!pasted) return
+    const next = pasted.split("")
+    while (next.length < 6) next.push("")
+    update(next)
+    const focusIdx = Math.min(pasted.length, 5)
+    refs.current[focusIdx]?.focus()
+  }
+
+  return (
+    <div className="flex gap-2 justify-center">
+      {cells.map((cell, i) => (
+        <input
+          key={i}
+          ref={(el) => { refs.current[i] = el }}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]"
+          maxLength={1}
+          value={cell}
+          autoComplete={i === 0 ? "one-time-code" : "off"}
+          autoFocus={i === 0}
+          onChange={(e) => handleChange(i, e.target.value)}
+          onKeyDown={(e) => handleKeyDown(i, e)}
+          onPaste={handlePaste}
+          className="h-14 w-11 rounded-[var(--relay-radius)] border border-[var(--relay-line-strong)] bg-[var(--relay-surface-raised)] text-center text-[22px] font-mono text-[var(--relay-ink)] outline-none transition [-webkit-text-fill-color:var(--relay-ink)] focus:border-[var(--relay-accent)] focus:ring-2 focus:ring-[var(--relay-accent)] focus:ring-offset-0"
+        />
+      ))}
+    </div>
+  )
+}
+
+// ── Password strength bar ──────────────────────────────────────────────────────
+
+function passwordScore(password: string): number {
+  if (password.length === 0) return 0
+  if (password.length < 6) return 1
+  const types = [/[A-Z]/, /[a-z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((re) =>
+    re.test(password)
+  ).length
+  if (password.length < 8) return 2
+  if (types === 1) return 2
+  if (types === 2) return 3
+  return 4
+}
+
+const SCORE_COLOR: Record<number, string> = {
+  1: "#ef4444",
+  2: "#f97316",
+  3: "#eab308",
+  4: "#22c55e",
+}
+
+const SCORE_LABEL: Record<number, string> = {
+  1: "Weak",
+  2: "Fair",
+  3: "Good",
+  4: "Strong",
+}
+
+function PasswordStrengthBar({ password }: { password: string }) {
+  const score = passwordScore(password)
+  if (score === 0) return null
+  return (
+    <div className="mt-1 flex items-center gap-2">
+      <div className="flex-1">
+        <div
+          className="h-1 rounded-full transition-all"
+          style={{
+            width: `${score * 25}%`,
+            backgroundColor: SCORE_COLOR[score],
+          }}
+        />
+      </div>
+      <span
+        className="shrink-0 text-[11px]"
+        style={{ color: SCORE_COLOR[score] }}
+      >
+        {SCORE_LABEL[score]}
+      </span>
+    </div>
+  )
+}
+
+// ── EmailSignInForm ────────────────────────────────────────────────────────────
 
 export function EmailSignInForm({
   nextPath = "/dashboard",
@@ -32,93 +173,130 @@ export function EmailSignInForm({
   const fieldClass =
     "h-14 w-full rounded-[var(--relay-radius)] border border-[var(--relay-line-strong)] bg-[var(--relay-surface-raised)] px-4 text-[15px] text-[var(--relay-ink)] outline-none transition placeholder:text-[var(--relay-muted)] placeholder:opacity-50 focus:border-[var(--relay-muted)] focus:ring-0 [-webkit-text-fill-color:var(--relay-ink)] [&:-webkit-autofill]:shadow-[inset_0_0_0_1000px_var(--relay-surface-raised)] [&:-webkit-autofill]:[-webkit-text-fill-color:var(--relay-ink)]"
 
-  return (
-    <form
-      className="space-y-4"
-      onSubmit={(event) => {
-        event.preventDefault()
-        startTransition(async () => {
-          setError(null)
-          const flowId = createClientFlowId("email-auth")
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    startTransition(async () => {
+      setError(null)
+      const flowId = createClientFlowId("email-auth")
 
-          logClientEvent({
-            level: "info",
-            surface: "web-auth",
-            area: "auth",
-            event: mode === "sign-up" ? "email_sign_up.started" : "email_sign_in.started",
-            flowId,
-            message: `User started email ${mode} from the web app.`,
-            context: { authMethod: "email", authIntent: mode },
+      logClientEvent({
+        level: "info",
+        surface: "web-auth",
+        area: "auth",
+        event: mode === "sign-up" ? "email_sign_up.started" : "email_sign_in.started",
+        flowId,
+        message: `User started email ${mode} from the web app.`,
+        context: { authMethod: "email", authIntent: mode },
+      })
+
+      try {
+        if (mode === "sign-up" && pendingVerification) {
+          const result = await authClient.emailOtp.verifyEmail({
+            email,
+            otp,
           })
-
-          try {
-            if (mode === "sign-up" && pendingVerification) {
-              const result = await authClient.emailOtp.verifyEmail({
-                email,
-                otp,
-              })
-              if (result.error) {
-                throw new Error(result.error.message ?? "Verification failed.")
-              }
-            } else if (mode === "sign-up") {
-              const result = await authClient.signUp.email({
-                email,
-                password,
-                name: name || email.split("@")[0] || email,
-              })
-              if (result.error) {
-                throw new Error(result.error.message ?? "Sign-up failed.")
-              }
-
-              const otpResult = await authClient.emailOtp.sendVerificationOtp({
-                email,
-                type: "email-verification",
-              })
-              if (otpResult.error) {
-                throw new Error(otpResult.error.message ?? "Could not send verification code.")
-              }
-
-              setPendingVerification(true)
-              setOtp("")
-              return
-            } else {
-              const result = await authClient.signIn.email({
-                email,
-                password,
-              })
-              if (result.error) {
-                throw new Error(result.error.message ?? "Sign-in failed.")
-              }
-            }
-
-            logClientEvent({
-              level: "info",
-              surface: "web-auth",
-              area: "auth",
-              event: mode === "sign-up" ? "email_sign_up.succeeded" : "email_sign_in.succeeded",
-              flowId,
-              message: mode === "sign-up" ? "Email sign-up verified." : "Email sign-in completed.",
-              context: { authMethod: "email", authIntent: mode },
-            })
-
-            router.replace(withAuthCallbackParams(nextPath, { method: "email", intent: mode }))
-            router.refresh()
-          } catch (cause) {
-            logClientEvent({
-              level: "error",
-              surface: "web-auth",
-              area: "auth",
-              event: mode === "sign-up" ? "email_sign_up.failed" : "email_sign_in.failed",
-              flowId,
-              message: `Email ${mode} failed.`,
-              context: { authMethod: "email", authIntent: mode },
-              error: cause,
-            })
-            setError(cause instanceof Error ? cause.message : `Email ${mode} failed.`)
+          if (result.error) {
+            throw new Error(result.error.message ?? "Verification failed.")
           }
+        } else if (mode === "sign-up") {
+          const result = await authClient.signUp.email({
+            email,
+            password,
+            name: name || email.split("@")[0] || email,
+          })
+          if (result.error) {
+            throw new Error(result.error.message ?? "Sign-up failed.")
+          }
+
+          const otpResult = await authClient.emailOtp.sendVerificationOtp({
+            email,
+            type: "email-verification",
+          })
+          if (otpResult.error) {
+            throw new Error(otpResult.error.message ?? "Could not send verification code.")
+          }
+
+          setPendingVerification(true)
+          setOtp("")
+          return
+        } else {
+          const result = await authClient.signIn.email({
+            email,
+            password,
+          })
+          if (result.error) {
+            throw new Error(result.error.message ?? "Sign-in failed.")
+          }
+        }
+
+        logClientEvent({
+          level: "info",
+          surface: "web-auth",
+          area: "auth",
+          event: mode === "sign-up" ? "email_sign_up.succeeded" : "email_sign_in.succeeded",
+          flowId,
+          message: mode === "sign-up" ? "Email sign-up verified." : "Email sign-in completed.",
+          context: { authMethod: "email", authIntent: mode },
         })
-      }}
-    >
+
+        router.replace(withAuthCallbackParams(nextPath, { method: "email", intent: mode }))
+        router.refresh()
+      } catch (cause) {
+        logClientEvent({
+          level: "error",
+          surface: "web-auth",
+          area: "auth",
+          event: mode === "sign-up" ? "email_sign_up.failed" : "email_sign_in.failed",
+          flowId,
+          message: `Email ${mode} failed.`,
+          context: { authMethod: "email", authIntent: mode },
+          error: cause,
+        })
+        setError(cause instanceof Error ? cause.message : `Email ${mode} failed.`)
+      }
+    })
+  }
+
+  // ── OTP verification screen ──────────────────────────────────────────────────
+  if (pendingVerification) {
+    return (
+      <form className="space-y-6" onSubmit={handleSubmit}>
+        <button
+          type="button"
+          onClick={() => {
+            setPendingVerification(false)
+            setOtp("")
+          }}
+          className="flex items-center gap-1 text-[13px] text-[var(--relay-muted)] transition hover:text-[var(--relay-ink)] focus:outline-none"
+        >
+          <span aria-hidden="true">←</span> Back
+        </button>
+
+        <div className="space-y-1 text-center">
+          <h2 className="text-[20px] font-semibold text-[var(--relay-ink)]">Check your email</h2>
+          <p className="text-[14px] text-[var(--relay-muted)]">
+            We sent a 6-digit code to <span className="text-[var(--relay-ink)]">{email}</span>
+          </p>
+        </div>
+
+        <OtpCells value={otp} onChange={setOtp} />
+
+        <Button
+          className="h-14 w-full rounded-[var(--relay-radius)] bg-[var(--relay-accent)] px-6 text-[15px] font-semibold text-[var(--relay-accent-text)] shadow-sm transition-all hover:opacity-90 disabled:opacity-40"
+          disabled={pending || otp.length < 6}
+          type="submit"
+        >
+          {pending ? "Verifying…" : "Verify email"}
+        </Button>
+
+        {error ? <p className="text-sm text-rose-500">{error}</p> : null}
+      </form>
+    )
+  }
+
+  // ── Main sign-in / sign-up form ──────────────────────────────────────────────
+  return (
+    <form className="space-y-4" onSubmit={handleSubmit}>
       {mode === "sign-up" && (
         <label className="block space-y-2">
           <span className="text-[13px] font-medium text-[var(--relay-ink-secondary)]">Full name</span>
@@ -142,7 +320,6 @@ export function EmailSignInForm({
           placeholder="you@example.com"
           autoComplete="email"
           required
-          readOnly={pendingVerification}
         />
       </label>
       <label className="block space-y-2">
@@ -157,7 +334,6 @@ export function EmailSignInForm({
             autoComplete={mode === "sign-up" ? "new-password" : "current-password"}
             required
             minLength={8}
-            readOnly={pendingVerification}
           />
           <button
             type="button"
@@ -169,40 +345,24 @@ export function EmailSignInForm({
           </button>
         </span>
         {mode === "sign-up" ? (
-          <span className="block text-[12px] text-[var(--relay-muted)]">Must be at least 8 characters.</span>
+          <>
+            <span className="block text-[12px] text-[var(--relay-muted)]">Must be at least 8 characters.</span>
+            <PasswordStrengthBar password={password} />
+          </>
         ) : null}
       </label>
-      {pendingVerification ? (
-        <label className="block space-y-2">
-          <span className="text-[13px] font-medium text-[var(--relay-ink-secondary)]">Verification code</span>
-          <input
-            className={fieldClass}
-            type="text"
-            inputMode="numeric"
-            value={otp}
-            onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 8))}
-            placeholder="Enter the code from your email"
-            autoComplete="one-time-code"
-            required
-          />
-          <span className="block text-[12px] text-[var(--relay-muted)]">
-            We sent a one-time code to {email}.
-          </span>
-        </label>
-      ) : null}
       <Button
         className="h-14 w-full rounded-[var(--relay-radius)] bg-[var(--relay-accent)] px-6 text-[15px] font-semibold text-[var(--relay-accent-text)] shadow-sm transition-all hover:opacity-90 disabled:opacity-40"
         disabled={
           pending ||
           email.trim().length === 0 ||
-          password.length < 8 ||
-          (pendingVerification && otp.trim().length < 4)
+          password.length < 8
         }
         type="submit"
       >
         {pending
-          ? pendingVerification ? "Verifying…" : mode === "sign-up" ? "Creating account…" : "Signing in…"
-          : pendingVerification ? "Verify email" : mode === "sign-up" ? "Create account" : "Sign in with email"}
+          ? mode === "sign-up" ? "Creating account…" : "Signing in…"
+          : mode === "sign-up" ? "Create account" : "Sign in with email"}
       </Button>
       {error ? <p className="text-sm text-rose-500">{error}</p> : null}
       <button

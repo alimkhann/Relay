@@ -1429,3 +1429,46 @@
 .feedbackLink:hover {
   color: var(--ink);
 }
+
+.otpCells {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+.otpCell {
+  width: 44px;
+  height: 52px;
+  border-radius: 8px;
+  border: 1.5px solid var(--relay-line-strong, #e5e7eb);
+  background: var(--relay-surface-raised, #fff);
+  color: var(--relay-ink, #111);
+  font-size: 22px;
+  font-family: var(--font-mono, monospace);
+  text-align: center;
+  outline: none;
+  transition: border-color 0.15s;
+  -moz-appearance: textfield;
+}
+.otpCell::-webkit-inner-spin-button,
+.otpCell::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+}
+.otpCell:focus {
+  border-color: var(--relay-accent, #6366f1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--relay-accent, #6366f1) 20%, transparent);
+}
+.strengthBar {
+  height: 4px;
+  border-radius: 9999px;
+  margin-top: 6px;
+  transition: width 0.2s, background-color 0.2s;
+}
+.strengthRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+.strengthLabel {
+  font-size: 11px;
+  color: var(--relay-muted, #6b7280);
+}

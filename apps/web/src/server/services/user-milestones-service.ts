@@ -7,6 +7,8 @@ export type UserMilestoneEvent =
   | "first_project_detected"
   | "first_brief_generated"
   | "first_brief_inserted"
+  | "first_session_captured"
+  | "first_brief_viewed"
 
 /**
  * Fire a first-value funnel event exactly once per user per milestone. The
