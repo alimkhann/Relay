@@ -78,6 +78,14 @@ function createRepositories(previousEntitlement: ReturnType<typeof entitlement> 
         createdAt: "2026-04-25T00:00:00.000Z",
         updatedAt: "2026-04-25T00:00:00.000Z",
       })),
+      getByEmail: vi.fn(async () => ({
+        id: "user_1",
+        email: "alim@example.com",
+        displayName: "Alim",
+        avatarUrl: null,
+        createdAt: "2026-04-25T00:00:00.000Z",
+        updatedAt: "2026-04-25T00:00:00.000Z",
+      })),
     },
     entitlements: {
       getByUserId: vi.fn(async () => previousEntitlement),
@@ -368,6 +376,89 @@ describe("billing webhook sync", () => {
         status: "active",
         interval: "month",
         providerSubscriptionId: "sub_starter_snake",
+      }),
+    )
+  })
+
+  it("prefers checkout metadata user id over a stale Polar customer external id", async () => {
+    const repositories = createRepositories(entitlement({ planKey: "free", status: "inactive" }))
+    const { syncBillingStateFromSubscriptionEvent } = await loadBillingService()
+
+    await syncBillingStateFromSubscriptionEvent({
+      type: "subscription.active",
+      data: {
+        id: "sub_starter_metadata",
+        status: "trialing",
+        productId: "prod_starter_monthly",
+        metadata: {
+          relay_user_id: "user_1",
+          plan: "starter_monthly",
+        },
+        currentPeriodEnd: "2026-05-25T00:00:00.000Z",
+        customer: {
+          id: "cus_1",
+          externalId: "stale_user",
+          email: "alim@example.com",
+          name: "Alim",
+        },
+      },
+    })
+
+    expect(repositories.billingCustomers.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user_1",
+        externalCustomerId: "user_1",
+        providerCustomerId: "cus_1",
+      }),
+    )
+    expect(repositories.entitlements.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user_1",
+        planKey: "starter",
+        status: "trialing",
+      }),
+    )
+  })
+
+  it("uses subscription metadata inside customer state when Polar reuses an old customer", async () => {
+    const repositories = createRepositories(entitlement({ planKey: "free", status: "inactive" }))
+    const { syncBillingStateFromCustomerState } = await loadBillingService()
+
+    await syncBillingStateFromCustomerState({
+      data: {
+        id: "cus_1",
+        externalId: "stale_user",
+        email: "alim@example.com",
+        name: "Alim",
+        activeSubscriptions: [
+          {
+            id: "sub_starter_customer_state",
+            status: "active",
+            productId: "prod_starter_monthly",
+            metadata: {
+              relay_user_id: "user_1",
+              plan: "starter_monthly",
+            },
+            currentPeriodEnd: "2026-05-25T00:00:00.000Z",
+          },
+        ],
+      },
+    })
+
+    expect(repositories.subscriptions.upsertMany).toHaveBeenCalledWith(
+      "user_1",
+      expect.arrayContaining([
+        expect.objectContaining({
+          providerSubscriptionId: "sub_starter_customer_state",
+          planKey: "starter",
+        }),
+      ]),
+    )
+    expect(repositories.entitlements.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user_1",
+        planKey: "starter",
+        status: "active",
       }),
     )
   })

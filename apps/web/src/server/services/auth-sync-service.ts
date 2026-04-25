@@ -131,6 +131,99 @@ export async function reconcileProfileForAuthUser(input: SyncAuthUserInput) {
          set user_id = $2
          where user_id = $1
        ),
+       deleted_legacy_billing_customers as (
+         delete from billing_customers
+         where user_id = $1
+            or external_customer_id = $1
+         returning *
+       ),
+       merged_billing_customers as (
+         insert into billing_customers (
+           user_id,
+           provider,
+           provider_customer_id,
+           external_customer_id,
+           email,
+           name,
+           trial_claimed_at
+         )
+         select
+           $2,
+           provider,
+           provider_customer_id,
+           $2,
+           email,
+           name,
+           trial_claimed_at
+         from deleted_legacy_billing_customers
+         on conflict (user_id) do update
+         set provider_customer_id = coalesce(excluded.provider_customer_id, billing_customers.provider_customer_id),
+             external_customer_id = excluded.external_customer_id,
+             email = coalesce(excluded.email, billing_customers.email),
+             name = coalesce(excluded.name, billing_customers.name),
+             trial_claimed_at = coalesce(excluded.trial_claimed_at, billing_customers.trial_claimed_at),
+             updated_at = now()
+       ),
+       moved_subscriptions as (
+         update subscriptions
+         set user_id = $2,
+             updated_at = now()
+         where user_id = $1
+       ),
+       merged_entitlements as (
+         insert into entitlements (
+           user_id,
+           plan_key,
+           status,
+           provider_customer_id,
+           provider_subscription_id,
+           interval,
+           active_projects_limit,
+           history_retention_days,
+           capture_limit_monthly,
+           mcp_read_limit_daily,
+           mcp_write_limit_daily,
+           handoff_enabled,
+           trial_ends_at,
+           current_period_end
+         )
+         select
+           $2,
+           plan_key,
+           status,
+           provider_customer_id,
+           provider_subscription_id,
+           interval,
+           active_projects_limit,
+           history_retention_days,
+           capture_limit_monthly,
+           mcp_read_limit_daily,
+           mcp_write_limit_daily,
+           handoff_enabled,
+           trial_ends_at,
+           current_period_end
+         from entitlements
+         where user_id = $1
+         on conflict (user_id) do update
+         set plan_key = excluded.plan_key,
+             status = excluded.status,
+             provider_customer_id = excluded.provider_customer_id,
+             provider_subscription_id = excluded.provider_subscription_id,
+             interval = excluded.interval,
+             active_projects_limit = excluded.active_projects_limit,
+             history_retention_days = excluded.history_retention_days,
+             capture_limit_monthly = excluded.capture_limit_monthly,
+             mcp_read_limit_daily = excluded.mcp_read_limit_daily,
+             mcp_write_limit_daily = excluded.mcp_write_limit_daily,
+             handoff_enabled = excluded.handoff_enabled,
+             trial_ends_at = excluded.trial_ends_at,
+             current_period_end = excluded.current_period_end,
+             updated_at = now()
+       ),
+       deleted_legacy_entitlements as (
+         delete from entitlements
+         where user_id = $1
+       ),
        deleted_legacy_profile as (
          delete from profiles
          where id = $1

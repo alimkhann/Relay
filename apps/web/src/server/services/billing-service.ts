@@ -173,6 +173,18 @@ function getPolarClient() {
   return new Polar({ accessToken, server })
 }
 
+function isPolarCustomerNotFoundError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false
+  const maybeError = error as { name?: unknown; message?: unknown }
+  const name = typeof maybeError.name === "string" ? maybeError.name : ""
+  const message = typeof maybeError.message === "string" ? maybeError.message : ""
+  return (
+    name === "ResourceNotFound" ||
+    message.includes("\"error\":\"ResourceNotFound\"") ||
+    message.includes("ResourceNotFound")
+  )
+}
+
 function resolveProductId(plan: "starter" | "pro", interval: "month" | "year") {
   const productId = interval === "year" ? PLAN_PRODUCT_IDS[plan].year : PLAN_PRODUCT_IDS[plan].month
   if (!productId) {
@@ -226,6 +238,34 @@ function deriveIntervalFromMetadata(subscription: Record<string, unknown>) {
   return null
 }
 
+function getStringMetadataValue(record: Record<string, unknown>, key: string): string | null {
+  const metadata = record.metadata
+  if (!metadata || typeof metadata !== "object") return null
+  const value = (metadata as Record<string, unknown>)[key]
+  return typeof value === "string" && value.length > 0 ? value : null
+}
+
+function extractRelayUserIdFromSubscription(subscription: Record<string, unknown>): string | null {
+  return getStringMetadataValue(subscription, "relay_user_id")
+}
+
+function extractRelayUserIdFromCustomerState(data: Record<string, unknown>): string | null {
+  const rawSubscriptions = Array.isArray(data.activeSubscriptions)
+    ? data.activeSubscriptions
+    : Array.isArray(data.active_subscriptions)
+      ? data.active_subscriptions
+      : Array.isArray(data.subscriptions)
+        ? data.subscriptions
+        : []
+
+  for (const subscription of rawSubscriptions as Array<Record<string, unknown>>) {
+    const relayUserId = extractRelayUserIdFromSubscription(subscription)
+    if (relayUserId) return relayUserId
+  }
+
+  return getStringMetadataValue(data, "relay_user_id")
+}
+
 function deriveProductIdFromSubscription(subscription: Record<string, unknown>) {
   if (typeof subscription.productId === "string") return subscription.productId
   if (typeof subscription.product_id === "string") return subscription.product_id
@@ -274,6 +314,76 @@ function derivePlanFromSubscription(subscription: Record<string, unknown>, produ
   if (fromProductSlug !== "free") return fromProductSlug
 
   return "free" as const
+}
+
+async function resolveBillingUserId(input: {
+  candidateUserId: string | null
+  customerEmail: string | null
+  repositories: ReturnType<typeof createRepositoryBundle>
+  source: string
+}): Promise<string | null> {
+  const { candidateUserId, customerEmail, repositories, source } = input
+
+  if (candidateUserId) {
+    const profile = await repositories.profiles.getById(candidateUserId)
+    if (profile) return candidateUserId
+  }
+
+  if (customerEmail) {
+    const profile = await repositories.profiles.getByEmail(customerEmail)
+    if (profile) {
+      await logServerEvent({
+        level: "warn",
+        surface: "web-api",
+        area: "billing",
+        event: "billing.user_resolved_by_email",
+        message: "Resolved a Polar billing event to the current Relay profile by email.",
+        userId: profile.id,
+        context: {
+          provider: "polar",
+          source,
+          staleExternalCustomerId: candidateUserId,
+        },
+      })
+      return profile.id
+    }
+  }
+
+  return null
+}
+
+async function replayLatestBillingWebhookForUser(userId: string): Promise<boolean> {
+  const repositories = createRepositoryBundle(userId)
+  const rows = await repositories.provider.query(
+    `select payload
+     from billing_webhook_events
+     where provider = 'polar'
+       and status = 'processed'
+       and (
+         payload::text like $1
+         or payload::text like $2
+       )
+       and event_type in (
+         'customer.state_changed',
+         'subscription.created',
+         'subscription.active',
+         'subscription.updated',
+         'subscription.uncanceled',
+         'subscription.canceled',
+         'subscription.revoked',
+         'subscription.past_due'
+       )
+     order by
+       case when event_type = 'customer.state_changed' then 0 else 1 end,
+       created_at desc
+     limit 1`,
+    [`%"relay_user_id":"${userId}"%`, `%"relay_user_id": "${userId}"%`],
+  )
+  const payload = rows[0]?.payload
+  if (!payload || typeof payload !== "object") return false
+
+  await dispatchPolarEvent(payload as { type: string; data?: Record<string, unknown> })
+  return true
 }
 
 export async function createPolarCheckoutForUser(user: {
@@ -339,9 +449,57 @@ export async function resyncBillingStateForUser(userId: string) {
   // Fetch the authoritative customer state directly from Polar. This is the
   // same payload shape that `customer.state_changed` webhooks deliver, so we
   // can run it through the existing sync path.
-  const state = await polar.customers.getStateExternal({ externalId: userId })
+  let state: Record<string, unknown>
+  try {
+    state = (await polar.customers.getStateExternal({ externalId: userId })) as unknown as Record<string, unknown>
+  } catch (error) {
+    if (!isPolarCustomerNotFoundError(error)) throw error
 
-  await syncBillingStateFromCustomerState({ data: state as unknown as Record<string, unknown> })
+    const recovered = await replayLatestBillingWebhookForUser(userId)
+    if (recovered) {
+      await logServerEvent({
+        level: "warn",
+        surface: "web-api",
+        area: "billing",
+        event: "billing.manual_resync_replayed_webhook",
+        message: "Manual billing resync recovered state from a processed Polar webhook.",
+        userId,
+        context: {
+          provider: "polar",
+        },
+        error,
+      })
+      return
+    }
+
+    // If Polar has no customer yet for this user, reconcile local billing
+    // state to free/inactive instead of failing the resync request.
+    await syncBillingStateFromCustomerState({
+      data: {
+        externalId: userId,
+        id: null,
+        email: null,
+        name: null,
+        activeSubscriptions: [],
+      },
+    })
+
+    await logServerEvent({
+      level: "warn",
+      surface: "web-api",
+      area: "billing",
+      event: "billing.manual_resync_missing_customer",
+      message: "Manual billing resync found no Polar customer; reconciled local state to free.",
+      userId,
+      context: {
+        provider: "polar",
+      },
+      error,
+    })
+    return
+  }
+
+  await syncBillingStateFromCustomerState({ data: state })
 
   await logServerEvent({
     level: "info",
@@ -548,30 +706,27 @@ async function applyEntitlementAndEmit(opts: {
 
 export async function syncBillingStateFromCustomerState(payload: Record<string, unknown>) {
   const data = (payload.data ?? payload) as Record<string, unknown>
-  const externalCustomerId =
+  const polarExternalCustomerId =
     typeof data.externalId === "string"
       ? data.externalId
       : typeof data.external_id === "string"
         ? data.external_id
         : null
-  if (!externalCustomerId) {
+  const metadataUserId = extractRelayUserIdFromCustomerState(data)
+  const customerEmail = typeof data.email === "string" ? data.email : null
+  const customerName = typeof data.name === "string" ? data.name : null
+  const repositories = createRepositoryBundle(metadataUserId ?? polarExternalCustomerId ?? undefined)
+  const userId = await resolveBillingUserId({
+    candidateUserId: metadataUserId ?? polarExternalCustomerId,
+    customerEmail,
+    repositories,
+    source: "customer.state_changed",
+  })
+
+  if (!userId) {
     throw new Error("Polar customer state payload missing externalId.")
   }
 
-  const repositories = createRepositoryBundle(externalCustomerId)
-  const profile = await repositories.profiles.getById(externalCustomerId)
-  if (!profile) {
-    await logServerEvent({
-      level: "warn",
-      surface: "web-api",
-      area: "billing",
-      event: "billing.customer_state_skipped_deleted_user",
-      message: "Skipped Polar customer state sync because the Relay profile no longer exists.",
-      userId: externalCustomerId,
-      context: { provider: "polar", source: "customer.state_changed" },
-    })
-    return
-  }
   const providerCustomerId =
     typeof data.id === "string"
       ? data.id
@@ -580,8 +735,6 @@ export async function syncBillingStateFromCustomerState(payload: Record<string, 
         : typeof data.customer_id === "string"
           ? data.customer_id
           : null
-  const customerEmail = typeof data.email === "string" ? data.email : null
-  const customerName = typeof data.name === "string" ? data.name : null
   const rawSubscriptions = Array.isArray(data.activeSubscriptions)
     ? data.activeSubscriptions
     : Array.isArray(data.active_subscriptions)
@@ -599,8 +752,8 @@ export async function syncBillingStateFromCustomerState(payload: Record<string, 
   )
 
   await repositories.billingCustomers.upsert({
-    userId: externalCustomerId,
-    externalCustomerId,
+    userId,
+    externalCustomerId: userId,
     providerCustomerId,
     email: customerEmail,
     name: customerName,
@@ -608,16 +761,16 @@ export async function syncBillingStateFromCustomerState(payload: Record<string, 
       normalizedSubscriptions.find((subscription) => Boolean(subscription.trialEndsAt))?.trialStartsAt ?? null,
   })
 
-  await repositories.subscriptions.upsertMany(externalCustomerId, normalizedSubscriptions)
+  await repositories.subscriptions.upsertMany(userId, normalizedSubscriptions)
   await repositories.subscriptions.markMissingAsCanceled(
-    externalCustomerId,
+    userId,
     normalizedSubscriptions.map((subscription) => subscription.providerSubscriptionId),
   )
 
   const activeSubscription = pickActiveSubscription(normalizedSubscriptions)
 
   const entitlement = await applyEntitlementAndEmit({
-    userId: externalCustomerId,
+    userId,
     providerCustomerId,
     activeSubscription,
     customerEmail,
@@ -630,7 +783,7 @@ export async function syncBillingStateFromCustomerState(payload: Record<string, 
     area: "billing",
     event: "billing.subscription_state_synced",
     message: "Synchronized billing state from Polar customer state.",
-    userId: externalCustomerId,
+    userId,
     context: {
       plan: entitlement.planKey,
       status: entitlement.status,
@@ -647,7 +800,7 @@ export async function syncBillingStateFromSubscriptionEvent(event: {
 }) {
   const subscription = (event.data ?? {}) as Record<string, unknown>
   const customer = (subscription.customer ?? {}) as Record<string, unknown>
-  const externalCustomerId =
+  const polarExternalCustomerId =
     typeof customer.externalId === "string"
       ? customer.externalId
       : typeof customer.external_id === "string"
@@ -657,8 +810,18 @@ export async function syncBillingStateFromSubscriptionEvent(event: {
         : typeof subscription.customer_external_id === "string"
           ? subscription.customer_external_id
         : null
+  const metadataUserId = extractRelayUserIdFromSubscription(subscription)
+  const customerEmail = typeof customer.email === "string" ? customer.email : null
+  const customerName = typeof customer.name === "string" ? customer.name : null
+  const repositories = createRepositoryBundle(metadataUserId ?? polarExternalCustomerId ?? undefined)
+  const userId = await resolveBillingUserId({
+    candidateUserId: metadataUserId ?? polarExternalCustomerId,
+    customerEmail,
+    repositories,
+    source: event.type,
+  })
 
-  if (!externalCustomerId) {
+  if (!userId) {
     await logServerEvent({
       level: "warn",
       surface: "web-api",
@@ -682,23 +845,6 @@ export async function syncBillingStateFromSubscriptionEvent(event: {
         : typeof subscription.customer_id === "string"
           ? subscription.customer_id
         : null
-  const customerEmail = typeof customer.email === "string" ? customer.email : null
-  const customerName = typeof customer.name === "string" ? customer.name : null
-
-  const repositories = createRepositoryBundle(externalCustomerId)
-  const profile = await repositories.profiles.getById(externalCustomerId)
-  if (!profile) {
-    await logServerEvent({
-      level: "warn",
-      surface: "web-api",
-      area: "billing",
-      event: "billing.subscription_event_skipped_deleted_user",
-      message: "Skipped Polar subscription sync because the Relay profile no longer exists.",
-      userId: externalCustomerId,
-      context: { provider: "polar", type: event.type },
-    })
-    return
-  }
   const normalized = normalizeSubscriptionPayload(subscription, providerCustomerId)
 
   // Only revocation is immediately terminal. Polar cancellation can mean
@@ -709,19 +855,19 @@ export async function syncBillingStateFromSubscriptionEvent(event: {
   }
 
   await repositories.billingCustomers.upsert({
-    userId: externalCustomerId,
-    externalCustomerId,
+    userId,
+    externalCustomerId: userId,
     providerCustomerId,
     email: customerEmail,
     name: customerName,
     trialClaimedAt: normalized.trialStartsAt ?? null,
   })
 
-  await repositories.subscriptions.upsertMany(externalCustomerId, [normalized])
+  await repositories.subscriptions.upsertMany(userId, [normalized])
 
   // Re-read all subs for the user so entitlement reflects the whole picture,
   // not just this single event.
-  const allSubs = await repositories.subscriptions.listByUser(externalCustomerId)
+  const allSubs = await repositories.subscriptions.listByUser(userId)
   const activeNormalized: NormalizedSubscriptionInput[] = allSubs.map((row) => ({
     providerSubscriptionId: row.providerSubscriptionId,
     providerCustomerId: row.providerCustomerId,
@@ -740,7 +886,7 @@ export async function syncBillingStateFromSubscriptionEvent(event: {
   const activeSubscription = pickActiveSubscription(activeNormalized)
 
   const entitlement = await applyEntitlementAndEmit({
-    userId: externalCustomerId,
+    userId,
     providerCustomerId,
     activeSubscription,
     customerEmail,
@@ -753,7 +899,7 @@ export async function syncBillingStateFromSubscriptionEvent(event: {
     area: "billing",
     event: "billing.subscription_state_synced",
     message: "Synchronized billing state from Polar subscription event.",
-    userId: externalCustomerId,
+    userId,
     context: {
       plan: entitlement.planKey,
       status: entitlement.status,
