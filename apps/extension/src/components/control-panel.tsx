@@ -80,7 +80,7 @@ import { slugify } from "@relay/shared/utils/text";
 import { supportedPlatforms } from "@relay/shared/constants/platforms";
 import type { SupportedPlatform, UserSettingsRow } from "@relay/shared/types/database";
 
-import type { RelayActiveProjectState } from "../messaging/contracts";
+import type { RelayActiveProjectState, RelayProjectOption } from "../messaging/contracts";
 import { getActiveTab } from "../utils/browser";
 import { relayFetch } from "../utils/api";
 import {
@@ -291,6 +291,14 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [authenticating, setAuthenticating] = useState(false);
   const [deviceName, setDeviceName] = useState("");
   const [projectSwitcherOpen, setProjectSwitcherOpen] = useState(false);
+  const [switcherMode, setSwitcherMode] = useState<"list" | "create" | "edit">("list");
+  const [switcherEditTarget, setSwitcherEditTarget] = useState<RelayProjectOption | null>(null);
+  const [switcherEditName, setSwitcherEditName] = useState("");
+  const [switcherEditDescription, setSwitcherEditDescription] = useState("");
+  const [switcherEditUrl, setSwitcherEditUrl] = useState("");
+  const [switcherEditScanPending, setSwitcherEditScanPending] = useState(false);
+  const [deletingProject, setDeletingProject] = useState<RelayProjectOption | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [associationAction, setAssociationAction] = useState<
     null | "approving_held"
   >(null);
@@ -1164,6 +1172,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       setNewProjectName("");
       setNewProjectDescription("");
       setStatus(`Created project "${result.project?.name}".`);
+      setSwitcherMode("list");
+      setProjectSwitcherOpen(false);
       await refreshLocalSession();
       await refreshActiveProjectState();
     } catch (cause) {
@@ -1179,6 +1189,63 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       setStatus(
         cause instanceof Error ? cause.message : "Project creation failed.",
       );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateProject() {
+    const name = switcherEditName.trim();
+    if (!name || !switcherEditTarget) return;
+    setBusy(true);
+    setStatus("Saving project…");
+    try {
+      const result = (await chrome.runtime.sendMessage({
+        type: "RELAY_UPDATE_PROJECT",
+        payload: {
+          projectId: switcherEditTarget.id,
+          name,
+          description: switcherEditDescription.trim() || null,
+          projectUrl: switcherEditUrl.trim() || null,
+        },
+      })) as { ok?: boolean; reason?: string };
+      if (!result?.ok) {
+        setStatus(result?.reason ?? "Project update failed.");
+        return;
+      }
+      setStatus(`Updated "${name}".`);
+      setSwitcherEditTarget(null);
+      setSwitcherMode("list");
+      setProjectSwitcherOpen(false);
+      await refreshLocalSession();
+      await refreshActiveProjectState();
+    } catch (cause) {
+      setStatus(cause instanceof Error ? cause.message : "Project update failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteProject() {
+    if (!deletingProject) return;
+    setBusy(true);
+    setStatus("Deleting project…");
+    try {
+      const result = (await chrome.runtime.sendMessage({
+        type: "RELAY_DELETE_PROJECT",
+        payload: { projectId: deletingProject.id },
+      })) as { ok?: boolean; reason?: string };
+      if (!result?.ok) {
+        setStatus(result?.reason ?? "Project deletion failed.");
+        return;
+      }
+      setStatus("Project deleted.");
+      setDeletingProject(null);
+      setDeleteConfirmText("");
+      await refreshLocalSession();
+      await refreshActiveProjectState();
+    } catch (cause) {
+      setStatus(cause instanceof Error ? cause.message : "Project deletion failed.");
     } finally {
       setBusy(false);
     }
@@ -2323,10 +2390,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               <div style={{ position: "relative", flex: 1 }}>
                 <div
                   className={styles.projectRow}
-                  onClick={() =>
-                    activeState.projectOptions.length > 1 &&
-                    setProjectSwitcherOpen((v) => !v)
-                  }
+                  onClick={() => {
+                    setSwitcherMode("list");
+                    setProjectSwitcherOpen((v) => !v);
+                  }}
                 >
                   <h2 className={styles.projectName}>
                     {activeState.projectName ?? "No project"}
@@ -2336,33 +2403,139 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                       Pro
                     </span>
                   ) : null}
-                  {activeState.projectOptions.length > 1 ? (
-                    <svg
-                      className={`${styles.projectChevron} ${projectSwitcherOpen ? styles.projectChevronOpen : ""}`}
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polyline points="4 6 8 10 12 6" />
-                    </svg>
-                  ) : null}
+                  <svg
+                    className={`${styles.projectChevron} ${projectSwitcherOpen ? styles.projectChevronOpen : ""}`}
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="4 6 8 10 12 6" />
+                  </svg>
                 </div>
 
                 {projectSwitcherOpen ? (
                   <div className={styles.projectDropdown}>
-                    {activeState.projectOptions.map((project) => (
-                      <button
-                        key={project.id}
-                        className={`${styles.projectOption} ${project.id === selectedProjectId ? styles.projectOptionActive : ""}`}
-                        onClick={() => void handleProjectChange(project.id)}
-                      >
-                        {project.id === selectedProjectId ? "✓ " : ""}
-                        {project.name}
-                      </button>
-                    ))}
+                    {switcherMode === "list" ? (
+                      <>
+                        {activeState.projectOptions.map((project) => (
+                          <div key={project.id} className={styles.projectOptionRow}>
+                            <button
+                              className={`${styles.projectOption} ${project.id === selectedProjectId ? styles.projectOptionActive : ""}`}
+                              onClick={() => void handleProjectChange(project.id)}
+                            >
+                              {project.id === selectedProjectId ? "✓ " : ""}
+                              {project.name}
+                            </button>
+                            <button
+                              className={styles.projectOptionDots}
+                              title="Edit or delete"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSwitcherEditTarget(project);
+                                setSwitcherEditName(project.name);
+                                setSwitcherEditDescription(project.description ?? "");
+                                setSwitcherEditUrl(project.projectUrl ?? "");
+                                setSwitcherMode("edit");
+                              }}
+                            >
+                              ···
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          className={styles.projectOptionNew}
+                          onClick={() => {
+                            setNewProjectName("");
+                            setNewProjectDescription("");
+                            setNewProjectUrl("");
+                            setSwitcherMode("create");
+                          }}
+                        >
+                          + New project
+                        </button>
+                      </>
+                    ) : switcherMode === "create" ? (
+                      <div className={styles.switcherForm}>
+                        <p className={styles.switcherFormTitle}>New project</p>
+                        <input
+                          className={styles.switcherInput}
+                          placeholder="Project name"
+                          value={newProjectName}
+                          onChange={(e) => setNewProjectName(e.target.value)}
+                          autoFocus
+                          disabled={busy}
+                          onKeyDown={(e) => { if (e.key === "Escape") setSwitcherMode("list"); }}
+                        />
+                        <textarea
+                          className={styles.switcherTextarea}
+                          placeholder="Description (optional)"
+                          value={newProjectDescription}
+                          onChange={(e) => setNewProjectDescription(e.target.value)}
+                          disabled={busy}
+                          rows={2}
+                        />
+                        <div className={styles.switcherFormRow}>
+                          <button
+                            className={styles.switcherSaveBtn}
+                            disabled={busy || !newProjectName.trim()}
+                            onClick={() => void createProject()}
+                          >
+                            {busy ? "Creating…" : "Create"}
+                          </button>
+                          <button className={styles.switcherCancelBtn} onClick={() => setSwitcherMode("list")}>
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : switcherMode === "edit" && switcherEditTarget ? (
+                      <div className={styles.switcherForm}>
+                        <p className={styles.switcherFormTitle}>Edit project</p>
+                        <input
+                          className={styles.switcherInput}
+                          placeholder="Project name"
+                          value={switcherEditName}
+                          onChange={(e) => setSwitcherEditName(e.target.value)}
+                          autoFocus
+                          disabled={busy}
+                          onKeyDown={(e) => { if (e.key === "Escape") setSwitcherMode("list"); }}
+                        />
+                        <textarea
+                          className={styles.switcherTextarea}
+                          placeholder="Description (optional)"
+                          value={switcherEditDescription}
+                          onChange={(e) => setSwitcherEditDescription(e.target.value)}
+                          disabled={busy}
+                          rows={2}
+                        />
+                        <div className={styles.switcherFormRow}>
+                          <button
+                            className={styles.switcherSaveBtn}
+                            disabled={busy || !switcherEditName.trim()}
+                            onClick={() => void updateProject()}
+                          >
+                            {busy ? "Saving…" : "Save"}
+                          </button>
+                          <button className={styles.switcherCancelBtn} onClick={() => setSwitcherMode("list")}>
+                            Cancel
+                          </button>
+                          <button
+                            className={styles.switcherDeleteBtn}
+                            disabled={busy}
+                            onClick={() => {
+                              setDeletingProject(switcherEditTarget);
+                              setDeleteConfirmText("");
+                              setProjectSwitcherOpen(false);
+                              setSwitcherMode("list");
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -2850,6 +3023,41 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           >
             Feedback
           </a>
+        </div>
+      ) : null}
+
+      {/* ─── Delete confirmation overlay ─── */}
+      {deletingProject ? (
+        <div className={styles.deleteOverlay}>
+          <div className={styles.deleteOverlayCard}>
+            <p className={styles.deleteOverlayTitle}>Delete project?</p>
+            <p className={styles.deleteOverlayDesc}>
+              Type <strong>Delete {deletingProject.name}</strong> to confirm. This cannot be undone.
+            </p>
+            <input
+              className={styles.deleteOverlayInput}
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder={`Delete ${deletingProject.name}`}
+              autoFocus
+            />
+            <div className={styles.deleteOverlayActions}>
+              <button
+                className={styles.deleteOverlayConfirmBtn}
+                disabled={deleteConfirmText !== `Delete ${deletingProject.name}` || busy}
+                onClick={() => void deleteProject()}
+              >
+                {busy ? "Deleting…" : "Delete"}
+              </button>
+              <button
+                className={styles.deleteOverlayCancelBtn}
+                disabled={busy}
+                onClick={() => { setDeletingProject(null); setDeleteConfirmText(""); }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
     </div>

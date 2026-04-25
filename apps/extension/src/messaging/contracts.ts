@@ -254,6 +254,14 @@ export type RelayMessage =
       payload: { name: string; slug?: string; description?: string | null; projectUrl?: string | null; flowId?: string };
     }
   | {
+      type: "RELAY_UPDATE_PROJECT";
+      payload: { projectId: string; name: string; description?: string | null; projectUrl?: string | null; flowId?: string };
+    }
+  | {
+      type: "RELAY_DELETE_PROJECT";
+      payload: { projectId: string; flowId?: string };
+    }
+  | {
       type: "RELAY_SCAN_PROJECT_URL";
       payload: { url: string; flowId?: string };
     }

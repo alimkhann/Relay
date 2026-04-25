@@ -4746,6 +4746,80 @@ chrome.runtime.onMessage.addListener(
           return;
         }
 
+        if (message.type === "RELAY_UPDATE_PROJECT") {
+          try {
+            const flowId = message.payload.flowId ?? createFlowId("ext-project-update");
+            const response = await relayFetch(`/api/projects/${message.payload.projectId}`, {
+              method: "PATCH",
+              headers: { "x-relay-flow-id": flowId },
+              body: JSON.stringify({
+                name: message.payload.name,
+                description: message.payload.description ?? null,
+                projectUrl: message.payload.projectUrl ?? null,
+              }),
+            });
+            if (!response.ok) {
+              const reason = await readErrorResponse(response, "Project update failed.");
+              sendResponse({ ok: false, reason });
+              return;
+            }
+            const payload = (await response.json()) as {
+              project: { id: string; name: string; description: string | null; projectUrl: string | null };
+            };
+            const session = await getRelaySession();
+            const updatedOptions = session.projectOptions?.map((p) =>
+              p.id === payload.project.id
+                ? { ...p, name: payload.project.name, description: payload.project.description, projectUrl: payload.project.projectUrl }
+                : p
+            ) ?? [];
+            sessionDataCache = null;
+            await setRelaySession({
+              projectOptions: updatedOptions,
+              ...(session.assumedProjectId === payload.project.id
+                ? { assumedProjectName: payload.project.name }
+                : {}),
+            });
+            sendResponse({ ok: true, project: payload.project });
+          } catch (cause) {
+            sendResponse({ ok: false, reason: cause instanceof Error ? cause.message : "Project update failed." });
+          }
+          return;
+        }
+
+        if (message.type === "RELAY_DELETE_PROJECT") {
+          try {
+            const flowId = message.payload.flowId ?? createFlowId("ext-project-delete");
+            const response = await relayFetch(`/api/projects/${message.payload.projectId}`, {
+              method: "DELETE",
+              headers: { "x-relay-flow-id": flowId },
+            });
+            if (!response.ok) {
+              const reason = await readErrorResponse(response, "Project deletion failed.");
+              sendResponse({ ok: false, reason });
+              return;
+            }
+            const session = await getRelaySession();
+            const remainingOptions = session.projectOptions?.filter((p) => p.id !== message.payload.projectId) ?? [];
+            const wasActive = session.projectId === message.payload.projectId || session.assumedProjectId === message.payload.projectId;
+            const nextProject = wasActive ? (remainingOptions[0] ?? null) : null;
+            sessionDataCache = null;
+            await setRelaySession({
+              projectOptions: remainingOptions,
+              ...(wasActive
+                ? {
+                    projectId: nextProject?.id ?? "",
+                    assumedProjectId: nextProject?.id ?? "",
+                    assumedProjectName: nextProject?.name ?? "",
+                  }
+                : {}),
+            });
+            sendResponse({ ok: true });
+          } catch (cause) {
+            sendResponse({ ok: false, reason: cause instanceof Error ? cause.message : "Project deletion failed." });
+          }
+          return;
+        }
+
         if (message.type === "RELAY_LOG_TELEMETRY") {
           recordBackgroundTelemetry(message.payload);
           sendResponse({ ok: true });

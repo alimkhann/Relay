@@ -8,8 +8,6 @@ import { Pencil, Trash2, MoreHorizontal } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 
-import { motion } from "motion/react";
-
 import { Button } from "@/components/ui/button";
 import { FadeIn } from "@/components/ui/fade-in";
 import { DashboardStats } from "@/features/projects/dashboard-stats";
@@ -85,7 +83,7 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
-  const [editingProject, setEditingProject] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [scanPending, setScanPending] = useState(false);
   const [projectNameDraft, setProjectNameDraft] = useState(project.name);
@@ -107,7 +105,7 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
     setProjectNameDraft(project.name);
     setProjectDescriptionDraft(project.description ?? "");
     setProjectUrlDraft(project.projectUrl ?? "");
-    setEditingProject(false);
+    setEditDialogOpen(false);
   }, [
     project.id,
     project.name,
@@ -181,7 +179,7 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
       nextDescription === projectMeta.description &&
       nextProjectUrl === projectMeta.projectUrl
     ) {
-      setEditingProject(false);
+      setEditDialogOpen(false);
       setStatus("No project changes to save.");
       return;
     }
@@ -217,7 +215,7 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
         setProjectNameDraft(payload.project.name);
         setProjectDescriptionDraft(payload.project.description ?? "");
         setProjectUrlDraft(payload.project.projectUrl ?? "");
-        setEditingProject(false);
+        setEditDialogOpen(false);
       },
       "Saving project…",
       "Project updated.",
@@ -291,102 +289,14 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
       <FadeIn>
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div className="min-w-0 flex-1">
-            {editingProject ? (
-              <div className="space-y-3 max-w-2xl">
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    className="text-xl font-semibold tracking-tight text-[var(--relay-ink)] bg-transparent border-b-2 border-[var(--relay-accent)] outline-none w-full max-w-md py-0.5"
-                    value={projectNameDraft}
-                    onChange={(event) =>
-                      setProjectNameDraft(event.target.value)
-                    }
-                    maxLength={80}
-                    disabled={pending}
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") saveProjectMetadata();
-                      if (e.key === "Escape") {
-                        setProjectNameDraft(projectMeta.name);
-                        setProjectDescriptionDraft(projectMeta.description);
-                        setEditingProject(false);
-                      }
-                    }}
-                  />
-                </div>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <input
-                    className="w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] px-2.5 py-1.5 text-[13px] text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)]"
-                    value={projectUrlDraft}
-                    onChange={(event) => setProjectUrlDraft(event.target.value)}
-                    placeholder="https://example.com"
-                    type="url"
-                    disabled={pending || scanPending}
-                  />
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={pending || scanPending || !projectUrlDraft.trim()}
-                    onClick={() => void scanProjectUrl()}
-                    className="h-8 text-[11px] sm:w-auto"
-                  >
-                    {scanPending ? "Scanning…" : "Scan"}
-                  </Button>
-                </div>
-                <textarea
-                  className="w-full min-h-[60px] rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] px-2.5 py-1.5 text-[13px] leading-relaxed text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)] resize-none"
-                  value={projectDescriptionDraft}
-                  onChange={(event) =>
-                    setProjectDescriptionDraft(event.target.value)
-                  }
-                  placeholder="Describe the project so Relay can associate the right chats."
-                  maxLength={200}
-                  disabled={pending}
-                />
-                <motion.div
-                  className="flex items-center gap-2"
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.15 }}
-                >
-                  <Button
-                    size="sm"
-                    disabled={pending}
-                    onClick={saveProjectMetadata}
-                    className="h-7 text-[11px]"
-                  >
-                    Save
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={pending}
-                    onClick={() => {
-                      setProjectNameDraft(projectMeta.name);
-                      setProjectDescriptionDraft(projectMeta.description);
-                      setProjectUrlDraft(projectMeta.projectUrl);
-                      setEditingProject(false);
-                    }}
-                    className="h-7 text-[11px]"
-                  >
-                    Cancel
-                  </Button>
-                  <span className="text-[10px] text-[var(--relay-faint)] ml-auto">
-                    {projectDescriptionDraft.length}/200
-                  </span>
-                </motion.div>
-              </div>
-            ) : (
-              <>
-                <h1 className="text-xl font-semibold tracking-tight text-[var(--relay-ink)]">
-                  {projectMeta.name}
-                </h1>
-                {projectMeta.description ? (
-                  <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--relay-muted)] max-w-2xl">
-                    {projectMeta.description}
-                  </p>
-                ) : null}
-              </>
-            )}
+            <h1 className="text-xl font-semibold tracking-tight text-[var(--relay-ink)]">
+              {projectMeta.name}
+            </h1>
+            {projectMeta.description ? (
+              <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--relay-muted)] max-w-2xl">
+                {projectMeta.description}
+              </p>
+            ) : null}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Button
@@ -394,7 +304,7 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
               size="sm"
               aria-label="Edit project"
               className="h-7 w-7 p-0 text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
-              onClick={() => setEditingProject(true)}
+              onClick={() => setEditDialogOpen(true)}
             >
               <Pencil className="h-4 w-4" />
             </Button>
@@ -417,7 +327,7 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
                 >
                   <DropdownMenu.Item
                     className="flex items-center gap-2 rounded-[var(--relay-radius-sm)] px-2.5 py-1.5 text-[12px] text-[var(--relay-ink)] outline-none cursor-pointer hover:bg-[var(--relay-soft)]"
-                    onSelect={() => setEditingProject(true)}
+                    onSelect={() => setEditDialogOpen(true)}
                   >
                     <Pencil className="h-3 w-3" />
                     Edit project
@@ -485,6 +395,103 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
       <FadeIn delay={0.2}>
         <DashboardGovernanceSummary projectId={project.id} dashboard={dashboard} />
       </FadeIn>
+
+      {/* ─── Edit project dialog ─── */}
+      <Dialog.Root open={editDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setProjectNameDraft(projectMeta.name);
+          setProjectDescriptionDraft(projectMeta.description);
+          setProjectUrlDraft(projectMeta.projectUrl);
+        }
+        setEditDialogOpen(open);
+      }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/45" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-[var(--relay-radius-lg)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-6 shadow-[var(--relay-shadow-lg)]">
+            <Dialog.Title className="text-[15px] font-semibold text-[var(--relay-ink)]">
+              Edit project
+            </Dialog.Title>
+            <div className="mt-4 space-y-4">
+              <label className="block space-y-1.5">
+                <span className="text-[13px] font-medium text-[var(--relay-ink)]">Name</span>
+                <input
+                  className="w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-transparent px-3 py-2 text-[13px] text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)]"
+                  value={projectNameDraft}
+                  onChange={(e) => setProjectNameDraft(e.target.value)}
+                  maxLength={80}
+                  disabled={pending}
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveProjectMetadata();
+                    if (e.key === "Escape") setEditDialogOpen(false);
+                  }}
+                />
+              </label>
+              <label className="block space-y-1.5">
+                <span className="text-[13px] font-medium flex items-baseline gap-2">
+                  <span className="text-[var(--relay-ink)]">Project URL</span>
+                  <span className="text-xs text-[var(--relay-muted)] font-normal">Optional</span>
+                </span>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    className="w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-transparent px-3 py-2 text-[13px] text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)]"
+                    value={projectUrlDraft}
+                    onChange={(e) => setProjectUrlDraft(e.target.value)}
+                    placeholder="https://example.com"
+                    type="url"
+                    disabled={pending || scanPending}
+                  />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={pending || scanPending || !projectUrlDraft.trim()}
+                    onClick={() => void scanProjectUrl()}
+                    className="h-9 text-[12px] sm:w-auto"
+                  >
+                    {scanPending ? "Scanning…" : "Scan"}
+                  </Button>
+                </div>
+              </label>
+              <label className="block space-y-1.5">
+                <span className="text-[13px] font-medium flex items-baseline gap-2">
+                  <span className="text-[var(--relay-ink)]">Description</span>
+                  <span className="text-xs text-[var(--relay-muted)] font-normal">Optional</span>
+                </span>
+                <textarea
+                  className="w-full min-h-[80px] rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-transparent px-3 py-2 text-[13px] leading-relaxed text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)] resize-y"
+                  value={projectDescriptionDraft}
+                  onChange={(e) => setProjectDescriptionDraft(e.target.value)}
+                  placeholder="Describe the project so Relay can associate the right chats."
+                  maxLength={200}
+                  disabled={pending}
+                />
+                <div className="flex justify-end">
+                  <span className="text-[11px] text-[var(--relay-muted)] tabular-nums">{projectDescriptionDraft.length}/200</span>
+                </div>
+              </label>
+            </div>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={pending}
+                onClick={() => setEditDialogOpen(false)}
+                className="h-8 text-[12px]"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={pending}
+                onClick={saveProjectMetadata}
+                className="h-8 text-[12px]"
+              >
+                {pending ? "Saving…" : "Save"}
+              </Button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       {/* ─── Delete confirmation dialog ─── */}
       <Dialog.Root open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

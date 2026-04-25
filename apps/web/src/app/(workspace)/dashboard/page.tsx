@@ -53,10 +53,10 @@ export default async function DashboardPage({
         <section className="py-10">
           <header className="mb-10 space-y-2">
             <h1 className="text-[28px] font-medium tracking-tight text-[var(--relay-ink)]">
-              Welcome to Relay
+              Create a project
             </h1>
             <p className="text-[15px] leading-relaxed text-[var(--relay-muted)]">
-              Relay provides reliable, context-aware memory for your AI tools. Start by defining your first project boundary.
+              Define a project boundary so Relay can route the right chats to the right context.
             </p>
           </header>
           <CreateProjectForm
