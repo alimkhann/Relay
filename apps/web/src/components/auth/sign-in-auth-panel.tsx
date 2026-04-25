@@ -24,6 +24,7 @@ export function SignInAuthPanel({
   nextPath: string
 }) {
   const [emailOtpActive, setEmailOtpActive] = useState(false)
+  const [activeMode, setActiveMode] = useState<"sign-in" | "sign-up">(intent === "sign-up" ? "sign-up" : "sign-in")
 
   return (
     <div className="w-full max-w-[430px]">
@@ -51,7 +52,7 @@ export function SignInAuthPanel({
 
           <SignInAnimatedItem delay={0.1}>
             <h1 className="text-[32px] font-semibold tracking-tight text-[var(--relay-ink)] text-center lg:text-left">
-              {intent === "sign-up"
+              {activeMode === "sign-up"
                 ? "Create your Relay account"
                 : "Sign in to Relay"}
             </h1>
@@ -59,10 +60,10 @@ export function SignInAuthPanel({
 
           <SignInAnimatedItem delay={0.15}>
             <p className="mt-3 text-[17px] leading-relaxed text-[var(--relay-muted)] text-center lg:text-left">
-              {intent === "sign-up"
+              {activeMode === "sign-up"
                 ? authProvider === "local"
                   ? "Use local dev auth and land in your dashboard."
-                  : "Start with Google and land in your dashboard."
+                  : "Start syncing your AI context in minutes."
                 : authProvider === "local"
                   ? "Use local dev auth to keep your project brief ready."
                   : "Keep your project brief ready for every fresh AI chat."}
@@ -91,6 +92,7 @@ export function SignInAuthPanel({
                 nextPath={nextPath}
                 intent={intent}
                 onPendingVerificationChange={setEmailOtpActive}
+                onModeChange={setActiveMode}
               />
             </div>
           )

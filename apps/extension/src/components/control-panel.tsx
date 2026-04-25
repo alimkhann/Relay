@@ -2014,15 +2014,18 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         </section>
       ) : authenticating ? (
         <section className={styles.panel}>
-          <p className={styles.copy}>Signing in…</p>
+          <p className={styles.copy}>{emailAuthMode === "sign-up" ? "Creating account…" : "Signing in…"}</p>
         </section>
       ) : activeState.viewState === "disconnected" || !session?.connected ? (
         /* ─── Connect state ─── */
         <section className={`${styles.panel} ${styles.authPanel}`}>
-          <h2 className={styles.authTitle}>Sign in to Relay</h2>
+          <h2 className={styles.authTitle}>
+            {emailAuthMode === "sign-up" ? "Create your account" : "Sign in to Relay"}
+          </h2>
           <p className={styles.authCopy}>
-            Sign in once. Relay captures useful work quietly and keeps your next
-            chat ready.
+            {emailAuthMode === "sign-up"
+              ? "Relay captures useful work quietly and keeps your next chat ready."
+              : "Sign in once. Relay captures useful work quietly and keeps your next chat ready."}
           </p>
 
           {extensionAuthProvider === "local" ? (

@@ -155,10 +155,12 @@ export function EmailSignInForm({
   nextPath = "/dashboard",
   intent = "sign-in",
   onPendingVerificationChange,
+  onModeChange,
 }: {
   nextPath?: string
   intent?: WebAuthIntent
   onPendingVerificationChange?: (pending: boolean) => void
+  onModeChange?: (mode: "sign-in" | "sign-up") => void
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -179,6 +181,10 @@ export function EmailSignInForm({
   useEffect(() => {
     onPendingVerificationChange?.(pendingVerification)
   }, [onPendingVerificationChange, pendingVerification])
+
+  useEffect(() => {
+    onModeChange?.(mode)
+  }, [onModeChange, mode])
 
   useEffect(() => {
     if (!pendingVerification || resendSeconds <= 0) return
