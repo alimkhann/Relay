@@ -1362,6 +1362,15 @@
         line-height: 1.4;
       }
 
+      .relay-toast-text-shimmer {
+        background: linear-gradient(90deg, var(--relay-muted) 0%, var(--relay-muted) 30%, var(--relay-ink) 50%, var(--relay-muted) 70%, var(--relay-muted) 100%);
+        background-size: 200% auto;
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        animation: relay-shimmer 2s ease-in-out infinite;
+      }
+
       .relay-association-toast__titleWrap {
         position: relative;
         min-width: 0;
@@ -2571,7 +2580,7 @@
               aria-label="Switch association project"
               aria-expanded="${toastProjectSwitcherOpen ? "true" : "false"}"
             >
-              <span class="relay-association-toast__title relay-association-toast__titleLabel">${escapeHtml(title)}</span>
+              <span class="relay-association-toast__title relay-association-toast__titleLabel ${payload.mode === 'saving' ? 'relay-toast-text-shimmer' : ''}">${escapeHtml(title)}</span>
               <svg class="relay-association-toast__titleChevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <polyline points="4 6 8 10 12 6"></polyline>
               </svg>
@@ -2583,15 +2592,11 @@
             }
           </div>
         `
-        : `<p class="relay-association-toast__title">${escapeHtml(title)}</p>`;
+        : `<p class="relay-association-toast__title ${payload.mode === 'saving' ? 'relay-toast-text-shimmer' : ''}">${escapeHtml(title)}</p>`;
 
     root.classList.toggle(
       "relay-association-toast--clickable",
       false,
-    );
-    root.classList.toggle(
-      "relay-shimmer-active",
-      payload.mode === "saving"
     );
     root.innerHTML = `
       <div class="relay-association-toast__header">
