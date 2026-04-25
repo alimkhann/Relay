@@ -1040,7 +1040,8 @@ function hasPendingCaptureFreshnessGap(input: {
 
   const latestSessionAt = latestTimestamp(input.latestSession.capturedAt)
   const latestDigestAt = latestTimestamp(input.digests[0]?.createdAt ?? null)
-  const hasPendingJobs = input.digestJobs.some((job) => job.status !== "completed" && job.status !== "failed")
+  // Only block on actively in-flight jobs — timed_out/deferred don't need to block bootstrap
+  const hasPendingJobs = input.digestJobs.some((job) => job.status === "pending" || job.status === "running")
 
   if (!input.digests[0]) {
     return hasPendingJobs
@@ -1074,7 +1075,7 @@ export async function generateBootstrapForProject(userId: string, projectId: str
     repositories.sessions.listByProject(projectId, { limit: 1 }).then((sessions) => sessions[0] ?? null),
     repositories.aiJobs.listByProject(projectId, {
       jobKind: "session_digest",
-      statuses: ["pending", "running", "timed_out", "deferred"],
+      statuses: ["pending", "running"],
       limit: 6,
     }),
   ])
