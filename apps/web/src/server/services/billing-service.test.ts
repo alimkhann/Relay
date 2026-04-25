@@ -69,6 +69,16 @@ function createRepositories(previousEntitlement: ReturnType<typeof entitlement> 
       })),
       upsert: vi.fn(async () => null),
     },
+    profiles: {
+      getById: vi.fn(async () => ({
+        id: "user_1",
+        email: "alim@example.com",
+        displayName: "Alim",
+        avatarUrl: null,
+        createdAt: "2026-04-25T00:00:00.000Z",
+        updatedAt: "2026-04-25T00:00:00.000Z",
+      })),
+    },
     entitlements: {
       getByUserId: vi.fn(async () => previousEntitlement),
       upsert: vi.fn(async (row) => row),
@@ -131,7 +141,7 @@ describe("billing webhook sync", () => {
         status: "active",
         productId: "prod_starter_monthly",
         cancelAtPeriodEnd: true,
-        currentPeriodEnd: "2026-05-25T00:00:00.000Z",
+        currentPeriodEnd: new Date("2026-05-25T00:00:00.000Z"),
         customer: {
           id: "cus_1",
           externalId: "user_1",

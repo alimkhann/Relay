@@ -157,6 +157,12 @@ function pickActiveSubscription(subs: NormalizedSubscriptionInput[]): Normalized
   return activeSubs[0] ?? null
 }
 
+function coercePolarTimestamp(value: unknown): string | null {
+  if (typeof value === "string" && value.length > 0) return value
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString()
+  return null
+}
+
 function getPolarClient() {
   const accessToken = process.env["POLAR_ACCESS_TOKEN"]
   if (!accessToken) {
@@ -310,6 +316,8 @@ function normalizeSubscriptionPayload(
 ): NormalizedSubscriptionInput {
   const productId = typeof subscription.productId === "string" ? subscription.productId : null
   const normalizedStatus = normalizePolarStatus(subscription.status)
+  const currentPeriodStart = coercePolarTimestamp(subscription.currentPeriodStart)
+  const currentPeriodEnd = coercePolarTimestamp(subscription.currentPeriodEnd)
   return {
     providerSubscriptionId: String(subscription.id),
     providerCustomerId,
@@ -318,11 +326,47 @@ function normalizeSubscriptionPayload(
     status: normalizedStatus,
     interval: deriveIntervalFromProductId(productId),
     cancelAtPeriodEnd: Boolean(subscription.cancelAtPeriodEnd),
-    currentPeriodStart: typeof subscription.currentPeriodStart === "string" ? subscription.currentPeriodStart : null,
-    currentPeriodEnd: typeof subscription.currentPeriodEnd === "string" ? subscription.currentPeriodEnd : null,
-    trialStartsAt: typeof subscription.trialStart === "string" ? subscription.trialStart : null,
-    trialEndsAt: typeof subscription.trialEnd === "string" ? subscription.trialEnd : null,
+    currentPeriodStart,
+    currentPeriodEnd: currentPeriodEnd ?? coercePolarTimestamp(subscription.endsAt),
+    trialStartsAt: coercePolarTimestamp(subscription.trialStart),
+    trialEndsAt: coercePolarTimestamp(subscription.trialEnd),
     raw: subscription,
+  }
+}
+
+export async function revokeBillingSubscriptionsForAccountDeletion(userId: string) {
+  const repositories = createRepositoryBundle(userId)
+  const subscriptions = await repositories.subscriptions.listByUser(userId)
+  const activeSubscriptions = subscriptions.filter(
+    (subscription) =>
+      subscription.planKey !== "free" &&
+      (subscription.status === "active" || subscription.status === "trialing" || subscription.status === "past_due"),
+  )
+
+  if (activeSubscriptions.length === 0) return
+
+  const polar = getPolarClient()
+  for (const subscription of activeSubscriptions) {
+    try {
+      await polar.subscriptions.revoke({ id: subscription.providerSubscriptionId })
+    } catch (error) {
+      await logServerEvent({
+        level: "error",
+        surface: "web-api",
+        area: "billing",
+        event: "billing.account_delete_revoke_failed",
+        message: "Failed to revoke a billing subscription during account deletion.",
+        userId,
+        context: {
+          provider: "polar",
+          providerSubscriptionId: subscription.providerSubscriptionId,
+          plan: subscription.planKey,
+          status: subscription.status,
+        },
+        error,
+      })
+      throw new Error("Could not cancel the active billing subscription. Please try again.")
+    }
   }
 }
 
@@ -415,6 +459,19 @@ export async function syncBillingStateFromCustomerState(payload: Record<string, 
   }
 
   const repositories = createRepositoryBundle(externalCustomerId)
+  const profile = await repositories.profiles.getById(externalCustomerId)
+  if (!profile) {
+    await logServerEvent({
+      level: "warn",
+      surface: "web-api",
+      area: "billing",
+      event: "billing.customer_state_skipped_deleted_user",
+      message: "Skipped Polar customer state sync because the Relay profile no longer exists.",
+      userId: externalCustomerId,
+      context: { provider: "polar", source: "customer.state_changed" },
+    })
+    return
+  }
   const providerCustomerId = typeof data.id === "string" ? data.id : null
   const customerEmail = typeof data.email === "string" ? data.email : null
   const customerName = typeof data.name === "string" ? data.name : null
@@ -504,6 +561,19 @@ export async function syncBillingStateFromSubscriptionEvent(event: {
   const customerName = typeof customer.name === "string" ? customer.name : null
 
   const repositories = createRepositoryBundle(externalCustomerId)
+  const profile = await repositories.profiles.getById(externalCustomerId)
+  if (!profile) {
+    await logServerEvent({
+      level: "warn",
+      surface: "web-api",
+      area: "billing",
+      event: "billing.subscription_event_skipped_deleted_user",
+      message: "Skipped Polar subscription sync because the Relay profile no longer exists.",
+      userId: externalCustomerId,
+      context: { provider: "polar", type: event.type },
+    })
+    return
+  }
   const normalized = normalizeSubscriptionPayload(subscription, providerCustomerId)
 
   // Only revocation is immediately terminal. Polar cancellation can mean

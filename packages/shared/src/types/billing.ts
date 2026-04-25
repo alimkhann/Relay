@@ -36,6 +36,14 @@ export interface UserEntitlementsDto {
 
 export interface BillingStatusDto {
   entitlements: UserEntitlementsDto
+  subscription: {
+    providerSubscriptionId: string
+    plan: BillingPlanKey
+    status: BillingSubscriptionStatus
+    interval: BillingInterval
+    cancelAtPeriodEnd: boolean
+    currentPeriodEnd: string | null
+  } | null
   customer: {
     providerCustomerId: string | null
     email: string | null

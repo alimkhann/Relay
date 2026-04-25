@@ -11,7 +11,6 @@ import GrokIcon from "@lobehub/icons/es/Grok"
 import OpenAIIcon from "@lobehub/icons/es/OpenAI"
 import PerplexityIcon from "@lobehub/icons/es/Perplexity"
 
-import { deleteAccountAction } from "@/components/auth/delete-account-action"
 import { FadeIn } from "@/components/ui/fade-in"
 import { useTheme } from "@/components/theme-provider"
 import { cn } from "@/lib/cn"
@@ -129,6 +128,7 @@ export function SettingsPreferences({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null)
   const [tokenPending, setTokenPending] = useState(false)
+  const [deletePending, setDeletePending] = useState(false)
   const [tokens, setTokens] = useState<ExtensionApiTokenRow[]>(initialTokens)
   const [newTokenName, setNewTokenName] = useState("")
   const [issuedToken, setIssuedToken] = useState<string | null>(null)
@@ -206,6 +206,35 @@ export function SettingsPreferences({
         showToast(error instanceof Error ? error.message : "Save failed", 3000)
       }
     })
+  }
+
+  async function deleteAccount() {
+    if (deletePending) return
+
+    setDeletePending(true)
+    try {
+      const flowId = createClientFlowId("account-delete")
+      const response = await relayClientFetch("/api/account/delete", {
+        method: "POST",
+        telemetry: {
+          surface: "web-settings",
+          area: "account",
+          event: "account.delete",
+          flowId,
+          logSuccess: true,
+        },
+      })
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { error?: string }
+        throw new Error(data.error ?? "Could not delete account")
+      }
+
+      window.location.replace("/get-started")
+    } catch (error) {
+      setDeletePending(false)
+      showToast(error instanceof Error ? error.message : "Could not delete account", 4000)
+    }
   }
 
   async function createToken() {
@@ -623,22 +652,22 @@ export function SettingsPreferences({
               >
                 Cancel
               </button>
-              <form action={deleteAccountAction}>
-                <button
-                  type="submit"
-                  className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-danger)]/30 bg-[var(--relay-danger)] px-4 py-2 text-[13px] font-medium text-white transition hover:opacity-90"
-                >
-                  Delete account
-                </button>
-              </form>
+              <button
+                type="button"
+                onClick={() => void deleteAccount()}
+                disabled={deletePending}
+                className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-danger)]/30 bg-[var(--relay-danger)] px-4 py-2 text-[13px] font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+              >
+                {deletePending ? "Deleting..." : "Delete account"}
+              </button>
             </div>
           </div>
         </div>
       ) : null}
 
-      {(toast || pending) ? (
+      {(toast || pending || deletePending) ? (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-5 py-2.5 text-[13px] font-medium text-[var(--relay-bg)] shadow-[var(--relay-shadow-lg)]">
-          {pending ? "Saving..." : toast}
+          {deletePending ? "Deleting account..." : pending ? "Saving..." : toast}
         </div>
       ) : null}
     </div>

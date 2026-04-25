@@ -145,7 +145,7 @@ const CHECKOUT_SYNC_INTERVAL_MS = 5_000
 
 export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps) {
   const router = useRouter()
-  const { entitlements, usage } = billing
+  const { entitlements, subscription, usage } = billing
   const [yearly, setYearly] = useState(false)
   const [loading, setLoading] = useState<"month" | "year" | "portal" | "resync" | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -221,6 +221,17 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
 
     return `You're approaching your ${topUsagePressure.label.toLowerCase()} limit. Upgrade to ${topUsagePressure.upgradeCopy}.`
   }, [entitlements.isPro, topUsagePressure])
+
+  const cancellationScheduled = Boolean(
+    subscription?.cancelAtPeriodEnd &&
+      subscription.status !== "canceled" &&
+      subscription.plan === entitlements.plan,
+  )
+  const cancellationEndLabel = subscription?.currentPeriodEnd
+    ? new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric" }).format(
+        new Date(subscription.currentPeriodEnd),
+      )
+    : "the end of the current billing period"
 
   useEffect(() => {
     if (!anyLimitReached || entitlements.isPro) return
@@ -513,6 +524,31 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
         </FadeIn>
       ) : null}
 
+      {cancellationScheduled ? (
+        <FadeIn>
+        <section className="overflow-hidden rounded-[var(--relay-radius)] border border-amber-500/20 bg-amber-500/5">
+          <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[14px] font-semibold text-[var(--relay-ink)]">
+                {entitlements.plan === "pro" ? "Pro" : "Starter"} cancellation scheduled
+              </p>
+              <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
+                Your plan stays active until {cancellationEndLabel}. You can uncancel or manage billing in Polar.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handlePortal()}
+              disabled={loading !== null}
+              className="shrink-0 rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
+            >
+              {loading === "portal" ? "Opening portal..." : "Manage cancellation"}
+            </button>
+          </div>
+        </section>
+        </FadeIn>
+      ) : null}
+
       {anyLimitReached && !entitlements.isPro ? (
         <section className="border border-[var(--relay-accent)]/20 rounded-lg px-4 py-3">
           <div className="flex items-center gap-3 justify-between">
@@ -592,7 +628,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
                     disabled={loading !== null}
                     className="w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-4 py-2 text-[13px] font-medium text-[var(--relay-muted)] transition hover:bg-[var(--relay-soft)] disabled:opacity-50"
                   >
-                    {loading === "portal" ? "Opening portal..." : "Downgrade to Free"}
+                    {loading === "portal" ? "Opening portal..." : cancellationScheduled ? "Manage cancellation" : "Downgrade to Free"}
                   </button>
                 ) : null
               }
@@ -603,7 +639,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
               subtitle={PRICING.starter.description}
               price={yearly ? `$${Math.round(PRICING.starter.yearlyPrice / 12)}/mo` : `$${PRICING.starter.monthlyPrice}/mo`}
               priceNote={yearly ? "Billed $120/yr · -17%" : undefined}
-              badge={entitlements.plan === "starter" ? "Current" : undefined}
+              badge={entitlements.plan === "starter" ? (cancellationScheduled ? "Cancels" : "Current") : undefined}
               features={[...PRICING.starter.features]}
               actions={
                 entitlements.plan === "starter" ? (
@@ -613,7 +649,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
                     disabled={loading !== null}
                     className="w-full rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
                   >
-                    {loading === "portal" ? "Opening portal..." : "Manage subscription"}
+                    {loading === "portal" ? "Opening portal..." : cancellationScheduled ? "Manage cancellation" : "Manage subscription"}
                   </button>
                 ) : entitlements.plan === "pro" ? (
                   <button
@@ -642,7 +678,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
               subtitle={entitlements.isTrialing ? "Trialing now" : PRICING.pro.description}
               price={yearly ? `$${Math.round(PRICING.pro.yearlyPrice / 12)}/mo` : `$${PRICING.pro.monthlyPrice}/mo`}
               priceNote={yearly ? "Billed $180/yr · -17%" : undefined}
-              badge={entitlements.plan === "pro" ? "Current" : undefined}
+              badge={entitlements.plan === "pro" ? (cancellationScheduled ? "Cancels" : "Current") : undefined}
               tone="accent"
               features={[...PRICING.pro.features]}
               actions={
@@ -653,7 +689,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
                     disabled={loading !== null}
                     className="w-full rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[13px] font-medium text-[var(--relay-bg)] transition hover:opacity-90 disabled:opacity-50"
                   >
-                    {loading === "portal" ? "Opening portal..." : "Manage subscription"}
+                    {loading === "portal" ? "Opening portal..." : cancellationScheduled ? "Manage cancellation" : "Manage subscription"}
                   </button>
                 ) : entitlements.plan === "starter" ? (
                   <button

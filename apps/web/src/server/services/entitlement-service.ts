@@ -1,11 +1,41 @@
 import { createRepositoryBundle } from "@relay/db"
-import type { BillingStatusDto, UserEntitlementsDto } from "@relay/shared"
+import type { BillingStatusDto, SubscriptionRow, UserEntitlementsDto } from "@relay/shared"
 
 import { ForbiddenError, TooManyRequestsError } from "@/server/http/errors"
 import { logServerEvent } from "@/server/logging/logger"
 import { FREE_LIMITS, getDefaultEntitlements, getPlanLimits } from "./billing-config"
 
 type WindowKey = "minute" | "day" | "month"
+
+function coerceRawTimestamp(value: unknown): string | null {
+  if (typeof value === "string" && value.length > 0) return value
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString()
+  return null
+}
+
+function getSubscriptionPeriodEnd(subscription: SubscriptionRow) {
+  return (
+    subscription.currentPeriodEnd ??
+    coerceRawTimestamp(subscription.raw["currentPeriodEnd"]) ??
+    coerceRawTimestamp(subscription.raw["endsAt"])
+  )
+}
+
+function pickBillingSubscription(subscriptions: SubscriptionRow[]) {
+  const activeStatuses = new Set<SubscriptionRow["status"]>(["active", "trialing", "past_due"])
+  const planRank = { free: 0, starter: 1, pro: 2 } as const
+  const activeSubscriptions = subscriptions.filter(
+    (subscription) => subscription.planKey !== "free" && activeStatuses.has(subscription.status),
+  )
+
+  activeSubscriptions.sort((a, b) => {
+    const rankDelta = planRank[b.planKey] - planRank[a.planKey]
+    if (rankDelta !== 0) return rankDelta
+    return (getSubscriptionPeriodEnd(b) ?? "").localeCompare(getSubscriptionPeriodEnd(a) ?? "")
+  })
+
+  return activeSubscriptions[0] ?? null
+}
 
 function getWindowBounds(windowKey: WindowKey, now = new Date()) {
   const start = new Date(now)
@@ -59,11 +89,13 @@ export async function resolveViewerEntitlements(userId: string): Promise<UserEnt
 
 export async function getBillingStatusForUser(userId: string): Promise<BillingStatusDto> {
   const repositories = createRepositoryBundle(userId)
-  const [entitlements, customer, activeProjects] = await Promise.all([
+  const [entitlements, customer, activeProjects, subscriptions] = await Promise.all([
     resolveViewerEntitlements(userId),
     repositories.billingCustomers.getByUserId(userId),
     repositories.projects.listByOwner(userId),
+    repositories.subscriptions.listByUser(userId),
   ])
+  const activeSubscription = pickBillingSubscription(subscriptions)
 
   const [capturesThisMonth, mcpReadsToday, mcpWritesToday, handoffsThisMonth, aiAnalysesToday] = await Promise.all([
     getUsageCount(userId, "capture_monthly", "month"),
@@ -75,6 +107,16 @@ export async function getBillingStatusForUser(userId: string): Promise<BillingSt
 
   return {
     entitlements,
+    subscription: activeSubscription
+      ? {
+          providerSubscriptionId: activeSubscription.providerSubscriptionId,
+          plan: activeSubscription.planKey,
+          status: activeSubscription.status,
+          interval: activeSubscription.interval,
+          cancelAtPeriodEnd: activeSubscription.cancelAtPeriodEnd,
+          currentPeriodEnd: getSubscriptionPeriodEnd(activeSubscription),
+        }
+      : null,
     customer: {
       providerCustomerId: customer?.providerCustomerId ?? null,
       email: customer?.email ?? null,
