@@ -151,7 +151,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
   const [error, setError] = useState<string | null>(null)
   const [showSuccess, setShowSuccess] = useState(true)
   const [syncState, setSyncState] = useState<"idle" | "syncing" | "timed_out">(
-    checkoutSuccess && !entitlements.isPro ? "syncing" : "idle",
+    checkoutSuccess && !entitlements.isPaid ? "syncing" : "idle",
   )
   const syncAttemptsRef = useRef(0)
 
@@ -267,10 +267,10 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
 
   // If webhook already landed before we got back from checkout, no sync needed.
   useEffect(() => {
-    if (entitlements.isPro && syncState === "syncing") {
+    if (entitlements.isPaid && syncState === "syncing") {
       setSyncState("idle")
     }
-  }, [entitlements.isPro, syncState])
+  }, [entitlements.isPaid, syncState])
 
   // Poll for sync completion — webhook usually lands within a couple seconds,
   // but Polar can take up to a minute on cold starts.
@@ -279,7 +279,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
 
     const handle = window.setInterval(() => {
       syncAttemptsRef.current += 1
-      if (entitlements.isPro) {
+      if (entitlements.isPaid) {
         setSyncState("idle")
         window.clearInterval(handle)
         return
@@ -301,7 +301,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
     }, CHECKOUT_SYNC_INTERVAL_MS)
 
     return () => window.clearInterval(handle)
-  }, [entitlements.isPro, router, syncState])
+  }, [entitlements.isPaid, router, syncState])
 
   const handleResync = useCallback(async () => {
     setLoading("resync")
@@ -331,7 +331,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
   }, [router])
 
   useEffect(() => {
-    if (!checkoutSuccess || !entitlements.isPro) return
+    if (!checkoutSuccess || !entitlements.isPaid) return
 
     logClientEvent({
       level: "info",
@@ -367,7 +367,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
     } catch {
       // No-op — extension not installed or sendMessage rejected.
     }
-  }, [checkoutSuccess, entitlements.interval, entitlements.isPro, entitlements.plan, entitlements.status])
+  }, [checkoutSuccess, entitlements.interval, entitlements.isPaid, entitlements.plan, entitlements.status])
 
   async function handleCheckout(interval: "month" | "year", plan: "starter" | "pro" = "starter") {
     setLoading(interval)
@@ -434,12 +434,12 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
 
   return (
     <div className="space-y-4">
-      {checkoutSuccess && entitlements.isPro && showSuccess ? (
+      {checkoutSuccess && entitlements.isPaid && showSuccess ? (
         <FadeIn>
         <section className="overflow-hidden rounded-[var(--relay-radius)] border border-emerald-500/20 bg-emerald-500/5">
           <div className="flex items-start justify-between gap-3 px-5 py-4">
             <div>
-              <p className="text-[14px] font-semibold text-[var(--relay-ink)]">Relay Pro is active</p>
+              <p className="text-[14px] font-semibold text-[var(--relay-ink)]">Relay {entitlements.plan === "pro" ? "Pro" : "Starter"} is active</p>
               <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
                 Billing updated successfully. You can manage or cancel anytime from the customer portal.
               </p>
@@ -457,7 +457,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
         </FadeIn>
       ) : null}
 
-      {checkoutSuccess && !entitlements.isPro && syncState === "syncing" ? (
+      {checkoutSuccess && !entitlements.isPaid && syncState === "syncing" ? (
         <FadeIn>
         <section className="overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
           <div className="flex items-start gap-3 px-5 py-4">
@@ -473,7 +473,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
         </FadeIn>
       ) : null}
 
-      {checkoutSuccess && !entitlements.isPro && syncState === "timed_out" ? (
+      {checkoutSuccess && !entitlements.isPaid && syncState === "timed_out" ? (
         <FadeIn>
         <section className="overflow-hidden rounded-[var(--relay-radius)] border border-amber-500/20 bg-amber-500/5">
           <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
