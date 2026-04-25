@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const {
   replaceMock,
+  fetchMock,
   refreshMock,
   signInEmailMock,
   signUpEmailMock,
@@ -10,6 +11,7 @@ const {
   verifyEmailMock,
 } = vi.hoisted(() => ({
   replaceMock: vi.fn(),
+  fetchMock: vi.fn(),
   refreshMock: vi.fn(),
   signInEmailMock: vi.fn(),
   signUpEmailMock: vi.fn(),
@@ -49,17 +51,19 @@ import { EmailSignInForm } from "./email-sign-in-form"
 describe("EmailSignInForm", () => {
   beforeEach(() => {
     replaceMock.mockClear()
+    fetchMock.mockReset()
     refreshMock.mockClear()
     signInEmailMock.mockReset()
     signUpEmailMock.mockReset()
     sendVerificationOtpMock.mockReset()
     verifyEmailMock.mockReset()
+    vi.stubGlobal("fetch", fetchMock)
   })
 
   it("requires email OTP verification before redirecting after sign-up", async () => {
     signUpEmailMock.mockResolvedValue({ error: null })
-    sendVerificationOtpMock.mockResolvedValue({ error: null })
-    verifyEmailMock.mockResolvedValue({ error: null })
+    signInEmailMock.mockResolvedValue({ error: null })
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }))
 
     render(<EmailSignInForm intent="sign-up" nextPath="/dashboard" />)
 
@@ -75,28 +79,37 @@ describe("EmailSignInForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create account" }))
 
     await waitFor(() => {
-      expect(sendVerificationOtpMock).toHaveBeenCalledWith({
-        email: "ada@example.com",
-        type: "email-verification",
-      })
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/auth/email-otp",
+        expect.objectContaining({
+          body: JSON.stringify({ action: "send", email: "ada@example.com" }),
+          method: "POST",
+        }),
+      )
     })
     expect(replaceMock).not.toHaveBeenCalled()
-    expect(screen.getByText("Verification code")).toBeTruthy()
+    expect(screen.getByText("Check your email")).toBeTruthy()
 
-    fireEvent.change(screen.getByPlaceholderText("Enter the code from your email"), {
-      target: { value: "123456" },
+    const otpInputs = screen.getAllByRole("textbox")
+    "123456".split("").forEach((digit, index) => {
+      fireEvent.change(otpInputs[index]!, { target: { value: digit } })
     })
     fireEvent.click(screen.getByRole("button", { name: "Verify email" }))
 
     await waitFor(() => {
-      expect(verifyEmailMock).toHaveBeenCalledWith({
-        email: "ada@example.com",
-        otp: "123456",
-      })
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/auth/email-otp",
+        expect.objectContaining({
+          body: JSON.stringify({ action: "verify", email: "ada@example.com", otp: "123456" }),
+          method: "POST",
+        }),
+      )
     })
-    expect(replaceMock).toHaveBeenCalledWith(
-      "/dashboard?auth_callback=1&auth_method=email&auth_intent=sign-up"
-    )
+    await waitFor(() => {
+      expect(replaceMock).toHaveBeenCalledWith(
+        "/dashboard?auth_callback=1&auth_method=email&auth_intent=sign-up"
+      )
+    })
     expect(refreshMock).toHaveBeenCalled()
   })
 })

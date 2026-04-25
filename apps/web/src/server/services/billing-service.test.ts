@@ -2,10 +2,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   createRepositoryBundle: vi.fn(),
+  polarCustomerSessionsCreate: vi.fn(),
+  polarSubscriptionsRevoke: vi.fn(),
   sendSubscriptionCanceledEmail: vi.fn(),
   sendTrialStartedEmail: vi.fn(),
   sendWelcomeToProEmail: vi.fn(),
   logServerEvent: vi.fn(),
+}))
+
+vi.mock("@polar-sh/sdk", () => ({
+  Polar: vi.fn(() => ({
+    customerSessions: {
+      create: mocks.polarCustomerSessionsCreate,
+    },
+    subscriptions: {
+      revoke: mocks.polarSubscriptionsRevoke,
+    },
+  })),
 }))
 
 vi.mock("@relay/db", () => ({
@@ -64,6 +77,8 @@ function createRepositories(previousEntitlement: ReturnType<typeof entitlement> 
   const repositories = {
     billingCustomers: {
       getByUserId: vi.fn(async () => ({
+        providerCustomerId: "cus_1",
+        externalCustomerId: "user_1",
         email: "alim@example.com",
         name: "Alim",
       })),
@@ -461,5 +476,67 @@ describe("billing webhook sync", () => {
         status: "active",
       }),
     )
+  })
+
+  it("creates portal sessions with the stored Polar customer id", async () => {
+    createRepositories(entitlement({ planKey: "starter", status: "trialing", interval: "month" }))
+    mocks.polarCustomerSessionsCreate.mockResolvedValueOnce({
+      customerPortalUrl: "https://polar.sh/acme/portal/session",
+    })
+    vi.stubEnv("POLAR_ACCESS_TOKEN", "polar_token")
+    const { createPolarPortalForUser } = await loadBillingService()
+
+    await expect(createPolarPortalForUser("user_1")).resolves.toEqual({
+      portalUrl: "https://polar.sh/acme/portal/session",
+    })
+
+    expect(mocks.polarCustomerSessionsCreate).toHaveBeenCalledWith({
+      customerId: "cus_1",
+      returnUrl: expect.any(String),
+    })
+  })
+
+  it("falls back to external customer id if Polar rejects the stored customer id", async () => {
+    createRepositories(entitlement({ planKey: "starter", status: "trialing", interval: "month" }))
+    const notFound = new Error("ResourceNotFound")
+    notFound.name = "ResourceNotFound"
+    mocks.polarCustomerSessionsCreate
+      .mockRejectedValueOnce(notFound)
+      .mockResolvedValueOnce({
+        customerPortalUrl: "https://polar.sh/acme/portal/session",
+      })
+    vi.stubEnv("POLAR_ACCESS_TOKEN", "polar_token")
+    const { createPolarPortalForUser } = await loadBillingService()
+
+    await expect(createPolarPortalForUser("user_1")).resolves.toEqual({
+      portalUrl: "https://polar.sh/acme/portal/session",
+    })
+
+    expect(mocks.polarCustomerSessionsCreate).toHaveBeenNthCalledWith(1, {
+      customerId: "cus_1",
+      returnUrl: expect.any(String),
+    })
+    expect(mocks.polarCustomerSessionsCreate).toHaveBeenNthCalledWith(2, {
+      externalCustomerId: "user_1",
+      returnUrl: expect.any(String),
+    })
+  })
+
+  it("revokes active paid subscriptions during account deletion", async () => {
+    const repositories = createRepositories(entitlement({ planKey: "starter", status: "active", interval: "month" }))
+    repositories.subscriptions.listByUser.mockResolvedValueOnce([
+      {
+        providerSubscriptionId: "sub_starter",
+        planKey: "starter",
+        status: "active",
+      },
+    ])
+    mocks.polarSubscriptionsRevoke.mockResolvedValueOnce({})
+    vi.stubEnv("POLAR_ACCESS_TOKEN", "polar_token")
+    const { revokeBillingSubscriptionsForAccountDeletion } = await loadBillingService()
+
+    await revokeBillingSubscriptionsForAccountDeletion("user_1")
+
+    expect(mocks.polarSubscriptionsRevoke).toHaveBeenCalledWith({ id: "sub_starter" })
   })
 })

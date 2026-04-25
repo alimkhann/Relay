@@ -523,10 +523,49 @@ export async function createPolarPortalForUser(userId: string) {
     throw new Error("No billing customer exists yet for this user.")
   }
 
-  const session = await polar.customerSessions.create({
-    externalCustomerId: customer.externalCustomerId,
-    returnUrl: BILLING_RETURN_URL,
+  const createSessionByExternalCustomerId = async () => ({
+    lookup: "external_customer_id" as const,
+    session: await polar.customerSessions.create({
+      externalCustomerId: customer.externalCustomerId,
+      returnUrl: BILLING_RETURN_URL,
+    }),
   })
+
+  let portalSession: {
+    lookup: "provider_customer_id" | "external_customer_id"
+    session: Awaited<ReturnType<typeof polar.customerSessions.create>>
+  }
+  if (customer.providerCustomerId) {
+    try {
+      portalSession = {
+        lookup: "provider_customer_id",
+        session: await polar.customerSessions.create({
+          customerId: customer.providerCustomerId,
+          returnUrl: BILLING_RETURN_URL,
+        }),
+      }
+    } catch (error) {
+      if (!isPolarCustomerNotFoundError(error)) throw error
+
+      await logServerEvent({
+        level: "warn",
+        surface: "web-api",
+        area: "billing",
+        event: "billing.portal_provider_customer_missing",
+        message: "Polar portal customer session lookup by provider customer id failed; retrying by external customer id.",
+        userId,
+        context: {
+          provider: "polar",
+          providerCustomerId: customer.providerCustomerId,
+        },
+        error,
+      })
+
+      portalSession = await createSessionByExternalCustomerId()
+    }
+  } else {
+    portalSession = await createSessionByExternalCustomerId()
+  }
 
   await logServerEvent({
     level: "info",
@@ -537,12 +576,12 @@ export async function createPolarPortalForUser(userId: string) {
     userId,
     context: {
       provider: "polar",
-      plan: "pro",
+      customerLookup: portalSession.lookup,
     },
   })
 
   return {
-    portalUrl: session.customerPortalUrl,
+    portalUrl: portalSession.session.customerPortalUrl,
   }
 }
 
