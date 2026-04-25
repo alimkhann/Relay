@@ -22,6 +22,8 @@ export function EmailSignInForm({
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [name, setName] = useState("")
+  const [otp, setOtp] = useState("")
+  const [pendingVerification, setPendingVerification] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [mode, setMode] = useState<"sign-in" | "sign-up">(
@@ -50,7 +52,15 @@ export function EmailSignInForm({
           })
 
           try {
-            if (mode === "sign-up") {
+            if (mode === "sign-up" && pendingVerification) {
+              const result = await authClient.emailOtp.verifyEmail({
+                email,
+                otp,
+              })
+              if (result.error) {
+                throw new Error(result.error.message ?? "Verification failed.")
+              }
+            } else if (mode === "sign-up") {
               const result = await authClient.signUp.email({
                 email,
                 password,
@@ -59,6 +69,18 @@ export function EmailSignInForm({
               if (result.error) {
                 throw new Error(result.error.message ?? "Sign-up failed.")
               }
+
+              const otpResult = await authClient.emailOtp.sendVerificationOtp({
+                email,
+                type: "email-verification",
+              })
+              if (otpResult.error) {
+                throw new Error(otpResult.error.message ?? "Could not send verification code.")
+              }
+
+              setPendingVerification(true)
+              setOtp("")
+              return
             } else {
               const result = await authClient.signIn.email({
                 email,
@@ -75,7 +97,7 @@ export function EmailSignInForm({
               area: "auth",
               event: mode === "sign-up" ? "email_sign_up.succeeded" : "email_sign_in.succeeded",
               flowId,
-              message: `Email ${mode} completed.`,
+              message: mode === "sign-up" ? "Email sign-up verified." : "Email sign-in completed.",
               context: { authMethod: "email", authIntent: mode },
             })
 
@@ -120,6 +142,7 @@ export function EmailSignInForm({
           placeholder="you@example.com"
           autoComplete="email"
           required
+          readOnly={pendingVerification}
         />
       </label>
       <label className="block space-y-2">
@@ -134,6 +157,7 @@ export function EmailSignInForm({
             autoComplete={mode === "sign-up" ? "new-password" : "current-password"}
             required
             minLength={8}
+            readOnly={pendingVerification}
           />
           <button
             type="button"
@@ -148,14 +172,37 @@ export function EmailSignInForm({
           <span className="block text-[12px] text-[var(--relay-muted)]">Must be at least 8 characters.</span>
         ) : null}
       </label>
+      {pendingVerification ? (
+        <label className="block space-y-2">
+          <span className="text-[13px] font-medium text-[var(--relay-ink-secondary)]">Verification code</span>
+          <input
+            className={fieldClass}
+            type="text"
+            inputMode="numeric"
+            value={otp}
+            onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 8))}
+            placeholder="Enter the code from your email"
+            autoComplete="one-time-code"
+            required
+          />
+          <span className="block text-[12px] text-[var(--relay-muted)]">
+            We sent a one-time code to {email}.
+          </span>
+        </label>
+      ) : null}
       <Button
         className="h-14 w-full rounded-[var(--relay-radius)] bg-[var(--relay-accent)] px-6 text-[15px] font-semibold text-[var(--relay-accent-text)] shadow-sm transition-all hover:opacity-90 disabled:opacity-40"
-        disabled={pending || email.trim().length === 0 || password.length < 8}
+        disabled={
+          pending ||
+          email.trim().length === 0 ||
+          password.length < 8 ||
+          (pendingVerification && otp.trim().length < 4)
+        }
         type="submit"
       >
         {pending
-          ? mode === "sign-up" ? "Creating account…" : "Signing in…"
-          : mode === "sign-up" ? "Create account" : "Sign in with email"}
+          ? pendingVerification ? "Verifying…" : mode === "sign-up" ? "Creating account…" : "Signing in…"
+          : pendingVerification ? "Verify email" : mode === "sign-up" ? "Create account" : "Sign in with email"}
       </Button>
       {error ? <p className="text-sm text-rose-500">{error}</p> : null}
       <button
@@ -163,6 +210,8 @@ export function EmailSignInForm({
         onClick={() => {
           setMode(mode === "sign-in" ? "sign-up" : "sign-in")
           setError(null)
+          setPendingVerification(false)
+          setOtp("")
         }}
         className="w-full text-center text-[13px] text-[var(--relay-muted)] transition hover:text-[var(--relay-ink)] focus:outline-none"
       >

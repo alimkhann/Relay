@@ -4429,6 +4429,7 @@ chrome.runtime.onMessage.addListener(
                   password: message.payload.password,
                   name: message.payload.name ?? null,
                   intent: message.payload.intent ?? "sign-in",
+                  otp: message.payload.otp ?? null,
                   deviceName: message.payload.deviceName,
                 }),
               },
@@ -4446,6 +4447,19 @@ chrome.runtime.onMessage.addListener(
                 apiBase,
               },
             });
+
+            if (response.status === 202) {
+              const payload = (await response.json().catch(() => ({}))) as {
+                requiresOtp?: boolean;
+                message?: string;
+              };
+              sendResponse({
+                ok: true,
+                requiresOtp: payload.requiresOtp ?? true,
+                message: payload.message ?? "Enter the verification code sent to your email.",
+              });
+              return;
+            }
 
             if (!response.ok) {
               const reason = await readErrorResponse(

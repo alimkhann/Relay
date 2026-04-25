@@ -243,6 +243,7 @@ export type RelayMessage =
         password: string;
         name?: string | null;
         intent?: "sign-in" | "sign-up";
+        otp?: string | null;
         deviceName: string;
         flowId?: string;
       };

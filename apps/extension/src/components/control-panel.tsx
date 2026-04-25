@@ -227,6 +227,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [emailAuthEmail, setEmailAuthEmail] = useState("");
   const [emailAuthPassword, setEmailAuthPassword] = useState("");
   const [emailAuthName, setEmailAuthName] = useState("");
+  const [emailAuthOtp, setEmailAuthOtp] = useState("");
+  const [emailAuthAwaitingOtp, setEmailAuthAwaitingOtp] = useState(false);
   const [emailAuthMode, setEmailAuthMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [activeContextTab, setActiveContextTab] = useState<ContextTab>("all");
   const [expandedSections, setExpandedSections] = useState<
@@ -888,7 +890,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   async function signInWithEmail() {
     setBusy(true);
     setAuthenticating(true);
-    setStatus(emailAuthMode === "sign-up" ? "Creating account…" : "Signing in…");
+    setStatus(
+      emailAuthAwaitingOtp
+        ? "Verifying email…"
+        : emailAuthMode === "sign-up" ? "Creating account…" : "Signing in…",
+    );
     const flowId = createExtensionFlowId("ext-email-auth");
     logExtensionEvent({
       level: "info",
@@ -908,10 +914,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           password: emailAuthPassword,
           name: emailAuthName.trim() || null,
           intent: emailAuthMode,
+          otp: emailAuthAwaitingOtp ? emailAuthOtp.trim() : null,
           deviceName: deviceName || defaultDeviceName(),
           flowId,
         },
-      })) as { ok?: boolean; reason?: string };
+      })) as { ok?: boolean; reason?: string; requiresOtp?: boolean; message?: string };
 
       if (!result?.ok) {
         logExtensionEvent({
@@ -926,6 +933,13 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         return;
       }
 
+      if (result.requiresOtp) {
+        setEmailAuthAwaitingOtp(true);
+        setEmailAuthOtp("");
+        setStatus(result.message ?? "Enter the verification code sent to your email.");
+        return;
+      }
+
       logExtensionEvent({
         level: "info",
         surface: "extension-sidebar",
@@ -935,6 +949,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         message: `Email ${emailAuthMode} completed in the extension UI.`,
       });
       setStatus("Signed in with email.");
+      setEmailAuthAwaitingOtp(false);
+      setEmailAuthOtp("");
       await refreshLocalSession();
       await refreshActiveProjectState();
     } catch (cause) {
@@ -1949,6 +1965,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   placeholder="you@example.com"
                   type="email"
                   autoComplete="email"
+                  readOnly={emailAuthAwaitingOtp}
                 />
               </label>
 
@@ -1960,26 +1977,53 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   placeholder={emailAuthMode === "sign-up" ? "Create a password" : "Password"}
                   type="password"
                   autoComplete={emailAuthMode === "sign-up" ? "new-password" : "current-password"}
+                  readOnly={emailAuthAwaitingOtp}
                 />
                 {emailAuthMode === "sign-up" ? (
                   <small className={styles.authFieldHint}>Must be at least 8 characters.</small>
                 ) : null}
               </label>
 
+              {emailAuthAwaitingOtp ? (
+                <label className={`${styles.field} ${styles.authField}`}>
+                  <span>Verification code</span>
+                  <input
+                    value={emailAuthOtp}
+                    onChange={(event) =>
+                      setEmailAuthOtp(event.target.value.replace(/\D/g, "").slice(0, 8))
+                    }
+                    placeholder="Code from your email"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                  />
+                  <small className={styles.authFieldHint}>
+                    We sent a one-time code to {emailAuthEmail.trim()}.
+                  </small>
+                </label>
+              ) : null}
+
               <button
                 className={`${styles.primaryButton} ${styles.authPrimaryButton}`}
-                disabled={busy || !emailAuthEmail.trim() || emailAuthPassword.length < 8}
+                disabled={
+                  busy ||
+                  !emailAuthEmail.trim() ||
+                  emailAuthPassword.length < 8 ||
+                  (emailAuthAwaitingOtp && emailAuthOtp.trim().length < 4)
+                }
                 onClick={() => void signInWithEmail()}
               >
                 {busy
-                  ? emailAuthMode === "sign-up" ? "Creating account…" : "Signing in…"
-                  : emailAuthMode === "sign-up" ? "Create account" : "Sign in with email"}
+                  ? emailAuthAwaitingOtp ? "Verifying…" : emailAuthMode === "sign-up" ? "Creating account…" : "Signing in…"
+                  : emailAuthAwaitingOtp ? "Verify email" : emailAuthMode === "sign-up" ? "Create account" : "Sign in with email"}
               </button>
 
               <button
                 className={styles.linkButton}
                 onClick={() => {
                   setEmailAuthMode(emailAuthMode === "sign-in" ? "sign-up" : "sign-in");
+                  setEmailAuthAwaitingOtp(false);
+                  setEmailAuthOtp("");
                   setStatus("");
                 }}
               >

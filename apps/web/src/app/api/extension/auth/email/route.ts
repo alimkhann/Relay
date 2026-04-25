@@ -48,6 +48,7 @@ export async function POST(request: Request) {
         password?: string
         name?: string | null
         intent?: "sign-in" | "sign-up"
+        otp?: string | null
         deviceName?: string
       }
 
@@ -67,10 +68,113 @@ export async function POST(request: Request) {
       let authResult: { data: unknown; error: { message?: string } | null }
 
       if (intent === "sign-up") {
-        authResult = await auth.signUp.email({
+        if (!body.otp) {
+          authResult = await auth.signUp.email({
+            email,
+            password,
+            name: body.name || email.split("@")[0] || email,
+          })
+
+          if (authResult.error) {
+            await logServerEvent({
+              level: "warn",
+              surface: "web-api",
+              area: "auth",
+              event: "extension_email_sign-up.rejected",
+              flowId,
+              message: authResult.error.message ?? "Email sign-up rejected by auth server.",
+              context: { authMethod: "email", intent },
+            })
+            return applyExtensionCorsHeaders(
+              withRequestId(
+                NextResponse.json(
+                  { error: authResult.error.message ?? "Email sign-up failed." },
+                  { status: 401 }
+                )
+              ),
+              request.headers.get("origin")
+            )
+          }
+
+          const otpResult = await auth.emailOtp.sendVerificationOtp({
+            email,
+            type: "email-verification",
+          })
+
+          if (otpResult.error) {
+            await logServerEvent({
+              level: "warn",
+              surface: "web-api",
+              area: "auth",
+              event: "extension_email_signup_otp.rejected",
+              flowId,
+              message: otpResult.error.message ?? "Could not send extension signup OTP.",
+              context: { authMethod: "email", intent },
+            })
+            return applyExtensionCorsHeaders(
+              withRequestId(
+                NextResponse.json(
+                  { error: otpResult.error.message ?? "Could not send verification code." },
+                  { status: 500 }
+                )
+              ),
+              request.headers.get("origin")
+            )
+          }
+
+          await logServerEvent({
+            level: "info",
+            surface: "web-api",
+            area: "auth",
+            event: "extension_email_signup_otp.sent",
+            flowId,
+            message: `Sent extension email sign-up OTP to ${email}.`,
+            context: { authMethod: "email", intent },
+          })
+
+          return applyExtensionCorsHeaders(
+            withRequestId(
+              NextResponse.json(
+                {
+                  requiresOtp: true,
+                  message: "Enter the verification code sent to your email.",
+                },
+                { status: 202 }
+              )
+            ),
+            request.headers.get("origin")
+          )
+        }
+
+        const verifyResult = await auth.emailOtp.verifyEmail({
+          email,
+          otp: body.otp,
+        })
+
+        if (verifyResult.error) {
+          await logServerEvent({
+            level: "warn",
+            surface: "web-api",
+            area: "auth",
+            event: "extension_email_signup_otp.rejected",
+            flowId,
+            message: verifyResult.error.message ?? "Email sign-up verification rejected by auth server.",
+            context: { authMethod: "email", intent },
+          })
+          return applyExtensionCorsHeaders(
+            withRequestId(
+              NextResponse.json(
+                { error: verifyResult.error.message ?? "Verification failed." },
+                { status: 401 }
+              )
+            ),
+            request.headers.get("origin")
+          )
+        }
+
+        authResult = await auth.signIn.email({
           email,
           password,
-          name: body.name || email.split("@")[0] || email,
         })
       } else {
         authResult = await auth.signIn.email({
