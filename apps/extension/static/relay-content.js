@@ -1341,6 +1341,23 @@
         --relay-shadow: 0 2px 8px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.08);
       }
 
+      .relay-association-toast[data-theme="light"] .relay-toast-text-shimmer {
+        background: linear-gradient(
+          90deg,
+          rgba(115, 115, 115, 0.6) 0%,
+          rgba(15, 15, 15, 1) 30%,
+          rgba(80, 80, 80, 1) 50%,
+          rgba(15, 15, 15, 1) 70%,
+          rgba(115, 115, 115, 0.6) 100%
+        );
+        background-size: 300% 100%;
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        color: transparent;
+        animation: relay-toast-shimmer 1.8s ease-in-out infinite;
+      }
+
       .relay-association-toast--visible {
         opacity: 1;
         transform: translateX(0);
@@ -1363,12 +1380,25 @@
       }
 
       .relay-toast-text-shimmer {
-        background: linear-gradient(90deg, var(--relay-muted) 0%, var(--relay-muted) 30%, var(--relay-ink) 50%, var(--relay-muted) 70%, var(--relay-muted) 100%);
-        background-size: 200% auto;
+        background: linear-gradient(
+          90deg,
+          rgba(180, 180, 187, 0.5) 0%,
+          rgba(228, 228, 231, 1) 30%,
+          rgba(255, 255, 255, 1) 50%,
+          rgba(228, 228, 231, 1) 70%,
+          rgba(180, 180, 187, 0.5) 100%
+        );
+        background-size: 300% 100%;
         -webkit-background-clip: text;
         background-clip: text;
         -webkit-text-fill-color: transparent;
-        animation: relay-shimmer 2s ease-in-out infinite;
+        color: transparent;
+        animation: relay-toast-shimmer 1.8s ease-in-out infinite;
+      }
+
+      @keyframes relay-toast-shimmer {
+        0% { background-position: 100% center; }
+        100% { background-position: -100% center; }
       }
 
       .relay-association-toast__titleWrap {
