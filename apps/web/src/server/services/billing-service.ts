@@ -208,6 +208,14 @@ function derivePlanFromMetadata(subscription: Record<string, unknown>) {
   return "free" as const
 }
 
+function parsePlanFromText(value: unknown) {
+  if (typeof value !== "string") return "free" as const
+  const normalized = value.trim().toLowerCase()
+  if (normalized.includes("starter")) return "starter" as const
+  if (normalized.includes("pro")) return "pro" as const
+  return "free" as const
+}
+
 function deriveIntervalFromMetadata(subscription: Record<string, unknown>) {
   const metadata = subscription.metadata
   if (!metadata || typeof metadata !== "object") return null
@@ -241,6 +249,30 @@ function deriveProductIdFromSubscription(subscription: Record<string, unknown>) 
   }
 
   return null
+}
+
+function derivePlanFromSubscription(subscription: Record<string, unknown>, productId: string | null) {
+  const planFromProduct = derivePlanFromProductId(productId)
+  if (planFromProduct !== "free") return planFromProduct
+
+  const planFromMetadata = derivePlanFromMetadata(subscription)
+  if (planFromMetadata !== "free") return planFromMetadata
+
+  const product = subscription.product
+  if (product && typeof product === "object") {
+    const productObj = product as Record<string, unknown>
+    const fromName = parsePlanFromText(productObj.name)
+    if (fromName !== "free") return fromName
+    const fromSlug = parsePlanFromText(productObj.slug)
+    if (fromSlug !== "free") return fromSlug
+  }
+
+  const fromProductName = parsePlanFromText(subscription.productName)
+  if (fromProductName !== "free") return fromProductName
+  const fromProductSlug = parsePlanFromText(subscription.productSlug)
+  if (fromProductSlug !== "free") return fromProductSlug
+
+  return "free" as const
 }
 
 export async function createPolarCheckoutForUser(user: {
@@ -363,9 +395,7 @@ function normalizeSubscriptionPayload(
   const normalizedStatus = normalizePolarStatus(subscription.status)
   const currentPeriodStart = coercePolarTimestamp(subscription.currentPeriodStart)
   const currentPeriodEnd = coercePolarTimestamp(subscription.currentPeriodEnd)
-  const planFromProduct = derivePlanFromProductId(productId)
-  const planFromMetadata = derivePlanFromMetadata(subscription)
-  const planKey = planFromProduct !== "free" ? planFromProduct : planFromMetadata
+  const planKey = derivePlanFromSubscription(subscription, productId)
   const interval =
     deriveIntervalFromProductId(productId) ??
     deriveIntervalFromMetadata(subscription) ??
@@ -527,9 +557,17 @@ export async function syncBillingStateFromCustomerState(payload: Record<string, 
   const providerCustomerId = typeof data.id === "string" ? data.id : null
   const customerEmail = typeof data.email === "string" ? data.email : null
   const customerName = typeof data.name === "string" ? data.name : null
-  const activeSubscriptions = Array.isArray(data.activeSubscriptions)
-    ? (data.activeSubscriptions as Array<Record<string, unknown>>)
-    : []
+  const rawSubscriptions = Array.isArray(data.activeSubscriptions)
+    ? data.activeSubscriptions
+    : Array.isArray(data.active_subscriptions)
+      ? data.active_subscriptions
+      : Array.isArray(data.subscriptions)
+        ? data.subscriptions
+        : []
+  const activeSubscriptions = (rawSubscriptions as Array<Record<string, unknown>>).filter((subscription) => {
+    const status = normalizePolarStatus(subscription.status)
+    return status === "active" || status === "trialing" || status === "past_due"
+  })
 
   const normalizedSubscriptions = activeSubscriptions.map((subscription) =>
     normalizeSubscriptionPayload(subscription, providerCustomerId),

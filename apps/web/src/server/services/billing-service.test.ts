@@ -304,4 +304,38 @@ describe("billing webhook sync", () => {
       }),
     )
   })
+
+  it("derives starter plan from subscriptions fallback payload and product name", async () => {
+    const repositories = createRepositories(entitlement({ planKey: "free", status: "inactive" }))
+    const { syncBillingStateFromCustomerState } = await loadBillingService()
+
+    await syncBillingStateFromCustomerState({
+      data: {
+        id: "cus_1",
+        externalId: "user_1",
+        email: "alim@example.com",
+        name: "Alim",
+        subscriptions: [
+          {
+            id: "sub_starter_name_only",
+            status: "active",
+            recurringInterval: "month",
+            product: {
+              name: "Relay Starter Monthly",
+            },
+            currentPeriodEnd: "2026-05-25T00:00:00.000Z",
+          },
+        ],
+      },
+    })
+
+    expect(repositories.entitlements.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        planKey: "starter",
+        status: "active",
+        interval: "month",
+        providerSubscriptionId: "sub_starter_name_only",
+      }),
+    )
+  })
 })
