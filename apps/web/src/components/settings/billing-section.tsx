@@ -232,6 +232,10 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
         new Date(subscription.currentPeriodEnd),
       )
     : "the end of the current billing period"
+  const starterSubtitle =
+    entitlements.plan === "starter" && entitlements.isTrialing ? "Trialing now" : PRICING.starter.description
+  const proSubtitle =
+    entitlements.plan === "pro" && entitlements.isTrialing ? "Trialing now" : PRICING.pro.description
 
   useEffect(() => {
     if (!anyLimitReached || entitlements.isPro) return
@@ -636,7 +640,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
 
             <PlanCard
               title="Starter"
-              subtitle={PRICING.starter.description}
+              subtitle={starterSubtitle}
               price={yearly ? `$${Math.round(PRICING.starter.yearlyPrice / 12)}/mo` : `$${PRICING.starter.monthlyPrice}/mo`}
               priceNote={yearly ? "Billed $120/yr · -17%" : undefined}
               badge={entitlements.plan === "starter" ? (cancellationScheduled ? "Cancels" : "Current") : undefined}
@@ -675,7 +679,7 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
 
             <PlanCard
               title="Pro"
-              subtitle={entitlements.isTrialing ? "Trialing now" : PRICING.pro.description}
+              subtitle={proSubtitle}
               price={yearly ? `$${Math.round(PRICING.pro.yearlyPrice / 12)}/mo` : `$${PRICING.pro.monthlyPrice}/mo`}
               priceNote={yearly ? "Billed $180/yr · -17%" : undefined}
               badge={entitlements.plan === "pro" ? (cancellationScheduled ? "Cancels" : "Current") : undefined}
