@@ -62,7 +62,7 @@ function UsageMeter({ item }: { item: UsageItem }) {
       </div>
       {tone === "danger" ? (
         <div className="flex items-center gap-2 mt-2 text-red-500 bg-red-500/5 border border-red-500/20 rounded-md px-3 py-2 text-xs">
-          <AlertCircle className="h-3.5 w-3.5 shrink-0" /> Limit reached — upgrade to continue.
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" /> Limit reached · upgrade to continue
         </div>
       ) : null}
       {tone === "warning" ? (

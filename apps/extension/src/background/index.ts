@@ -2833,11 +2833,7 @@ async function captureObservedChange(
       return { ok: false, reason: "Choose a project first." };
     }
 
-    if (
-      autoAssociated &&
-      !skipAssociationToast &&
-      !explicitProjectId
-    ) {
+    if (!skipAssociationToast && (autoAssociated || Boolean(explicitProjectId))) {
       const projectName = resolveAssociationProjectName({
         matchedProjectName:
           state.projectOptions.find((project) => project.id === projectId)?.name ??
@@ -2849,10 +2845,12 @@ async function captureObservedChange(
         sessionAssumedProjectName: session.assumedProjectName || null,
       });
 
-      await clearIgnoredChatKey(chatKey);
-      await setEffectiveProjectTarget(state, projectId, projectName, {
-        persist: false,
-      });
+      if (autoAssociated && !explicitProjectId) {
+        await clearIgnoredChatKey(chatKey);
+        await setEffectiveProjectTarget(state, projectId, projectName, {
+          persist: false,
+        });
+      }
       // Show the saving toast before capture so users can register what happened.
       await showSavingToast(tabId, projectId, projectName);
       savingToastShownAt = Date.now();
@@ -4826,6 +4824,7 @@ chrome.runtime.onMessage.addListener(
         }
 
         if (message.type === "RELAY_REFRESH_SESSION") {
+          sessionDataCache = null;
           const payload = await loadSessionData();
           sendResponse({ ok: true, ...payload });
           return;
@@ -5130,7 +5129,7 @@ chrome.runtime.onMessage.addListener(
           sendResponse(
             await captureObservedChange(tabId, message.payload.projectId, {
               manualSelection: Boolean(message.payload.projectId),
-              skipAssociationToast: Boolean(message.payload.projectId),
+              skipAssociationToast: false,
             }),
           );
           return;

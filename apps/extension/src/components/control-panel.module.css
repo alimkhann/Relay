@@ -255,7 +255,6 @@
 .proChip {
   display: inline-flex;
   align-items: center;
-  margin-left: 8px;
   padding: 2px 7px;
   border-radius: 999px;
   background: rgba(16, 185, 129, 0.12);
@@ -265,6 +264,22 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   border: 1px solid rgba(16, 185, 129, 0.25);
+  flex-shrink: 0;
+}
+
+.starterChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid var(--line);
+  flex-shrink: 0;
 }
 
 .panelTopRow {
@@ -509,6 +524,11 @@
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: inherit;
 }
 
 .upgradeLink:hover {

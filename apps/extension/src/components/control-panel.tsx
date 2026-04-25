@@ -140,7 +140,7 @@ const hiddenFieldBySection = {
   tasks: "hiddenOpenTasks",
 } as const;
 
-const BILLING_UPGRADE_URL = "https://www.onrelay.app/get-started?upgrade=true";
+const BILLING_UPGRADE_URL = "https://www.onrelay.app/settings?section=billing";
 
 async function readErrorMessage(response: Response, fallback: string) {
   try {
@@ -847,6 +847,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
   }
 
+  async function openUpgradePage() {
+    void chrome.runtime.sendMessage({ type: "RELAY_REFRESH_SESSION" });
+    await chrome.tabs.create({ url: BILLING_UPGRADE_URL, active: true });
+  }
+
   async function openDashboard(nextPath = "/dashboard") {
     setBusy(true);
     setStatus("Opening Relay dashboard…");
@@ -1323,47 +1328,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     } catch (cause) {
       setStatus(
         cause instanceof Error ? cause.message : "Insert project brief failed.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function saveToProject() {
-    const tab = await getActiveTab();
-    if (!tab?.id || !activeState.page.supported) {
-      setStatus("Save to project works only on a supported AI tab.");
-      return;
-    }
-
-    if (!activeState.projectId) {
-      setStatus("Choose a project first.");
-      return;
-    }
-
-    setBusy(true);
-    setStatus("Saving selected text…");
-
-    try {
-      const result = (await chrome.runtime.sendMessage({
-        type: "RELAY_PIN_SELECTION",
-        payload: {
-          projectId: activeState.projectId,
-          tabId: tab.id,
-        },
-      })) as { ok?: boolean; reason?: string };
-
-      setStatus(
-        result?.ok
-          ? "Saved to project."
-          : (result?.reason ?? "Save to project failed."),
-      );
-      if (result?.ok) {
-        await refreshActiveProjectState();
-      }
-    } catch (cause) {
-      setStatus(
-        cause instanceof Error ? cause.message : "Save to project failed.",
       );
     } finally {
       setBusy(false);
@@ -1859,7 +1823,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       activeState.remoteStatus === "unavailable");
   const insertButtonState = deriveInsertButtonState(activeState);
   const displayedPlan = resolveDisplayedPlan(activeState);
-  const isKnownProPlan = displayedPlan === "pro";
   const shouldShowUpgrade = displayedPlan === "free" || displayedPlan === "starter";
   const shouldRenderAssociationCard = shouldShowAssociationCard({
     onboardingStatus: activeState.onboarding.status,
@@ -1899,6 +1862,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         >
           <img className={styles.logoMark} src={relayIconUrl} alt="Relay" />
         </button>
+        {displayedPlan === "pro" ? (
+          <span className={styles.proChip} aria-label="Pro plan">Pro</span>
+        ) : displayedPlan === "starter" ? (
+          <span className={styles.starterChip} aria-label="Starter plan">Starter</span>
+        ) : null}
         <div className={styles.headerSpacer} />
         <div className={styles.headerSlotRight}>
           {session?.connected ? (
@@ -2398,11 +2366,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   <h2 className={styles.projectName}>
                     {activeState.projectName ?? "No project"}
                   </h2>
-                  {isKnownProPlan ? (
-                    <span className={styles.proChip} aria-label="Pro plan">
-                      Pro
-                    </span>
-                  ) : null}
                   <svg
                     className={`${styles.projectChevron} ${projectSwitcherOpen ? styles.projectChevronOpen : ""}`}
                     viewBox="0 0 16 16"
@@ -2577,17 +2540,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               )}
             </button>
 
-            {/* Secondary action */}
-            <button
-              className={styles.secondaryButton}
-              style={{ marginTop: 8 }}
-              disabled={
-                busy || !activeState.projectId || !activeState.page.supported
-              }
-              onClick={() => void saveToProject()}
-            >
-              Save to project
-            </button>
 
             {/* Trust line */}
             <div className={styles.trustLine}>
@@ -2612,38 +2564,34 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               >
                 {activeState.lastBudgetStatus.aiRemaining === 0 ? (
                   <span>
-                    AI analyses used up today — resets at midnight UTC
+                    Daily limit reached · resets midnight UTC
                     {shouldShowUpgrade ? (
                       <>
                         {" · "}
-                        <a
-                          href={BILLING_UPGRADE_URL}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          type="button"
                           className={styles.upgradeLink}
+                          onClick={() => void openUpgradePage()}
                         >
-                          {displayedPlan === "free"
-                            ? "Upgrade for 32/project · 120/day"
-                            : "Upgrade for higher limits"}
-                        </a>
+                          Upgrade plan
+                        </button>
                       </>
                     ) : null}
                   </span>
                 ) : (
                   <span>
                     ⚡ {activeState.lastBudgetStatus.aiRemaining}/
-                    {activeState.lastBudgetStatus.aiLimit} analyses today
+                    {activeState.lastBudgetStatus.aiLimit} left today
                     {shouldShowUpgrade ? (
                       <>
                         {" · "}
-                        <a
-                          href={BILLING_UPGRADE_URL}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          type="button"
                           className={styles.upgradeLink}
+                          onClick={() => void openUpgradePage()}
                         >
                           Upgrade
-                        </a>
+                        </button>
                       </>
                     ) : null}
                   </span>
@@ -2732,7 +2680,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                     }
                     onClick={() => void associateCurrentChat()}
                   >
-                    Associate chat
+                    Link & save
                   </button>
                 ) : null}
                 {activeState.chatAssociation.status === "none" ? (
@@ -2743,7 +2691,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                     }
                     onClick={() => void associateCurrentChat()}
                   >
-                    Associate chat
+                    Link & save
                   </button>
                 ) : null}
               </div>
