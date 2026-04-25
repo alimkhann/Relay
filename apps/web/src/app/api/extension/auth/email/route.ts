@@ -6,7 +6,6 @@ import { createFlowId } from "@relay/shared"
 import { createRepositoryProvider } from "@relay/db"
 
 import { getAuthProvider } from "@/lib/auth/provider"
-import { requireAuthServer } from "@/lib/auth/server"
 import { applyExtensionCorsHeaders, buildExtensionPreflightResponse } from "@/server/http/extension-cors"
 import { logServerEvent } from "@/server/logging/logger"
 import { getRequestContext, withRequestContext } from "@/server/logging/request-context"
@@ -20,6 +19,30 @@ import { createExtensionTokenForUser } from "@/server/services/extension-token-s
 import { sendEmailVerificationOtp } from "@/server/services/email-service"
 
 const EMAIL_OTP_TTL_SQL = "5 minutes"
+
+// NeonAuth (BetterAuth) rejects chrome-extension:// origins. Make server-side calls with our app origin instead.
+async function neonAuthRequest(
+  baseUrl: string,
+  appOrigin: string,
+  path: string,
+  body: Record<string, unknown>
+): Promise<{ data: unknown; error: { message?: string } | null }> {
+  const url = new URL(path, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`)
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Origin": appOrigin,
+      "x-neon-auth-proxy": "next",
+    },
+    body: JSON.stringify(body),
+  })
+  const json = await response.json().catch(() => null)
+  if (!response.ok) {
+    return { data: null, error: { message: (json as { message?: string } | null)?.message ?? response.statusText } }
+  }
+  return { data: json, error: null }
+}
 
 function withRequestId(response: NextResponse) {
   const requestId = getRequestContext()?.requestId ?? createFlowId("req")
@@ -68,10 +91,12 @@ export async function POST(request: Request) {
         )
       }
 
-      const auth = requireAuthServer()
       const intent = body.intent ?? "sign-in"
       const email = body.email!
       const password = body.password!
+      const appUrl = process.env.NEXT_PUBLIC_RELAY_APP_URL ?? "http://localhost:3000"
+      const neonAuthBase = process.env.NEON_AUTH_BASE_URL
+      if (!neonAuthBase) throw new Error("NEON_AUTH_BASE_URL is not configured.")
       let authResult: { data: unknown; error: { message?: string } | null }
 
       if (intent === "sign-up") {
@@ -175,8 +200,8 @@ export async function POST(request: Request) {
           [email]
         )
 
-        // OTP verified — now create account
-        authResult = await auth.signUp.email({
+        // OTP verified — now create account using direct fetch to avoid forwarding chrome-extension origin
+        authResult = await neonAuthRequest(neonAuthBase, appUrl, "sign-up/email", {
           email,
           password,
           name: body.name || email.split("@")[0] || email,
@@ -203,10 +228,7 @@ export async function POST(request: Request) {
           )
         }
       } else {
-        authResult = await auth.signIn.email({
-          email,
-          password,
-        })
+        authResult = await neonAuthRequest(neonAuthBase, appUrl, "sign-in/email", { email, password })
       }
 
       if (authResult.error) {
@@ -281,7 +303,6 @@ export async function POST(request: Request) {
         getResolvedOnboardingStateForUser(authUser.id),
       ])
 
-      const appUrl = process.env.NEXT_PUBLIC_RELAY_APP_URL ?? "http://localhost:3000"
       const selectedProjectId =
         onboarding.status === "completed"
           ? onboarding.completedProjectId ?? projects[0]?.id ?? ""
