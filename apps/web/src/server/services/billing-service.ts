@@ -39,6 +39,13 @@ type PlanTransition =
   | "paid_past_due"
   | "trial_canceled"
 
+type BillingTransitionSnapshot = {
+  planKey: "free" | "starter" | "pro"
+  status: BillingSubscriptionStatus
+  interval: "month" | "year" | null
+  currentPeriodEnd: string | null
+}
+
 function detectPlanTransition(
   previous: { planKey: "free" | "starter" | "pro"; status: BillingSubscriptionStatus } | null,
   next: { planKey: "free" | "starter" | "pro"; status: BillingSubscriptionStatus },
@@ -71,7 +78,12 @@ function detectPlanTransition(
 
 async function fireTransitionEmail(
   transition: PlanTransition,
-  recipient: { email: string | null; name: string | null; planKey: "free" | "starter" | "pro"; interval: "month" | "year" | null; currentPeriodEnd: string | null },
+  recipient: {
+    email: string | null
+    name: string | null
+    previous: BillingTransitionSnapshot | null
+    next: BillingTransitionSnapshot
+  },
 ) {
   if (!recipient.email) return
 
@@ -84,17 +96,21 @@ async function fireTransitionEmail(
       case "trial_to_paid":
         await sendWelcomeToProEmail(recipient.email, {
           name: recipient.name,
-          plan: recipient.planKey === "pro" ? "Pro" : "Starter",
-          interval: recipient.interval,
-          currentPeriodEnd: recipient.currentPeriodEnd,
+          plan: recipient.next.planKey === "pro" ? "Pro" : "Starter",
+          interval: recipient.next.interval,
+          currentPeriodEnd: recipient.next.currentPeriodEnd,
         })
         return
       case "paid_to_free":
       case "trial_canceled":
+        const previousPaidPlan =
+          recipient.previous && recipient.previous.planKey !== "free"
+            ? recipient.previous
+            : recipient.next
         await sendSubscriptionCanceledEmail(recipient.email, {
           name: recipient.name,
-          plan: recipient.planKey === "pro" ? "Pro" : "Starter",
-          currentPeriodEnd: recipient.currentPeriodEnd,
+          plan: previousPaidPlan.planKey === "pro" ? "Pro" : "Starter",
+          currentPeriodEnd: previousPaidPlan.currentPeriodEnd ?? recipient.next.currentPeriodEnd,
         })
         return
       default:
@@ -130,13 +146,15 @@ function normalizePolarStatus(status: unknown): BillingSubscriptionStatus {
 }
 
 function pickActiveSubscription(subs: NormalizedSubscriptionInput[]): NormalizedSubscriptionInput | null {
-  return (
-    subs.find(
-      (s) =>
-        s.planKey !== "free" &&
-        (s.status === "active" || s.status === "trialing" || s.status === "past_due"),
-    ) ?? null
-  )
+  const activeStatuses = new Set<BillingSubscriptionStatus>(["active", "trialing", "past_due"])
+  const planRank = { free: 0, starter: 1, pro: 2 } as const
+  const activeSubs = subs.filter((s) => s.planKey !== "free" && activeStatuses.has(s.status))
+  activeSubs.sort((a, b) => {
+    const rankDelta = planRank[b.planKey] - planRank[a.planKey]
+    if (rankDelta !== 0) return rankDelta
+    return (b.currentPeriodEnd ?? "").localeCompare(a.currentPeriodEnd ?? "")
+  })
+  return activeSubs[0] ?? null
 }
 
 function getPolarClient() {
@@ -350,11 +368,22 @@ async function applyEntitlementAndEmit(opts: {
     }
 
     await fireTransitionEmail(transition, {
-      planKey: previousEntitlement?.planKey ?? entitlement.planKey, // use previous so canceled paid returns the old plan type
       email: recipientEmail,
       name: recipientName,
-      interval: entitlement.interval,
-      currentPeriodEnd: entitlement.currentPeriodEnd,
+      previous: previousEntitlement
+        ? {
+            planKey: previousEntitlement.planKey,
+            status: previousEntitlement.status,
+            interval: previousEntitlement.interval,
+            currentPeriodEnd: previousEntitlement.currentPeriodEnd,
+          }
+        : null,
+      next: {
+        planKey: entitlement.planKey,
+        status: entitlement.status,
+        interval: entitlement.interval,
+        currentPeriodEnd: entitlement.currentPeriodEnd,
+      },
     })
 
     await logServerEvent({
@@ -477,10 +506,10 @@ export async function syncBillingStateFromSubscriptionEvent(event: {
   const repositories = createRepositoryBundle(externalCustomerId)
   const normalized = normalizeSubscriptionPayload(subscription, providerCustomerId)
 
-  // For terminal events, force the subscription into a terminal status even
-  // if Polar's payload hasn't flipped `status` yet (e.g. `subscription.revoked`
-  // may still report `active` in the embedded snapshot).
-  if (event.type === "subscription.revoked" || event.type === "subscription.canceled") {
+  // Only revocation is immediately terminal. Polar cancellation can mean
+  // cancel-at-period-end while the subscription remains active, so trust that
+  // payload status and keep paid entitlements active until the period ends.
+  if (event.type === "subscription.revoked") {
     normalized.status = "canceled"
   }
 
