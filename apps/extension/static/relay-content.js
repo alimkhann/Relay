@@ -2589,6 +2589,10 @@
       "relay-association-toast--clickable",
       false,
     );
+    root.classList.toggle(
+      "relay-shimmer-active",
+      payload.mode === "saving"
+    );
     root.innerHTML = `
       <div class="relay-association-toast__header">
         ${titleMarkup}

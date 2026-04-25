@@ -1,7 +1,7 @@
 import { createRepositoryBundle } from "@relay/db"
 import { capturePayloadSchema, withCaptureSignature } from "@relay/shared"
 
-import { decideDigestStrategy, drainDigestJobsForProject, enqueueDigestJob } from "./digest-service"
+import { decideDigestStrategy, drainDigestJobsForProject, enqueueDigestJob, type DigestJobOutcome } from "./digest-service"
 import { getProjectStateStatus } from "./state-status-service"
 import { fireUserMilestone } from "./user-milestones-service"
 import { logServerEvent } from "@/server/logging/logger"
@@ -63,14 +63,7 @@ export async function saveCapture(userId: string, input: unknown) {
   let jobId: string | null = null
   let digestStrategy: "skip" | "ai" | "deferred" = "skip"
   let budgetStatus: { aiUsed: number; aiLimit: number; aiRemaining: number; plan: "free" | "starter" | "pro" } | null = null
-  let digestOutcome:
-    | {
-        status: "completed" | "failed" | "timed_out"
-        digestId: string | null
-        memoryItemsCreated: number
-        errorMessage?: string | null
-      }
-    | null = null
+  let digestOutcome: DigestJobOutcome | null = null
 
   if (shouldQueueDigest && normalizedInput.session.captureSignature) {
     const decision = await decideDigestStrategy(repositories, userId, {
@@ -106,7 +99,17 @@ export async function saveCapture(userId: string, input: unknown) {
         captureSignature: normalizedInput.session.captureSignature
       })
       jobId = job.id
-      void drainDigestJobsForProject(userId, normalizedInput.projectId, 1).catch(() => {})
+      
+      const { runDigestJobInline } = await import("./digest-service")
+      const inlineOutcome = await runDigestJobInline(repositories, userId, job).catch((error) => {
+        return null
+      })
+      
+      if (inlineOutcome) {
+        digestOutcome = inlineOutcome
+      } else {
+        void drainDigestJobsForProject(userId, normalizedInput.projectId, 1).catch(() => {})
+      }
     } else if (decision.strategy === "deferred") {
       const job = await enqueueDigestJob(userId, {
         projectId: normalizedInput.projectId,
@@ -179,6 +182,7 @@ export async function saveCapture(userId: string, input: unknown) {
     aiJobId: jobId,
     digestOutcome,
     budgetStatus,
-    stateStatus
+    stateStatus,
+    reconciliation: digestOutcome?.reconciliation ?? null
   }
 }

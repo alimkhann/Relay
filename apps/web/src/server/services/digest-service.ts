@@ -53,6 +53,7 @@ export interface DigestJobOutcome {
   digestId: string | null
   memoryItemsCreated: number
   errorMessage?: string | null
+  reconciliation?: { archivedCount: number; archivedItems: string[] } | null
 }
 
 export type DigestExecutionStrategy = "skip" | "ai" | "deferred"
@@ -905,6 +906,7 @@ async function runDigestJobInternal(
         digestId: existingDigest.id,
         memoryItemsCreated: 0,
         errorMessage: null,
+        reconciliation: null
       }
     }
 
@@ -940,7 +942,7 @@ async function runDigestJobInternal(
       tokenUsage
     })
 
-    const { digest, digestMemoryItems } = await persistDigestResult(repositories, userId, {
+    const { digest, digestMemoryItems, reconciliation } = await persistDigestResult(repositories, userId, {
       projectId: job.projectId,
       session,
       projectState,
@@ -974,6 +976,7 @@ async function runDigestJobInternal(
       digestId: digest.id,
       memoryItemsCreated: digestMemoryItems?.length ?? 0,
       errorMessage: null,
+      reconciliation
     }
   } catch (error) {
     const geminiError = describeGeminiError(error)

@@ -2869,8 +2869,7 @@ async function captureObservedChange(
         }
       }
 
-      clearPendingAssociation(state);
-      clearAssociationToast(state);
+      // Removed clearPendingAssociation(state) and clearAssociationToast(state) to prevent flashing the toast between states
       const matchedProject =
         state.projectOptions.find((project) => project.id === projectId) ??
         session.projectOptions.find((project) => project.id === projectId) ??
