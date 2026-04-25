@@ -198,6 +198,51 @@ function deriveIntervalFromProductId(productId: string | null | undefined) {
   return null
 }
 
+function derivePlanFromMetadata(subscription: Record<string, unknown>) {
+  const metadata = subscription.metadata
+  if (!metadata || typeof metadata !== "object") return "free" as const
+  const planRaw = (metadata as Record<string, unknown>).plan
+  if (typeof planRaw !== "string") return "free" as const
+  if (planRaw.startsWith("starter")) return "starter" as const
+  if (planRaw.startsWith("pro")) return "pro" as const
+  return "free" as const
+}
+
+function deriveIntervalFromMetadata(subscription: Record<string, unknown>) {
+  const metadata = subscription.metadata
+  if (!metadata || typeof metadata !== "object") return null
+  const planRaw = (metadata as Record<string, unknown>).plan
+  if (typeof planRaw !== "string") return null
+  if (planRaw.endsWith("_monthly")) return "month" as const
+  if (planRaw.endsWith("_yearly")) return "year" as const
+  return null
+}
+
+function deriveProductIdFromSubscription(subscription: Record<string, unknown>) {
+  if (typeof subscription.productId === "string") return subscription.productId
+
+  const product = subscription.product
+  if (product && typeof product === "object" && typeof (product as Record<string, unknown>).id === "string") {
+    return (product as Record<string, unknown>).id as string
+  }
+
+  const price = subscription.price
+  if (price && typeof price === "object") {
+    const priceObj = price as Record<string, unknown>
+    if (typeof priceObj.productId === "string") return priceObj.productId
+    const nestedProduct = priceObj.product
+    if (
+      nestedProduct &&
+      typeof nestedProduct === "object" &&
+      typeof (nestedProduct as Record<string, unknown>).id === "string"
+    ) {
+      return (nestedProduct as Record<string, unknown>).id as string
+    }
+  }
+
+  return null
+}
+
 export async function createPolarCheckoutForUser(user: {
   id: string
   email?: string | null
@@ -314,17 +359,24 @@ function normalizeSubscriptionPayload(
   subscription: Record<string, unknown>,
   providerCustomerId: string | null,
 ): NormalizedSubscriptionInput {
-  const productId = typeof subscription.productId === "string" ? subscription.productId : null
+  const productId = deriveProductIdFromSubscription(subscription)
   const normalizedStatus = normalizePolarStatus(subscription.status)
   const currentPeriodStart = coercePolarTimestamp(subscription.currentPeriodStart)
   const currentPeriodEnd = coercePolarTimestamp(subscription.currentPeriodEnd)
+  const planFromProduct = derivePlanFromProductId(productId)
+  const planFromMetadata = derivePlanFromMetadata(subscription)
+  const planKey = planFromProduct !== "free" ? planFromProduct : planFromMetadata
+  const interval =
+    deriveIntervalFromProductId(productId) ??
+    deriveIntervalFromMetadata(subscription) ??
+    (subscription.recurringInterval === "year" ? "year" : subscription.recurringInterval === "month" ? "month" : null)
   return {
     providerSubscriptionId: String(subscription.id),
     providerCustomerId,
     productId,
-    planKey: derivePlanFromProductId(productId),
+    planKey,
     status: normalizedStatus,
-    interval: deriveIntervalFromProductId(productId),
+    interval,
     cancelAtPeriodEnd: Boolean(subscription.cancelAtPeriodEnd),
     currentPeriodStart,
     currentPeriodEnd: currentPeriodEnd ?? coercePolarTimestamp(subscription.endsAt),

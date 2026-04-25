@@ -271,4 +271,37 @@ describe("billing webhook sync", () => {
       }),
     )
   })
+
+  it("derives starter plan when Polar nests product id under product object", async () => {
+    const repositories = createRepositories(entitlement({ planKey: "free", status: "inactive" }))
+    const { syncBillingStateFromCustomerState } = await loadBillingService()
+
+    await syncBillingStateFromCustomerState({
+      data: {
+        id: "cus_1",
+        externalId: "user_1",
+        email: "alim@example.com",
+        name: "Alim",
+        activeSubscriptions: [
+          {
+            id: "sub_starter",
+            status: "active",
+            product: {
+              id: "prod_starter_monthly",
+            },
+            currentPeriodEnd: "2026-05-25T00:00:00.000Z",
+          },
+        ],
+      },
+    })
+
+    expect(repositories.entitlements.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        planKey: "starter",
+        status: "active",
+        interval: "month",
+        providerSubscriptionId: "sub_starter",
+      }),
+    )
+  })
 })
