@@ -191,12 +191,19 @@ export function EmailSignInForm({
 
       try {
         if (mode === "sign-up" && pendingVerification) {
-          const result = await authClient.emailOtp.verifyEmail({
-            email,
-            otp,
+          const verifyRes = await fetch("/api/auth/email-otp", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "verify", email, otp }),
           })
-          if (result.error) {
-            throw new Error(result.error.message ?? "Verification failed.")
+          const verifyData = (await verifyRes.json()) as { ok?: boolean; error?: string }
+          if (!verifyRes.ok || !verifyData.ok) {
+            throw new Error(verifyData.error ?? "Verification failed.")
+          }
+
+          const signInResult = await authClient.signIn.email({ email, password })
+          if (signInResult.error) {
+            throw new Error(signInResult.error.message ?? "Sign-in after verification failed.")
           }
         } else if (mode === "sign-up") {
           const result = await authClient.signUp.email({
@@ -208,12 +215,14 @@ export function EmailSignInForm({
             throw new Error(result.error.message ?? "Sign-up failed.")
           }
 
-          const otpResult = await authClient.emailOtp.sendVerificationOtp({
-            email,
-            type: "email-verification",
+          const otpRes = await fetch("/api/auth/email-otp", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "send", email }),
           })
-          if (otpResult.error) {
-            throw new Error(otpResult.error.message ?? "Could not send verification code.")
+          const otpData = (await otpRes.json()) as { ok?: boolean; error?: string }
+          if (!otpRes.ok || !otpData.ok) {
+            throw new Error(otpData.error ?? "Could not send verification code.")
           }
 
           setPendingVerification(true)

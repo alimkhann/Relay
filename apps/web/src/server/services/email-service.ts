@@ -290,3 +290,30 @@ export async function sendTrialStartedEmail(to: string, name: string | null, tri
     `
   })
 }
+
+export async function sendEmailVerificationOtp(to: string, otp: string) {
+  const client = getResend()
+  if (!client) return
+
+  await client.emails.send({
+    from: "Relay <noreply@onrelay.app>",
+    to,
+    subject: "Your Relay verification code",
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 20px;">
+        <h1 style="font-size: 24px; font-weight: 600; margin-bottom: 16px;">Verify your email</h1>
+        <p style="font-size: 16px; line-height: 1.5; color: #374151;">
+          Enter this 6-digit code to confirm your Relay account. It expires in 10 minutes.
+        </p>
+        <div style="margin: 32px 0; text-align: center;">
+          <div style="display: inline-block; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px 40px;">
+            <span style="font-size: 40px; font-weight: 700; letter-spacing: 8px; font-family: monospace; color: #182017;">${otp}</span>
+          </div>
+        </div>
+        <p style="font-size: 14px; color: #6b7280;">
+          If you didn't request this code, you can safely ignore this email.
+        </p>
+      </div>
+    `
+  })
+}
