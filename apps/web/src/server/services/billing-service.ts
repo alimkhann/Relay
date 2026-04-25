@@ -228,6 +228,7 @@ function deriveIntervalFromMetadata(subscription: Record<string, unknown>) {
 
 function deriveProductIdFromSubscription(subscription: Record<string, unknown>) {
   if (typeof subscription.productId === "string") return subscription.productId
+  if (typeof subscription.product_id === "string") return subscription.product_id
 
   const product = subscription.product
   if (product && typeof product === "object" && typeof (product as Record<string, unknown>).id === "string") {
@@ -393,13 +394,25 @@ function normalizeSubscriptionPayload(
 ): NormalizedSubscriptionInput {
   const productId = deriveProductIdFromSubscription(subscription)
   const normalizedStatus = normalizePolarStatus(subscription.status)
-  const currentPeriodStart = coercePolarTimestamp(subscription.currentPeriodStart)
-  const currentPeriodEnd = coercePolarTimestamp(subscription.currentPeriodEnd)
+  const currentPeriodStart =
+    coercePolarTimestamp(subscription.currentPeriodStart) ??
+    coercePolarTimestamp(subscription.current_period_start)
+  const currentPeriodEnd =
+    coercePolarTimestamp(subscription.currentPeriodEnd) ??
+    coercePolarTimestamp(subscription.current_period_end)
   const planKey = derivePlanFromSubscription(subscription, productId)
   const interval =
     deriveIntervalFromProductId(productId) ??
     deriveIntervalFromMetadata(subscription) ??
-    (subscription.recurringInterval === "year" ? "year" : subscription.recurringInterval === "month" ? "month" : null)
+    (subscription.recurringInterval === "year"
+      ? "year"
+      : subscription.recurringInterval === "month"
+        ? "month"
+        : subscription.recurring_interval === "year"
+          ? "year"
+          : subscription.recurring_interval === "month"
+            ? "month"
+            : null)
   return {
     providerSubscriptionId: String(subscription.id),
     providerCustomerId,
@@ -407,11 +420,11 @@ function normalizeSubscriptionPayload(
     planKey,
     status: normalizedStatus,
     interval,
-    cancelAtPeriodEnd: Boolean(subscription.cancelAtPeriodEnd),
+    cancelAtPeriodEnd: Boolean(subscription.cancelAtPeriodEnd ?? subscription.cancel_at_period_end),
     currentPeriodStart,
     currentPeriodEnd: currentPeriodEnd ?? coercePolarTimestamp(subscription.endsAt),
-    trialStartsAt: coercePolarTimestamp(subscription.trialStart),
-    trialEndsAt: coercePolarTimestamp(subscription.trialEnd),
+    trialStartsAt: coercePolarTimestamp(subscription.trialStart) ?? coercePolarTimestamp(subscription.trial_start),
+    trialEndsAt: coercePolarTimestamp(subscription.trialEnd) ?? coercePolarTimestamp(subscription.trial_end),
     raw: subscription,
   }
 }
@@ -535,7 +548,12 @@ async function applyEntitlementAndEmit(opts: {
 
 export async function syncBillingStateFromCustomerState(payload: Record<string, unknown>) {
   const data = (payload.data ?? payload) as Record<string, unknown>
-  const externalCustomerId = typeof data.externalId === "string" ? data.externalId : null
+  const externalCustomerId =
+    typeof data.externalId === "string"
+      ? data.externalId
+      : typeof data.external_id === "string"
+        ? data.external_id
+        : null
   if (!externalCustomerId) {
     throw new Error("Polar customer state payload missing externalId.")
   }
@@ -554,7 +572,14 @@ export async function syncBillingStateFromCustomerState(payload: Record<string, 
     })
     return
   }
-  const providerCustomerId = typeof data.id === "string" ? data.id : null
+  const providerCustomerId =
+    typeof data.id === "string"
+      ? data.id
+      : typeof data.customerId === "string"
+        ? data.customerId
+        : typeof data.customer_id === "string"
+          ? data.customer_id
+          : null
   const customerEmail = typeof data.email === "string" ? data.email : null
   const customerName = typeof data.name === "string" ? data.name : null
   const rawSubscriptions = Array.isArray(data.activeSubscriptions)
@@ -625,8 +650,12 @@ export async function syncBillingStateFromSubscriptionEvent(event: {
   const externalCustomerId =
     typeof customer.externalId === "string"
       ? customer.externalId
+      : typeof customer.external_id === "string"
+        ? customer.external_id
       : typeof subscription.customerExternalId === "string"
         ? subscription.customerExternalId
+        : typeof subscription.customer_external_id === "string"
+          ? subscription.customer_external_id
         : null
 
   if (!externalCustomerId) {
@@ -644,8 +673,14 @@ export async function syncBillingStateFromSubscriptionEvent(event: {
   const providerCustomerId =
     typeof customer.id === "string"
       ? customer.id
+      : typeof customer.customerId === "string"
+        ? customer.customerId
+        : typeof customer.customer_id === "string"
+          ? customer.customer_id
       : typeof subscription.customerId === "string"
         ? subscription.customerId
+        : typeof subscription.customer_id === "string"
+          ? subscription.customer_id
         : null
   const customerEmail = typeof customer.email === "string" ? customer.email : null
   const customerName = typeof customer.name === "string" ? customer.name : null

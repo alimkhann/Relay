@@ -338,4 +338,37 @@ describe("billing webhook sync", () => {
       }),
     )
   })
+
+  it("parses snake_case customer state payload fields", async () => {
+    const repositories = createRepositories(entitlement({ planKey: "free", status: "inactive" }))
+    const { syncBillingStateFromCustomerState } = await loadBillingService()
+
+    await syncBillingStateFromCustomerState({
+      data: {
+        id: "cus_1",
+        external_id: "user_1",
+        email: "alim@example.com",
+        name: "Alim",
+        active_subscriptions: [
+          {
+            id: "sub_starter_snake",
+            status: "active",
+            product_id: "prod_starter_monthly",
+            recurring_interval: "month",
+            cancel_at_period_end: false,
+            current_period_end: "2026-05-25T00:00:00.000Z",
+          },
+        ],
+      },
+    })
+
+    expect(repositories.entitlements.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        planKey: "starter",
+        status: "active",
+        interval: "month",
+        providerSubscriptionId: "sub_starter_snake",
+      }),
+    )
+  })
 })
