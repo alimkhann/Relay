@@ -1,6 +1,9 @@
+import { createHash } from "crypto"
+
 import { NextResponse } from "next/server"
 
 import { createFlowId } from "@relay/shared"
+import { createRepositoryProvider } from "@relay/db"
 
 import { getAuthProvider } from "@/lib/auth/provider"
 import { requireAuthServer } from "@/lib/auth/server"
@@ -14,6 +17,9 @@ import { getResolvedOnboardingStateForUser } from "@/server/services/onboarding-
 import { listProjectsForUser } from "@/server/services/project-service"
 import { getUserSettings } from "@/server/services/settings-service"
 import { createExtensionTokenForUser } from "@/server/services/extension-token-service"
+import { sendEmailVerificationOtp } from "@/server/services/email-service"
+
+const EMAIL_OTP_TTL_SQL = "5 minutes"
 
 function withRequestId(response: NextResponse) {
   const requestId = getRequestContext()?.requestId ?? createFlowId("req")
@@ -70,54 +76,36 @@ export async function POST(request: Request) {
 
       if (intent === "sign-up") {
         if (!body.otp) {
-          if (!body.resendOnly) {
-            authResult = await auth.signUp.email({
-              email,
-              password,
-              name: body.name || email.split("@")[0] || email,
-            })
+          // Send OTP only — do NOT create account yet to prevent bypass via reload
+          const otp = Math.floor(100000 + Math.random() * 900000).toString()
+          const otpHash = createHash("sha256").update(otp).digest("hex")
+          const db = createRepositoryProvider()
+          await db.query(
+            `INSERT INTO email_otp_tokens (email, otp_hash, expires_at)
+             VALUES ($1, $2, NOW() + $3::interval)
+             ON CONFLICT (email) DO UPDATE
+               SET otp_hash = $2,
+                   expires_at = NOW() + $3::interval,
+                   used_at = NULL`,
+            [email, otpHash, EMAIL_OTP_TTL_SQL]
+          )
 
-            if (authResult.error) {
-              await logServerEvent({
-                level: "warn",
-                surface: "web-api",
-                area: "auth",
-                event: "extension_email_sign-up.rejected",
-                flowId,
-                message: authResult.error.message ?? "Email sign-up rejected by auth server.",
-                context: { authMethod: "email", intent },
-              })
-              return applyExtensionCorsHeaders(
-                withRequestId(
-                  NextResponse.json(
-                    { error: authResult.error.message ?? "Email sign-up failed." },
-                    { status: 401 }
-                  )
-                ),
-                request.headers.get("origin")
-              )
-            }
-          }
-
-          const otpResult = await auth.emailOtp.sendVerificationOtp({
-            email,
-            type: "email-verification",
-          })
-
-          if (otpResult.error) {
+          try {
+            await sendEmailVerificationOtp(email, otp)
+          } catch (cause) {
             await logServerEvent({
               level: "warn",
               surface: "web-api",
               area: "auth",
               event: "extension_email_signup_otp.rejected",
               flowId,
-              message: otpResult.error.message ?? "Could not send extension signup OTP.",
+              message: cause instanceof Error ? cause.message : "Could not send extension signup OTP.",
               context: { authMethod: "email", intent },
             })
             return applyExtensionCorsHeaders(
               withRequestId(
                 NextResponse.json(
-                  { error: otpResult.error.message ?? "Could not send verification code." },
+                  { error: "Could not send verification code." },
                   { status: 500 }
                 )
               ),
@@ -149,25 +137,32 @@ export async function POST(request: Request) {
           )
         }
 
-        const verifyResult = await auth.emailOtp.verifyEmail({
-          email,
-          otp: body.otp,
-        })
+        // Verify OTP against custom token table
+        const otpHash = createHash("sha256").update(body.otp).digest("hex")
+        const db = createRepositoryProvider()
+        const rows = await db.query<{ email: string }>(
+          `SELECT email FROM email_otp_tokens
+           WHERE email = $1
+             AND otp_hash = $2
+             AND expires_at > NOW()
+             AND used_at IS NULL`,
+          [email, otpHash]
+        )
 
-        if (verifyResult.error) {
+        if (rows.length === 0) {
           await logServerEvent({
             level: "warn",
             surface: "web-api",
             area: "auth",
             event: "extension_email_signup_otp.rejected",
             flowId,
-            message: verifyResult.error.message ?? "Email sign-up verification rejected by auth server.",
+            message: "Invalid or expired extension sign-up OTP.",
             context: { authMethod: "email", intent },
           })
           return applyExtensionCorsHeaders(
             withRequestId(
               NextResponse.json(
-                { error: verifyResult.error.message ?? "Verification failed." },
+                { error: "Invalid or expired code." },
                 { status: 401 }
               )
             ),
@@ -175,10 +170,38 @@ export async function POST(request: Request) {
           )
         }
 
-        authResult = await auth.signIn.email({
+        await db.query(
+          `UPDATE email_otp_tokens SET used_at = NOW() WHERE email = $1`,
+          [email]
+        )
+
+        // OTP verified — now create account
+        authResult = await auth.signUp.email({
           email,
           password,
+          name: body.name || email.split("@")[0] || email,
         })
+
+        if (authResult.error) {
+          await logServerEvent({
+            level: "warn",
+            surface: "web-api",
+            area: "auth",
+            event: "extension_email_sign-up.rejected",
+            flowId,
+            message: authResult.error.message ?? "Email sign-up rejected by auth server.",
+            context: { authMethod: "email", intent },
+          })
+          return applyExtensionCorsHeaders(
+            withRequestId(
+              NextResponse.json(
+                { error: authResult.error.message ?? "Email sign-up failed." },
+                { status: 401 }
+              )
+            ),
+            request.headers.get("origin")
+          )
+        }
       } else {
         authResult = await auth.signIn.email({
           email,

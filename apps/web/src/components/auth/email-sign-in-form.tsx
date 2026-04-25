@@ -242,20 +242,15 @@ export function EmailSignInForm({
             throw new Error(verifyData.error ?? "Verification failed.")
           }
 
-          const signInResult = await authClient.signIn.email({ email, password })
-          if (signInResult.error) {
-            throw new Error(signInResult.error.message ?? "Sign-in after verification failed.")
-          }
-        } else if (mode === "sign-up") {
-          const result = await authClient.signUp.email({
+          const signUpResult = await authClient.signUp.email({
             email,
             password,
             name: name || email.split("@")[0] || email,
           })
-          if (result.error) {
-            throw new Error(result.error.message ?? "Sign-up failed.")
+          if (signUpResult.error) {
+            throw new Error(signUpResult.error.message ?? "Sign-up failed.")
           }
-
+        } else if (mode === "sign-up") {
           await sendEmailOtp()
 
           setPendingVerification(true)
