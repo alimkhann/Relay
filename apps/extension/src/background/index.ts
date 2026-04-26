@@ -2290,7 +2290,7 @@ async function resolveAssociationToast(
   ) {
     return captureObservedChange(tabId, payload.projectId, {
       manualSelection: true,
-      skipAssociationToast: true,
+      skipAssociationToast: false,
     });
   }
 
