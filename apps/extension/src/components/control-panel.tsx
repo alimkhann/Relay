@@ -2960,8 +2960,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         </>
       )}
 
-      {/* Feedback — only show when signed in */}
-      {session?.connected ? (
+      {/* Feedback — only show when signed in and not in a transient loading state */}
+      {session?.connected && activeState.viewState !== "connected-loading" ? (
         <div className={styles.feedbackRow}>
           <a
             href="https://relay.featurebase.app"

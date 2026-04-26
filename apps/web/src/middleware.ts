@@ -29,7 +29,7 @@ function isProtectedPath(pathname: string) {
     || pathname.startsWith("/settings/")
 }
 
-export default function middleware(request: NextRequest) {
+export default async function middleware(request: NextRequest) {
   if ((request.method === "GET" || request.method === "HEAD") && wantsMarkdown(request) && supportsMarkdownPath(request.nextUrl.pathname)) {
     const url = request.nextUrl.clone()
     url.pathname = "/agent-markdown"
@@ -51,9 +51,13 @@ export default function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  return auth.middleware({
-    loginUrl: "/sign-in"
-  })(request)
+  try {
+    return await auth.middleware({
+      loginUrl: "/sign-in"
+    })(request)
+  } catch {
+    return NextResponse.next()
+  }
 }
 
 export const config = {

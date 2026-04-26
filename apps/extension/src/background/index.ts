@@ -2976,17 +2976,21 @@ async function captureObservedChange(
       }
 
       // Show the success toast after the saving state has had time to register.
-      const digestStatus =
-        result.digestStrategy === "ai" && result.digestOutcome?.status === "completed"
-          ? "analyzed" as const
-        : result.digestStrategy === "deferred" ? "queued" as const
-        : null;
-      const { toast: doneToast } = buildDoneToast({
-        projectId,
-        projectName: state.projectName ?? projectName ?? "",
-        digestStatus,
-      });
-      await showAssociationToast(tabId, doneToast);
+      // Skip for silent incremental re-captures (skipAssociationToast=true) to avoid
+      // noisy toasts when reopening already-saved chats.
+      if (!skipAssociationToast) {
+        const digestStatus =
+          result.digestStrategy === "ai" && result.digestOutcome?.status === "completed"
+            ? "analyzed" as const
+          : result.digestStrategy === "deferred" ? "queued" as const
+          : null;
+        const { toast: doneToast } = buildDoneToast({
+          projectId,
+          projectName: state.projectName ?? projectName ?? "",
+          digestStatus,
+        });
+        await showAssociationToast(tabId, doneToast);
+      }
 
       // Force other tabs to re-sync on next focus so they see fresh project state
       for (const [otherTabId, otherState] of tabStates.entries()) {
