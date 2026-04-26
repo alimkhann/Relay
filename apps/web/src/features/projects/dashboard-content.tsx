@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ProjectDashboardDto } from "@relay/shared";
 import { getProjectContextCounts } from "@relay/shared/utils/project-context";
-import { Pencil, Trash2, MoreHorizontal } from "lucide-react";
+import { Pencil, Trash2, MoreHorizontal, HelpCircle } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 
@@ -16,6 +16,7 @@ import { DashboardMemoryCard } from "@/features/projects/dashboard-memory-card";
 import { DashboardBriefCard } from "@/features/projects/dashboard-brief-card";
 import { DashboardActivityCard } from "@/features/projects/dashboard-activity-card";
 import { DashboardGovernanceSummary } from "@/features/projects/dashboard-governance-summary";
+import { WalkthroughModal } from "@/components/onboarding/walkthrough-modal";
 import { logClientEvent } from "@/lib/telemetry/client";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
 
@@ -77,14 +78,16 @@ function groupSessionsByConversation(
 interface DashboardContentProps {
   project: { id: string; name: string; description?: string | null; projectUrl?: string | null };
   dashboard: ProjectDashboardDto;
+  walkthroughInitiallyOpen?: boolean;
 }
 
-export function DashboardContent({ project, dashboard }: DashboardContentProps) {
+export function DashboardContent({ project, dashboard, walkthroughInitiallyOpen = false }: DashboardContentProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [walkthroughOpen, setWalkthroughOpen] = useState(walkthroughInitiallyOpen);
   const [scanPending, setScanPending] = useState(false);
   const [projectNameDraft, setProjectNameDraft] = useState(project.name);
   const [projectDescriptionDraft, setProjectDescriptionDraft] = useState(
@@ -299,6 +302,16 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
             ) : null}
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Open guide"
+              title="Guide"
+              className="h-7 w-7 p-0 text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
+              onClick={() => setWalkthroughOpen(true)}
+            >
+              <HelpCircle className="h-4 w-4" />
+            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -535,6 +548,12 @@ export function DashboardContent({ project, dashboard }: DashboardContentProps) 
           {status}
         </div>
       )}
+
+      <WalkthroughModal
+        open={walkthroughOpen}
+        onOpenChange={setWalkthroughOpen}
+        surface="web"
+      />
     </div>
   );
 }

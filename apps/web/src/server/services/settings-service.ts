@@ -37,7 +37,10 @@ function normalizeSettings(input: Partial<UserSettingsRow["settings"]> | null | 
       eligible: input?.autoCapturePrompt?.eligible ?? defaultSettings.autoCapturePrompt.eligible,
       dismissedAt: input?.autoCapturePrompt?.dismissedAt ?? defaultSettings.autoCapturePrompt.dismissedAt,
       activatedAt: input?.autoCapturePrompt?.activatedAt ?? defaultSettings.autoCapturePrompt.activatedAt,
-    }
+    },
+    ...(input?.walkthrough !== undefined
+      ? { walkthrough: input.walkthrough }
+      : {}),
   }
 }
 
@@ -64,13 +67,15 @@ export async function updateUserSettings(userId: string, input: unknown) {
   const repositories = createRepositoryBundle(userId)
   const existing = await repositories.settings.getByUser(userId)
   const partial = input as Partial<UserSettingsRow["settings"]>
+  const base = normalizeSettings(existing ? existing.settings : defaultSettings)
   const merged = normalizeSettings({
-    ...(existing ? normalizeSettings(existing.settings) : defaultSettings),
+    ...base,
     ...partial,
     autoCapturePrompt: {
-      ...(existing ? normalizeSettings(existing.settings).autoCapturePrompt : defaultSettings.autoCapturePrompt),
+      ...base.autoCapturePrompt,
       ...partial.autoCapturePrompt
-    }
+    },
+    walkthrough: partial.walkthrough !== undefined ? partial.walkthrough : base.walkthrough,
   })
 
   return repositories.settings.update(userId, merged)

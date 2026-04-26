@@ -106,6 +106,7 @@ import {
 } from "../utils/telemetry";
 import relayIconUrl from "../../assets/icon.png";
 import { PlatformIcon, prettyPlatformName } from "./platform-icon";
+import { WalkthroughModal } from "./walkthrough-modal";
 import styles from "./control-panel.module.css";
 
 interface ControlPanelProps {
@@ -173,7 +174,7 @@ const emptyActiveState: RelayActiveProjectState = {
   message: "Open a supported AI chat to use Relay.",
   trustLine: "Built from recent chats and saved project context",
   freshnessText: null,
-  shortcutLabel: "Mod+Shift+I",
+  shortcutLabel: navigator.userAgent.includes("Mac") ? "⌘⇧I" : "Ctrl+Shift+I",
   canInsert: false,
   page: { supported: false },
   trust: {
@@ -337,6 +338,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [signOutBusy, setSignOutBusy] = useState(false);
   const [userSettings, setUserSettings] = useState<UserSettingsRow["settings"] | null>(null);
   const [userSettingsBusy, setUserSettingsBusy] = useState(false);
+  const [showWalkthrough, setShowWalkthrough] = useState(false);
+  const walkthroughChecked = useRef(false);
   const activeStateRequestInFlight = useRef(false);
 
   useEffect(() => {
@@ -392,6 +395,12 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       void loadUserSettings();
     }
   }, [panelMode, session?.connected]);
+
+  useEffect(() => {
+    if (session?.connected && !walkthroughChecked.current) {
+      void loadUserSettings();
+    }
+  }, [session?.connected]);
 
   useEffect(() => {
     if (!session?.connected) return;
@@ -617,10 +626,20 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     try {
       const response = await relayFetch("/api/settings");
       if (!response.ok) return;
-      const data = (await response.json()) as { settings?: UserSettingsRow["settings"] };
+      const data = (await response.json()) as {
+        settings?: UserSettingsRow["settings"]
+        onboarding?: { completedVia: string | null }
+      };
       if (!data.settings || typeof data.settings !== "object") return;
       if (userSettingsBusy) return;
       setUserSettings(data.settings);
+      if (!walkthroughChecked.current) {
+        walkthroughChecked.current = true;
+        const completedVia = data.onboarding?.completedVia ?? null;
+        if (!data.settings.walkthrough?.dismissedAt && completedVia !== "web") {
+          setShowWalkthrough(true);
+        }
+      }
     } catch {
       // Best-effort; settings view falls back to defaults.
     }
@@ -1873,6 +1892,30 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             <button
               type="button"
               className={styles.headerIconButton}
+              aria-label="Guide"
+              title="Getting started guide"
+              onClick={() => setShowWalkthrough(true)}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            </button>
+          ) : null}
+          {session?.connected ? (
+            <button
+              type="button"
+              className={styles.headerIconButton}
               aria-label={panelMode === "settings" ? "Back" : "Settings"}
               title={panelMode === "settings" ? "Back" : "Settings"}
               onClick={() =>
@@ -3007,6 +3050,20 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {showWalkthrough ? (
+        <WalkthroughModal
+          onDismiss={() => {
+            setShowWalkthrough(false);
+            void patchUserSettings({
+              walkthrough: {
+                dismissedAt: new Date().toISOString(),
+                completedVia: "extension",
+              },
+            });
+          }}
+        />
       ) : null}
     </div>
   );

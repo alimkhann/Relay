@@ -776,7 +776,7 @@
       message: "Checking this chat…",
       trustLine: "Built from recent chats and saved project context",
       freshnessText: null,
-      shortcutLabel: "Mod+Shift+I",
+      shortcutLabel: navigator.userAgent.includes("Mac") ? "⌘⇧I" : "Ctrl+Shift+I",
       canInsert: false,
       page: pageState,
       trust: {
@@ -2241,7 +2241,7 @@
       // Note: All user-controlled values are sanitized via escapeHtml() before insertion.
       // chipTitle is built from escapeHtml'd values above. buttonClassName uses only hardcoded class names.
       const shortcutDisplay = escapeHtml(
-        activeState.shortcutLabel || "\u2318\u21e7I",
+        activeState.shortcutLabel || (navigator.userAgent.includes("Mac") ? "\u2318\u21e7I" : "Ctrl+Shift+I"),
       );
       const trustStats =
         activeState.trust &&

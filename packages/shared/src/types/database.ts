@@ -461,6 +461,10 @@ export interface UserSettingsRow {
       dismissedAt: string | null
       activatedAt: string | null
     }
+    walkthrough?: {
+      dismissedAt: string | null
+      completedVia: "web" | "extension" | null
+    }
   }
   createdAt: string
   updatedAt: string

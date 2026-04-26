@@ -17,7 +17,7 @@ import type {
   RelayTrustMetadata
 } from "../messaging/contracts"
 
-export const RELAY_SHORTCUT_LABEL = "Mod+Shift+I"
+export const RELAY_SHORTCUT_LABEL = navigator.userAgent.includes("Mac") ? "⌘⇧I" : "Ctrl+Shift+I"
 
 export interface BuildRelayActiveProjectStateInput {
   connected: boolean

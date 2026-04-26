@@ -10,6 +10,7 @@ import {
   getProjectDashboardForUser,
   listProjectsForUser,
 } from "@/server/services/project-service"
+import { getUserSettings } from "@/server/services/settings-service"
 
 export const dynamic = "force-dynamic"
 
@@ -20,7 +21,10 @@ export default async function DashboardPage({
 }) {
   const viewer = await requirePageViewer("/dashboard")
   const projects = await listProjectsForUser(viewer.userId)
-  const onboarding = await getResolvedOnboardingStateForUser(viewer.userId, { projects })
+  const [onboarding, settings] = await Promise.all([
+    getResolvedOnboardingStateForUser(viewer.userId, { projects }),
+    getUserSettings(viewer.userId),
+  ])
 
   if (onboarding.status === "pending") {
     await logServerEvent({
@@ -111,6 +115,10 @@ export default async function DashboardPage({
               projectUrl: currentProject.projectUrl,
             }}
             dashboard={dashboard}
+            walkthroughInitiallyOpen={
+              !settings.settings.walkthrough?.dismissedAt &&
+              onboarding.completedVia !== "extension"
+            }
           />
         </div>
       ) : null}
