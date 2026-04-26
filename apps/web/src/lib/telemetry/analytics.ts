@@ -24,13 +24,15 @@ export interface RelayAnalyticsPayload {
 }
 
 const EVENT_NAME_ALIASES: Record<string, string> = {
-  landing_page_viewed: "page_viewed",
-  auth_page_viewed: "page_viewed",
-  dashboard_viewed: "page_viewed",
-  brief_viewed: "page_viewed",
-  memory_viewed: "page_viewed",
-  activity_viewed: "page_viewed",
-  settings_viewed: "page_viewed",
+  landing_page_viewed: "$pageview",
+  auth_page_viewed: "$pageview",
+  dashboard_viewed: "$pageview",
+  brief_viewed: "$pageview",
+  memory_viewed: "$pageview",
+  activity_viewed: "$pageview",
+  settings_viewed: "$pageview",
+  page_viewed: "$pageview",
+  account_created: "signed_up",
   "google_sign_in.started": "sign_in_started",
   "local_sign_in.started": "sign_in_started",
   "google_sign_in.failed": "sign_in_failed",
@@ -105,7 +107,7 @@ function pickScalarContext(context: Record<string, unknown> | undefined) {
       continue
     }
 
-    properties[toSnakeCase(key)] = normalized
+    properties[key.startsWith("$") ? key : toSnakeCase(key)] = normalized
   }
 
   return properties

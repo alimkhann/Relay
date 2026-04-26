@@ -347,6 +347,10 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
         plan: entitlements.plan,
         status: entitlements.status,
         period: entitlements.interval,
+        $revenue:
+          entitlements.interval === "year"
+            ? (PRICING[entitlements.plan as keyof typeof PRICING]?.yearlyPrice ?? null)
+            : (PRICING[entitlements.plan as keyof typeof PRICING]?.monthlyPrice ?? null),
       },
     })
 

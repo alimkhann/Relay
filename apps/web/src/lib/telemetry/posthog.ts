@@ -81,6 +81,7 @@ export function ensurePosthog() {
       maskTextSelector: ".mask-posthog",
       maskAllInputs: false,
     },
+    capture_performance: { web_vitals: true },
     persistence: "localStorage+cookie",
     person_profiles: "identified_only",
   })
@@ -89,6 +90,7 @@ export function ensurePosthog() {
     app_source: "relay-web",
     app: "web",
     environment: resolveBrowserEnvironment(),
+    is_authenticated: false,
   })
 
   initialized = true
