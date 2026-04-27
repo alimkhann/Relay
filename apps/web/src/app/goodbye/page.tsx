@@ -88,7 +88,7 @@ function GoodbyeContent() {
             : "Your feedback helps us improve Relay."}
         </p>
         <a
-          href="https://chromewebstore.google.com/detail/relay/ncdghdilopkelbadnkiblakpjhkdipfj"
+          href="https://chromewebstore.google.com/detail/relay-%E2%80%94-ai-chat-memory-co/ilgnnbhokdndbgchcfffolemkmmkpklf"
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center gap-2 rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-surface)] px-5 py-3 text-sm font-medium text-[var(--relay-ink)] transition hover:bg-[var(--relay-soft,rgba(0,0,0,0.04))]"

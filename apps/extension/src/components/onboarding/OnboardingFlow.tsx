@@ -17,18 +17,32 @@ import styles from "./OnboardingFlow.module.css"
 
 const BASE_URL = "https://onrelay.app"
 const STEP_KEY = "relay.onboarding.htmlStep"
-const TOTAL_STEPS = 6 // 0:Welcome 1:Features 2:Auth 3:CreateProject 4:Shortcuts 5:Pin
+const TOTAL_STEPS = 7 // 0:Welcome 1:Features 2:Auth 3:CreateProject 4:Walkthrough 5:Shortcuts 6:Pin
 
 const isMac = typeof navigator !== "undefined" && navigator.userAgent.includes("Mac")
 const altKey = isMac ? "⌥" : "Alt"
 
-// ── Feature data ──────────────────────────────────────────────────────────────
+function normalizeUrl(url: string): string {
+  const trimmed = url.trim()
+  if (!trimmed) return ""
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  return `https://${trimmed}`
+}
+
+// ── Feature & walkthrough data ────────────────────────────────────────────────
 
 const FEATURES = [
-  { icon: <ZapIcon />, label: "AUTO-CAPTURE",       title: "Quietly saves what matters from every AI chat",     desc: "Work in ChatGPT, Claude, or Gemini. Relay captures decisions, tasks, and constraints automatically.", video: `${BASE_URL}/videos/auto-capture.mp4`,       poster: `${BASE_URL}/images/video-posters/auto-capture.webp` },
-  { icon: <FileTextIcon />, label: "PROJECT BRIEFS",     title: "One-click context restoration in fresh chats",     desc: "Your project brief updates itself as you work. Inject the full context instantly.",                   video: `${BASE_URL}/videos/project-briefs.mp4`,     poster: `${BASE_URL}/images/video-posters/project-briefs.webp` },
-  { icon: <TerminalIcon />, label: "MCP INTEGRATION",    title: "Your coding agent reads and writes project memory", desc: "Claude Code, Cursor, and any MCP-compatible agent connect directly to the same brief.",               video: `${BASE_URL}/videos/mcp-integration.mp4`,   poster: `${BASE_URL}/images/video-posters/mcp-integration.webp` },
-  { icon: <ArrowsIcon />,  label: "CROSS-SURFACE SYNC",  title: "Decisions flow between tools automatically",        desc: "A choice made in ChatGPT surfaces in Cursor. Constraints stay in sync across every session.",         video: `${BASE_URL}/videos/cross-surface-sync.mp4`, poster: `${BASE_URL}/images/video-posters/cross-surface-sync.webp` },
+  { icon: <ZapIcon />,      label: "AUTO-CAPTURE",       title: "Quietly saves what matters from every AI chat",     desc: "Work in ChatGPT, Claude, or Gemini. Relay captures decisions, tasks, and constraints automatically.", video: `${BASE_URL}/videos/auto-capture.mp4`,       poster: `${BASE_URL}/images/video-posters/auto-capture.webp` },
+  { icon: <FileTextIcon />, label: "PROJECT BRIEFS",      title: "One-click context restoration in fresh chats",     desc: "Your project brief updates itself as you work. Inject the full context instantly.",                   video: `${BASE_URL}/videos/project-briefs.mp4`,     poster: `${BASE_URL}/images/video-posters/project-briefs.webp` },
+  { icon: <TerminalIcon />, label: "MCP INTEGRATION",     title: "Your coding agent reads and writes project memory", desc: "Claude Code, Cursor, and any MCP-compatible agent connect directly to the same brief.",               video: `${BASE_URL}/videos/mcp-integration.mp4`,   poster: `${BASE_URL}/images/video-posters/mcp-integration.webp` },
+  { icon: <ArrowsIcon />,   label: "CROSS-SURFACE SYNC",  title: "Decisions flow between tools automatically",        desc: "A choice made in ChatGPT surfaces in Cursor. Constraints stay in sync across every session.",         video: `${BASE_URL}/videos/cross-surface-sync.mp4`, poster: `${BASE_URL}/images/video-posters/cross-surface-sync.webp` },
+]
+
+const WALKTHROUGH_STEPS = [
+  { title: "Auto-capture",            body: "Open any AI chat. With auto-capture on, Relay captures decisions and tasks as you work — no copy-pasting.", video: { mp4: `${BASE_URL}/videos/auto-capture.mp4`,     poster: `${BASE_URL}/images/video-posters/auto-capture.webp` } },
+  { title: "Insert brief",            body: "In any AI chat, click Insert Brief in the panel. Relay injects your full project context instantly.",        video: { mp4: `${BASE_URL}/videos/project-briefs.mp4`,  poster: `${BASE_URL}/images/video-posters/project-briefs.webp` } },
+  { title: "MCP for coding agents",   body: "Connect Relay's MCP server so your IDE agent (Cursor, Claude Code) reads and writes live project context.", video: { mp4: `${BASE_URL}/videos/mcp-integration.mp4`, poster: `${BASE_URL}/images/video-posters/mcp-integration.webp` } },
+  { title: "Manage on the dashboard", body: "The dashboard is where you manage memories, briefs, captures, and settings — everything in one place.",     image: { src: `${BASE_URL}/images/dashboard.webp`, alt: "Relay dashboard" }, cta: { href: `${BASE_URL}/dashboard`, label: "Open dashboard →" } },
 ]
 
 // ── Inline icons ──────────────────────────────────────────────────────────────
@@ -139,13 +153,19 @@ function KbdKey({ children, wide }: { children: React.ReactNode; wide?: boolean 
   return <span className={`${styles.kbdKey} ${wide ? styles.kbdKeyWide : ""}`}>{children}</span>
 }
 
+// ── Helper: navigate to step (direct, bypasses goTo guard) ────────────────────
+
+function navTo(step: number, setStep: (n: number) => void, setVisible: (v: boolean) => void) {
+  setVisible(false)
+  setTimeout(() => { setStep(step); chrome.storage.local.set({ [STEP_KEY]: step }); setVisible(true) }, 220)
+}
+
 // ── Main flow ─────────────────────────────────────────────────────────────────
 
 export function OnboardingFlow() {
   const [step, setStep] = useState(0)
   const [visible, setVisible] = useState(false)
   const [isSignedIn, setIsSignedIn] = useState(false)
-  const [hasProject, setHasProject] = useState(false)
   const [isNewAccount, setIsNewAccount] = useState(false)
   const [authBusy, setAuthBusy] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
@@ -158,7 +178,6 @@ export function OnboardingFlow() {
   const [otp, setOtp] = useState("")
   const [projectName, setProjectName] = useState("")
   const [projectDesc, setProjectDesc] = useState("")
-  const [projectUrl, setProjectUrl] = useState("")
   const [scanUrl, setScanUrl] = useState("")
   const [scanBusy, setScanBusy] = useState(false)
   const [scanError, setScanError] = useState<string | null>(null)
@@ -172,22 +191,16 @@ export function OnboardingFlow() {
       const session = result["relay.session"] as Record<string, unknown> | undefined
       const connected = session?.connected === true
       setIsSignedIn(connected)
-      if (connected && Array.isArray(session?.projects) && (session.projects as unknown[]).length > 0) {
-        setHasProject(true)
-      }
       const saved = result[STEP_KEY]
       if (typeof saved === "number" && saved >= 0 && saved < TOTAL_STEPS) setStep(saved)
     })
     setTimeout(() => setVisible(true), 50)
   }, [])
 
+  // goTo: guards sign-up-only steps (3, 4, 5) from non-new accounts
   function goTo(next: number) {
-    // Steps 3 (CreateProject) and 4 (Shortcuts) are sign-up-only
-    if (!isNewAccount && (next === 3 || next === 4)) return
-    setVisible(false)
-    setTimeout(() => {
-      setStep(next); chrome.storage.local.set({ [STEP_KEY]: next }); setVisible(true)
-    }, 220)
+    if (!isNewAccount && next >= 3 && next <= 5) return
+    navTo(next, setStep, setVisible)
   }
   function next() { goTo(step + 1) }
 
@@ -202,6 +215,13 @@ export function OnboardingFlow() {
     )
   }
 
+  function afterAuth(newAcc: boolean) {
+    setIsSignedIn(true)
+    setIsNewAccount(newAcc)
+    const target = newAcc ? 3 : 6
+    navTo(target, setStep, setVisible)
+  }
+
   async function handleGoogleSignIn() {
     setAuthBusy(true); setAuthError(null)
     try {
@@ -210,16 +230,7 @@ export function OnboardingFlow() {
       if (result?.ok) {
         const stored = await getSessionData()
         const hp = Array.isArray(stored.projects) && (stored.projects as unknown[]).length > 0
-        const newAcc = !hp
-        setIsSignedIn(true); setHasProject(hp); setIsNewAccount(newAcc)
-        // Set state before goTo — need inline logic since state updates async
-        if (newAcc) {
-          setStep(3); chrome.storage.local.set({ [STEP_KEY]: 3 }); setTimeout(() => setVisible(true), 220)
-          setVisible(false)
-        } else {
-          setStep(5); chrome.storage.local.set({ [STEP_KEY]: 5 }); setTimeout(() => setVisible(true), 220)
-          setVisible(false)
-        }
+        afterAuth(!hp)
       } else {
         setAuthError(result?.reason ?? "Sign-in failed. Try again.")
       }
@@ -239,12 +250,7 @@ export function OnboardingFlow() {
       if (result?.ok && result.requiresOtp) {
         setOtpRequired(true)
       } else if (result?.ok) {
-        const stored = await getSessionData()
-        const hp = Array.isArray(stored.projects) && (stored.projects as unknown[]).length > 0
-        const newAcc = intent === "sign-up"
-        setIsSignedIn(true); setHasProject(hp); setIsNewAccount(newAcc)
-        const target = newAcc ? 3 : 5
-        setVisible(false); setTimeout(() => { setStep(target); chrome.storage.local.set({ [STEP_KEY]: target }); setVisible(true) }, 220)
+        afterAuth(intent === "sign-up")
       } else {
         setAuthError(result?.reason ?? "Sign-in failed. Try again.")
       }
@@ -262,12 +268,7 @@ export function OnboardingFlow() {
         payload: { email: email.trim(), password, intent, otp: otp.trim(), deviceName },
       }) as { ok: boolean; reason?: string } | undefined
       if (result?.ok) {
-        const stored = await getSessionData()
-        const hp = Array.isArray(stored.projects) && (stored.projects as unknown[]).length > 0
-        const newAcc = intent === "sign-up"
-        setIsSignedIn(true); setHasProject(hp); setIsNewAccount(newAcc)
-        const target = newAcc ? 3 : 5
-        setVisible(false); setTimeout(() => { setStep(target); chrome.storage.local.set({ [STEP_KEY]: target }); setVisible(true) }, 220)
+        afterAuth(intent === "sign-up")
       } else {
         setAuthError(result?.reason ?? "Invalid code. Try again.")
       }
@@ -276,10 +277,11 @@ export function OnboardingFlow() {
   }
 
   async function handleScanUrl() {
-    if (!scanUrl.trim()) return
+    const url = normalizeUrl(scanUrl)
+    if (!url) return
     setScanBusy(true); setScanError(null)
     try {
-      const result = await chrome.runtime.sendMessage({ type: "RELAY_SCAN_PROJECT_URL", payload: { url: scanUrl.trim() } }) as { ok: boolean; result?: { name: string | null; description: string | null }; reason?: string } | undefined
+      const result = await chrome.runtime.sendMessage({ type: "RELAY_SCAN_PROJECT_URL", payload: { url } }) as { ok: boolean; result?: { name: string | null; description: string | null }; reason?: string } | undefined
       if (result?.ok && result.result) {
         if (result.result.name) setProjectName(result.result.name)
         if (result.result.description) setProjectDesc(result.result.description)
@@ -299,10 +301,10 @@ export function OnboardingFlow() {
         payload: {
           name: projectName.trim(),
           description: projectDesc.trim() || undefined,
-          projectUrl: projectUrl.trim() || undefined,
+          projectUrl: normalizeUrl(scanUrl) || undefined,
         },
       }) as { ok: boolean; reason?: string } | undefined
-      if (result?.ok) { setHasProject(true); goTo(4) }
+      if (result?.ok) { navTo(4, setStep, setVisible) }
       else setProjectError(result?.reason ?? "Could not create project. Try again.")
     } catch { setProjectError("Could not create project. Try again.") }
     finally { setProjectBusy(false) }
@@ -339,22 +341,24 @@ export function OnboardingFlow() {
               onEmailChange={setEmail} onNameChange={setName} onPasswordChange={setPassword}
               onToggleShowPassword={() => setShowPassword((v) => !v)}
               onIntentToggle={() => { setIntent((v) => v === "sign-in" ? "sign-up" : "sign-in"); setAuthError(null); setOtpRequired(false); setOtp("") }}
-              onOtpChange={setOtp} onSkip={() => { setVisible(false); setTimeout(() => { setStep(5); chrome.storage.local.set({ [STEP_KEY]: 5 }); setVisible(true) }, 220) }}
+              onOtpChange={setOtp}
+              onSkip={() => navTo(6, setStep, setVisible)}
             />
           )}
           {step === 3 && (
             <StepCreateProject
-              projectName={projectName} projectDesc={projectDesc} projectUrl={projectUrl}
+              projectName={projectName} projectDesc={projectDesc}
               scanUrl={scanUrl} scanBusy={scanBusy} scanError={scanError}
               projectBusy={projectBusy} projectError={projectError}
               onNameChange={setProjectName} onDescChange={setProjectDesc}
-              onUrlChange={setProjectUrl} onScanUrlChange={setScanUrl}
-              onScan={handleScanUrl} onCreate={handleCreateProject}
-              onSkip={() => goTo(4)}
+              onScanUrlChange={setScanUrl} onScan={handleScanUrl}
+              onCreate={handleCreateProject}
+              onSkip={() => navTo(4, setStep, setVisible)}
             />
           )}
-          {step === 4 && <StepShortcuts onNext={next} />}
-          {step === 5 && <StepPin onOpenRelay={handleOpenRelay} />}
+          {step === 4 && <StepWalkthrough onNext={() => navTo(5, setStep, setVisible)} />}
+          {step === 5 && <StepShortcuts onNext={next} />}
+          {step === 6 && <StepPin onOpenRelay={handleOpenRelay} />}
         </div>
       )}
 
@@ -376,9 +380,11 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
   return (
     <>
       <div className={styles.iconTheater}>
-        <MarqueeRow icons={ROW1} />
-        <MarqueeRow icons={ROW2} reverse />
-        <MarqueeRow icons={ROW3} />
+        <div className={styles.marqueeWrap}>
+          <MarqueeRow icons={ROW1} />
+          <MarqueeRow icons={ROW2} reverse />
+          <MarqueeRow icons={ROW3} />
+        </div>
         <div className={styles.theaterGlow} />
         <div className={styles.relayLogoWrap}>
           <img src={relayIconUrl} alt="Relay" width={100} height={100} className={styles.relayLogo} />
@@ -533,16 +539,16 @@ function StepAuth({
 // ── Step 3: Create Project ────────────────────────────────────────────────────
 
 function StepCreateProject({
-  projectName, projectDesc, projectUrl, scanUrl, scanBusy, scanError,
-  projectBusy, projectError, onNameChange, onDescChange, onUrlChange,
+  projectName, projectDesc, scanUrl, scanBusy, scanError,
+  projectBusy, projectError, onNameChange, onDescChange,
   onScanUrlChange, onScan, onCreate, onSkip,
 }: {
-  projectName: string; projectDesc: string; projectUrl: string
+  projectName: string; projectDesc: string
   scanUrl: string; scanBusy: boolean; scanError: string | null
   projectBusy: boolean; projectError: string | null
   onNameChange: (v: string) => void; onDescChange: (v: string) => void
-  onUrlChange: (v: string) => void; onScanUrlChange: (v: string) => void
-  onScan: () => void; onCreate: () => void; onSkip: () => void
+  onScanUrlChange: (v: string) => void; onScan: () => void
+  onCreate: () => void; onSkip: () => void
 }) {
   return (
     <div className={styles.authStep}>
@@ -550,12 +556,12 @@ function StepCreateProject({
         Create your first project
       </h1>
       <p className={styles.subheading} style={{ marginBottom: 32 }}>
-        Projects are how Relay organises your context. Paste your project URL to auto-fill details, or enter them manually.
+        Paste your project URL to auto-fill details from your site or docs, or fill in manually.
       </p>
 
       <div className={styles.authForm}>
         <div className={styles.scanRow}>
-          <input className={styles.authInput} type="url" placeholder="Project URL (optional scan)"
+          <input className={styles.authInput} type="text" placeholder="Project URL (e.g. myapp.com)"
             value={scanUrl} onChange={(e) => onScanUrlChange(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") void onScan() }} />
           <button className={styles.scanBtn} onClick={onScan} disabled={scanBusy || !scanUrl.trim()}>
@@ -563,7 +569,6 @@ function StepCreateProject({
           </button>
         </div>
         {scanError && <p className={styles.authError}>{scanError}</p>}
-        <p className={styles.scanHint}>Scan auto-fills name and description from your site or docs.</p>
 
         <input
           className={styles.authInput}
@@ -581,13 +586,6 @@ function StepCreateProject({
           onChange={(e) => onDescChange(e.target.value)}
           rows={3}
         />
-        <input
-          className={styles.authInput}
-          type="url"
-          placeholder="Project URL (optional)"
-          value={projectUrl}
-          onChange={(e) => onUrlChange(e.target.value)}
-        />
 
         {projectError && <p className={styles.authError}>{projectError}</p>}
         <button className={styles.primaryBtn} style={{ width: "100%" }} onClick={onCreate}
@@ -603,7 +601,62 @@ function StepCreateProject({
   )
 }
 
-// ── Step 4: Shortcuts ─────────────────────────────────────────────────────────
+// ── Step 4: Walkthrough (4 slides) ───────────────────────────────────────────
+
+function StepWalkthrough({ onNext }: { onNext: () => void }) {
+  const [slide, setSlide] = useState(0)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const current = WALKTHROUGH_STEPS[slide]!
+  const isLast = slide === WALKTHROUGH_STEPS.length - 1
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.load()
+      void videoRef.current.play().catch(() => {})
+    }
+  }, [slide])
+
+  function advance() {
+    if (isLast) { onNext() } else { setSlide((s) => s + 1) }
+  }
+
+  function openDashboard() {
+    chrome.tabs.create({ url: `${BASE_URL}/dashboard` }).catch(() => window.open(`${BASE_URL}/dashboard`, "_blank"))
+  }
+
+  return (
+    <div className={styles.walkthroughStep}>
+      <p className={styles.walkthroughCounter}>Getting started — {slide + 1} of {WALKTHROUGH_STEPS.length}</p>
+
+      <div className={styles.walkthroughMedia}>
+        {current.video ? (
+          <video ref={videoRef} src={current.video.mp4} poster={current.video.poster}
+            autoPlay loop muted playsInline className={styles.walkthroughVideo} />
+        ) : current.image ? (
+          <img src={current.image.src} alt={current.image.alt} className={styles.walkthroughVideo} />
+        ) : null}
+      </div>
+
+      <h2 className={styles.walkthroughTitle}>{current.title}</h2>
+      <p className={styles.walkthroughBody}>{current.body}</p>
+
+      <div className={styles.walkthroughActions}>
+        {current.cta && (
+          <button className={styles.secondaryBtn} onClick={openDashboard}>{current.cta.label}</button>
+        )}
+        <button className={styles.primaryBtn} onClick={advance}>Next →</button>
+      </div>
+
+      <div className={styles.slideDotsRow}>
+        {WALKTHROUGH_STEPS.map((_, i) => (
+          <button key={i} className={`${styles.slideDot} ${i === slide ? styles.slideDotActive : styles.slideDotInactive}`} onClick={() => setSlide(i)} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Step 5: Shortcuts ─────────────────────────────────────────────────────────
 
 function StepShortcuts({ onNext }: { onNext: () => void }) {
   return (
@@ -642,7 +695,7 @@ function StepShortcuts({ onNext }: { onNext: () => void }) {
   )
 }
 
-// ── Step 5: Pin ───────────────────────────────────────────────────────────────
+// ── Step 6: Pin ───────────────────────────────────────────────────────────────
 
 function openX() {
   chrome.tabs.create({ url: "https://x.com/alimmka_" }).catch(() => window.open("https://x.com/alimmka_", "_blank"))
