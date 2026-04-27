@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { Suspense, useState, useTransition } from "react"
+import { useSearchParams } from "next/navigation"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
 import { createClientFlowId } from "@/lib/telemetry/client"
 
@@ -15,7 +16,10 @@ const REASONS = [
 
 type ReasonId = (typeof REASONS)[number]["id"]
 
-export default function GoodbyePage() {
+function GoodbyeContent() {
+  const searchParams = useSearchParams()
+  const isDelete = searchParams.get("intent") === "delete"
+
   const [selected, setSelected] = useState<Set<ReasonId>>(new Set())
   const [note, setNote] = useState("")
   const [done, setDone] = useState(false)
@@ -31,39 +35,41 @@ export default function GoodbyePage() {
     })
   }
 
-  function handleDelete() {
+  function handleSubmit() {
     startTransition(async () => {
       setError(null)
-      try {
-        const flowId = createClientFlowId("account-delete-goodbye")
-        const response = await relayClientFetch("/api/account/delete", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            feedback: {
-              reasons: Array.from(selected),
-              note: note.trim() || null,
-            },
-          }),
-          telemetry: {
-            surface: "web-settings",
-            area: "account",
-            event: "account.delete",
-            flowId,
-            logSuccess: true,
-          },
-        })
-
-        if (!response.ok) {
-          const data = (await response.json().catch(() => ({}))) as { error?: string }
-          throw new Error(data.error ?? "Could not delete account")
-        }
-
-        setDone(true)
-        setTimeout(() => { window.location.replace("/") }, 3000)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not delete account. Try again.")
+      const feedback = {
+        reasons: Array.from(selected),
+        note: note.trim() || null,
       }
+
+      if (isDelete) {
+        try {
+          const flowId = createClientFlowId("account-delete-goodbye")
+          const response = await relayClientFetch("/api/account/delete", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ feedback }),
+            telemetry: {
+              surface: "web-settings",
+              area: "account",
+              event: "account.delete",
+              flowId,
+              logSuccess: true,
+            },
+          })
+
+          if (!response.ok) {
+            const data = (await response.json().catch(() => ({}))) as { error?: string }
+            throw new Error(data.error ?? "Could not delete account")
+          }
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Could not delete account. Try again.")
+          return
+        }
+      }
+
+      setDone(true)
     })
   }
 
@@ -77,21 +83,25 @@ export default function GoodbyePage() {
         </div>
         <h1 className="text-2xl font-bold text-[var(--relay-ink)] mb-3">Thank you for the feedback</h1>
         <p className="text-sm text-[var(--relay-muted)] mb-8 max-w-xs leading-relaxed">
-          Your account and all data have been permanently deleted.
+          {isDelete
+            ? "Your account and all data have been permanently deleted."
+            : "Your feedback helps us improve Relay."}
         </p>
-        <a
-          href="https://chromewebstore.google.com/detail/relay/ncdghdilopkelbadnkiblakpjhkdipfj"
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-2 rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-surface)] px-5 py-3 text-sm font-medium text-[var(--relay-ink)] transition hover:bg-[var(--relay-soft,rgba(0,0,0,0.04))]"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="17 8 12 3 7 8" />
-            <line x1="12" y1="3" x2="12" y2="15" />
-          </svg>
-          Reinstall Relay
-        </a>
+        {isDelete && (
+          <a
+            href="https://chromewebstore.google.com/detail/relay/ncdghdilopkelbadnkiblakpjhkdipfj"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-surface)] px-5 py-3 text-sm font-medium text-[var(--relay-ink)] transition hover:bg-[var(--relay-soft,rgba(0,0,0,0.04))]"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            Reinstall Relay
+          </a>
+        )}
       </div>
     )
   }
@@ -102,10 +112,12 @@ export default function GoodbyePage() {
         <div className="mb-8 text-center">
           <p className="text-3xl mb-3">😞</p>
           <h1 className="text-2xl font-bold text-[var(--relay-ink)] mb-2">
-            Sorry to see you go
+            {isDelete ? "Sorry to see you go" : "How are we doing?"}
           </h1>
           <p className="text-sm text-[var(--relay-muted)]">
-            Before you leave, would you mind telling us why? This helps us improve Relay.
+            {isDelete
+              ? "Before you leave, would you mind telling us why? This helps us improve Relay."
+              : "Your feedback helps us make Relay better. What can we improve?"}
           </p>
         </div>
 
@@ -156,20 +168,35 @@ export default function GoodbyePage() {
 
         <button
           type="button"
-          onClick={handleDelete}
+          onClick={handleSubmit}
           disabled={pending}
-          className="w-full rounded-[var(--relay-radius-sm)] bg-[var(--relay-danger)] px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50 mb-3"
+          className={[
+            "w-full rounded-[var(--relay-radius-sm)] px-4 py-3 text-sm font-semibold transition disabled:opacity-50 mb-3",
+            isDelete
+              ? "bg-[var(--relay-danger)] text-white hover:opacity-90"
+              : "bg-[var(--relay-ink)] text-[var(--relay-bg)] hover:opacity-90",
+          ].join(" ")}
         >
-          {pending ? "Deleting account…" : "Delete my account"}
+          {pending
+            ? isDelete ? "Deleting account…" : "Sending…"
+            : isDelete ? "Delete my account" : "Send feedback"}
         </button>
 
         <a
-          href="/dashboard/settings?section=account"
+          href={isDelete ? "/dashboard/settings?section=account" : "/dashboard"}
           className="block w-full text-center text-sm text-[var(--relay-muted)] hover:text-[var(--relay-ink)] transition py-2"
         >
-          Never mind, keep my account →
+          {isDelete ? "Never mind, keep my account →" : "Back to dashboard →"}
         </a>
       </div>
     </div>
+  )
+}
+
+export default function GoodbyePage() {
+  return (
+    <Suspense>
+      <GoodbyeContent />
+    </Suspense>
   )
 }

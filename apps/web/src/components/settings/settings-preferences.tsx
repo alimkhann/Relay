@@ -598,7 +598,7 @@ export function SettingsPreferences({
               </div>
               <button
                 type="button"
-                onClick={() => { window.location.href = "/goodbye" }}
+                onClick={() => { window.location.href = "/goodbye?intent=delete" }}
                 className="shrink-0 rounded-[var(--relay-radius-sm)] border border-[var(--relay-danger)]/30 bg-[var(--relay-danger)]/10 px-4 py-2 text-[13px] font-medium text-[var(--relay-danger)] transition hover:bg-[var(--relay-danger)]/20"
               >
                 Delete account
