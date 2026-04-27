@@ -78,6 +78,10 @@
         "run_at": "document_end"
       }
     ],
+    "options_ui": {
+      "page": "options.html",
+      "open_in_tab": true
+    },
     "side_panel": {
       "default_path": "sidepanel.html"
     },
@@ -112,6 +116,12 @@
           "mac": "Command+Shift+I"
         },
         "description": "Insert the current project brief"
+      },
+      "open-sidebar": {
+        "suggested_key": {
+          "default": "Alt+Shift+S"
+        },
+        "description": "Open Relay sidebar"
       }
     }
   }

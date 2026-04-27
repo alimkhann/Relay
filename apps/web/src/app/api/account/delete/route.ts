@@ -33,6 +33,15 @@ export const POST = withApiAuth(async (request: Request) => {
   await assertIpRateLimit(request, "account_delete_ip", 3)
   const viewer = await requireSessionViewer()
 
+  // Optional feedback from the goodbye page (best-effort, not persisted)
+  let deletionFeedback: { reasons?: string[]; note?: string | null } | null = null
+  try {
+    const body = (await request.json()) as { feedback?: { reasons?: string[]; note?: string | null } }
+    deletionFeedback = body.feedback ?? null
+  } catch { /* no body or not JSON — fine */ }
+
+  void deletionFeedback // acknowledged; log via telemetry in future
+
   const repositories = createRepositoryBundle()
   const profile = await repositories.profiles.getById(viewer.userId)
   const email = profile?.email ?? viewer.email

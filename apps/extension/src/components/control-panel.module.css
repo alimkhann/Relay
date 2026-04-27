@@ -1410,10 +1410,10 @@
 
 @keyframes shimmer {
   0% {
-    background-position: 200% center;
+    background-position: 250% center;
   }
   100% {
-    background-position: -200% center;
+    background-position: -250% center;
   }
 }
 
@@ -1426,11 +1426,11 @@
     var(--accent-text) 70%,
     var(--accent-text) 100%
   );
-  background-size: 200% auto;
+  background-size: 400% auto;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: shimmer 2s ease-in-out infinite;
+  animation: shimmer 2.4s ease-in-out infinite;
 }
 
 /* ── Header actions / settings ── */

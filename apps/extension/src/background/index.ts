@@ -3519,6 +3519,12 @@ chrome.runtime.onInstalled.addListener((details: { reason: string; previousVersi
     .setPanelBehavior({ openPanelOnActionClick: true })
     .catch(() => undefined);
 
+  chrome.runtime.setUninstallURL("https://onrelay.app/goodbye").catch(() => undefined);
+
+  if (details.reason === "install") {
+    chrome.tabs.create({ url: chrome.runtime.getURL("options.html") }).catch(() => undefined);
+  }
+
   registerRelayContextMenu();
 
   // Register MAIN world content script for network interception.
@@ -3640,6 +3646,15 @@ chrome.tabs.onRemoved.addListener((tabId: number) => {
 });
 
 chrome.commands?.onCommand.addListener((command: string) => {
+  if (command === "open-sidebar") {
+    void (async () => {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      const windowId = tabs[0]?.windowId;
+      if (windowId) chrome.sidePanel.open({ windowId }).catch(() => undefined);
+    })();
+    return;
+  }
+
   if (command !== "insert-project-brief") return;
 
   void (async () => {
