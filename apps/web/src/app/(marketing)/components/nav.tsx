@@ -16,7 +16,7 @@ const NAV_LINKS = [
   { label: "Docs", href: "/docs", external: true },
 ]
 
-export function Nav() {
+export function Nav({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
   const [shaped, setShaped] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -86,7 +86,7 @@ export function Nav() {
               }}
             />
             <Link
-              href="/get-started"
+              href={isLoggedIn ? "/dashboard" : "/get-started"}
               onClick={() => {
                 trackMarketingEvent("get_started_clicked", { source: "nav_desktop" })
               }}
@@ -96,7 +96,7 @@ export function Nav() {
                 "transition-all duration-300 ease-out hover:-translate-y-px hover:shadow-[0_4px_20px_rgba(255,255,255,0.14)]"
               )}
             >
-              Get started
+              {isLoggedIn ? "Dashboard" : "Get started"}
               <ArrowRight
                 className={cn(
                   "h-3.5 w-3.5 overflow-hidden transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]",
@@ -155,14 +155,14 @@ export function Nav() {
                 className="mt-1 inline-flex justify-center"
               />
               <Link
-                href="/get-started"
+                href={isLoggedIn ? "/dashboard" : "/get-started"}
                 onClick={() => {
                   trackMarketingEvent("get_started_clicked", { source: "nav_mobile" })
                   setMobileOpen(false)
                 }}
                 className="inline-flex items-center justify-center gap-1.5 rounded-full bg-white text-[#0a0a0a] px-5 py-2.5 text-sm font-medium"
               >
-                Get Started →
+                {isLoggedIn ? "Dashboard" : "Get Started"} →
               </Link>
             </div>
           </motion.div>

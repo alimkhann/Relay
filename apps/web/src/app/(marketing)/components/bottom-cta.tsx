@@ -10,7 +10,7 @@ import { pickOppositeLandingBackground, pickRandomLandingBackground } from "../b
 
 const ease = [0.25, 0.1, 0.25, 1] as const
 
-export function BottomCta() {
+export function BottomCta({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: "-80px" })
   const [backgroundSrc] = useState(() =>
@@ -71,13 +71,13 @@ export function BottomCta() {
           className="mt-10"
         >
           <Link
-            href="/get-started"
+            href={isLoggedIn ? "/dashboard" : "/get-started"}
             onClick={() => {
               trackMarketingEvent("get_started_clicked", { source: "bottom_cta" })
             }}
             className="inline-flex items-center gap-2 rounded-full bg-white text-[#0a0a0a] px-8 py-3.5 text-sm font-medium hover:bg-white/90 transition-colors duration-200"
           >
-            Get started free
+            {isLoggedIn ? "Go to Dashboard" : "Get started free"}
             <span className="text-xs">→</span>
           </Link>
         </motion.div>

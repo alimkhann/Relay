@@ -22,7 +22,7 @@ const fadeUp = {
   }),
 }
 
-export function HeroSection() {
+export function HeroSection({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
   const ready = usePreloaderReady()
   const [backgroundSrc] = useState(() => pickRandomLandingBackground())
 
@@ -111,13 +111,13 @@ export function HeroSection() {
               className="pl-4 pr-7 py-3"
             />
             <Link
-              href="/get-started"
+              href={isLoggedIn ? "/dashboard" : "/get-started"}
               onClick={() => {
                 trackMarketingEvent("get_started_clicked", { source: "hero_primary" })
               }}
               className="inline-flex items-center gap-2 rounded-full bg-white text-[#0a0a0a] shadow-[0_2px_12px_rgba(255,255,255,0.08)] px-7 py-3 text-sm font-semibold transition-all duration-300 ease-out hover:-translate-y-px hover:shadow-[0_4px_20px_rgba(255,255,255,0.14)]"
             >
-              Get Started
+              {isLoggedIn ? "Dashboard" : "Get Started"}
               <span className="text-xs">→</span>
             </Link>
           </motion.div>

@@ -10,8 +10,12 @@ import { BottomCta } from "./components/bottom-cta"
 import { Footer } from "./components/footer"
 import { PageTelemetry } from "@/components/telemetry/page-telemetry"
 import { PostHogIdentity } from "@/components/telemetry/posthog-identity"
+import { readSessionUserFromCookie } from "@/lib/auth/session-cookie"
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const sessionUser = await readSessionUserFromCookie()
+  const isLoggedIn = sessionUser !== null
+
   return (
     <main className="bg-[#0a0a0a] text-[#f5f5f5] overflow-x-hidden">
       <PostHogIdentity userId={null} />
@@ -22,15 +26,15 @@ export default function LandingPage() {
         pageGroup="landing"
         message="Rendered the landing page."
       />
-      <Nav />
-      <HeroSection />
+      <Nav isLoggedIn={isLoggedIn} />
+      <HeroSection isLoggedIn={isLoggedIn} />
       <HeroVisual />
       <FeaturesSection />
       <HowItWorks />
       <McpSection />
       <PricingSection />
       <Faq />
-      <BottomCta />
+      <BottomCta isLoggedIn={isLoggedIn} />
       <Footer />
     </main>
   )
