@@ -1380,11 +1380,14 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         turns?: number;
         reason?: string;
         digestQueued?: boolean;
+        skippedInsertedContext?: boolean;
       };
 
       setStatus(
         result?.ok
-          ? `Captured ${result.turns ?? 0} visible turns.${result?.digestQueued ? " Relay is updating your project brief." : ""}`
+          ? (result.skippedInsertedContext
+              ? (result.reason ?? "Relay found no new edits after the inserted brief.")
+              : `Captured ${result.turns ?? 0} visible turns.${result?.digestQueued ? " Relay is updating your project brief." : ""}`)
           : (result?.reason ?? "Capture failed."),
       );
 
@@ -1426,11 +1429,14 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         turns?: number;
         reason?: string;
         digestQueued?: boolean;
+        skippedInsertedContext?: boolean;
       };
 
       setStatus(
         result?.ok
-          ? `Associated this chat with the selected project.${result?.digestQueued ? " Relay is updating your project brief." : ""}`
+          ? (result.skippedInsertedContext
+              ? (result.reason ?? "This chat is linked to the project, but Relay found no new edits after the inserted brief.")
+              : `Associated this chat with the selected project.${result?.digestQueued ? " Relay is updating your project brief." : ""}`)
           : (result?.reason ?? "Associate chat failed."),
       );
 

@@ -79,6 +79,7 @@ import {
   initializeBackgroundTelemetry,
   recordBackgroundTelemetry,
 } from "./telemetry";
+import { filterInsertedContextCapture } from "./inserted-context-capture";
 import {
   persistTabSignature,
   removeTabSignature,
@@ -157,9 +158,14 @@ interface RelayTabState {
 interface PendingInsertedBriefState {
   projectId: string;
   projectName: string;
+  packetId: string | null;
+  insertKind: "fresh_chat_bootstrap" | "quick_continuity";
   chatKey: string | null;
   insertedAtSignature: string | null;
+  insertedContent: string;
+  insertedContentHash: string;
   matchSnippet: string;
+  matchSnippets: string[];
   expiresAt: number;
 }
 
@@ -816,18 +822,43 @@ function clearPendingInsertedBrief(state: RelayTabState) {
   state.pendingInsertedBrief = null;
 }
 
+function hashInsertedContent(value: string) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(index);
+    hash |= 0;
+  }
+
+  return String(hash);
+}
+
 function buildPendingInsertedBriefState(input: {
   projectId: string;
   projectName: string;
+  packetId: string | null;
+  insertKind: "fresh_chat_bootstrap" | "quick_continuity";
   page: RelayPageState;
   content: string;
 }) {
+  const normalizedContent = normalizeText(input.content);
+  const matchSnippets = [
+    normalizedContent.slice(0, 140),
+    normalizedContent.slice(Math.max(0, Math.floor(normalizedContent.length / 2) - 70), Math.floor(normalizedContent.length / 2) + 70),
+    normalizedContent.slice(Math.max(0, normalizedContent.length - 140)),
+  ]
+    .map((snippet) => snippet.toLowerCase().trim())
+    .filter((snippet, index, snippets) => snippet.length >= 40 && snippets.indexOf(snippet) === index);
   return {
     projectId: input.projectId,
     projectName: input.projectName,
+    packetId: input.packetId,
+    insertKind: input.insertKind,
     chatKey: buildAssociationKey(input.page),
     insertedAtSignature: input.page.captureSignature ?? null,
-    matchSnippet: normalizeText(input.content).toLowerCase().slice(0, 140),
+    insertedContent: normalizedContent,
+    insertedContentHash: hashInsertedContent(normalizedContent),
+    matchSnippet: matchSnippets[0] ?? normalizedContent.toLowerCase().slice(0, 140),
+    matchSnippets,
     expiresAt: Date.now() + 15 * 60 * 1000,
   } satisfies PendingInsertedBriefState;
 }
@@ -840,7 +871,10 @@ function matchesPendingInsertedBrief(
     return false;
   }
 
-  if (!pending.matchSnippet) {
+  const matchSnippets = pending.matchSnippets.length > 0
+    ? pending.matchSnippets
+    : [pending.matchSnippet].filter(Boolean);
+  if (matchSnippets.length === 0) {
     return false;
   }
 
@@ -856,7 +890,29 @@ function matchesPendingInsertedBrief(
     return false;
   }
 
-  return haystack.includes(pending.matchSnippet);
+  return matchSnippets.some((snippet) => haystack.includes(snippet));
+}
+
+function capturedTurnsMatchPendingInsertedBrief(
+  pending: PendingInsertedBriefState | null,
+  turns: Array<{ role?: string; content?: string }>,
+) {
+  if (!pending || Date.now() > pending.expiresAt) {
+    return false;
+  }
+
+  const matchSnippets = pending.matchSnippets.length > 0
+    ? pending.matchSnippets
+    : [pending.matchSnippet].filter(Boolean);
+  if (matchSnippets.length === 0) return false;
+
+  return turns.some((turn) => {
+    const content = normalizeText(turn.content ?? "").toLowerCase();
+    return (
+      turn.role === "user" &&
+      matchSnippets.some((snippet) => content.includes(snippet))
+    );
+  });
 }
 
 function scheduleInsertStateReset(tabId: number, delayMs = 1200) {
@@ -1770,6 +1826,7 @@ function updateTabPageState(tabId: number, page: RelayPageState) {
 
 async function captureTab(projectId: string, tabId: number) {
   const startedAt = Date.now();
+  const state = getOrCreateTabState(tabId);
   console.warn("[Relay BG] capture start", {
     tabId,
     projectId,
@@ -1801,6 +1858,53 @@ async function captureTab(projectId: string, tabId: number) {
     return result ?? { ok: false, reason: "Capture failed." };
   }
 
+  let capturePayload = result.capture;
+  if (
+    state.pendingInsertedBrief &&
+    capturedTurnsMatchPendingInsertedBrief(
+      state.pendingInsertedBrief,
+      capturePayload.turns,
+    )
+  ) {
+    const filteredCapture = filterInsertedContextCapture({
+      turns: capturePayload.turns,
+      pending: {
+        packetId: state.pendingInsertedBrief.packetId,
+        insertKind: state.pendingInsertedBrief.insertKind,
+        insertedContent: state.pendingInsertedBrief.insertedContent,
+        insertedContentHash: state.pendingInsertedBrief.insertedContentHash,
+      },
+    });
+
+    if (filteredCapture.kind === "skip") {
+      return {
+        ok: true,
+        sessionId: null,
+        turns: 0,
+        digestQueued: false,
+        digestStrategy: "skip" as const,
+        digestOutcome: null,
+        budgetStatus: null,
+        stateStatus: state.stateStatus ?? null,
+        reconciliation: null,
+        skippedInsertedContext: true,
+        reason: filteredCapture.reason,
+      };
+    }
+
+    capturePayload = {
+      ...capturePayload,
+      turns: filteredCapture.turns,
+      session: {
+        ...capturePayload.session,
+        metadata: {
+          ...(capturePayload.session.metadata ?? {}),
+          relayInsertedContext: filteredCapture.metadata,
+        },
+      },
+    };
+  }
+
   const fetchStartedAt = Date.now();
   let response: Response;
   try {
@@ -1810,7 +1914,7 @@ async function captureTab(projectId: string, tabId: number) {
         method: "POST",
         body: JSON.stringify({
           projectId,
-          ...result.capture,
+          ...capturePayload,
         }),
       },
       { timeoutMs: CAPTURE_API_TIMEOUT_MS },
@@ -1857,7 +1961,7 @@ async function captureTab(projectId: string, tabId: number) {
   return {
     ok: true,
     sessionId: payload.session?.id ?? null,
-    turns: payload.turns?.length ?? result.capture.turns?.length ?? 0,
+    turns: payload.turns?.length ?? capturePayload.turns?.length ?? 0,
     digestQueued: Boolean(payload.digestQueued),
     digestStrategy: (payload.digestStrategy ?? "skip") as "ai" | "deferred" | "skip",
     digestOutcome: payload.digestOutcome ?? null,
@@ -2944,6 +3048,23 @@ async function captureObservedChange(
           sessionId: result.sessionId,
           approvedAt: new Date().toISOString(),
         });
+      } else if (result.skippedInsertedContext) {
+        await rememberApprovedAssociation({
+          key: chatKey,
+          projectId,
+          projectName: associationProjectName ?? projectName,
+          projectSlug: matchedProject?.slug ?? null,
+          platform: (state.page.platform ?? null) as SupportedPlatform | null,
+          domain: state.page.domain ?? null,
+          pathname: state.page.pathname ?? null,
+          pageFingerprint: state.page.pageFingerprint ?? null,
+          sourceConversationId: state.page.sourceConversationId ?? null,
+          url: state.page.url ?? null,
+          title: state.page.title ?? null,
+          recentUserTurnText: state.page.recentUserTurnText ?? null,
+          sessionId: null,
+          approvedAt: new Date().toISOString(),
+        });
       }
       await syncTabRemoteState(tabId, {
         force: true,
@@ -3328,6 +3449,7 @@ async function insertProjectBrief(
   const generated = (await response.json()) as {
     status?: "ready" | "pending";
     packet?: {
+      id?: string;
       content?: string;
       generationMetadata?: Record<string, unknown>;
     };
@@ -3405,6 +3527,8 @@ async function insertProjectBrief(
   state.pendingInsertedBrief = buildPendingInsertedBriefState({
     projectId,
     projectName: state.projectName ?? "",
+    packetId: generated.packet.id ?? null,
+    insertKind: kind,
     page: pageState,
     content: generated.packet.content,
   });

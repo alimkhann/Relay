@@ -138,7 +138,7 @@ describe("POST /api/extension/auth/email", () => {
     const payload = await response.json()
 
     expect(response.status).toBe(201)
-    const fetchCall = vi.mocked(fetch).mock.calls[0]
+    const fetchCall = vi.mocked(fetch).mock.calls[0]!
     expect(fetchCall[0]).toContain("sign-up/email")
     expect((fetchCall[1]?.headers as Record<string, string>)?.["Origin"]).toBe("https://app.test")
     expect(createExtensionTokenForUserMock).toHaveBeenCalledWith("user-1", { deviceName: "Chrome Extension" })
@@ -164,7 +164,7 @@ describe("POST /api/extension/auth/email", () => {
     const payload = await response.json()
 
     expect(response.status).toBe(201)
-    const fetchCall = vi.mocked(fetch).mock.calls[0]
+    const fetchCall = vi.mocked(fetch).mock.calls[0]!
     expect(fetchCall[0]).toContain("sign-in/email")
     // Must NOT forward the chrome-extension:// origin to NeonAuth
     expect((fetchCall[1]?.headers as Record<string, string>)?.["Origin"]).toBe("https://app.test")

@@ -1,5 +1,14 @@
 import { createRepositoryBundle, type RepositoryBundle } from "@relay/db"
-import type { AiJobRunRow, CreateMemoryItemInput, ProjectStateRow, SessionDigestShape, SourceSessionRow, SourceSurface, SourceTurnRow } from "@relay/shared"
+import type {
+  AiJobRunRow,
+  CreateMemoryItemInput,
+  ProjectStateRow,
+  RelayInsertedContextMetadata,
+  SessionDigestShape,
+  SourceSessionRow,
+  SourceSurface,
+  SourceTurnRow,
+} from "@relay/shared"
 import { buildCaptureSignature, DECAY_ARCHIVE_THRESHOLD, hasReplacementSignal, isSameTopic, normalizeText, truncateSentence } from "@relay/shared"
 
 import { reconcileAfterDigest, type TruthMaintenanceArchiveDecision } from "./context-reconciliation-service"
@@ -173,6 +182,35 @@ function summarizeTurns(turns: SourceTurnRow[]) {
     .slice(-10)
     .map((turn) => `${turn.role.toUpperCase()}: ${turn.content}`)
     .join("\n")
+}
+
+function readInsertedContextMetadata(session: SourceSessionRow): RelayInsertedContextMetadata | null {
+  const candidate = session.metadata?.relayInsertedContext
+  if (!candidate || typeof candidate !== "object") return null
+
+  const metadata = candidate as Partial<RelayInsertedContextMetadata>
+  if (
+    (metadata.kind !== "fresh_chat_bootstrap" && metadata.kind !== "quick_continuity") ||
+    typeof metadata.insertedContentHash !== "string" ||
+    typeof metadata.deltaKind !== "string"
+  ) {
+    return null
+  }
+
+  return {
+    kind: metadata.kind,
+    packetId: typeof metadata.packetId === "string" ? metadata.packetId : null,
+    insertedContentHash: metadata.insertedContentHash,
+    deltaKind: metadata.deltaKind,
+    rawTurnCount: typeof metadata.rawTurnCount === "number" ? metadata.rawTurnCount : 0,
+    filteredTurnCount: typeof metadata.filteredTurnCount === "number" ? metadata.filteredTurnCount : 0,
+    assistantOutcome:
+      metadata.assistantOutcome === "dropped_ack" ||
+      metadata.assistantOutcome === "dropped_overlap" ||
+      metadata.assistantOutcome === "kept_novel"
+        ? metadata.assistantOutcome
+        : "none",
+  }
 }
 
 export function deterministicDigest(session: SourceSessionRow, turns: SourceTurnRow[], state: ProjectStateRow | null): DigestModelShape {
@@ -471,6 +509,7 @@ async function generateDigest(
   } = {}
 ) {
   const cleanedTurns = prepareDigestTurns(turns)
+  const insertedContextMetadata = readInsertedContextMetadata(session)
   const result = await runGeminiJsonWithFallback<DigestModelShape>({
     primaryModel: GEMINI_MODELS.digest.primary,
     fallbackModel: GEMINI_MODELS.digest.fallback,
@@ -487,6 +526,7 @@ async function generateDigest(
       "- currentObjectiveDelta must be a clear goal statement, not raw chat text or file names.",
       "- Ignore file upload names, UI artifacts, system metadata, and garbled text.",
       "- Prefer concise, durable carry-forward state over transcript details.",
+      "- When Relay marks a capture as inserted-context filtered, extract only from the remaining delta turns. Do not recreate the removed brief or continuity packet.",
     ].join(" "),
     prompt: [
       "Return a JSON object with these keys exactly:",
@@ -498,6 +538,12 @@ async function generateDigest(
       "GOOD decision: 'Default auto-capture to OFF during onboarding to comply with platform policies.'",
       "Ignore trivial meta prompts like 'yes', 'do that', 'continue', or 'what's better?' unless they clearly redefine the project goal.",
       "Ignore transcript wrappers like 'You said:' and 'ChatGPT said:'.",
+      ...(insertedContextMetadata
+        ? [
+            `Inserted-context filter metadata: kind=${insertedContextMetadata.kind}; deltaKind=${insertedContextMetadata.deltaKind}; assistantOutcome=${insertedContextMetadata.assistantOutcome}; rawTurnCount=${insertedContextMetadata.rawTurnCount}; filteredTurnCount=${insertedContextMetadata.filteredTurnCount}.`,
+            "These turns were pre-filtered after Relay inserted project context. Treat them as the only new information from that exchange.",
+          ]
+        : []),
       ...(projectDescription ? [`Project description: ${projectDescription}`] : []),
       ...(projectState?.projectOverview ? [`Existing project overview: ${projectState.projectOverview}`] : []),
       ...(projectState?.currentObjective ? [`Existing current objective: ${projectState.currentObjective}`] : []),
