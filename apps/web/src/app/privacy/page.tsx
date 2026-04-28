@@ -21,7 +21,7 @@ export default function PrivacyPage() {
           Privacy Policy
         </h1>
         <p className="mt-2 text-sm text-gray-400">
-          Last updated: April 2, 2026
+          Last updated: April 28, 2026
         </p>
 
         <div className="mt-10 space-y-8 text-[15px] leading-relaxed text-gray-600">
@@ -89,20 +89,28 @@ export default function PrivacyPage() {
               </p>
               <p>
                 <strong className="text-gray-900">
-                  Usage &amp; Device Information:
+                  Usage &amp; Analytics Data:
                 </strong>{" "}
-                We collect privacy-respecting analytics regarding how you
-                interact with the Service, including browser type, OS, and
-                approximate location data, to improve our services. Analytics
-                tracking is enabled by default across the web dashboard,
-                browser extension, and MCP server. Contact{" "}
+                We collect privacy-respecting analytics to understand how you
+                interact with the Service and to improve it. This includes:
+                page views and navigation paths; feature usage events (e.g.,
+                project creation, extension connection, MCP tool calls, digest
+                generation); session and activation milestones; error events and
+                exception traces; browser type, OS, and approximate geographic
+                region (country-level); and extension version. Analytics are
+                collected via PostHog and are associated with a randomly
+                generated anonymous ID until you sign in, at which point they
+                are linked to your user account. Analytics tracking is enabled
+                by default across the web dashboard, browser extension, and MCP
+                server. To opt out or request deletion of your analytics data,
+                contact{" "}
                 <a
                   href="mailto:support@onrelay.app"
                   className="underline hover:text-gray-700"
                 >
                   support@onrelay.app
-                </a>{" "}
-                to request deletion of your analytics data.
+                </a>
+                .
               </p>
             </div>
           </section>
@@ -209,9 +217,14 @@ export default function PrivacyPage() {
                   <strong className="text-gray-900">
                     Analytics Provider:
                   </strong>{" "}
-                  We use PostHog for privacy-respecting, aggregated analytics
-                  and error tracking. Analytics data does not include captured
-                  chat content.
+                  We use PostHog (posthog.com) for privacy-respecting, aggregated
+                  usage analytics and error tracking. Data sent to PostHog
+                  includes usage events, error traces, browser/OS metadata, and
+                  approximate location. Analytics data does not include captured
+                  chat content or AI responses. PostHog processes this data on
+                  our behalf under a data processing agreement; see
+                  PostHog&apos;s privacy policy at posthog.com/privacy for
+                  details.
                 </li>
                 <li>
                   <strong className="text-gray-900">
@@ -304,6 +317,11 @@ export default function PrivacyPage() {
                   <strong className="text-gray-900">Revoke Access:</strong>{" "}
                   Disconnect the Chrome extension at any time, which stops
                   all data capture immediately.
+                </li>
+                <li>
+                  <strong className="text-gray-900">Opt Out of Analytics:</strong>{" "}
+                  Contact us to opt out of analytics tracking or to request
+                  deletion of your analytics data held by PostHog.
                 </li>
               </ul>
               <p>

@@ -34,7 +34,7 @@ __pycache__/
 *.key
 *.zip
 *.pptx
-*.eml
 .worktrees
 .tmp
 /research
+*.eml
