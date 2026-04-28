@@ -81,7 +81,7 @@
 /* Icon theater — container for rows + glow + logo */
 .iconTheater {
   position: relative;
-  width: 100%;
+  width: 50%;
   height: 300px;
   flex-shrink: 0;
 }
@@ -111,14 +111,13 @@
   position: absolute;
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
-  width: 260px; height: 220px;
+  width: 240px; height: 200px;
   border-radius: 50%;
   background: radial-gradient(ellipse at center,
-    rgba(255,255,255,0.20) 0%,
-    rgba(255,255,255,0.07) 46%,
-    transparent 78%
+    rgba(255,255,255,0.16) 0%,
+    rgba(255,255,255,0.05) 50%,
+    transparent 80%
   );
-  backdrop-filter: blur(3px);
   pointer-events: none;
   z-index: 2;
 }
@@ -154,23 +153,24 @@
 
 @keyframes marqueeLeft {
   0%   { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
+  100% { transform: translateX(-33.333%); }
 }
 @keyframes marqueeRight {
-  0%   { transform: translateX(-50%); }
-  100% { transform: translateX(0); }
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-33.333%); }
 }
 
 .marqueeTrack {
   display: flex;
   gap: 16px;
   width: max-content;
-  animation: marqueeLeft 20s linear infinite;
+  animation: marqueeLeft 14s linear infinite;
   will-change: transform;
 }
 .marqueeReverse {
   animation-name: marqueeRight;
-  animation-duration: 17s;
+  animation-duration: 14s;
+  animation-direction: reverse;
 }
 
 .bgIconCell {
@@ -286,7 +286,9 @@
 .featuresStep {
   display: flex; flex-direction: column;
   align-items: center; width: 100%;
-  padding-top: 32px;
+  min-height: calc(100vh - 108px);
+  justify-content: center;
+  gap: 12px;
 }
 
 .launchCard {
@@ -294,14 +296,15 @@
   border-radius: 14px; overflow: hidden;
   border: 1px solid rgba(255,255,255,0.07);
   background: #111; cursor: pointer;
-  margin-bottom: 12px; flex-shrink: 0;
+  max-height: clamp(118px, 23vh, 172px);
+  flex-shrink: 0;
   transition: border-color 0.2s;
 }
 .launchCard:hover { border-color: rgba(255,255,255,0.15); }
 
 .launchPoster {
   width: 100%;
-  aspect-ratio: 16 / 7;
+  height: clamp(118px, 23vh, 172px);
   object-fit: cover; display: block;
 }
 
@@ -341,13 +344,17 @@
   border: 1px solid rgba(255,255,255,0.07);
   border-radius: 14px; overflow: hidden;
   text-align: left; cursor: pointer;
+  display: grid;
+  grid-template-columns: minmax(104px, 38%) 1fr;
+  min-height: 116px;
   transition: border-color 0.2s;
 }
 .featureCard:hover { border-color: rgba(255,255,255,0.15); }
 
 .featureMedia {
   width: 100%;
-  aspect-ratio: 16 / 9;
+  height: 100%;
+  min-height: 116px;
   background: #0d0d0d; overflow: hidden;
   position: relative;
 }
@@ -356,7 +363,13 @@
   object-fit: cover; display: block;
 }
 
-.featureBody { padding: 12px 14px 15px; }
+.featureBody {
+  min-width: 0;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
 
 .featureLabelRow {
   display: flex; align-items: center;
@@ -381,12 +394,12 @@
 .featureTitle {
   font-size: 12.5px; font-weight: 600;
   color: rgba(255,255,255,0.88);
-  margin: 0 0 5px; line-height: 1.4;
+  margin: 0 0 5px; line-height: 1.35;
 }
 .featureDesc {
   font-size: 11px;
   color: rgba(255,255,255,0.36);
-  line-height: 1.55; margin: 0;
+  line-height: 1.45; margin: 0;
 }
 
 .featurePlayOverlay {
@@ -415,6 +428,80 @@
   transition: color 0.15s;
 }
 .launchCard:hover .launchLabel { color: rgba(255,255,255,0.8); }
+
+.featuresNext {
+  margin-top: 8px;
+}
+
+@media (max-height: 720px) {
+  .featuresStep { gap: 10px; }
+  .featureCard {
+    grid-template-columns: minmax(88px, 34%) 1fr;
+    min-height: 96px;
+  }
+  .featureMedia { min-height: 96px; }
+  .featureBody { padding: 10px 12px; }
+  .featureLabelRow { margin-bottom: 3px; }
+  .featureTitle {
+    font-size: 12px;
+    line-height: 1.28;
+    margin-bottom: 4px;
+  }
+  .featureDesc {
+    font-size: 10.5px;
+    line-height: 1.35;
+  }
+  .featurePlayCircle {
+    width: 32px;
+    height: 32px;
+  }
+  .featuresNext { margin-top: 4px; }
+}
+
+@media (max-height: 660px) {
+  .launchCard,
+  .launchPoster {
+    max-height: 96px;
+    height: 96px;
+  }
+  .featureCard {
+    min-height: 86px;
+  }
+  .featureMedia { min-height: 86px; }
+  .featureBody { padding: 8px 10px; }
+  .featureIcon svg {
+    width: 13px;
+    height: 13px;
+  }
+  .featureLabel { font-size: 9px; }
+  .featureTitle {
+    font-size: 11px;
+    line-height: 1.22;
+    margin-bottom: 3px;
+  }
+  .featureDesc {
+    font-size: 10px;
+    line-height: 1.28;
+  }
+  .launchLabel {
+    bottom: 8px;
+    left: 10px;
+    font-size: 11px;
+  }
+  .launchPlayBtn {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+@media (max-width: 620px) {
+  .featuresGrid { grid-template-columns: 1fr; }
+  .featureCard {
+    grid-template-columns: minmax(96px, 34%) 1fr;
+    min-height: 100px;
+  }
+  .featureMedia { min-height: 100px; }
+}
 
 /* ══════════════════════════════════
    VIDEO MODAL

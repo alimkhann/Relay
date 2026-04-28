@@ -142,6 +142,8 @@ const hiddenFieldBySection = {
 } as const;
 
 const BILLING_UPGRADE_URL = "https://www.onrelay.app/settings?section=billing";
+const HTML_ONBOARDING_STEP_KEY = "relay.onboarding.htmlStep";
+const HTML_ONBOARDING_META_KEY = "relay.onboarding.htmlMeta";
 
 async function readErrorMessage(response: Response, fallback: string) {
   try {
@@ -894,6 +896,28 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       setStatus(
         cause instanceof Error ? cause.message : "Failed to open the Relay dashboard.",
       );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function continueGuidedSetup(step = 3) {
+    setBusy(true);
+    setStatus("Opening setup guide...");
+
+    try {
+      await chrome.storage.local.set({
+        [HTML_ONBOARDING_STEP_KEY]: step,
+        [HTML_ONBOARDING_META_KEY]: {
+          step,
+          updatedAt: new Date().toISOString(),
+          source: "extension",
+        },
+      });
+      await chrome.runtime.openOptionsPage();
+      setStatus("Opened setup guide.");
+    } catch (cause) {
+      setStatus(cause instanceof Error ? cause.message : "Could not open setup guide.");
     } finally {
       setBusy(false);
     }
@@ -2094,7 +2118,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             </button>
           </div>
 
-          <p className={styles.settingsVersion}>Relay · v{chrome?.runtime?.getManifest?.()?.version ?? "0.3.0"}</p>
+          <p className={styles.settingsVersion}>Relay · v{chrome?.runtime?.getManifest?.()?.version ?? "0.4.0"}</p>
         </section>
       ) : authenticating ? (
         <section className={styles.panel}>
@@ -2291,6 +2315,13 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   ? "Don't have an account? Sign up"
                   : "Already have an account? Sign in"}
               </button>
+              <button
+                className={styles.linkButton}
+                disabled={busy}
+                onClick={() => void continueGuidedSetup(2)}
+              >
+                Open full setup guide
+              </button>
             </>
           )}
         </section>
@@ -2350,6 +2381,13 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 onClick={() => void createProject()}
               >
                 {busy ? "Creating…" : "Create project"}
+              </button>
+              <button
+                className={styles.secondaryButton}
+                disabled={busy}
+                onClick={() => void continueGuidedSetup()}
+              >
+                Continue guided setup
               </button>
               <button
                 className={styles.secondaryButton}

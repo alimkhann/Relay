@@ -12,11 +12,13 @@ import Codex from "@lobehub/icons/es/Codex"
 import Antigravity from "@lobehub/icons/es/Antigravity"
 import Windsurf from "@lobehub/icons/es/Windsurf"
 import GithubCopilot from "@lobehub/icons/es/GithubCopilot"
+import { getRelaySession } from "../../storage/session"
 import { relayFetch } from "../../utils/api"
 import styles from "./OnboardingFlow.module.css"
 
 const BASE_URL = "https://onrelay.app"
 const STEP_KEY = "relay.onboarding.htmlStep"
+const META_KEY = "relay.onboarding.htmlMeta"
 const TOTAL_STEPS = 7 // 0:Welcome 1:Features 2:Auth 3:CreateProject 4:Walkthrough 5:Shortcuts 6:Pin
 
 const isMac = typeof navigator !== "undefined" && navigator.userAgent.includes("Mac")
@@ -70,7 +72,7 @@ const ROW2 = [ClaudeCode, Cursor, Codex, Antigravity, Windsurf, GithubCopilot]
 const ROW3 = [Grok, DeepSeek, ClaudeCode, OpenAI, Windsurf, Gemini]
 
 function MarqueeRow({ icons, reverse }: { icons: typeof ROW1; reverse?: boolean }) {
-  const quad = [...icons, ...icons, ...icons, ...icons]
+  const quad = [...icons, ...icons, ...icons]
   return (
     <div className={styles.marqueeRow}>
       <div className={`${styles.marqueeTrack} ${reverse ? styles.marqueeReverse : ""}`}>
@@ -157,7 +159,29 @@ function KbdKey({ children, wide }: { children: React.ReactNode; wide?: boolean 
 
 function navTo(step: number, setStep: (n: number) => void, setVisible: (v: boolean) => void) {
   setVisible(false)
-  setTimeout(() => { setStep(step); chrome.storage.local.set({ [STEP_KEY]: step }); setVisible(true) }, 220)
+  setTimeout(() => {
+    setStep(step)
+    chrome.storage.local.set({
+      [STEP_KEY]: step,
+      [META_KEY]: {
+        step,
+        updatedAt: new Date().toISOString(),
+        source: "html",
+      },
+    })
+    setVisible(true)
+  }, 220)
+}
+
+function hasCompletedOnboarding(session: Record<string, unknown>) {
+  const onboarding = session.onboarding as { status?: string } | undefined
+  const projectOptions = session.projectOptions
+  const projects = session.projects
+  return (
+    onboarding?.status === "completed" ||
+    (Array.isArray(projectOptions) && projectOptions.length > 0) ||
+    (Array.isArray(projects) && projects.length > 0)
+  )
 }
 
 // ── Main flow ─────────────────────────────────────────────────────────────────
@@ -166,7 +190,7 @@ export function OnboardingFlow() {
   const [step, setStep] = useState(0)
   const [visible, setVisible] = useState(false)
   const [isSignedIn, setIsSignedIn] = useState(false)
-  const [isNewAccount, setIsNewAccount] = useState(false)
+  const [canUseSetupFlow, setCanUseSetupFlow] = useState(false)
   const [authBusy, setAuthBusy] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
   const [email, setEmail] = useState("")
@@ -187,19 +211,36 @@ export function OnboardingFlow() {
 
   useEffect(() => {
     document.title = "Welcome to Relay — Let's Get Started"
-    chrome.storage.local.get([STEP_KEY, "relay.session"], (result: Record<string, unknown>) => {
-      const session = result["relay.session"] as Record<string, unknown> | undefined
-      const connected = session?.connected === true
-      setIsSignedIn(connected)
-      const saved = result[STEP_KEY]
-      if (typeof saved === "number" && saved >= 0 && saved < TOTAL_STEPS) setStep(saved)
+    let cancelled = false
+    const savedStep = new Promise<number | null>((resolve) => {
+      chrome.storage.local.get([STEP_KEY], (result: Record<string, unknown>) => {
+        const saved = result[STEP_KEY]
+        resolve(typeof saved === "number" && saved >= 0 && saved < TOTAL_STEPS ? saved : null)
+      })
+    })
+    void Promise.all([getRelaySession(), savedStep]).then(([session, saved]) => {
+      if (cancelled) return
+      const canSetup = session.connected && !hasCompletedOnboarding(session as unknown as Record<string, unknown>)
+      setIsSignedIn(session.connected)
+      setCanUseSetupFlow(canSetup)
+      if (saved !== null) {
+        const restoredStep =
+          session.connected && saved === 2
+            ? (canSetup ? 3 : 6)
+            : !canSetup && saved >= 3 && saved <= 5
+              ? (session.connected ? 6 : 2)
+              : saved
+        setStep(restoredStep)
+        if (restoredStep !== saved) chrome.storage.local.set({ [STEP_KEY]: restoredStep })
+      }
     })
     setTimeout(() => setVisible(true), 50)
+    return () => { cancelled = true }
   }, [])
 
-  // goTo: guards sign-up-only steps (3, 4, 5) from non-new accounts
+  // Steps 3-5 require an authenticated user who still needs project setup.
   function goTo(next: number) {
-    if (!isNewAccount && next >= 3 && next <= 5) return
+    if (!canUseSetupFlow && next >= 3 && next <= 5) return
     navTo(next, setStep, setVisible)
   }
   function next() { goTo(step + 1) }
@@ -210,15 +251,15 @@ export function OnboardingFlow() {
   }
 
   async function getSessionData() {
-    return new Promise<Record<string, unknown>>((res) =>
-      chrome.storage.local.get("relay.session", (r: Record<string, unknown>) => res((r["relay.session"] as Record<string, unknown>) ?? {}))
-    )
+    return getRelaySession() as Promise<unknown> as Promise<Record<string, unknown>>
   }
 
-  function afterAuth(newAcc: boolean) {
+  async function afterAuth() {
     setIsSignedIn(true)
-    setIsNewAccount(newAcc)
-    const target = newAcc ? 3 : 6
+    const stored = await getSessionData()
+    const needsProjectSetup = !hasCompletedOnboarding(stored)
+    setCanUseSetupFlow(needsProjectSetup)
+    const target = needsProjectSetup ? 3 : 6
     navTo(target, setStep, setVisible)
   }
 
@@ -228,9 +269,7 @@ export function OnboardingFlow() {
       const deviceName = isMac ? "Relay on Mac" : "Relay on browser"
       const result = await chrome.runtime.sendMessage({ type: "RELAY_GOOGLE_SIGN_IN", payload: { deviceName } }) as { ok: boolean; reason?: string } | undefined
       if (result?.ok) {
-        const stored = await getSessionData()
-        const hp = Array.isArray(stored.projects) && (stored.projects as unknown[]).length > 0
-        afterAuth(!hp)
+        await afterAuth()
       } else {
         setAuthError(result?.reason ?? "Sign-in failed. Try again.")
       }
@@ -250,7 +289,7 @@ export function OnboardingFlow() {
       if (result?.ok && result.requiresOtp) {
         setOtpRequired(true)
       } else if (result?.ok) {
-        afterAuth(intent === "sign-up")
+        await afterAuth()
       } else {
         setAuthError(result?.reason ?? "Sign-in failed. Try again.")
       }
@@ -268,7 +307,7 @@ export function OnboardingFlow() {
         payload: { email: email.trim(), password, intent, otp: otp.trim(), deviceName },
       }) as { ok: boolean; reason?: string } | undefined
       if (result?.ok) {
-        afterAuth(intent === "sign-up")
+        await afterAuth()
       } else {
         setAuthError(result?.reason ?? "Invalid code. Try again.")
       }
@@ -312,7 +351,7 @@ export function OnboardingFlow() {
 
   async function handleOpenRelay() {
     if (isSignedIn) await dismissWalkthrough()
-    chrome.storage.local.remove(STEP_KEY)
+    chrome.storage.local.remove([STEP_KEY, META_KEY])
     try {
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
       const windowId = tabs[0]?.windowId
@@ -358,7 +397,7 @@ export function OnboardingFlow() {
           )}
           {step === 4 && <StepWalkthrough onNext={() => navTo(5, setStep, setVisible)} />}
           {step === 5 && <StepShortcuts onNext={next} />}
-          {step === 6 && <StepPin onOpenRelay={handleOpenRelay} />}
+          {step === 6 && <StepPin isSignedIn={isSignedIn} onOpenRelay={handleOpenRelay} />}
         </div>
       )}
 
@@ -458,7 +497,7 @@ function StepFeatures({ onNext, onOpenVideo }: { onNext: () => void; onOpenVideo
         ))}
       </div>
 
-      <button className={styles.primaryBtn} onClick={onNext} style={{ marginTop: 20 }}>Next →</button>
+      <button className={`${styles.primaryBtn} ${styles.featuresNext}`} onClick={onNext}>Next →</button>
     </div>
   )
 }
@@ -531,7 +570,7 @@ function StepAuth({
         )}
       </div>
 
-      <button className={styles.skipLink} onClick={onSkip} style={{ marginTop: 16 }}>Skip for now</button>
+      <button className={styles.skipLink} onClick={onSkip} style={{ marginTop: 16 }}>Set up later</button>
     </div>
   )
 }
@@ -701,7 +740,31 @@ function openX() {
   chrome.tabs.create({ url: "https://x.com/alimmka_" }).catch(() => window.open("https://x.com/alimmka_", "_blank"))
 }
 
-function StepPin({ onOpenRelay }: { onOpenRelay: () => void }) {
+function StepPin({ isSignedIn, onOpenRelay }: { isSignedIn: boolean; onOpenRelay: () => void }) {
+  if (!isSignedIn) {
+    return (
+      <div className={styles.pinStep}>
+        <h1 className={styles.pinHeading}>Set up Relay when you're ready</h1>
+        <p className={styles.subheading} style={{ marginBottom: 28 }}>
+          Open the sidebar anytime to sign in, create a project, and finish setup.
+        </p>
+
+        <div className={styles.pinCard}>
+          <div className={styles.pinRow}>
+            <div className={styles.pinRowText}>
+              <p className={styles.pinRowTitle}>Setup saved for later</p>
+              <p className={styles.pinRowDesc}>Relay is installed. Your next step is signing in from the extension sidebar.</p>
+            </div>
+          </div>
+        </div>
+
+        <button className={styles.primaryBtn} style={{ marginTop: 20, minWidth: 280 }} onClick={onOpenRelay}>
+          Open Relay →
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className={styles.pinStep}>
       <h1 className={styles.pinHeading}>You're good to go</h1>
