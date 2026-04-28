@@ -4,7 +4,7 @@ import { join } from "node:path"
 
 import { describe, expect, it } from "vitest"
 
-import { RELAY_MCP_CLIENTS, getRelayMcpClientDescriptor } from "../../shared/src/index"
+import { RELAY_MCP_CLIENT_CATALOG, getRelayMcpClientDescriptor } from "../../shared/src/index"
 
 import type { DetectedIDE } from "./detect"
 import { getMcpCommand } from "./detect"
@@ -35,14 +35,17 @@ function dirnameOf(path: string) {
   return slash >= 0 ? path.slice(0, slash) : "."
 }
 
-describe("RELAY_MCP_CLIENTS", () => {
+describe("RELAY_MCP_CLIENT_CATALOG", () => {
   it("publishes audited compatibility metadata for every client", () => {
-    expect(RELAY_MCP_CLIENTS).toHaveLength(11)
-    for (const client of RELAY_MCP_CLIENTS) {
+    expect(RELAY_MCP_CLIENT_CATALOG.length).toBeGreaterThanOrEqual(32)
+    expect(new Set(RELAY_MCP_CLIENT_CATALOG.map((client) => client.id)).size).toBe(RELAY_MCP_CLIENT_CATALOG.length)
+    for (const client of RELAY_MCP_CLIENT_CATALOG) {
       expect(client.mcpConfig.length).toBeGreaterThan(0)
       expect(client.officialDocsUrl.startsWith("https://")).toBe(true)
       expect(client.lastVerifiedAt).toBe("2026-04-19")
       expect(["validated", "supported", "experimental"]).toContain(client.supportTier)
+      expect(["config", "cli", "cli-with-config-fallback", "manual"]).toContain(client.installMethod)
+      expect(client.serverPropertyPath.length).toBeGreaterThan(0)
     }
   })
 })

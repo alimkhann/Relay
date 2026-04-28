@@ -60,7 +60,7 @@ export default async function DashboardPage({
               Create a project
             </h1>
             <p className="text-[15px] leading-relaxed text-[var(--relay-muted)]">
-              Define a project boundary so Relay can route the right chats to the right context.
+              Define a project boundary so Relay can route the right chats to the right context. The extension will pick this up automatically.
             </p>
           </header>
           <CreateProjectForm

@@ -5,15 +5,20 @@ const {
   outroMock,
   selectMock,
   multiselectMock,
+  confirmMock,
   isCancelMock,
   loadConfigMock,
   saveConfigMock,
   getConfigPathMock,
-  detectIDEsMock,
-  installMcpConfigMock,
+  clearConfigMock,
+  buildManualMcpConfigMock,
+  getAllClientsMock,
+  installMcpConfigDetailedMock,
   installClientSetupMock,
   validateInstalledClientSetupMock,
   validateInstalledMcpConfigMock,
+  uninstallMcpConfigMock,
+  uninstallClientSetupMock,
   printBannerMock,
   successMock,
   infoMock,
@@ -25,15 +30,20 @@ const {
   outroMock: vi.fn(),
   selectMock: vi.fn(),
   multiselectMock: vi.fn(),
+  confirmMock: vi.fn(),
   isCancelMock: vi.fn().mockReturnValue(false),
   loadConfigMock: vi.fn(),
   saveConfigMock: vi.fn(),
   getConfigPathMock: vi.fn().mockReturnValue("/tmp/relay-mcp.json"),
-  detectIDEsMock: vi.fn(),
-  installMcpConfigMock: vi.fn(),
+  clearConfigMock: vi.fn(),
+  buildManualMcpConfigMock: vi.fn().mockReturnValue({ command: "npx", args: ["-y", "-p", "@onrelay/mcp", "relay-mcp"] }),
+  getAllClientsMock: vi.fn(),
+  installMcpConfigDetailedMock: vi.fn(),
   installClientSetupMock: vi.fn(),
   validateInstalledClientSetupMock: vi.fn(),
   validateInstalledMcpConfigMock: vi.fn(),
+  uninstallMcpConfigMock: vi.fn(),
+  uninstallClientSetupMock: vi.fn(),
   printBannerMock: vi.fn(),
   successMock: vi.fn(),
   infoMock: vi.fn(),
@@ -47,6 +57,7 @@ vi.mock("@clack/prompts", () => ({
   outro: outroMock,
   select: selectMock,
   multiselect: multiselectMock,
+  confirm: confirmMock,
   isCancel: isCancelMock,
 }))
 
@@ -54,11 +65,15 @@ vi.mock("@relay/cli-core", () => ({
   loadConfig: loadConfigMock,
   saveConfig: saveConfigMock,
   getConfigPath: getConfigPathMock,
-  detectIDEs: detectIDEsMock,
-  installMcpConfig: installMcpConfigMock,
+  clearConfig: clearConfigMock,
+  buildManualMcpConfig: buildManualMcpConfigMock,
+  getAllClients: getAllClientsMock,
+  installMcpConfigDetailed: installMcpConfigDetailedMock,
   installClientSetup: installClientSetupMock,
   validateInstalledClientSetup: validateInstalledClientSetupMock,
   validateInstalledMcpConfig: validateInstalledMcpConfigMock,
+  uninstallMcpConfig: uninstallMcpConfigMock,
+  uninstallClientSetup: uninstallClientSetupMock,
   printBanner: printBannerMock,
   success: successMock,
   info: infoMock,
@@ -76,15 +91,21 @@ describe("runWizardFlow analytics", () => {
     outroMock.mockReset()
     selectMock.mockReset()
     multiselectMock.mockReset()
+    confirmMock.mockReset()
     isCancelMock.mockReset()
     isCancelMock.mockReturnValue(false)
     loadConfigMock.mockReset()
     saveConfigMock.mockReset()
-    detectIDEsMock.mockReset()
-    installMcpConfigMock.mockReset()
+    clearConfigMock.mockReset()
+    buildManualMcpConfigMock.mockReset()
+    buildManualMcpConfigMock.mockReturnValue({ command: "npx", args: ["-y", "-p", "@onrelay/mcp", "relay-mcp"] })
+    getAllClientsMock.mockReset()
+    installMcpConfigDetailedMock.mockReset()
     installClientSetupMock.mockReset()
     validateInstalledClientSetupMock.mockReset()
     validateInstalledMcpConfigMock.mockReset()
+    uninstallMcpConfigMock.mockReset()
+    uninstallClientSetupMock.mockReset()
     printBannerMock.mockReset()
     successMock.mockReset()
     infoMock.mockReset()
@@ -95,7 +116,7 @@ describe("runWizardFlow analytics", () => {
 
   it("captures the happy-path wizard lifecycle", async () => {
     loadConfigMock.mockResolvedValue(null)
-    detectIDEsMock.mockResolvedValue([])
+    getAllClientsMock.mockResolvedValue([])
     startUnifiedAuthFlowMock.mockResolvedValue({
       apiBase: "https://www.onrelay.app",
       token: "token",
@@ -132,6 +153,7 @@ describe("runWizardFlow analytics", () => {
 
   it("captures auth failure lifecycle events", async () => {
     loadConfigMock.mockResolvedValue(null)
+    getAllClientsMock.mockResolvedValue([])
     startUnifiedAuthFlowMock.mockRejectedValue(new Error("auth failed"))
 
     const analyticsClient = {

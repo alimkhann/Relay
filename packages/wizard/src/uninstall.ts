@@ -23,7 +23,7 @@ export async function runUninstall() {
 
     const selectedIdeIds = await p.multiselect({
       message: "Remove Relay MCP config from:",
-      options: choices,
+      options: choices as Array<{ value: string; label: string }>,
       initialValues: choices.map((c) => c.value),
       required: false,
     })

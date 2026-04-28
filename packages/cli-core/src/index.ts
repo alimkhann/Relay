@@ -11,10 +11,22 @@ export {
 export {
   type DetectedIDE,
   detectIDEs,
+  detectSupportedClients,
+  getAllClients,
+  resolveClientInstallTarget,
+  getClientCompatibilityMatrix,
   isDevMode,
   getMcpCommand
 } from "./detect"
-export { installMcpConfig, uninstallMcpConfig, validateInstalledMcpConfig } from "./install-mcp"
+export {
+  type InstallMcpConfigResult,
+  type InstallMcpConfigStatus,
+  installMcpConfig,
+  installMcpConfigDetailed,
+  uninstallMcpConfig,
+  validateInstalledMcpConfig,
+  buildManualMcpConfig,
+} from "./install-mcp"
 export {
   installClientSetup,
   uninstallClientSetup,

@@ -613,6 +613,7 @@ export async function installClientSetup(ide: DetectedIDE): Promise<ClientSetupR
     case "claude":
       return installClaudeSetup(ide)
     case "codex-cli":
+    case "codex-app":
       return installCodexSetup(ide)
     case "cursor-project":
     case "cursor-global":
@@ -786,6 +787,7 @@ export async function uninstallClientSetup(ide: DetectedIDE): Promise<boolean> {
     case "claude":
       return uninstallClaudeSetup(ide)
     case "codex-cli":
+    case "codex-app":
       return uninstallCodexSetup(ide)
     case "cursor-project":
     case "cursor-global":
@@ -818,7 +820,8 @@ export async function validateInstalledClientSetup(ide: DetectedIDE): Promise<bo
         && Boolean(settings.data.hooks?.StopFailure?.some((group) => group.hooks.some((hook) => isClaudeRelayHook(hook))))
         && hasManagedBlock(instructions, "claude-code")
     }
-    case "codex-cli": {
+    case "codex-cli":
+    case "codex-app": {
       const instructions = await readText(resolveCodexInstructionsPath(ide, await readText(ide.mcpConfigPath)))
       return hasManagedBlock(instructions, "codex")
     }

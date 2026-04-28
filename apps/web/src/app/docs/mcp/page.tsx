@@ -1,5 +1,5 @@
 import { Suspense } from "react"
-import { RELAY_MCP_CLIENTS } from "@relay/shared"
+import { RELAY_MCP_CLIENT_CATALOG } from "@relay/shared"
 
 import { PageTelemetry } from "@/components/telemetry/page-telemetry"
 import { DocsFooterNav } from "@/components/docs/docs-footer-nav"
@@ -90,7 +90,7 @@ export default function McpDocsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--relay-line)]">
-                {RELAY_MCP_CLIENTS.map((client) => (
+                {RELAY_MCP_CLIENT_CATALOG.map((client) => (
                   <tr key={client.id}>
                     <td className="px-4 py-3 text-[var(--relay-ink)]">
                       <a href={client.officialDocsUrl} className="underline underline-offset-2">

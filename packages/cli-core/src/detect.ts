@@ -1,6 +1,13 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-export { type DetectedIDE, detectIDEs, getClientCompatibilityMatrix } from "./client-registry"
+export {
+  type DetectedIDE,
+  detectIDEs,
+  detectSupportedClients,
+  getAllClients,
+  resolveClientInstallTarget,
+  getClientCompatibilityMatrix,
+} from "./client-registry"
 
 const RELAY_PUBLISHED_MCP_ARGS = ["-y", "-p", "@onrelay/mcp", "relay-mcp"] as const
 

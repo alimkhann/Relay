@@ -1,4 +1,5 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises"
+import { spawnSync } from "node:child_process"
 import { dirname } from "node:path"
 
 import type { DetectedIDE } from "./detect"
@@ -9,6 +10,21 @@ interface InstallMcpConfigOptions {
   mode?: "local" | "remote"
   remoteUrl?: string
   bearerToken?: string
+  preferCli?: boolean
+}
+
+export type InstallMcpConfigStatus = "installed" | "updated" | "already-configured" | "skipped" | "failed"
+export type InstallMcpConfigMethod = "config" | "cli" | "manual"
+
+export interface InstallMcpConfigResult {
+  clientId: DetectedIDE["id"]
+  clientName: string
+  status: InstallMcpConfigStatus
+  method: InstallMcpConfigMethod
+  path: string | null
+  command: string | null
+  message: string
+  error?: string
 }
 
 interface GenericMcpServerConfig {
@@ -77,6 +93,16 @@ function buildRelayServerConfig(ide: DetectedIDE, options: Required<InstallMcpCo
   }
 
   return localConfig
+}
+
+export function buildManualMcpConfig(ide: DetectedIDE, options: InstallMcpConfigOptions = {}): GenericMcpServerConfig {
+  const normalized: Required<InstallMcpConfigOptions> = {
+    mode: options.mode ?? "local",
+    remoteUrl: options.remoteUrl ?? "",
+    bearerToken: options.bearerToken ?? "",
+    preferCli: options.preferCli ?? true,
+  }
+  return buildRelayServerConfig(ide, normalized)
 }
 
 function tomlString(value: string) {
@@ -275,11 +301,123 @@ export async function installMcpConfig(
   ide: DetectedIDE,
   options: InstallMcpConfigOptions = {}
 ): Promise<void> {
+  const result = await installMcpConfigDetailed(ide, { ...options, preferCli: options.preferCli ?? false })
+  if (result.status === "failed") {
+    throw new Error(result.error ?? result.message)
+  }
+}
+
+function findBinary(names: readonly string[]) {
+  for (const name of names) {
+    const result = process.platform === "win32" ? spawnSync("where", [name], {
+      stdio: "ignore",
+    }) : spawnSync("sh", ["-c", `command -v ${JSON.stringify(name)}`], { stdio: "ignore" })
+    if (result.status === 0) return name
+  }
+  return null
+}
+
+function runCliInstall(ide: DetectedIDE, options: Required<InstallMcpConfigOptions>): InstallMcpConfigResult | null {
+  if (!options.preferCli) return null
+  if (ide.detected !== true) return null
+  if (ide.installMethod !== "cli" && ide.installMethod !== "cli-with-config-fallback") return null
+
+  const binary = findBinary(ide.binaryNames)
+  if (!binary) {
+    if (ide.installMethod === "cli") {
+      return {
+        clientId: ide.id,
+        clientName: ide.name,
+        status: "failed",
+        method: "cli",
+        path: null,
+        command: null,
+        message: `${ide.name} CLI was not found.`,
+        error: `${ide.name} CLI was not found.`,
+      }
+    }
+    return null
+  }
+
+  let args: string[] | null = null
+  if (ide.id === "claude") {
+    if (options.mode === "remote") {
+      args = ["mcp", "add", "--transport", "http", "relay", options.remoteUrl, "--header", `Authorization: Bearer ${options.bearerToken}`, "-s", "user"]
+    } else {
+      const { command, args: commandArgs } = getMcpCommand()
+      args = ["mcp", "add", "relay", "-s", "user", "--", command, ...commandArgs]
+    }
+  }
+
+  if (ide.id === "codex-cli" || ide.id === "codex-app") {
+    if (options.mode === "remote") return null
+    const { command, args: commandArgs } = getMcpCommand()
+    args = ["mcp", "add", "relay", "--", command, ...commandArgs]
+  }
+
+  if (!args) return null
+
+  const commandText = `${binary} ${args.map((arg) => JSON.stringify(arg)).join(" ")}`
+  const result = spawnSync(binary, args, {
+    encoding: "utf-8",
+    stdio: "pipe",
+  })
+
+  if (result.status === 0 && !result.error) {
+    return {
+      clientId: ide.id,
+      clientName: ide.name,
+      status: "installed",
+      method: "cli",
+      path: ide.mcpConfigPath,
+      command: commandText,
+      message: `${ide.name} configured via native CLI.`,
+    }
+  }
+
+  if (ide.installMethod === "cli") {
+    const error = result.error?.message || result.stderr?.trim() || `${ide.name} CLI install failed.`
+    return {
+      clientId: ide.id,
+      clientName: ide.name,
+      status: "failed",
+      method: "cli",
+      path: null,
+      command: commandText,
+      message: error,
+      error,
+    }
+  }
+
+  return null
+}
+
+export async function installMcpConfigDetailed(
+  ide: DetectedIDE,
+  options: InstallMcpConfigOptions = {}
+): Promise<InstallMcpConfigResult> {
   const normalized: Required<InstallMcpConfigOptions> = {
     mode: options.mode ?? "local",
     remoteUrl: options.remoteUrl ?? "",
     bearerToken: options.bearerToken ?? "",
+    preferCli: options.preferCli ?? true,
   }
+
+  if (ide.installMethod === "manual" || ide.configFormat === "manual") {
+    return {
+      clientId: ide.id,
+      clientName: ide.name,
+      status: "skipped",
+      method: "manual",
+      path: ide.mcpConfigPath,
+      command: null,
+      message: ide.manualSetupNotes,
+    }
+  }
+
+  const cliResult = runCliInstall(ide, normalized)
+  if (cliResult) return cliResult
+
   const relayConfig = buildRelayServerConfig(ide, normalized)
 
   await mkdir(dirname(ide.mcpConfigPath), { recursive: true })
@@ -288,13 +426,54 @@ export async function installMcpConfig(
     const raw = await loadCodexConfig(ide.mcpConfigPath)
     const repaired = repairCodexToml(raw)
     const next = upsertCodexToml(repaired, buildCodexTomlBlock(ide, normalized))
+    const existed = /\[mcp_servers(?:\."?relay"?|\.relay)\]/.test(raw)
+    if (next === raw) {
+      return {
+        clientId: ide.id,
+        clientName: ide.name,
+        status: "already-configured",
+        method: "config",
+        path: ide.mcpConfigPath,
+        command: null,
+        message: `${ide.name} already has Relay MCP configured.`,
+      }
+    }
     await writeFile(ide.mcpConfigPath, next, "utf-8")
-    return
+    return {
+      clientId: ide.id,
+      clientName: ide.name,
+      status: existed ? "updated" : "installed",
+      method: "config",
+      path: ide.mcpConfigPath,
+      command: null,
+      message: `${ide.name} MCP config ${existed ? "updated" : "installed"}.`,
+    }
   }
 
   const existing = await loadJsonConfig(ide.mcpConfigPath)
+  const wasInstalled = Boolean(existing.data.mcpServers?.relay || existing.data.servers?.relay || (existing.data.mcp && typeof existing.data.mcp === "object" && "relay" in existing.data.mcp))
   const next = applyJsoncEdits(existing.raw, buildJsonInstallEdits(ide, relayConfig))
+  if (!next.changed) {
+    return {
+      clientId: ide.id,
+      clientName: ide.name,
+      status: "already-configured",
+      method: "config",
+      path: ide.mcpConfigPath,
+      command: null,
+      message: `${ide.name} already has Relay MCP configured.`,
+    }
+  }
   await writeFile(ide.mcpConfigPath, next.text, "utf-8")
+  return {
+    clientId: ide.id,
+    clientName: ide.name,
+    status: wasInstalled ? "updated" : "installed",
+    method: "config",
+    path: ide.mcpConfigPath,
+    command: null,
+    message: `${ide.name} MCP config ${wasInstalled ? "updated" : "installed"}.`,
+  }
 }
 
 export async function uninstallMcpConfig(ide: DetectedIDE): Promise<boolean> {
