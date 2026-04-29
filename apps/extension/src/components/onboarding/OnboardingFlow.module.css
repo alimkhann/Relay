@@ -340,8 +340,9 @@
 
 
 .featuresGrid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
   gap: 8px; width: 100%;
   flex: 1;
   min-height: 0;
@@ -352,32 +353,31 @@
   border: 1px solid rgba(255,255,255,0.07);
   border-radius: 14px; overflow: hidden;
   text-align: left; cursor: pointer;
-  display: grid;
-  grid-template-columns: minmax(80px, 36%) 1fr;
-  flex: 1;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   transition: border-color 0.2s;
 }
 .featureCard:hover { border-color: rgba(255,255,255,0.15); }
 
 .featureMedia {
-  width: 100%;
-  height: 100%;
+  flex: 1;
   min-height: 0;
   background: #0d0d0d; overflow: hidden;
   position: relative;
 }
 .featureMedia video {
+  position: absolute; inset: 0;
   width: 100%; height: 100%;
   object-fit: cover; display: block;
 }
 
 .featureBody {
+  flex-shrink: 0;
   min-width: 0;
-  padding: 12px 14px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
 }
 
 .featureLabelRow {
@@ -412,7 +412,7 @@
 }
 
 .featurePlayOverlay {
-  position: absolute; inset: 0;
+  position: absolute; inset: 0; z-index: 1;
   display: flex; align-items: center; justify-content: center;
   pointer-events: none;
   transition: opacity 0.25s;
@@ -446,36 +446,22 @@
 @media (max-height: 720px) {
   .featuresStep { gap: 8px; }
   .launchCard { height: 170px; }
-  .featureBody { padding: 10px 12px; }
+  .featureBody { padding: 8px 10px; }
   .featureLabelRow { margin-bottom: 3px; }
-  .featureTitle {
-    font-size: 12px;
-    line-height: 1.28;
-    margin-bottom: 4px;
-  }
-  .featureDesc {
-    font-size: 10.5px;
-    line-height: 1.35;
-  }
-  .featurePlayCircle {
-    width: 32px;
-    height: 32px;
-  }
+  .featureTitle { font-size: 12px; line-height: 1.28; margin-bottom: 3px; }
+  .featureDesc { font-size: 10.5px; line-height: 1.35; }
+  .featurePlayCircle { width: 32px; height: 32px; }
   .featuresNext { margin-top: 4px; }
 }
 
 @media (max-height: 660px) {
   .featuresStep { gap: 6px; }
   .launchCard { height: 140px; }
-  .featureBody { padding: 8px 10px; }
+  .featureBody { padding: 6px 8px; }
   .featureIcon svg { width: 13px; height: 13px; }
   .featureLabel { font-size: 9px; }
-  .featureTitle {
-    font-size: 11px;
-    line-height: 1.22;
-    margin-bottom: 3px;
-  }
-  .featureDesc { font-size: 10px; line-height: 1.28; }
+  .featureTitle { font-size: 11px; line-height: 1.22; margin-bottom: 2px; }
+  .featureDesc { display: none; }
   .launchLabel { bottom: 8px; left: 10px; font-size: 11px; }
   .launchPlayBtn { width: 48px; height: 48px; }
 }
