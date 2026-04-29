@@ -226,9 +226,9 @@ export function OnboardingFlow() {
       if (saved !== null) {
         const restoredStep =
           session.connected && saved === 2
-            ? (canSetup ? 3 : 6)
-            : !canSetup && saved >= 3 && saved <= 5
-              ? (session.connected ? 6 : 2)
+            ? (canSetup ? 3 : 5)
+            : !canSetup && saved === 3
+              ? (session.connected ? 5 : 2)
               : saved
         setStep(restoredStep)
         if (restoredStep !== saved) chrome.storage.local.set({ [STEP_KEY]: restoredStep })
@@ -238,9 +238,10 @@ export function OnboardingFlow() {
     return () => { cancelled = true }
   }, [])
 
-  // Steps 3-5 require an authenticated user who still needs project setup.
+  // Step 3 (CreateProject) requires auth + no completed onboarding.
+  // Steps 4-5 (Walkthrough, Shortcuts) are always navigable.
   function goTo(next: number) {
-    if (!canUseSetupFlow && next >= 3 && next <= 5) return
+    if (!canUseSetupFlow && next === 3) return
     navTo(next, setStep, setVisible)
   }
   function next() { goTo(step + 1) }
@@ -259,7 +260,7 @@ export function OnboardingFlow() {
     const stored = await getSessionData()
     const needsProjectSetup = !hasCompletedOnboarding(stored)
     setCanUseSetupFlow(needsProjectSetup)
-    const target = needsProjectSetup ? 3 : 6
+    const target = needsProjectSetup ? 3 : 5
     navTo(target, setStep, setVisible)
   }
 
