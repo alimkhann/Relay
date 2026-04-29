@@ -20,7 +20,7 @@ export const composeContextSchema = z.object({
 export const bootstrapRequestSchema = z.object({
   targetProfileKey: targetProfileKeySchema,
   kind: z.enum(["quick_continuity", "fresh_chat_bootstrap"]).default("fresh_chat_bootstrap"),
-  packetMode: z.enum(["chat_new", "chat_continue", "agent_quick_continuity", "agent_full_bootstrap"]).optional(),
+  packetMode: z.enum(["chat_new", "chat_continue", "chat_smart_delta", "agent_quick_continuity", "agent_full_bootstrap"]).optional(),
   deep: z.boolean().optional(),
   since: isoDatetime.optional(),
   syncSurface: z.enum(["mcp", "cli", "chatgpt", "claude", "codex", "opencode", "gemini", "cursor", "warp", "windsurf", "antigravity", "grok", "perplexity", "deepseek"]).optional()

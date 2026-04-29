@@ -1824,7 +1824,11 @@ function updateTabPageState(tabId: number, page: RelayPageState) {
   }
 }
 
-async function captureTab(projectId: string, tabId: number) {
+async function captureTab(
+  projectId: string,
+  tabId: number,
+  options: { processingMode?: "default" | "fast_ack" } = {},
+) {
   const startedAt = Date.now();
   const state = getOrCreateTabState(tabId);
   console.warn("[Relay BG] capture start", {
@@ -1914,6 +1918,7 @@ async function captureTab(projectId: string, tabId: number) {
         method: "POST",
         body: JSON.stringify({
           projectId,
+          processingMode: options.processingMode,
           ...capturePayload,
         }),
       },
@@ -2960,7 +2965,9 @@ async function captureObservedChange(
       savingToastShownAt = Date.now();
     }
 
-    const result = await captureTab(projectId, tabId);
+    const result = await captureTab(projectId, tabId, {
+      processingMode: explicitProjectId ? "fast_ack" : "default",
+    });
     if (result?.ok) {
       if (savingToastShownAt !== null) {
         const remainingDelay = getSavingToastMinimumDelayMs({
@@ -3160,8 +3167,19 @@ async function captureObservedChange(
 
       return {
         ok: true,
+        projectId,
+        projectName: associationProjectName ?? projectName ?? state.projectName ?? null,
         turns: result.turns ?? state.page.turns ?? 0,
         digestQueued: Boolean(result.digestQueued),
+        digestStrategy: result.digestStrategy,
+        digestStatus:
+          result.digestStrategy === "ai" && result.digestOutcome?.status === "completed"
+            ? "analyzed"
+            : result.digestStrategy === "deferred"
+              ? "queued"
+              : null,
+        skippedInsertedContext: Boolean(result.skippedInsertedContext),
+        reason: result.reason ?? null,
         captured: true,
         autoAssociated,
         sessionId: result.sessionId ?? null,
@@ -3409,7 +3427,8 @@ async function insertProjectBrief(
     body: JSON.stringify({
       targetProfileKey,
       kind,
-      deep: kind === "fresh_chat_bootstrap",
+      packetMode: "chat_smart_delta",
+      deep: false,
       syncSurface: pageState.platform ?? undefined,
     }),
   });

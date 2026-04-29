@@ -111,6 +111,56 @@ describe("renderBootstrapMarkdown", () => {
     expect(content).not.toContain("None recorded")
   })
 
+  it("renders a compact browser-chat smart delta with cross-surface context", () => {
+    const content = renderBootstrapMarkdown(shape, {
+      ...profile,
+      key: "chatgpt_planning",
+      name: "ChatGPT",
+      platform: "chatgpt",
+    }, "fresh_chat_bootstrap", [
+      {
+        id: "mem-1",
+        projectId: "project-1",
+        sourceTurnId: null,
+        type: "decision",
+        title: null,
+        content: "Use local stdio MCP as the default coding-agent transport.",
+        pinned: true,
+        isArchived: false,
+        sortOrder: null,
+        tags: [],
+        metadata: {},
+        createdBy: "user-1",
+        createdAt: "2026-04-13T00:00:00.000Z",
+        updatedAt: "2026-04-13T00:00:00.000Z",
+        sourceSurface: "mcp",
+        sourceConversationId: null,
+        sourceUrl: null,
+        capturedAt: "2026-04-13T00:00:00.000Z",
+        derivedFrom: [],
+        embedding: null,
+        embeddingModel: null,
+        forgetAfter: null,
+        lastReaffirmedAt: null,
+      },
+    ], {
+      packetMode: "chat_smart_delta",
+      delta: {
+        summaries: ["Codex finished the extension capture audit."],
+        decisions: [],
+        constraints: [],
+        tasks: ["Add a manual save destination label."],
+        notes: [],
+      },
+    })
+
+    expect(content).toContain("compact Relay context")
+    expect(content).toContain("## Foundational Truths")
+    expect(content).toContain("## Likely Missing From This Chat")
+    expect(content).toContain("Codex finished the extension capture audit.")
+    expect(content.length / 4).toBeLessThan(1200)
+  })
+
   it("renders agent quick continuity differently from chat continuation", () => {
     const content = renderBootstrapMarkdown(shape, profile, "quick_continuity", [], {
       packetMode: "agent_quick_continuity",

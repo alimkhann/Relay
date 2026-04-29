@@ -324,6 +324,7 @@ function buildRelayBehaviorBody(clientName: string, options: { hooks?: string[];
     "- Before architecture, product, or process decisions, prefer `search_context` or `recall_context` when local context may be incomplete.",
     "- Use `get_project_state` when you need the structured objective, constraints, or open tasks instead of a prose brief.",
     "- Use `add_memory` only for clearly confirmed durable facts: decisions, constraints, tasks, and stable product truths. Do not save speculative brainstorming until it is confirmed.",
+    "- For coding work, save files/modules touched, public API or schema changes, migrations, tests run, unresolved blockers, and next steps when those facts would help a future session continue.",
     "- Use `checkpoint_context` only before compaction-equivalent risk, task switches, or explicit milestone saves. Use `save_context` only when wrapping up a meaningful unit of work.",
     hookLine,
     skillLine,

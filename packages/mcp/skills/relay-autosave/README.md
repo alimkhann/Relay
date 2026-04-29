@@ -57,17 +57,6 @@ project directory to scope it to that project):
         ]
       }
     ],
-    "Stop": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "npx -y -p @onrelay/mcp relay-flush stop --quiet"
-          }
-        ]
-      }
-    ],
     "StopFailure": [
       {
         "matcher": "*",
@@ -93,10 +82,9 @@ Then restart Claude Code. Confirm hooks loaded via `/hooks`.
 |-------------|------------------------------------------------------|---------------|
 | `PreCompact`| Right before Claude Code compacts the chat           | Catch everything before the context is summarized. |
 | `SessionEnd`| When the session ends (normal exit)                  | Graceful save on close. |
-| `Stop`      | When the user interrupts / stops the agent           | Save partial progress before handing control back. |
 | `StopFailure`| When the turn ends because the provider errors      | Best-effort save on failure, not just clean exits. |
 
-All three run the same command. The `reason` argument is telemetry-only — the
+All hooks run the same command. The `reason` argument is telemetry-only — the
 flush itself always does the same thing: sweep any open sessions for this
 project, run digest + reconcile, close them.
 

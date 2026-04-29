@@ -1390,7 +1390,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
 
     setBusy(true);
-    setStatus("Capturing visible turns…");
+    setStatus(`Saving to ${activeState.projectName ?? "the selected project"}…`);
 
     try {
       const result = (await chrome.runtime.sendMessage({
@@ -1404,14 +1404,17 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         turns?: number;
         reason?: string;
         digestQueued?: boolean;
+        digestStatus?: "analyzed" | "queued" | null;
+        projectName?: string | null;
         skippedInsertedContext?: boolean;
       };
 
+      const savedProjectName = result?.projectName ?? activeState.projectName ?? "the selected project";
       setStatus(
         result?.ok
           ? (result.skippedInsertedContext
-              ? (result.reason ?? "Relay found no new edits after the inserted brief.")
-              : `Captured ${result.turns ?? 0} visible turns.${result?.digestQueued ? " Relay is updating your project brief." : ""}`)
+              ? (result.reason ?? `Saved to ${savedProjectName}. Relay found no new edits after the inserted brief.`)
+              : `Saved to ${savedProjectName}.${result?.digestStatus === "analyzed" ? " Relay analyzed it." : result?.digestStatus === "queued" || result?.digestQueued ? " Relay is updating your project brief." : ""}`)
           : (result?.reason ?? "Capture failed."),
       );
 
@@ -1439,7 +1442,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
 
     setBusy(true);
-    setStatus("Associating this chat…");
+    setStatus(`Saving to ${activeState.projectName ?? "the selected project"}…`);
 
     try {
       const result = (await chrome.runtime.sendMessage({
@@ -1453,14 +1456,17 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         turns?: number;
         reason?: string;
         digestQueued?: boolean;
+        digestStatus?: "analyzed" | "queued" | null;
+        projectName?: string | null;
         skippedInsertedContext?: boolean;
       };
 
+      const savedProjectName = result?.projectName ?? activeState.projectName ?? "the selected project";
       setStatus(
         result?.ok
           ? (result.skippedInsertedContext
-              ? (result.reason ?? "This chat is linked to the project, but Relay found no new edits after the inserted brief.")
-              : `Associated this chat with the selected project.${result?.digestQueued ? " Relay is updating your project brief." : ""}`)
+              ? (result.reason ?? `Saved to ${savedProjectName}. Relay found no new edits after the inserted brief.`)
+              : `Saved to ${savedProjectName}.${result?.digestStatus === "analyzed" ? " Relay analyzed it." : result?.digestStatus === "queued" || result?.digestQueued ? " Relay is updating your project brief." : ""}`)
           : (result?.reason ?? "Associate chat failed."),
       );
 
@@ -1785,9 +1791,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
 
     const previousAssociation = activeState.chatAssociation;
+    const projectName = previousAssociation.projectName ?? "the suggested project";
     setAssociationAction("approving_held");
     setBusy(true);
-    setStatus("Saving this chat to the suggested project…");
+    setStatus(`Saving to ${projectName}…`);
     setActiveState((current) => ({
       ...current,
       chatAssociation: {
@@ -1810,7 +1817,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         throw new Error(result?.reason ?? "Capture failed.");
       }
 
-      setStatus("Chat saved to the suggested project.");
+      setStatus(`Saved to ${projectName}.`);
       await refreshLocalSession();
       await refreshActiveProjectState();
     } catch (cause) {
@@ -2767,7 +2774,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                     }
                     onClick={() => void associateCurrentChat()}
                   >
-                    Link & save
+                    {busy ? "Saving…" : "Link & save"}
                   </button>
                 ) : null}
                 {activeState.chatAssociation.status === "none" ? (
@@ -2778,7 +2785,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                     }
                     onClick={() => void associateCurrentChat()}
                   >
-                    Link & save
+                    {busy ? "Saving…" : "Link & save"}
                   </button>
                 ) : null}
               </div>

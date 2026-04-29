@@ -144,4 +144,41 @@ describe("filterInsertedContextCapture", () => {
     expect(result.turns).toHaveLength(1)
     expect(result.turns[0]?.content).toContain("preserve chat association")
   })
+
+  it("keeps battle-test discussion after a brief insertion without saving the brief", () => {
+    const insertedContent = [
+      "## Project Brief",
+      "Relay is a cross-AI context management tool.",
+      "## Constraints",
+      "- Do not touch apps/extension unless explicitly requested.",
+      "## How To Continue",
+      "Conduct a feature comparison analysis between Nia MCP and Relay.",
+    ].join("\n")
+
+    const result = filterInsertedContextCapture({
+      pending: {
+        ...pending,
+        insertedContent,
+      },
+      turns: [
+        makeTurn(
+          "user",
+          `${insertedContent}\n\nI want to battle test Relay by using it to create real projects`,
+          0,
+        ),
+        makeTurn(
+          "assistant",
+          "Yes. The best way to validate Relay is to use it on three real projects: Relay development, Sunnad product design, and a docs MCP tool. Track whether fresh sessions understand the project quickly, whether Relay captures decisions and tasks instead of noise, and whether re-briefing decreases.",
+          1,
+        ),
+      ],
+    })
+
+    expect(result.kind).toBe("capture")
+    if (result.kind !== "capture") return
+    expect(result.turns.some((turn) => turn.content.includes("## Project Brief"))).toBe(false)
+    expect(result.turns[0]?.content).toContain("battle test Relay")
+    expect(result.turns[1]?.content).toContain("three real projects")
+    expect(result.metadata.deltaKind).toBe("appended")
+  })
 })

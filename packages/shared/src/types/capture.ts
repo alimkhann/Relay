@@ -46,6 +46,7 @@ export interface PageMetadata {
 export interface CapturePayload {
   projectId: string
   platform: SupportedPlatform
+  processingMode?: "default" | "fast_ack"
   session: {
     title: string | null
     url: string

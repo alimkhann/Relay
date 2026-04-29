@@ -38,7 +38,7 @@ interface BootstrapProjectSettingsContext {
   includeTentativeUpdatesInPackets: boolean
 }
 
-type PacketMode = "chat_new" | "chat_continue" | "agent_quick_continuity" | "agent_full_bootstrap"
+type PacketMode = "chat_new" | "chat_continue" | "chat_smart_delta" | "agent_quick_continuity" | "agent_full_bootstrap"
 
 interface BootstrapGenerationReady {
   status: "ready"
@@ -781,6 +781,68 @@ function renderChatContinueMarkdown(
   return lines.join("\n").trim()
 }
 
+function renderChatSmartDeltaMarkdown(
+  shape: BootstrapModelShape,
+  profile: TargetProfileRow,
+  memoryItems: MemoryItemRow[],
+  delta?: ContinuityDelta | null,
+  canonContext?: BootstrapCanonContext,
+  settings?: BootstrapProjectSettingsContext,
+) {
+  const lines = [
+    `Use this compact Relay context for ${profile.name}.`,
+    "",
+    "This is not a transcript. It includes only durable project context and recent cross-tool changes likely missing from this chat.",
+    "",
+  ]
+
+  appendTextSection(lines, "Project", shape.projectOverview)
+  appendTextSection(lines, "Current Focus", shape.currentObjective)
+  appendTextSection(lines, "Recent Change", canonContext?.latestCurrentFocusSummary ?? shape.recentProgress)
+
+  const pinnedTruths = memoryItems
+    .filter((item) => item.pinned && (item.type === "decision" || item.type === "constraint" || item.type === "requirement"))
+    .map((item) => item.content)
+  appendListSection(lines, "Foundational Truths", trimList(pinnedTruths, 4))
+
+  const crossSurfaceItems = memoryItems
+    .filter((item) => item.sourceSurface && item.sourceSurface !== profile.platform)
+    .filter((item) => item.type === "decision" || item.type === "constraint" || item.type === "task" || item.type === "requirement")
+    .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+    .map((item) => item.content)
+  appendListSection(lines, "Likely Missing From This Chat", trimList(crossSurfaceItems, 5))
+
+  if (delta) {
+    appendListSection(lines, "Changes Since Last Sync", trimList([
+      ...delta.summaries,
+      ...delta.decisions,
+      ...delta.constraints,
+      ...delta.tasks,
+    ], 6))
+  }
+
+  appendListSection(lines, "Open Tasks", trimList(shape.openTasks, 5))
+  appendListSection(lines, "Constraints", trimList(shape.constraints, 5))
+
+  if ((settings?.includeTentativeUpdatesInPackets ?? true) && canonContext?.tentativeEntries.length) {
+    appendListSection(lines, "Tentative Updates", trimList(canonContext.tentativeEntries.map((entry) => entry.content), 3))
+  }
+
+  appendTextSection(lines, "Next Action", shape.firstAction)
+
+  const rendered = lines.join("\n").trim()
+  if (rendered.length / 4 <= 1200) return rendered
+
+  const capped: string[] = []
+  for (const line of lines) {
+    const next = [...capped, line].join("\n").trim()
+    if (next.length / 4 > 1200) break
+    capped.push(line)
+  }
+
+  return capped.join("\n").trim()
+}
+
 function renderAgentQuickMarkdown(
   shape: BootstrapModelShape,
   profile: TargetProfileRow,
@@ -858,6 +920,10 @@ export function renderBootstrapMarkdown(
 
   if (mode === "chat_continue") {
     return renderChatContinueMarkdown(shape, profile, input.delta, input.canonContext, input.settings)
+  }
+
+  if (mode === "chat_smart_delta") {
+    return renderChatSmartDeltaMarkdown(shape, profile, memoryItems, input.delta, input.canonContext, input.settings)
   }
 
   if (mode === "agent_quick_continuity") {

@@ -26,6 +26,7 @@ const parsedTurnSchema = z.object({
 export const capturePayloadSchema = z.object({
   projectId: z.string().min(1),
   platform: z.enum(supportedPlatforms),
+  processingMode: z.enum(["default", "fast_ack"]).optional(),
   session: z.object({
     title: z.string().nullable().optional(),
     url: z.url(),

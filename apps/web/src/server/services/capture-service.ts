@@ -17,6 +17,7 @@ export async function saveCapture(userId: string, input: unknown) {
       title: parsed.session.title ?? null
     }
   })
+  const fastAck = parsed.processingMode === "fast_ack"
   const latestComparable = await repositories.sessions.getLatestComparableByIdentity(
     normalizedInput.projectId,
     normalizedInput.platform,
@@ -92,7 +93,16 @@ export async function saveCapture(userId: string, input: unknown) {
       }).catch(() => {})
     }
 
-    if (decision.strategy === "ai") {
+    if (decision.strategy === "ai" && fastAck) {
+      const job = await enqueueDigestJob(userId, {
+        projectId: normalizedInput.projectId,
+        sessionId: session.id,
+        captureSignature: normalizedInput.session.captureSignature
+      })
+      jobId = job.id
+      digestStrategy = "deferred"
+      void drainDigestJobsForProject(userId, normalizedInput.projectId, 1).catch(() => {})
+    } else if (decision.strategy === "ai") {
       const job = await enqueueDigestJob(userId, {
         projectId: normalizedInput.projectId,
         sessionId: session.id,
@@ -139,6 +149,7 @@ export async function saveCapture(userId: string, input: unknown) {
       duplicateSkipped: false,
       captureSaveAckMs: Math.max(0, Date.now() - startedAt),
       bootstrapPacketsInvalidated: true,
+      processingMode: fastAck ? "fast_ack" : "default",
       plan: budgetStatus?.plan ?? null,
     },
   }).catch(() => {})

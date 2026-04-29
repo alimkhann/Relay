@@ -7,6 +7,7 @@ describe("capturePayloadSchema", () => {
     const result = capturePayloadSchema.safeParse({
       projectId: "project-1",
       platform: "chatgpt",
+      processingMode: "fast_ack",
       session: {
         title: "Relay",
         url: "https://chatgpt.com/c/123"
