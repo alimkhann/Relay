@@ -742,6 +742,24 @@ function openX() {
 }
 
 function StepPin({ isSignedIn, onOpenRelay }: { isSignedIn: boolean; onOpenRelay: () => void }) {
+  const [referralLink, setReferralLink] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!isSignedIn) return
+    relayFetch("/api/referral")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d: { link?: string } | null) => { if (d?.link) setReferralLink(d.link) })
+      .catch(() => {})
+  }, [isSignedIn])
+
+  function copyReferral() {
+    if (!referralLink) return
+    navigator.clipboard.writeText(referralLink).catch(() => {})
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   if (!isSignedIn) {
     return (
       <div className={styles.pinStep}>
@@ -817,7 +835,20 @@ function StepPin({ isSignedIn, onOpenRelay }: { isSignedIn: boolean; onOpenRelay
         </div>
       </div>
 
-      <button className={styles.primaryBtn} style={{ marginTop: 20, minWidth: 280 }} onClick={onOpenRelay}>
+      {referralLink ? (
+        <div className={styles.referralCard}>
+          <p className={styles.referralTitle}>Invite friends · earn rewards</p>
+          <p className={styles.referralDesc}>They get 20% off first month. You earn commission.</p>
+          <div className={styles.referralRow}>
+            <code className={styles.referralCode}>{referralLink}</code>
+            <button className={styles.referralCopyBtn} onClick={copyReferral} type="button">
+              {copied ? "Copied!" : "Copy"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <button className={styles.primaryBtn} style={{ marginTop: 16, minWidth: 280 }} onClick={onOpenRelay}>
         Open Relay →
       </button>
     </div>

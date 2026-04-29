@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 
 import { CreateProjectForm } from "@/components/projects/create-project-form"
+import { ReferralLinkBanner } from "@/components/referral/referral-link-banner"
 import { SoftPaywallPanel } from "@/components/billing/soft-paywall-panel"
 import { PageTelemetry } from "@/components/telemetry/page-telemetry"
 import { DashboardContent } from "@/features/projects/dashboard-content"
@@ -13,6 +14,7 @@ import {
 } from "@/server/services/project-service"
 import { resolveViewerEntitlements } from "@/server/services/entitlement-service"
 import { getUserSettings } from "@/server/services/settings-service"
+import { getReferralProgramForUser } from "@/server/services/referral-service"
 
 export const dynamic = "force-dynamic"
 
@@ -29,6 +31,7 @@ export default async function DashboardPage({
   ])
 
   if (onboarding.status === "pending") {
+    const referralProgram = await getReferralProgramForUser(viewer.userId).catch(() => null)
     await logServerEvent({
       level: "info",
       surface: "web-dashboard",
@@ -70,6 +73,7 @@ export default async function DashboardPage({
             initialDescription={(await searchParams).projectDescription ?? ""}
             initialProjectUrl={(await searchParams).projectUrl ?? ""}
           />
+          {referralProgram ? <ReferralLinkBanner link={referralProgram.link} /> : null}
         </section>
       </>
     )
