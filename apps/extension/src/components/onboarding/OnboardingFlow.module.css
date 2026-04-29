@@ -286,8 +286,8 @@
 .featuresStep {
   display: flex; flex-direction: column;
   align-items: center; width: 100%;
-  height: calc(100vh - 108px);
-  max-height: calc(100vh - 108px);
+  height: min(calc(100vh - 108px), 760px);
+  max-height: min(calc(100vh - 108px), 760px);
   justify-content: flex-start;
   overflow: hidden;
   gap: 10px;
@@ -297,7 +297,7 @@
   position: relative;
   /* True 16:9: max-width limits height indirectly — card is always 16:9 */
   width: 100%;
-  max-width: clamp(240px, calc((100vh - 360px) * 1.7778), 1200px);
+  max-width: clamp(240px, calc((100vh - 400px) * 1.7778), 540px);
   aspect-ratio: 16 / 9;
   margin: 0 auto;
   border-radius: 14px; overflow: hidden;
