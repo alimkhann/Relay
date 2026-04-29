@@ -32,7 +32,7 @@ const EXTENSION_STEPS: Step[] = [
   },
   {
     title: "MCP for coding agents",
-    body: "Connect Relay's MCP server so your IDE agent (Cursor, Claude Code) reads and writes live project context — decisions, tasks, constraints.",
+    body: "Connect Relay's MCP server so your IDE agent (Cursor, Claude Code) reads and writes live project context. Run: npx @onrelay/wizard",
     video: {
       mp4: `${BASE_URL}/videos/mcp-integration.mp4`,
       webm: `${BASE_URL}/videos/mcp-integration.webm`,

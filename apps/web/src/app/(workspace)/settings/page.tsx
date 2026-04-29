@@ -7,6 +7,7 @@ import { requirePageViewer } from "@/server/policies/viewer"
 import { listExtensionTokensForUser } from "@/server/services/extension-token-service"
 import { getUserSettings } from "@/server/services/settings-service"
 import { getBillingStatusForUser } from "@/server/services/entitlement-service"
+import { getReferralProgramForUser } from "@/server/services/referral-service"
 import { CreditCard, Sliders, Puzzle, User } from "lucide-react"
 
 export const dynamic = "force-dynamic"
@@ -25,10 +26,11 @@ export default async function SettingsPage({
 }) {
   const viewer = await requirePageViewer("/settings")
   const params = await searchParams
-  const [settings, tokens, billing] = await Promise.all([
+  const [settings, tokens, billing, referralProgram] = await Promise.all([
     getUserSettings(viewer.userId),
     listExtensionTokensForUser(viewer.userId),
     getBillingStatusForUser(viewer.userId),
+    getReferralProgramForUser(viewer.userId),
   ])
   const hasConnectedExtension = tokens.some((token) => !token.revokedAt)
   const activeTokens = tokens.filter((token) => !token.revokedAt)
@@ -78,7 +80,7 @@ export default async function SettingsPage({
       <div className="flex-1 max-w-2xl pt-6">
         <SettingsContent section={section}>
           {section === "billing" ? (
-            <BillingSection billing={billing} checkoutSuccess={checkoutSuccess} />
+            <BillingSection billing={billing} checkoutSuccess={checkoutSuccess} referralProgram={referralProgram} />
           ) : (
             <SettingsPreferences
               initialSettings={settings.settings}

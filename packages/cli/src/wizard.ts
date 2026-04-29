@@ -100,7 +100,7 @@ export async function runWizard(options: { apiBase?: string; analytics?: RelayCl
       label: ide.name
     }))
 
-    const selectedIdeIds = await p.multiselect({
+    const selectedIdeIds = await p.multiselect<string>({
       message: "Install Relay MCP for:",
       options: ideChoices,
       initialValues: ideChoices.map((c) => c.value),

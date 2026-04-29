@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 
 import { CreateProjectForm } from "@/components/projects/create-project-form"
+import { SoftPaywallPanel } from "@/components/billing/soft-paywall-panel"
 import { PageTelemetry } from "@/components/telemetry/page-telemetry"
 import { DashboardContent } from "@/features/projects/dashboard-content"
 import { logServerEvent } from "@/server/logging/logger"
@@ -10,6 +11,7 @@ import {
   getProjectDashboardForUser,
   listProjectsForUser,
 } from "@/server/services/project-service"
+import { resolveViewerEntitlements } from "@/server/services/entitlement-service"
 import { getUserSettings } from "@/server/services/settings-service"
 
 export const dynamic = "force-dynamic"
@@ -86,9 +88,10 @@ export default async function DashboardPage({
     redirect(`/dashboard?project=${currentProject.id}`)
   }
 
-  const dashboard = currentProject
-    ? await getProjectDashboardForUser(viewer.userId, currentProject.id)
-    : null
+  const [dashboard, entitlements] = await Promise.all([
+    currentProject ? getProjectDashboardForUser(viewer.userId, currentProject.id) : null,
+    resolveViewerEntitlements(viewer.userId),
+  ])
 
   return (
     <>
@@ -106,6 +109,7 @@ export default async function DashboardPage({
       />
       {dashboard && currentProject ? (
         <div className="pt-6">
+          {!entitlements.isPaid ? <SoftPaywallPanel /> : null}
           <DashboardContent
             key={currentProject.id}
             project={{

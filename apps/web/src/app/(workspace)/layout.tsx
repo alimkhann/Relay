@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { cookies } from "next/headers"
 
 import { createRepositoryBundle } from "@relay/db"
 
@@ -10,6 +11,11 @@ import { PostHogIdentity } from "@/components/telemetry/posthog-identity"
 import { WorkspaceSidebarShell } from "@/components/layout/workspace-sidebar-shell"
 import { requirePageViewer, syncViewerProfile } from "@/server/policies/viewer"
 import { resolveViewerEntitlements } from "@/server/services/entitlement-service"
+import {
+  attachReferralForUser,
+  decodeReferralCookie,
+  REFERRAL_COOKIE_NAME,
+} from "@/server/services/referral-service"
 import { getResolvedOnboardingStateForUser } from "@/server/services/onboarding-service"
 import { listExtensionTokensForUser } from "@/server/services/extension-token-service"
 import { listProjectsForUser } from "@/server/services/project-service"
@@ -22,6 +28,14 @@ export default async function WorkspaceLayout({
 }) {
   const viewer = await requirePageViewer("/dashboard")
   await syncViewerProfile(viewer)
+  const referralCode = decodeReferralCookie((await cookies()).get(REFERRAL_COOKIE_NAME)?.value)
+  if (referralCode) {
+    await attachReferralForUser({
+      refereeUserId: viewer.userId,
+      refereeEmail: viewer.email ?? null,
+      code: referralCode,
+    }).catch(() => {})
+  }
   const repositories = createRepositoryBundle(viewer.userId)
   const [projects, onboarding, settings, entitlements, profile, extensionTokens] = await Promise.all([
     listProjectsForUser(viewer.userId),

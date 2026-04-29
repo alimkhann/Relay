@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { detectInAppBrowser, buildAndroidChromeIntent } from "@/lib/utils/in-app-browser";
+import { detectInAppBrowser } from "@/lib/utils/in-app-browser";
 import { logClientEvent } from "@/lib/telemetry/client";
 
 export function InAppBrowserBanner() {

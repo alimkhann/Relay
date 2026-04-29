@@ -21,6 +21,9 @@ import { McpTokenRepository } from "../repositories/mcp-token-repository"
 import { ProfileRepository } from "../repositories/profile-repository"
 import { ProviderCounterSnapshotRepository } from "../repositories/provider-counter-snapshot-repository"
 import { ProjectRepository } from "../repositories/project-repository"
+import { ReferralCodeRepository } from "../repositories/referral-code-repository"
+import { ReferralRepository } from "../repositories/referral-repository"
+import { ReferralRewardRepository } from "../repositories/referral-reward-repository"
 import { ProjectSummarySnapshotRepository } from "../repositories/project-summary-snapshot-repository"
 import { ProjectSettingsRepository } from "../repositories/project-settings-repository"
 import { ProjectStateRepository } from "../repositories/project-state-repository"
@@ -47,6 +50,9 @@ export interface RepositoryBundle {
   profiles: ProfileRepository
   providerCounterSnapshots: ProviderCounterSnapshotRepository
   projects: ProjectRepository
+  referralCodes: ReferralCodeRepository
+  referrals: ReferralRepository
+  referralRewards: ReferralRewardRepository
   members: MemberRepository
   sessions: SessionRepository
   turns: TurnRepository
@@ -96,6 +102,9 @@ export function createRepositoryBundle(
     profiles: new ProfileRepository(provider),
     providerCounterSnapshots: new ProviderCounterSnapshotRepository(provider),
     projects: new ProjectRepository(provider),
+    referralCodes: new ReferralCodeRepository(provider),
+    referrals: new ReferralRepository(provider),
+    referralRewards: new ReferralRewardRepository(provider),
     members: new MemberRepository(provider),
     sessions: new SessionRepository(provider),
     turns: new TurnRepository(provider),

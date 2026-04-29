@@ -605,6 +605,59 @@ export interface EntitlementRow {
   updatedAt: string
 }
 
+export interface ReferralCodeRow {
+  id: string
+  userId: string
+  code: string
+  createdAt: string
+}
+
+export type ReferralStatus =
+  | "pending_signup"
+  | "activated"
+  | "paid"
+  | "qualified"
+  | "rewarded"
+  | "rejected"
+  | "revoked"
+
+export interface ReferralRow {
+  id: string
+  referrerId: string
+  refereeId: string
+  referralCodeId: string
+  refereeEmail: string | null
+  status: ReferralStatus
+  planKey: "starter" | "pro" | null
+  interval: "month" | "year" | null
+  providerSubscriptionId: string | null
+  paidInvoiceCount: number
+  firstPaidAt: string | null
+  lastPaidPeriodStart: string | null
+  activatedAt: string | null
+  qualifiedAt: string | null
+  rejectedAt: string | null
+  rejectionReason: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type ReferralRewardStatus = "reserved" | "pending" | "applied" | "revoked"
+
+export interface ReferralRewardRow {
+  id: string
+  referralId: string
+  userId: string
+  basisPoints: number
+  valueCents: number
+  status: ReferralRewardStatus
+  providerDiscountId: string | null
+  appliedAt: string | null
+  revokedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface UsageCounterRow {
   id: string
   scopeKey: string

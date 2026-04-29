@@ -7,6 +7,7 @@ import type {
 } from "@relay/shared"
 
 import { logServerEvent } from "@/server/logging/logger"
+import { markReferralActivated } from "./referral-service"
 
 function toState(row: UserOnboardingRow): RelayOnboardingState {
   return {
@@ -71,6 +72,8 @@ export async function completeOnboardingForUser(
       completionVia: via,
     },
   }).catch(() => {})
+
+  await markReferralActivated(userId).catch(() => {})
 
   return state
 }

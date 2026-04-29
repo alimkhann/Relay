@@ -12,6 +12,10 @@ import {
   sendWelcomeToProEmail,
 } from "./email-service"
 import { buildEntitlementRowFromPlan, resolveViewerEntitlements } from "./entitlement-service"
+import {
+  getReferralRefereeDiscountBasisPoints,
+  recordReferralPaidSubscription,
+} from "./referral-service"
 import { ForbiddenError } from "@/server/http/errors"
 import { logServerEvent } from "@/server/logging/logger"
 
@@ -157,6 +161,28 @@ function pickActiveSubscription(subs: NormalizedSubscriptionInput[]): Normalized
   return activeSubs[0] ?? null
 }
 
+function toReferralSubscriptionRow(userId: string, subscription: NormalizedSubscriptionInput) {
+  return {
+    id: subscription.providerSubscriptionId,
+    userId,
+    provider: "polar" as const,
+    providerSubscriptionId: subscription.providerSubscriptionId,
+    providerCustomerId: subscription.providerCustomerId,
+    productId: subscription.productId,
+    planKey: subscription.planKey,
+    status: subscription.status,
+    interval: subscription.interval,
+    cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+    currentPeriodStart: subscription.currentPeriodStart,
+    currentPeriodEnd: subscription.currentPeriodEnd,
+    trialStartsAt: subscription.trialStartsAt,
+    trialEndsAt: subscription.trialEndsAt,
+    raw: subscription.raw,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
 function coercePolarTimestamp(value: unknown): string | null {
   if (typeof value === "string" && value.length > 0) return value
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString()
@@ -191,6 +217,64 @@ function resolveProductId(plan: "starter" | "pro", interval: "month" | "year") {
     throw new Error(`Polar product ID for ${interval}ly ${plan} is not configured.`)
   }
   return productId
+}
+
+async function createRefereeDiscountForCheckout(input: {
+  polar: Polar
+  userId: string
+  plan: "starter" | "pro"
+  interval: "month" | "year"
+  productId: string
+}) {
+  const repositories = createRepositoryBundle(input.userId)
+  const referral = await repositories.referrals.getByRefereeId(input.userId)
+  if (!referral || (referral.status !== "pending_signup" && referral.status !== "activated")) return null
+
+  const discount = await input.polar.discounts.create({
+    duration: "once",
+    type: "percentage",
+    basisPoints: getReferralRefereeDiscountBasisPoints(input.interval),
+    name: `Relay referral ${input.interval === "year" ? "annual" : "monthly"} discount`,
+    maxRedemptions: 1,
+    products: [input.productId],
+    metadata: {
+      relay_referral_id: referral.id,
+      relay_referee_id: input.userId,
+      relay_discount_kind: "referee_first_paid_period",
+    },
+  })
+
+  return discount.id
+}
+
+async function createAndApplyReferrerRewardDiscount(input: {
+  rewardId: string
+  referrerId: string
+  plan: "starter" | "pro"
+  basisPoints: number
+  valueCents: number
+  subscriptionId: string
+}) {
+  const polar = getPolarClient()
+  const discount = await polar.discounts.create({
+    duration: "once",
+    type: "fixed",
+    amounts: { usd: input.valueCents },
+    name: `Relay referral reward ${input.basisPoints / 100}%`,
+    maxRedemptions: 1,
+    metadata: {
+      relay_reward_id: input.rewardId,
+      relay_referrer_id: input.referrerId,
+      relay_discount_kind: "referrer_monthly_equivalent_credit",
+    },
+  })
+
+  await polar.subscriptions.update({
+    id: input.subscriptionId,
+    subscriptionUpdate: { discountId: discount.id },
+  })
+
+  return { providerDiscountId: discount.id }
 }
 
 function derivePlanFromProductId(productId: string | null | undefined) {
@@ -401,17 +485,30 @@ export async function createPolarCheckoutForUser(user: {
   }
   const polar = getPolarClient()
   const repositories = createRepositoryBundle(user.id)
+  const productId = resolveProductId(parsed.plan, parsed.interval)
+  const referralDiscountId = parsed.referralCode
+    ? await createRefereeDiscountForCheckout({
+        polar,
+        userId: user.id,
+        plan: parsed.plan,
+        interval: parsed.interval,
+        productId,
+      })
+    : null
 
   const checkout = await polar.checkouts.create({
-    products: [resolveProductId(parsed.plan, parsed.interval)],
+    products: [productId],
     customerEmail: user.email ?? undefined,
     customerName: user.name ?? undefined,
     externalCustomerId: user.id,
     successUrl: BILLING_SUCCESS_URL,
     returnUrl: BILLING_RETURN_URL,
+    discountId: referralDiscountId ?? undefined,
+    allowDiscountCodes: referralDiscountId ? false : undefined,
     metadata: {
       relay_user_id: user.id,
       plan: `${parsed.plan}_${parsed.interval === "year" ? "yearly" : "monthly"}`,
+      relay_referral_discount: referralDiscountId ? "true" : "false",
     },
     trialInterval: "day",
     trialIntervalCount: 3,
@@ -816,6 +913,15 @@ export async function syncBillingStateFromCustomerState(payload: Record<string, 
     customerName,
   })
 
+  if (activeSubscription?.status === "active") {
+    await recordReferralPaidSubscription({
+      userId,
+      subscription: toReferralSubscriptionRow(userId, activeSubscription),
+      repositories,
+      applyRewardDiscount: createAndApplyReferrerRewardDiscount,
+    })
+  }
+
   await logServerEvent({
     level: "info",
     surface: "web-api",
@@ -893,6 +999,10 @@ export async function syncBillingStateFromSubscriptionEvent(event: {
     normalized.status = "canceled"
   }
 
+  if (normalized.status === "canceled") {
+    await repositories.referrals.rejectBySubscription(normalized.providerSubscriptionId, event.type).catch(() => null)
+  }
+
   await repositories.billingCustomers.upsert({
     userId,
     externalCustomerId: userId,
@@ -931,6 +1041,15 @@ export async function syncBillingStateFromSubscriptionEvent(event: {
     customerEmail,
     customerName,
   })
+
+  if (activeSubscription?.status === "active") {
+    await recordReferralPaidSubscription({
+      userId,
+      subscription: toReferralSubscriptionRow(userId, activeSubscription),
+      repositories,
+      applyRewardDiscount: createAndApplyReferrerRewardDiscount,
+    })
+  }
 
   await logServerEvent({
     level: "info",

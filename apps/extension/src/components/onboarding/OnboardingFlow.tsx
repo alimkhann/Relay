@@ -36,14 +36,14 @@ function normalizeUrl(url: string): string {
 const FEATURES = [
   { icon: <ZapIcon />,      label: "AUTO-CAPTURE",       title: "Quietly saves what matters from every AI chat",     desc: "Work in ChatGPT, Claude, or Gemini. Relay captures decisions, tasks, and constraints automatically.", video: `${BASE_URL}/videos/auto-capture.mp4`,       poster: `${BASE_URL}/images/video-posters/auto-capture.webp` },
   { icon: <FileTextIcon />, label: "PROJECT BRIEFS",      title: "One-click context restoration in fresh chats",     desc: "Your project brief updates itself as you work. Inject the full context instantly.",                   video: `${BASE_URL}/videos/project-briefs.mp4`,     poster: `${BASE_URL}/images/video-posters/project-briefs.webp` },
-  { icon: <TerminalIcon />, label: "MCP INTEGRATION",     title: "Your coding agent reads and writes project memory", desc: "Claude Code, Cursor, and any MCP-compatible agent connect directly to the same brief.",               video: `${BASE_URL}/videos/mcp-integration.mp4`,   poster: `${BASE_URL}/images/video-posters/mcp-integration.webp` },
+  { icon: <TerminalIcon />, label: "MCP INTEGRATION",     title: "Your coding agent reads and writes project memory", desc: "Claude Code, Cursor, and any MCP-compatible agent connect directly to the same brief. Run: npx @onrelay/wizard",               video: `${BASE_URL}/videos/mcp-integration.mp4`,   poster: `${BASE_URL}/images/video-posters/mcp-integration.webp` },
   { icon: <ArrowsIcon />,   label: "CROSS-SURFACE SYNC",  title: "Decisions flow between tools automatically",        desc: "A choice made in ChatGPT surfaces in Cursor. Constraints stay in sync across every session.",         video: `${BASE_URL}/videos/cross-surface-sync.mp4`, poster: `${BASE_URL}/images/video-posters/cross-surface-sync.webp` },
 ]
 
 const WALKTHROUGH_STEPS = [
   { title: "Auto-capture",            body: "Open any AI chat. With auto-capture on, Relay captures decisions and tasks as you work — no copy-pasting.", video: { mp4: `${BASE_URL}/videos/auto-capture.mp4`,     poster: `${BASE_URL}/images/video-posters/auto-capture.webp` } },
   { title: "Insert brief",            body: "In any AI chat, click Insert Brief in the panel. Relay injects your full project context instantly.",        video: { mp4: `${BASE_URL}/videos/project-briefs.mp4`,  poster: `${BASE_URL}/images/video-posters/project-briefs.webp` } },
-  { title: "MCP for coding agents",   body: "Connect Relay's MCP server so your IDE agent (Cursor, Claude Code) reads and writes live project context.", video: { mp4: `${BASE_URL}/videos/mcp-integration.mp4`, poster: `${BASE_URL}/images/video-posters/mcp-integration.webp` } },
+  { title: "MCP for coding agents",   body: "Connect Relay's MCP server so your IDE agent (Cursor, Claude Code) reads and writes live project context. Run: npx @onrelay/wizard", video: { mp4: `${BASE_URL}/videos/mcp-integration.mp4`, poster: `${BASE_URL}/images/video-posters/mcp-integration.webp` } },
   { title: "Manage on the dashboard", body: "The dashboard is where you manage memories, briefs, captures, and settings — everything in one place.",     image: { src: `${BASE_URL}/images/dashboard.webp`, alt: "Relay dashboard" }, cta: { href: `${BASE_URL}/dashboard`, label: "Open dashboard →" } },
 ]
 

@@ -16,6 +16,13 @@ import { relayClientFetch } from "@/lib/telemetry/fetch"
 interface BillingSectionProps {
   billing: BillingStatusDto
   checkoutSuccess?: boolean
+  referralProgram?: {
+    code: string
+    link: string
+    qualifiedCount: number
+    nextTier: { minimumQualifiedReferrals: number; basisPoints: number } | null
+    rewards: Array<{ id: string; status: string; valueCents: number; basisPoints: number }>
+  }
 }
 
 interface UsageItem {
@@ -143,7 +150,7 @@ function PlanCard({
 const CHECKOUT_SYNC_MAX_ATTEMPTS = 10
 const CHECKOUT_SYNC_INTERVAL_MS = 5_000
 
-export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps) {
+export function BillingSection({ billing, checkoutSuccess, referralProgram }: BillingSectionProps) {
   const router = useRouter()
   const { entitlements, subscription, usage } = billing
   const [yearly, setYearly] = useState(false)
@@ -728,6 +735,55 @@ export function BillingSection({ billing, checkoutSuccess }: BillingSectionProps
       </FadeIn>
 
       <FadeIn delay={0.1}>
+      {referralProgram ? (
+        <section className="overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
+          <div className="px-5 py-4">
+            <h2 className="text-sm font-semibold text-[var(--relay-ink)]">Referrals</h2>
+            <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
+              Share Relay with paid users. Rewards qualify after paid invoices clear, not during trials.
+            </p>
+          </div>
+          <div className="border-t border-[var(--relay-line)] px-5 py-5 space-y-4">
+            <div className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] p-3">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--relay-faint)]">Your referral link</p>
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <code className="min-w-0 flex-1 overflow-hidden text-ellipsis rounded bg-[var(--relay-soft)] px-2 py-1.5 text-[12px] text-[var(--relay-ink)]">
+                  {referralProgram.link}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => void navigator.clipboard?.writeText(referralProgram.link)}
+                  className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-3 py-1.5 text-[12px] font-medium text-[var(--relay-muted)] transition hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] p-3">
+                <p className="text-[11px] text-[var(--relay-muted)]">Qualified referrals</p>
+                <p className="mt-1 text-xl font-semibold text-[var(--relay-ink)]">{referralProgram.qualifiedCount}</p>
+              </div>
+              <div className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] p-3">
+                <p className="text-[11px] text-[var(--relay-muted)]">Next reward tier</p>
+                <p className="mt-1 text-sm font-semibold text-[var(--relay-ink)]">
+                  {referralProgram.nextTier
+                    ? `${referralProgram.nextTier.minimumQualifiedReferrals} referrals · ${referralProgram.nextTier.basisPoints / 100}% credit`
+                    : "Top tier reached"}
+                </p>
+              </div>
+              <div className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] p-3">
+                <p className="text-[11px] text-[var(--relay-muted)]">Reward rule</p>
+                <p className="mt-1 text-sm font-semibold text-[var(--relay-ink)]">1/3/5 paid referrals</p>
+              </div>
+            </div>
+            <p className="text-[12px] leading-relaxed text-[var(--relay-muted)]">
+              Referees get 20% off their first paid month or 10% off their first annual invoice. Monthly referrals qualify after the second paid invoice; annual referrals qualify after a 30-day hold.
+            </p>
+          </div>
+        </section>
+      ) : null}
+
       <section className="overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
         <div className="px-5 py-4">
           <h2 className="text-sm font-semibold text-[var(--relay-ink)]">Usage</h2>
