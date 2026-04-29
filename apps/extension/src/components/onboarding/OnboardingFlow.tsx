@@ -381,7 +381,7 @@ export function OnboardingFlow() {
               onToggleShowPassword={() => setShowPassword((v) => !v)}
               onIntentToggle={() => { setIntent((v) => v === "sign-in" ? "sign-up" : "sign-in"); setAuthError(null); setOtpRequired(false); setOtp("") }}
               onOtpChange={setOtp}
-              onSkip={() => navTo(6, setStep, setVisible)}
+              onSkip={() => navTo(5, setStep, setVisible)}
             />
           )}
           {step === 3 && (
@@ -392,7 +392,7 @@ export function OnboardingFlow() {
               onNameChange={setProjectName} onDescChange={setProjectDesc}
               onScanUrlChange={setScanUrl} onScan={handleScanUrl}
               onCreate={handleCreateProject}
-              onSkip={() => navTo(4, setStep, setVisible)}
+              onSkip={() => navTo(5, setStep, setVisible)}
             />
           )}
           {step === 4 && <StepWalkthrough onNext={() => navTo(5, setStep, setVisible)} />}
