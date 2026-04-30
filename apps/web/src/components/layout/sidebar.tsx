@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { PanelLeftClose, PanelLeft, X } from "lucide-react";
+import { PanelLeftClose, PanelLeft, X, MessageSquareText } from "lucide-react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import * as Dialog from "@radix-ui/react-dialog";
 import { motion } from "motion/react";
@@ -139,8 +139,8 @@ function SidebarContent({
       {/* Navigation */}
       <SidebarNav currentProjectId={currentProjectId} collapsed={collapsed} onNavigate={onNavigate} />
 
-      {/* Referral + Plan widgets */}
-      <div className={cn("mt-auto space-y-2", collapsed ? "px-1" : "px-2")}>
+      {/* Referral + plan widgets */}
+      <div className={cn("mt-4 space-y-2", collapsed ? "px-1" : "px-2")}>
         {referral && (
           <SidebarReferralWidget
             code={referral.code}
@@ -160,25 +160,65 @@ function SidebarContent({
         )}
       </div>
 
-      {/* Account menu */}
-      <div className="border-t border-[var(--relay-line)] pt-4 mt-2">
-        {user ? (
-          <AccountMenu
-            name={user.name}
-            email={user.email}
-            collapsed={collapsed}
-          />
-        ) : (
-          !collapsed && (
-            <Link
-              className="px-2 text-[13px] font-medium text-[var(--relay-ink-secondary)] transition hover:text-[var(--relay-ink)]"
-              href="/sign-in"
-              onClick={onNavigate}
+      {/* Feedback + account */}
+      <div className="mt-auto">
+        <div className="px-2 pb-2">
+          {collapsed ? (
+            <Tooltip.Root>
+              <Tooltip.Trigger asChild>
+                <a
+                  href="https://relay.featurebase.app"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center rounded-[var(--relay-radius-sm)] p-2 text-[var(--relay-muted)] transition-colors hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
+                >
+                  <MessageSquareText className="h-4 w-4 shrink-0" />
+                </a>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content
+                  side="right"
+                  sideOffset={8}
+                  className="z-50 rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--relay-bg)] shadow-[var(--relay-shadow)]"
+                >
+                  Feedback
+                  <Tooltip.Arrow className="fill-[var(--relay-ink)]" />
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+          ) : (
+            <a
+              href="https://relay.featurebase.app"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-2.5 py-1.5 text-[13px] font-medium text-[var(--relay-muted)] transition-colors hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
             >
-              Sign in
-            </Link>
-          )
-        )}
+              <MessageSquareText className="h-4 w-4 shrink-0" />
+              <span>Feedback</span>
+            </a>
+          )}
+        </div>
+
+        {/* Account menu */}
+        <div className="border-t border-[var(--relay-line)] pt-4">
+          {user ? (
+            <AccountMenu
+              name={user.name}
+              email={user.email}
+              collapsed={collapsed}
+            />
+          ) : (
+            !collapsed && (
+              <Link
+                className="px-2 text-[13px] font-medium text-[var(--relay-ink-secondary)] transition hover:text-[var(--relay-ink)]"
+                href="/sign-in"
+                onClick={onNavigate}
+              >
+                Sign in
+              </Link>
+            )
+          )}
+        </div>
       </div>
     </>
   );
