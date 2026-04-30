@@ -26,19 +26,20 @@ export default async function SettingsPage({
 }) {
   const viewer = await requirePageViewer("/settings")
   const params = await searchParams
-  const [settings, tokens, billing, referralProgram] = await Promise.all([
-    getUserSettings(viewer.userId),
-    listExtensionTokensForUser(viewer.userId),
-    getBillingStatusForUser(viewer.userId),
-    getReferralProgramForUser(viewer.userId),
-  ])
-  const hasConnectedExtension = tokens.some((token) => !token.revokedAt)
-  const activeTokens = tokens.filter((token) => !token.revokedAt)
   const checkoutSuccess = params.checkout === "success"
   const sectionParam = typeof params.section === "string" ? params.section : "account"
   const section = ["account", "app", "integrations", "billing"].includes(sectionParam)
     ? (sectionParam as "account" | "app" | "integrations" | "billing")
     : "account"
+
+  const [settings, tokens, billing, referralProgram] = await Promise.all([
+    getUserSettings(viewer.userId),
+    listExtensionTokensForUser(viewer.userId),
+    getBillingStatusForUser(viewer.userId),
+    section === "billing" ? getReferralProgramForUser(viewer.userId).catch(() => null) : Promise.resolve(null),
+  ])
+  const hasConnectedExtension = tokens.some((token) => !token.revokedAt)
+  const activeTokens = tokens.filter((token) => !token.revokedAt)
 
   return (
     <div className="flex flex-col md:flex-row gap-4 md:gap-8">
@@ -80,7 +81,7 @@ export default async function SettingsPage({
       <div className="flex-1 max-w-2xl pt-6">
         <SettingsContent section={section}>
           {section === "billing" ? (
-            <BillingSection billing={billing} checkoutSuccess={checkoutSuccess} referralProgram={referralProgram} />
+            <BillingSection billing={billing} checkoutSuccess={checkoutSuccess} referralProgram={referralProgram ?? undefined} />
           ) : (
             <SettingsPreferences
               initialSettings={settings.settings}

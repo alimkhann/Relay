@@ -139,8 +139,8 @@ function SidebarContent({
       {/* Navigation */}
       <SidebarNav currentProjectId={currentProjectId} collapsed={collapsed} onNavigate={onNavigate} />
 
-      {/* Referral + plan widgets */}
-      <div className={cn("mt-4 space-y-2", collapsed ? "px-1" : "px-2")}>
+      {/* Referral widget */}
+      <div className={cn("mt-4", collapsed ? "px-1" : "px-2")}>
         {referral && (
           <SidebarReferralWidget
             code={referral.code}
@@ -149,18 +149,9 @@ function SidebarContent({
             collapsed={collapsed}
           />
         )}
-        {plan && (
-          <SidebarPlanWidget
-            plan={plan.plan}
-            isPaid={plan.isPaid}
-            capturesUsed={plan.capturesUsed}
-            capturesLimit={plan.capturesLimit}
-            collapsed={collapsed}
-          />
-        )}
       </div>
 
-      {/* Feedback + account */}
+      {/* Feedback + usage + account */}
       <div className="mt-auto">
         <div className="px-2 pb-2">
           {collapsed ? (
@@ -198,6 +189,18 @@ function SidebarContent({
             </a>
           )}
         </div>
+
+        {plan && (
+          <div className={cn("pb-2", collapsed ? "px-1" : "px-2")}>
+            <SidebarPlanWidget
+              plan={plan.plan}
+              isPaid={plan.isPaid}
+              capturesUsed={plan.capturesUsed}
+              capturesLimit={plan.capturesLimit}
+              collapsed={collapsed}
+            />
+          </div>
+        )}
 
         {/* Account menu */}
         <div className="border-t border-[var(--relay-line)] pt-4">

@@ -34,7 +34,7 @@ vi.mock("@/components/layout/sidebar-project-switcher", () => ({
 import { Sidebar } from "./sidebar"
 
 describe("Sidebar", () => {
-  it("shows feedback directly in the sidebar alongside usage and referral widgets", () => {
+  it("keeps referral above the footer area and usage between feedback and account", () => {
     render(
       <Sidebar
         currentProjectId="project-1"
@@ -45,8 +45,29 @@ describe("Sidebar", () => {
       />,
     )
 
-    expect(screen.getByText("Referrals")).toBeTruthy()
-    expect(screen.getByText("Captures")).toBeTruthy()
-    expect(screen.getByRole("link", { name: "Feedback" })).toBeTruthy()
+    const referral = screen.getByText("Referrals")
+    const feedback = screen.getByRole("link", { name: "Feedback" })
+    const captures = screen.getByText("Captures")
+    const account = screen.getByText("Relay User")
+    const upgrade = screen.getByRole("link", { name: "Upgrade" })
+
+    expect(referral.compareDocumentPosition(feedback) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(feedback.compareDocumentPosition(captures) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(captures.compareDocumentPosition(account) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(upgrade).toBeTruthy()
+  })
+
+  it("shows an upgrade call-to-action for starter accounts when usage is approaching limits", () => {
+    render(
+      <Sidebar
+        currentProjectId="project-1"
+        projects={[{ id: "project-1", name: "Relay" }]}
+        user={{ name: "Relay User", email: "user@example.com" }}
+        referral={{ code: "REF123", link: "https://relay.test/r/REF123", qualifiedCount: 2 }}
+        plan={{ plan: "starter", isPaid: true, capturesUsed: 75, capturesLimit: 100 }}
+      />,
+    )
+
+    expect(screen.getByRole("link", { name: "Upgrade" })).toBeTruthy()
   })
 })

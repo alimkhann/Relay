@@ -18,6 +18,7 @@ export function SidebarPlanWidget({ plan, isPaid, capturesUsed, capturesLimit, c
   const ratio = capturesLimit > 0 ? capturesUsed / capturesLimit : 0
   const barColor = ratio >= 0.95 ? "bg-red-500" : ratio >= 0.8 ? "bg-amber-500" : "bg-emerald-500"
   const planLabel = plan.charAt(0).toUpperCase() + plan.slice(1)
+  const showUpgradeCta = !isPaid || (plan === "starter" && ratio >= 0.7)
 
   if (collapsed) {
     return (
@@ -54,7 +55,7 @@ export function SidebarPlanWidget({ plan, isPaid, capturesUsed, capturesLimit, c
           <Zap className="h-3 w-3" />
           {planLabel}
         </span>
-        {!isPaid && (
+        {showUpgradeCta && (
           <Link
             href="/settings?section=billing"
             className="text-[10px] font-semibold text-[var(--relay-accent)] transition-colors hover:text-[var(--relay-accent)]/80"

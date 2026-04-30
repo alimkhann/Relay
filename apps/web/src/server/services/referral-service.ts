@@ -254,14 +254,14 @@ async function createQualifiedReferrerReward(input: {
 
 export async function getReferralProgramForUser(userId: string) {
   const repositories = createRepositoryBundle(userId)
-  const [code, rewards, qualifiedCount] = await Promise.all([
-    getOrCreateReferralCodeForUser(userId, repositories),
+  const code = await getOrCreateReferralCodeForUser(userId, repositories)
+  const since = new Date(Date.now() - REFERRAL_ROLLING_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  const [rewardsResult, qualifiedCountResult] = await Promise.allSettled([
     repositories.referralRewards.listByUserId(userId),
-    repositories.referrals.countQualifiedByReferrerSince(
-      userId,
-      new Date(Date.now() - REFERRAL_ROLLING_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString(),
-    ),
+    repositories.referrals.countQualifiedByReferrerSince(userId, since),
   ])
+  const rewards = rewardsResult.status === "fulfilled" ? rewardsResult.value : []
+  const qualifiedCount = qualifiedCountResult.status === "fulfilled" ? qualifiedCountResult.value : 0
 
   return {
     code: code.code,
