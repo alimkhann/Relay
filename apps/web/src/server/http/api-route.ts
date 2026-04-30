@@ -48,7 +48,7 @@ export function withApiRoute<TArgs extends [Request, ...unknown[]]>(
       try {
         const response = finalizeResponse(request, await handler(...args))
 
-        if (options.logSuccess !== false) {
+        if (!response.ok || options.logSuccess === true) {
           await logServerEvent({
             level: response.ok ? "info" : "warn",
             surface: "web-api",

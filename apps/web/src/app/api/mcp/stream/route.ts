@@ -20,7 +20,7 @@ import { RELAY_MCP_PROMPT_NAMES, RELAY_MCP_RESOURCE_URIS, RELAY_MCP_SERVER_NAME,
  * fine: the sweep is idempotent and the worst case is "one extra sweep per
  * cold start".
  */
-const SWEEP_THROTTLE_MS = 5 * 60 * 1000
+const SWEEP_THROTTLE_MS = 30 * 60 * 1000
 /** Sweep sessions that have been idle for at least this long. */
 const SWEEP_IDLE_MS = 10 * 60 * 1000
 /** Max sessions flushed per sweep — bounds the latency ceiling. */

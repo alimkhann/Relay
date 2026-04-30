@@ -3,7 +3,7 @@ import type { RepositoryBundle } from "@relay/db"
 
 export async function getProjectStateStatus(repositories: RepositoryBundle, projectId: string): Promise<ProjectStateStatusDto> {
   const [sessions, digests, projectState, digestJobs] = await Promise.all([
-    repositories.sessions.listByProject(projectId),
+    repositories.sessions.listByProject(projectId, { limit: 1 }),
     repositories.sessionDigests.listByProject(projectId, 1),
     repositories.projectState.getByProject(projectId),
     repositories.aiJobs.listByProject(projectId, {
@@ -13,7 +13,7 @@ export async function getProjectStateStatus(repositories: RepositoryBundle, proj
   ])
 
   return deriveProjectStateStatus({
-    sessions: sessions.slice(0, 1),
+    sessions,
     digests,
     projectState: projectState
       ? {

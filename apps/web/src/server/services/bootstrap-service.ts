@@ -1155,7 +1155,7 @@ export async function generateBootstrapForProject(userId: string, projectId: str
   }
 
   if (hasPendingCaptureFreshnessGap({ latestSession, digests, digestJobs })) {
-    await drainDigestJobsForProject(userId, projectId, 2)
+    await drainDigestJobsForProject(userId, projectId, 1, { includeDeferred: false })
     await logServerEvent({
       level: "info",
       surface: "web-api",

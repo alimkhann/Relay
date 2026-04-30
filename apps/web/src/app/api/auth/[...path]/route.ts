@@ -25,18 +25,20 @@ async function handleAuthMethod(
         response.headers.set("x-relay-request-id", requestId)
       }
 
-      await logServerEvent({
-        level: response.ok ? "info" : "warn",
-        surface: "web-api",
-        area: "auth",
-        event: "web_auth.route_response",
-        message: `${method} ${new URL(request.url).pathname} -> ${response.status}`,
-        context: {
-          method,
-          path: new URL(request.url).pathname,
-          status: response.status
-        }
-      })
+      if (!response.ok) {
+        await logServerEvent({
+          level: "warn",
+          surface: "web-api",
+          area: "auth",
+          event: "web_auth.route_response",
+          message: `${method} ${new URL(request.url).pathname} -> ${response.status}`,
+          context: {
+            method,
+            path: new URL(request.url).pathname,
+            status: response.status
+          }
+        })
+      }
 
       return response
     } catch (error) {

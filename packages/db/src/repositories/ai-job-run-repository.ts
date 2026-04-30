@@ -142,6 +142,31 @@ export class AiJobRunRepository {
     )
   }
 
+  async markRunningIfRunnable(
+    id: string,
+    attempts: number,
+    statuses: AiJobRunRow["status"][] = ["pending", "timed_out", "deferred"],
+  ): Promise<AiJobRunRow | null> {
+    const rows = await this.provider.query(
+      `update ai_job_runs
+       set status = 'running',
+           attempts = $2,
+           started_at = now(),
+           completed_at = null,
+           error_class = null,
+           error_message = null,
+           output_payload = '{}'::jsonb,
+           updated_at = now()
+       where id = $1
+         and status = any($3::text[])
+       returning *`,
+      [id, attempts, statuses]
+    )
+
+    const row = rows[0]
+    return row ? toAiJobRunRow(row as Record<string, unknown>) : null
+  }
+
   async patchProgress(id: string, patch: {
     outputPayload?: Record<string, unknown>
     actualModel?: string | null

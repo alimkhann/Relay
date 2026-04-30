@@ -1,7 +1,7 @@
 import { createRepositoryBundle } from "@relay/db"
 import { capturePayloadSchema, withCaptureSignature } from "@relay/shared"
 
-import { decideDigestStrategy, drainDigestJobsForProject, enqueueDigestJob, type DigestJobOutcome } from "./digest-service"
+import { decideDigestStrategy, enqueueDigestJob, scheduleDigestDrainForProject, type DigestJobOutcome } from "./digest-service"
 import { getProjectStateStatus } from "./state-status-service"
 import { fireUserMilestone } from "./user-milestones-service"
 import { logServerEvent } from "@/server/logging/logger"
@@ -101,7 +101,7 @@ export async function saveCapture(userId: string, input: unknown) {
       })
       jobId = job.id
       digestStrategy = "deferred"
-      void drainDigestJobsForProject(userId, normalizedInput.projectId, 1).catch(() => {})
+      scheduleDigestDrainForProject(userId, normalizedInput.projectId, 1)
     } else if (decision.strategy === "ai") {
       const job = await enqueueDigestJob(userId, {
         projectId: normalizedInput.projectId,
@@ -118,7 +118,7 @@ export async function saveCapture(userId: string, input: unknown) {
       if (inlineOutcome) {
         digestOutcome = inlineOutcome
       } else {
-        void drainDigestJobsForProject(userId, normalizedInput.projectId, 1).catch(() => {})
+        scheduleDigestDrainForProject(userId, normalizedInput.projectId, 1)
       }
     } else if (decision.strategy === "deferred") {
       const job = await enqueueDigestJob(userId, {
@@ -128,7 +128,6 @@ export async function saveCapture(userId: string, input: unknown) {
         status: "deferred"
       })
       jobId = job.id
-      void drainDigestJobsForProject(userId, normalizedInput.projectId, 1).catch(() => {})
     }
   }
 

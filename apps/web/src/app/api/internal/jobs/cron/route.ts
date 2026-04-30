@@ -6,9 +6,14 @@ import { runContinuityMaintenanceForUser } from "@/server/services/continuity-ma
 import { emitDailyCostSnapshots } from "@/server/services/cost-snapshot-service"
 import { drainDigestJobs } from "@/server/services/digest-service"
 
-const MAX_USERS_PER_INVOCATION = 10
+const MAX_USERS_PER_INVOCATION = 3
+const MAX_DIGEST_JOBS_PER_USER = 2
+const MAX_WORK_MS = 45_000
+
+export const maxDuration = 60
 
 export async function GET(request: Request) {
+  const startedAt = Date.now()
   const cronSecret = process.env["CRON_SECRET"]
   if (!cronSecret) {
     return NextResponse.json({ error: "CRON_SECRET not configured." }, { status: 500 })
@@ -24,7 +29,7 @@ export async function GET(request: Request) {
   const rows = await repositories.provider.query(
     `select distinct created_by
      from ai_job_runs
-     where status in ('pending', 'timed_out')
+     where status in ('pending', 'timed_out', 'deferred')
      limit $1`,
     [MAX_USERS_PER_INVOCATION]
   )
@@ -35,8 +40,16 @@ export async function GET(request: Request) {
 
   for (const userId of userIds) {
     try {
-      await drainDigestJobs(userId, 4)
-      await runContinuityMaintenanceForUser(userId)
+      if (Date.now() - startedAt >= MAX_WORK_MS) {
+        results.push({ userId, ok: false, error: "Cron work budget exhausted before this user." })
+        continue
+      }
+
+      await drainDigestJobs(userId, MAX_DIGEST_JOBS_PER_USER)
+
+      if (Date.now() - startedAt < MAX_WORK_MS) {
+        await runContinuityMaintenanceForUser(userId)
+      }
       results.push({ userId, ok: true })
     } catch (error) {
       results.push({

@@ -136,4 +136,41 @@ describe("WorkspaceLayout", () => {
     expect(createRepositoryBundleMock).not.toHaveBeenCalled()
     expect(listProjectsForUserMock).not.toHaveBeenCalled()
   })
+
+  it("does not sync the viewer profile on every authenticated workspace render", async () => {
+    resolveOptionalViewerMock.mockResolvedValue({
+      userId: "user-1",
+      mode: "session",
+      email: "user@example.com",
+      name: "Relay User",
+    })
+    createRepositoryBundleMock.mockReturnValue({
+      profiles: {
+        getById: vi.fn().mockResolvedValue({
+          id: "user-1",
+          createdAt: "2026-04-01T00:00:00.000Z",
+        }),
+      },
+    })
+    listProjectsForUserMock.mockResolvedValue([{ id: "project-1", name: "Relay" }])
+    getResolvedOnboardingStateForUserMock.mockResolvedValue({ status: "completed" })
+    getUserSettingsMock.mockResolvedValue({ settings: {} })
+    resolveViewerEntitlementsMock.mockResolvedValue({
+      plan: "free",
+      isPaid: false,
+      limits: { captureMonthly: 100 },
+    })
+    listExtensionTokensForUserMock.mockResolvedValue([])
+    getReferralProgramForUserMock.mockResolvedValue(null)
+    getUsageCountMock.mockResolvedValue(0)
+
+    render(
+      await WorkspaceLayout({
+        children: <div>Workspace body</div>,
+      }),
+    )
+
+    expect(screen.getByText("Workspace body")).toBeTruthy()
+    expect(syncViewerProfileMock).not.toHaveBeenCalled()
+  })
 })

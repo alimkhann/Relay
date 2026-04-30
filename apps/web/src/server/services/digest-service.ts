@@ -30,6 +30,10 @@ interface DigestModelShape extends SessionDigestShape {
 const DIGEST_JOB_TIMEOUT_MINUTES = 5
 const DIGEST_INLINE_TIMEOUT_MS = 45_000
 const DIGEST_FALLBACK_PLANNED = true
+const PROJECT_DRAIN_COOLDOWN_MS = 60_000
+
+const activeProjectDrains = new Map<string, Promise<void>>()
+const lastProjectDrainFinishedAt = new Map<string, number>()
 
 type DigestJobStage = "queued" | "deferred" | GeminiStage | "merge_state" | "completed" | "failed" | "timed_out"
 
@@ -58,7 +62,7 @@ interface TruthMaintenanceModelShape {
 }
 
 export interface DigestJobOutcome {
-  status: "completed" | "failed" | "timed_out"
+  status: "completed" | "failed" | "timed_out" | "skipped"
   digestId: string | null
   memoryItemsCreated: number
   errorMessage?: string | null
@@ -884,12 +888,24 @@ async function runDigestJobInternal(
   job: AiJobRunRow,
   timeoutMs = DIGEST_INLINE_TIMEOUT_MS
 ): Promise<DigestJobOutcome> {
+  const claimedJob = await repositories.aiJobs.markRunningIfRunnable(job.id, job.attempts + 1, ["pending", "timed_out"])
+  if (!claimedJob) {
+    return {
+      status: "skipped",
+      digestId: null,
+      memoryItemsCreated: 0,
+      errorMessage: "Digest job was already claimed by another worker.",
+      reconciliation: null,
+    }
+  }
+
+  job = claimedJob
   const queuedAtMs = new Date(job.createdAt).getTime()
   const runStartedAtMs = Date.now()
   let currentModel: string | null = null
   let currentFallbackUsed = false
   let lastGeminiStage: GeminiStage | null = null
-  let finalStatus: DigestJobOutcome["status"] | "unknown" = "unknown"
+  let finalStatus: Exclude<DigestJobOutcome["status"], "skipped"> | "unknown" = "unknown"
   let failurePhase: string | null = null
   let tokenUsage = {
     inputTokens: 0,
@@ -901,8 +917,6 @@ async function runDigestJobInternal(
   const timeoutHandle = setTimeout(() => controller.abort(createDigestTimeoutError(timeoutMs)), timeoutMs)
 
   try {
-    await repositories.aiJobs.markRunning(job.id, job.attempts + 1)
-
     const session = job.sessionId ? await repositories.sessions.getById(job.sessionId) : null
     if (!session) {
       throw new Error("Session not found for digest job.")
@@ -1154,12 +1168,19 @@ export async function runBatchDigestForProject(
   let failurePhase: string | null = null
   let batchSucceeded = false
   let tokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+  const claimedJobs: AiJobRunRow[] = []
 
   try {
-    // Mark all deferred jobs as running
+    const budget = await resolveProjectAiBudget(repositories, userId, projectId)
+    if (!budget.aiEligible) return
+
+    // Claim deferred jobs atomically so parallel drains cannot spend on the same batch.
     for (const job of deferredJobs) {
-      await repositories.aiJobs.markRunning(job.id, job.attempts + 1)
+      const claimed = await repositories.aiJobs.markRunningIfRunnable(job.id, job.attempts + 1, ["deferred"])
+      if (claimed) claimedJobs.push(claimed)
     }
+
+    if (claimedJobs.length === 0) return
 
     const [project, projectState] = await Promise.all([
       repositories.projects.getById(projectId),
@@ -1172,7 +1193,7 @@ export async function runBatchDigestForProject(
 
     // Gather turns from all deferred sessions
     const sessionData: Array<{ session: SourceSessionRow; turns: SourceTurnRow[] }> = []
-    for (const job of deferredJobs) {
+    for (const job of claimedJobs) {
       if (!job.sessionId) continue
       const session = await repositories.sessions.getById(job.sessionId)
       if (!session) continue
@@ -1181,7 +1202,7 @@ export async function runBatchDigestForProject(
     }
 
     if (sessionData.length === 0) {
-      for (const job of deferredJobs) {
+      for (const job of claimedJobs) {
         await repositories.aiJobs.markCompleted(job.id, {
           actualModel: "skipped",
           outputPayload: buildJobProgress("completed", { skipped: true, reason: "No sessions to process." })
@@ -1283,7 +1304,7 @@ export async function runBatchDigestForProject(
     }
 
     // Mark all jobs as completed
-    for (const job of deferredJobs) {
+    for (const job of claimedJobs) {
       await repositories.aiJobs.markCompleted(job.id, {
         actualModel: result.actualModel,
         fallbackUsed: result.fallbackUsed,
@@ -1301,7 +1322,7 @@ export async function runBatchDigestForProject(
     failurePhase = describeGeminiError(error)?.phase ?? null
     const failureMessage = error instanceof Error ? error.message : "Batch digest failed."
 
-    for (const job of deferredJobs) {
+    for (const job of claimedJobs) {
       if (isTimeoutError(error) || controller.signal.aborted) {
         await repositories.aiJobs.markTimedOut(job.id, {
           errorMessage: failureMessage,
@@ -1367,9 +1388,22 @@ export async function drainDigestJobs(userId: string, limit = 4) {
   }
 }
 
-export async function drainDigestJobsForProject(userId: string, projectId: string, limit = 2) {
+export async function drainDigestJobsForProject(
+  userId: string,
+  projectId: string,
+  limit = 2,
+  options: { includeDeferred?: boolean } = {},
+) {
   const repositories = createRepositoryBundle(userId)
   await repositories.aiJobs.markTimedOutOlderThan("session_digest", DIGEST_JOB_TIMEOUT_MINUTES)
+
+  const runningJobs = await repositories.aiJobs.listByProject(projectId, {
+    jobKind: "session_digest",
+    statuses: ["running"],
+    limit: 1,
+  })
+
+  if (runningJobs.length > 0) return
 
   const priorityJobs = await repositories.aiJobs.listByProject(projectId, {
     jobKind: "session_digest",
@@ -1381,10 +1415,29 @@ export async function drainDigestJobsForProject(userId: string, projectId: strin
     await runDigestJobInternal(repositories, userId, job)
   }
 
-  const deferredJobs = await repositories.aiJobs.listDeferredByProject(projectId, limit)
-  if (deferredJobs.length > 0) {
-    await runBatchDigestForProject(repositories, userId, projectId, deferredJobs)
+  if (options.includeDeferred !== false) {
+    const deferredJobs = await repositories.aiJobs.listDeferredByProject(projectId, limit)
+    if (deferredJobs.length > 0) {
+      await runBatchDigestForProject(repositories, userId, projectId, deferredJobs)
+    }
   }
+}
+
+export function scheduleDigestDrainForProject(userId: string, projectId: string, limit = 1): void {
+  const key = `${userId}:${projectId}`
+  if (activeProjectDrains.has(key)) return
+
+  const lastFinishedAt = lastProjectDrainFinishedAt.get(key) ?? 0
+  if (Date.now() - lastFinishedAt < PROJECT_DRAIN_COOLDOWN_MS) return
+
+  const promise = drainDigestJobsForProject(userId, projectId, limit, { includeDeferred: false })
+    .catch(() => {})
+    .finally(() => {
+      activeProjectDrains.delete(key)
+      lastProjectDrainFinishedAt.set(key, Date.now())
+    })
+
+  activeProjectDrains.set(key, promise)
 }
 
 export async function listProjectDigestsForUser(userId: string, projectId: string) {
