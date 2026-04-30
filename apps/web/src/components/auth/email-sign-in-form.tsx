@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation"
 import { useState, useTransition, useRef, useEffect } from "react"
 import { Eye, EyeOff } from "lucide-react"
 
+import { Gift } from "lucide-react"
+
 import { authClient } from "@/lib/auth/client"
 import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client"
 import { withAuthCallbackParams } from "@/lib/auth/auth-callback"
@@ -154,11 +156,13 @@ function PasswordStrengthBar({ password }: { password: string }) {
 export function EmailSignInForm({
   nextPath = "/dashboard",
   intent = "sign-in",
+  initialReferralCode,
   onPendingVerificationChange,
   onModeChange,
 }: {
   nextPath?: string
   intent?: WebAuthIntent
+  initialReferralCode?: string
   onPendingVerificationChange?: (pending: boolean) => void
   onModeChange?: (mode: "sign-in" | "sign-up") => void
 }) {
@@ -168,6 +172,8 @@ export function EmailSignInForm({
   const [password, setPassword] = useState("")
   const [name, setName] = useState("")
   const [otp, setOtp] = useState("")
+  const [referralCode, setReferralCode] = useState(initialReferralCode ?? "")
+  const [referralError, setReferralError] = useState<string | null>(null)
   const [pendingVerification, setPendingVerification] = useState(false)
   const [resendSeconds, setResendSeconds] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -255,6 +261,17 @@ export function EmailSignInForm({
           })
           if (signUpResult.error) {
             throw new Error(signUpResult.error.message ?? "Sign-up failed.")
+          }
+
+          if (referralCode.trim()) {
+            const refRes = await fetch("/api/referral", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ code: referralCode.trim() }),
+            })
+            if (!refRes.ok) {
+              setReferralError("Referral code not recognized — you can add one later in settings.")
+            }
           }
         } else if (mode === "sign-up") {
           await sendEmailOtp()
@@ -405,6 +422,28 @@ export function EmailSignInForm({
           </>
         ) : null}
       </label>
+      {mode === "sign-up" && (
+        <label className="block space-y-2">
+          <span className="flex items-center gap-1.5 text-[13px] font-medium text-[var(--relay-ink-secondary)]">
+            <Gift className="h-3.5 w-3.5" />
+            Referral code
+            <span className="text-[var(--relay-faint)]">(optional)</span>
+          </span>
+          <input
+            className={fieldClass}
+            type="text"
+            value={referralCode}
+            onChange={(event) => { setReferralCode(event.target.value); setReferralError(null) }}
+            placeholder="e.g. abc123"
+            autoComplete="off"
+            readOnly={Boolean(initialReferralCode)}
+          />
+          {referralError && <span className="block text-[12px] text-amber-500">{referralError}</span>}
+          {initialReferralCode && (
+            <span className="block text-[12px] text-emerald-500">Referral code applied from invite link</span>
+          )}
+        </label>
+      )}
       <Button
         className="h-14 w-full rounded-[var(--relay-radius)] bg-[var(--relay-accent)] px-6 text-[15px] font-semibold text-[var(--relay-accent-text)] shadow-sm transition-all hover:opacity-90 disabled:opacity-40"
         disabled={

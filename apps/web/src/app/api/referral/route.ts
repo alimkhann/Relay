@@ -13,7 +13,8 @@ export const GET = withApiAuth(async () => {
 export const POST = withApiAuth(async (req: NextRequest) => {
   const viewer = await requireSessionViewer()
   const body = await req.json() as { code?: string }
-  if (!body.code?.trim()) return NextResponse.json({ ok: false }, { status: 400 })
-  await attachReferralForUser({ refereeUserId: viewer.userId, code: body.code.trim() })
+  if (!body.code?.trim()) return NextResponse.json({ ok: false, reason: "missing_code" }, { status: 400 })
+  const result = await attachReferralForUser({ refereeUserId: viewer.userId, code: body.code.trim() })
+  if (!result) return NextResponse.json({ ok: false, reason: "invalid_code" }, { status: 400 })
   return NextResponse.json({ ok: true })
 })

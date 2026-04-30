@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { InAppBrowserBanner } from "@/components/auth/in-app-browser-banner";
@@ -15,6 +16,7 @@ import {
   resolveSafeNextPath,
   resolveWebAuthIntent,
 } from "@/server/policies/viewer";
+import { decodeReferralCookie, REFERRAL_COOKIE_NAME } from "@/server/services/referral-service";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +40,7 @@ export default async function SignInPage({
       (process.env.NEON_AUTH_BASE_URL && process.env.NEON_AUTH_COOKIE_SECRET),
   );
   const authBackgroundSrc = pickRandomLandingBackground();
+  const referralCode = decodeReferralCookie((await cookies()).get(REFERRAL_COOKIE_NAME)?.value) ?? undefined;
 
   return (
     <main className="flex min-h-screen bg-[var(--relay-bg)]">
@@ -107,6 +110,7 @@ export default async function SignInPage({
           authProvider={authProvider}
           intent={intent}
           nextPath={nextPath}
+          referralCode={referralCode}
         />
       </div>
     </main>

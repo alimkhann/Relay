@@ -10,10 +10,11 @@ import { SessionKeepalive } from "@/components/auth/session-keepalive"
 import { PostHogIdentity } from "@/components/telemetry/posthog-identity"
 import { WorkspaceSidebarShell } from "@/components/layout/workspace-sidebar-shell"
 import { requirePageViewer, syncViewerProfile } from "@/server/policies/viewer"
-import { resolveViewerEntitlements } from "@/server/services/entitlement-service"
+import { resolveViewerEntitlements, getUsageCount } from "@/server/services/entitlement-service"
 import {
   attachReferralForUser,
   decodeReferralCookie,
+  getReferralProgramForUser,
   REFERRAL_COOKIE_NAME,
 } from "@/server/services/referral-service"
 import { getResolvedOnboardingStateForUser } from "@/server/services/onboarding-service"
@@ -37,13 +38,15 @@ export default async function WorkspaceLayout({
     }).catch(() => {})
   }
   const repositories = createRepositoryBundle(viewer.userId)
-  const [projects, onboarding, settings, entitlements, profile, extensionTokens] = await Promise.all([
+  const [projects, onboarding, settings, entitlements, profile, extensionTokens, referralProgram, capturesUsed] = await Promise.all([
     listProjectsForUser(viewer.userId),
     getResolvedOnboardingStateForUser(viewer.userId),
     getUserSettings(viewer.userId),
     resolveViewerEntitlements(viewer.userId),
     repositories.profiles.getById(viewer.userId),
     listExtensionTokensForUser(viewer.userId),
+    getReferralProgramForUser(viewer.userId).catch(() => null),
+    getUsageCount(viewer.userId, "capture_monthly", "month").catch(() => 0),
   ])
   const hasConnectedExtension = extensionTokens.some((token) => !token.revokedAt)
 
@@ -67,6 +70,8 @@ export default async function WorkspaceLayout({
         <WorkspaceSidebarShell
           projects={projects.map((p) => ({ id: p.id, name: p.name }))}
           user={sidebarUser}
+          referral={referralProgram ? { code: referralProgram.code, link: referralProgram.link, qualifiedCount: referralProgram.qualifiedCount } : undefined}
+          plan={{ plan: entitlements.plan, isPaid: entitlements.isPaid, capturesUsed, capturesLimit: entitlements.limits.captureMonthly }}
         />
 
         <SidebarMainArea>

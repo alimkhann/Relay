@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import * as Popover from "@radix-ui/react-popover";
 import * as Tooltip from "@radix-ui/react-tooltip";
-import { Settings, LogOut, CreditCard } from "lucide-react";
+import { Settings, LogOut, CreditCard, MessageSquareText } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 import { cn } from "@/lib/cn";
@@ -120,6 +120,16 @@ export function AccountMenu({ name, email, collapsed = false }: AccountMenuProps
                   <CreditCard className="h-3.5 w-3.5 text-[var(--relay-faint)]" />
                   Billing
                 </Link>
+                <a
+                  href="https://relay.featurebase.app"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setOpen(false)}
+                  className="flex items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-2.5 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition-colors hover:bg-[var(--relay-soft)]"
+                >
+                  <MessageSquareText className="h-3.5 w-3.5 text-[var(--relay-faint)]" />
+                  Feedback
+                </a>
                 <div className="mx-2.5 my-1 border-t border-[var(--relay-line)]" />
                 <form action="/auth/sign-out" method="POST">
                   <button

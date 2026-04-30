@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation"
 
+import { createRepositoryBundle } from "@relay/db"
+
 import { CreateProjectForm } from "@/components/projects/create-project-form"
 import { ReferralLinkBanner } from "@/components/referral/referral-link-banner"
+import { ReferralWelcomeBanner } from "@/components/referral/referral-welcome-banner"
 import { SoftPaywallPanel } from "@/components/billing/soft-paywall-panel"
 import { PageTelemetry } from "@/components/telemetry/page-telemetry"
 import { DashboardContent } from "@/features/projects/dashboard-content"
@@ -29,6 +32,10 @@ export default async function DashboardPage({
     getResolvedOnboardingStateForUser(viewer.userId, { projects }),
     getUserSettings(viewer.userId),
   ])
+
+  const repositories = createRepositoryBundle(viewer.userId)
+  const refereeReferral = await repositories.referrals.getByRefereeId(viewer.userId).catch(() => null)
+  const wasReferred = Boolean(refereeReferral)
 
   if (onboarding.status === "pending") {
     const referralProgram = await getReferralProgramForUser(viewer.userId).catch(() => null)
@@ -60,6 +67,7 @@ export default async function DashboardPage({
           }}
         />
         <section className="py-10">
+          {wasReferred && <ReferralWelcomeBanner />}
           <header className="mb-10 space-y-2">
             <h1 className="text-[28px] font-medium tracking-tight text-[var(--relay-ink)]">
               Create a project
@@ -113,6 +121,7 @@ export default async function DashboardPage({
       />
       {dashboard && currentProject ? (
         <div className="pt-6">
+          {wasReferred && !entitlements.isPaid ? <ReferralWelcomeBanner /> : null}
           {!entitlements.isPaid ? <SoftPaywallPanel /> : null}
           <DashboardContent
             key={currentProject.id}

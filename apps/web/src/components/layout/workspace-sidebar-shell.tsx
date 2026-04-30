@@ -13,11 +13,15 @@ interface WorkspaceSidebarShellProps {
     name: string
     email?: string
   } | null
+  referral?: { code: string; link: string; qualifiedCount: number }
+  plan?: { plan: string; isPaid: boolean; capturesUsed: number; capturesLimit: number }
 }
 
 export function WorkspaceSidebarShell({
   projects,
   user,
+  referral,
+  plan,
 }: WorkspaceSidebarShellProps) {
   const searchParams = useSearchParams()
   const currentProjectId = searchParams.get("project") ?? projects[0]?.id
@@ -38,6 +42,8 @@ export function WorkspaceSidebarShell({
         projects={projects}
         currentProjectId={currentProjectId}
         user={user}
+        referral={referral}
+        plan={plan}
       />
       <CommandPalette
         projects={projects}

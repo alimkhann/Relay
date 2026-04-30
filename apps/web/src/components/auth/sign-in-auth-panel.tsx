@@ -17,11 +17,13 @@ export function SignInAuthPanel({
   authProvider,
   intent,
   nextPath,
+  referralCode,
 }: {
   authConfigured: boolean
   authProvider: AuthProvider
   intent: WebAuthIntent
   nextPath: string
+  referralCode?: string
 }) {
   const [emailOtpActive, setEmailOtpActive] = useState(false)
   const [activeMode, setActiveMode] = useState<"sign-in" | "sign-up">(intent === "sign-up" ? "sign-up" : "sign-in")
@@ -91,6 +93,7 @@ export function SignInAuthPanel({
               <EmailSignInForm
                 nextPath={nextPath}
                 intent={intent}
+                initialReferralCode={referralCode}
                 onPendingVerificationChange={setEmailOtpActive}
                 onModeChange={setActiveMode}
               />

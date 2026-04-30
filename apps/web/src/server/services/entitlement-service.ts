@@ -133,7 +133,7 @@ export async function getBillingStatusForUser(userId: string): Promise<BillingSt
   }
 }
 
-async function getUsageCount(userId: string, featureKey: string, windowKey: WindowKey) {
+export async function getUsageCount(userId: string, featureKey: string, windowKey: WindowKey) {
   const repositories = createRepositoryBundle(userId)
   const { start } = getWindowBounds(windowKey)
   const counter = await repositories.usageCounters.get(`user:${userId}`, featureKey, windowKey, start)

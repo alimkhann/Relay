@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { PanelLeftClose, PanelLeft, X, MessageSquareText } from "lucide-react";
+import { PanelLeftClose, PanelLeft, X } from "lucide-react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import * as Dialog from "@radix-ui/react-dialog";
 import { motion } from "motion/react";
@@ -11,6 +11,8 @@ import { cn } from "@/lib/cn";
 import { useSidebar } from "@/components/layout/sidebar-context";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { SidebarProjectSwitcher } from "@/components/layout/sidebar-project-switcher";
+import { SidebarReferralWidget } from "@/components/layout/sidebar-referral-widget";
+import { SidebarPlanWidget } from "@/components/layout/sidebar-plan-widget";
 import { AccountMenu } from "@/components/layout/account-menu";
 
 interface SidebarProps {
@@ -20,6 +22,8 @@ interface SidebarProps {
     name: string;
     email?: string;
   } | null;
+  referral?: { code: string; link: string; qualifiedCount: number };
+  plan?: { plan: string; isPaid: boolean; capturesUsed: number; capturesLimit: number };
 }
 
 /* ─── Shared inner content used by both desktop aside and mobile drawer ─── */
@@ -28,6 +32,8 @@ function SidebarContent({
   projects,
   currentProjectId,
   user,
+  referral,
+  plan,
   collapsed,
   overviewHref,
   toggle,
@@ -133,46 +139,29 @@ function SidebarContent({
       {/* Navigation */}
       <SidebarNav currentProjectId={currentProjectId} collapsed={collapsed} onNavigate={onNavigate} />
 
-      {/* Feedback */}
-      <div className="mt-auto px-2 pb-2">
-        {collapsed ? (
-          <Tooltip.Root>
-            <Tooltip.Trigger asChild>
-              <a
-                href="https://relay.featurebase.app"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center rounded-[var(--relay-radius-sm)] p-2 text-[var(--relay-muted)] transition-colors hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
-              >
-                <MessageSquareText className="h-4 w-4 shrink-0" />
-              </a>
-            </Tooltip.Trigger>
-            <Tooltip.Portal>
-              <Tooltip.Content
-                side="right"
-                sideOffset={8}
-                className="z-50 rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--relay-bg)] shadow-[var(--relay-shadow)]"
-              >
-                Feedback
-                <Tooltip.Arrow className="fill-[var(--relay-ink)]" />
-              </Tooltip.Content>
-            </Tooltip.Portal>
-          </Tooltip.Root>
-        ) : (
-          <a
-            href="https://relay.featurebase.app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-2.5 py-1.5 text-[13px] font-medium text-[var(--relay-muted)] transition-colors hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
-          >
-            <MessageSquareText className="h-4 w-4 shrink-0" />
-            <span>Feedback</span>
-          </a>
+      {/* Referral + Plan widgets */}
+      <div className={cn("mt-auto space-y-2", collapsed ? "px-1" : "px-2")}>
+        {referral && (
+          <SidebarReferralWidget
+            code={referral.code}
+            link={referral.link}
+            qualifiedCount={referral.qualifiedCount}
+            collapsed={collapsed}
+          />
+        )}
+        {plan && (
+          <SidebarPlanWidget
+            plan={plan.plan}
+            isPaid={plan.isPaid}
+            capturesUsed={plan.capturesUsed}
+            capturesLimit={plan.capturesLimit}
+            collapsed={collapsed}
+          />
         )}
       </div>
 
       {/* Account menu */}
-      <div className="border-t border-[var(--relay-line)] pt-4">
+      <div className="border-t border-[var(--relay-line)] pt-4 mt-2">
         {user ? (
           <AccountMenu
             name={user.name}
@@ -197,7 +186,7 @@ function SidebarContent({
 
 /* ─── Main Sidebar ─── */
 
-export function Sidebar({ projects, currentProjectId, user }: SidebarProps) {
+export function Sidebar({ projects, currentProjectId, user, referral, plan }: SidebarProps) {
   const { collapsed, toggle, mobileOpen, setMobileOpen } = useSidebar();
   const overviewHref = currentProjectId
     ? `/dashboard?project=${currentProjectId}`
@@ -216,6 +205,8 @@ export function Sidebar({ projects, currentProjectId, user }: SidebarProps) {
           projects={projects}
           currentProjectId={currentProjectId}
           user={user}
+          referral={referral}
+          plan={plan}
           collapsed={collapsed}
           overviewHref={overviewHref}
           toggle={toggle}
@@ -255,6 +246,8 @@ export function Sidebar({ projects, currentProjectId, user }: SidebarProps) {
                 projects={projects}
                 currentProjectId={currentProjectId}
                 user={user}
+                referral={referral}
+                plan={plan}
                 collapsed={false}
                 overviewHref={overviewHref}
                 toggle={toggle}
