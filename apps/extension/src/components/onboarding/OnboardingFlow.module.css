@@ -430,12 +430,12 @@
 }
 .launchCard:hover .launchLabel { color: rgba(255,255,255,0.8); }
 
-.featuresNext {
-  position: sticky;
-  bottom: 70px; /* sits above the fixed dots row */
-  z-index: 10;
-  margin-top: 8px;
-  flex-shrink: 0;
+.featuresFixedNext {
+  position: fixed;
+  bottom: 76px; /* above fixed dots at bottom: 26px */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
 }
 
 @media (max-height: 720px) {
@@ -446,8 +446,8 @@
   .featureTitle { font-size: 12px; line-height: 1.28; margin-bottom: 3px; }
   .featureDesc { font-size: 10.5px; line-height: 1.35; }
   .featurePlayCircle { width: 32px; height: 32px; }
-  .featuresNext { margin-top: 4px; }
 }
+
 
 @media (max-height: 660px) {
   .featuresStep { gap: 6px; }

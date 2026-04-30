@@ -208,6 +208,7 @@ export function OnboardingFlow() {
   const [projectBusy, setProjectBusy] = useState(false)
   const [projectError, setProjectError] = useState<string | null>(null)
   const [modalVideo, setModalVideo] = useState<string | null>(null)
+  const [referralCode, setReferralCode] = useState("")
 
   useEffect(() => {
     document.title = "Welcome to Relay — Let's Get Started"
@@ -270,6 +271,9 @@ export function OnboardingFlow() {
       const deviceName = isMac ? "Relay on Mac" : "Relay on browser"
       const result = await chrome.runtime.sendMessage({ type: "RELAY_GOOGLE_SIGN_IN", payload: { deviceName } }) as { ok: boolean; reason?: string } | undefined
       if (result?.ok) {
+        if (intent === "sign-up" && referralCode.trim()) {
+          await relayFetch("/api/referral", { method: "POST", body: JSON.stringify({ code: referralCode.trim() }) }).catch(() => {})
+        }
         await afterAuth()
       } else {
         setAuthError(result?.reason ?? "Sign-in failed. Try again.")
@@ -290,6 +294,9 @@ export function OnboardingFlow() {
       if (result?.ok && result.requiresOtp) {
         setOtpRequired(true)
       } else if (result?.ok) {
+        if (intent === "sign-up" && referralCode.trim()) {
+          await relayFetch("/api/referral", { method: "POST", body: JSON.stringify({ code: referralCode.trim() }) }).catch(() => {})
+        }
         await afterAuth()
       } else {
         setAuthError(result?.reason ?? "Sign-in failed. Try again.")
@@ -308,6 +315,9 @@ export function OnboardingFlow() {
         payload: { email: email.trim(), password, intent, otp: otp.trim(), deviceName },
       }) as { ok: boolean; reason?: string } | undefined
       if (result?.ok) {
+        if (referralCode.trim()) {
+          await relayFetch("/api/referral", { method: "POST", body: JSON.stringify({ code: referralCode.trim() }) }).catch(() => {})
+        }
         await afterAuth()
       } else {
         setAuthError(result?.reason ?? "Invalid code. Try again.")
@@ -371,17 +381,19 @@ export function OnboardingFlow() {
         </div>
       ) : (
         <div className={`${styles.step} ${stepClass}`}>
-          {step === 1 && <StepFeatures onNext={next} onOpenVideo={setModalVideo} />}
+          {step === 1 && <StepFeatures onOpenVideo={setModalVideo} />}
           {step === 2 && (
             <StepAuth
               authBusy={authBusy} authError={authError} email={email} name={name}
               password={password} showPassword={showPassword} intent={intent}
               otpRequired={otpRequired} otp={otp}
+              referralCode={referralCode}
               onGoogleSignIn={handleGoogleSignIn} onEmailAuth={handleEmailAuth} onOtpVerify={handleOtpVerify}
               onEmailChange={setEmail} onNameChange={setName} onPasswordChange={setPassword}
               onToggleShowPassword={() => setShowPassword((v) => !v)}
-              onIntentToggle={() => { setIntent((v) => v === "sign-in" ? "sign-up" : "sign-in"); setAuthError(null); setOtpRequired(false); setOtp("") }}
+              onIntentToggle={() => { setIntent((v) => v === "sign-in" ? "sign-up" : "sign-in"); setAuthError(null); setOtpRequired(false); setOtp(""); setReferralCode("") }}
               onOtpChange={setOtp}
+              onReferralCodeChange={setReferralCode}
               onSkip={() => navTo(5, setStep, setVisible)}
             />
           )}
@@ -400,6 +412,16 @@ export function OnboardingFlow() {
           {step === 5 && <StepShortcuts onNext={next} />}
           {step === 6 && <StepPin isSignedIn={isSignedIn} onOpenRelay={handleOpenRelay} />}
         </div>
+      )}
+
+      {step === 1 && (
+        <button
+          className={`${styles.primaryBtn} ${styles.featuresFixedNext}`}
+          style={{ opacity: visible ? 1 : 0, transition: "opacity 0.3s ease" }}
+          onClick={next}
+        >
+          Next →
+        </button>
       )}
 
       <div className={styles.dots}>
@@ -472,7 +494,7 @@ function FeatureCard({ icon, label, title, desc, video, poster, onOpen }: {
   )
 }
 
-function StepFeatures({ onNext, onOpenVideo }: { onNext: () => void; onOpenVideo: (url: string) => void }) {
+function StepFeatures({ onOpenVideo }: { onOpenVideo: (url: string) => void }) {
   const launchRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
@@ -498,7 +520,6 @@ function StepFeatures({ onNext, onOpenVideo }: { onNext: () => void; onOpenVideo
         ))}
       </div>
 
-      <button className={`${styles.primaryBtn} ${styles.featuresNext}`} onClick={onNext}>Next →</button>
     </div>
   )
 }
@@ -507,16 +528,18 @@ function StepFeatures({ onNext, onOpenVideo }: { onNext: () => void; onOpenVideo
 
 function StepAuth({
   authBusy, authError, email, name, password, showPassword, intent, otpRequired, otp,
+  referralCode,
   onGoogleSignIn, onEmailAuth, onOtpVerify, onEmailChange, onNameChange, onPasswordChange,
-  onToggleShowPassword, onIntentToggle, onOtpChange, onSkip,
+  onToggleShowPassword, onIntentToggle, onOtpChange, onReferralCodeChange, onSkip,
 }: {
   authBusy: boolean; authError: string | null; email: string; name: string
   password: string; showPassword: boolean; intent: "sign-in" | "sign-up"
-  otpRequired: boolean; otp: string
+  otpRequired: boolean; otp: string; referralCode: string
   onGoogleSignIn: () => void; onEmailAuth: () => void; onOtpVerify: () => void
   onEmailChange: (v: string) => void; onNameChange: (v: string) => void
   onPasswordChange: (v: string) => void; onToggleShowPassword: () => void
-  onIntentToggle: () => void; onOtpChange: (v: string) => void; onSkip: () => void
+  onIntentToggle: () => void; onOtpChange: (v: string) => void
+  onReferralCodeChange: (v: string) => void; onSkip: () => void
 }) {
   const isSignUp = intent === "sign-up"
   return (
@@ -559,6 +582,11 @@ function StepAuth({
                 <EyeIcon open={showPassword} />
               </button>
             </div>
+            {isSignUp && (
+              <input className={styles.authInput} type="text" placeholder="Referral code (optional)"
+                value={referralCode} onChange={(e) => onReferralCodeChange(e.target.value)}
+                autoComplete="off" />
+            )}
             <button className={styles.primaryBtn} style={{ width: "100%" }} onClick={onEmailAuth}
               disabled={authBusy || !email.trim() || !password.trim()}>
               {authBusy ? (isSignUp ? "Creating…" : "Signing in…") : isSignUp ? "Create account" : "Sign in"}
