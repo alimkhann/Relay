@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import { buildRelayAnalyticsPayload } from "./analytics"
 
 describe("buildRelayAnalyticsPayload", () => {
-  it("maps legacy page events to page_viewed with page context", () => {
+  it("maps legacy page events to $pageview with page context", () => {
     const payload = buildRelayAnalyticsPayload(
       {
         level: "info",
@@ -32,7 +32,7 @@ describe("buildRelayAnalyticsPayload", () => {
       }
     )
 
-    expect(payload.event).toBe("page_viewed")
+    expect(payload.event).toBe("$pageview")
     expect(payload.distinctId).toBe("user-1")
     expect(payload.properties).toMatchObject({
       user_id: "user-1",
@@ -51,6 +51,31 @@ describe("buildRelayAnalyticsPayload", () => {
       project_id: "project-1",
       has_project: true,
       raw_event_name: "dashboard_viewed",
+    })
+  })
+
+  it("keeps explicit product events separate from pageview analytics", () => {
+    const payload = buildRelayAnalyticsPayload(
+      {
+        level: "info",
+        surface: "web-dashboard",
+        area: "capture",
+        event: "capture_saved",
+        message: "Saved a capture.",
+        userId: "user-1",
+        context: {
+          sourceTool: "chatgpt",
+        },
+      },
+      {
+        mode: "server",
+        pathname: "/api/captures",
+      }
+    )
+
+    expect(payload.event).toBe("capture_saved")
+    expect(payload.properties).toMatchObject({
+      source_tool: "chatgpt",
     })
   })
 

@@ -5,6 +5,10 @@ import { PostHog } from "posthog-node"
 
 interface ViewerResponse {
   userId: string
+  mode?: string | null
+  projectId?: string | null
+  name?: string | null
+  email?: string | null
 }
 
 function getPosthogConfig() {
@@ -74,7 +78,20 @@ export class RelayMcpAnalytics {
 
       if (response.ok) {
         const viewer = (await response.json()) as ViewerResponse
+        const previousDistinctId = this.distinctId
         this.distinctId = viewer.userId
+        this.client.identify({
+          distinctId: viewer.userId,
+          properties: {
+            name: viewer.name ?? null,
+            email: viewer.email ?? null,
+            auth_mode: viewer.mode ?? null,
+            project_id: viewer.projectId ?? null,
+            ...(previousDistinctId && previousDistinctId !== viewer.userId
+              ? { $anon_distinct_id: previousDistinctId }
+              : {}),
+          },
+        })
         return
       }
     } catch {

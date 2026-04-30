@@ -28,23 +28,34 @@ describe("posthog identity helpers", () => {
 
     identifyPosthogUser("user-123", {
       email: "user@example.com",
+      name: "Test User",
       plan: "starter",
       created_at: "2026-04-20T00:00:00.000Z",
+      signup_source: "referral",
       is_extension_installed: true,
+      is_employee: false,
+      is_test_user: false,
     })
 
     expect(posthogMock.init).toHaveBeenCalledTimes(1)
     expect(posthogMock.identify).toHaveBeenCalledWith("user-123", {
       email: "user@example.com",
+      name: "Test User",
       plan: "starter",
       created_at: "2026-04-20T00:00:00.000Z",
+      signup_source: "referral",
       is_extension_installed: true,
+      is_employee: false,
+      is_test_user: false,
     })
     expect(posthogMock.register).toHaveBeenCalledWith({
       user_id: "user-123",
       plan: "starter",
       is_authenticated: true,
       is_extension_installed: true,
+      signup_source: "referral",
+      is_employee: false,
+      is_test_user: false,
     })
   })
 
@@ -60,6 +71,32 @@ describe("posthog identity helpers", () => {
       plan: null,
       is_authenticated: false,
       is_extension_installed: null,
+      signup_source: null,
+      is_employee: null,
+      is_test_user: null,
     })
+  })
+
+  it("stores the previous path after a canonical pageview", async () => {
+    const { capturePosthogTelemetry } = await import("./posthog")
+
+    window.history.pushState({}, "", "/dashboard")
+    window.sessionStorage.clear()
+
+    capturePosthogTelemetry({
+      level: "info",
+      surface: "web-dashboard",
+      area: "page",
+      event: "page_viewed",
+      message: "Viewed dashboard.",
+    })
+
+    expect(posthogMock.capture).toHaveBeenCalledWith(
+      "$pageview",
+      expect.objectContaining({
+        pathname: "/dashboard",
+      })
+    )
+    expect(window.sessionStorage.getItem("relay.previous_path")).toBe("/dashboard")
   })
 })

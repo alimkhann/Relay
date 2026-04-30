@@ -128,7 +128,7 @@ export function capturePosthogTelemetry(input: TelemetryEventInput) {
   })
   posthog.capture(payload.event, payload.properties)
 
-  if (payload.event === "page_viewed") {
+  if (payload.event === "$pageview") {
     window.sessionStorage.setItem(PREVIOUS_PATH_KEY, url.pathname)
   }
 }
@@ -150,7 +150,10 @@ export function identifyPosthogUser(
     email?: string | null
     plan?: string | null
     created_at?: string | null
+    signup_source?: string | null
     is_extension_installed?: boolean | null
+    is_employee?: boolean | null
+    is_test_user?: boolean | null
   } = {}
 ) {
   if (!ensurePosthog()) {
@@ -163,6 +166,9 @@ export function identifyPosthogUser(
     plan: properties.plan ?? null,
     is_authenticated: true,
     is_extension_installed: properties.is_extension_installed ?? null,
+    signup_source: properties.signup_source ?? null,
+    is_employee: properties.is_employee ?? null,
+    is_test_user: properties.is_test_user ?? null,
   })
 }
 
@@ -177,6 +183,9 @@ export function resetPosthogUser() {
     plan: null,
     is_authenticated: false,
     is_extension_installed: null,
+    signup_source: null,
+    is_employee: null,
+    is_test_user: null,
   })
 }
 

@@ -10,14 +10,20 @@ export function PostHogIdentity({
   email,
   plan,
   createdAt,
+  signupSource,
   isExtensionInstalled,
+  isEmployee,
+  isTestUser,
 }: {
   userId: string | null
   name?: string | null
   email?: string | null
   plan?: string | null
   createdAt?: string | null
+  signupSource?: string | null
   isExtensionInstalled?: boolean | null
+  isEmployee?: boolean | null
+  isTestUser?: boolean | null
 }) {
   useEffect(() => {
     if (userId) {
@@ -26,13 +32,16 @@ export function PostHogIdentity({
         email: email ?? null,
         plan: plan ?? null,
         created_at: createdAt ?? null,
+        signup_source: signupSource ?? null,
         is_extension_installed: isExtensionInstalled ?? null,
+        is_employee: isEmployee ?? null,
+        is_test_user: isTestUser ?? null,
       })
       return
     }
 
     resetPosthogUser()
-  }, [createdAt, email, isExtensionInstalled, name, plan, userId])
+  }, [createdAt, email, isEmployee, isExtensionInstalled, isTestUser, name, plan, signupSource, userId])
 
   return null
 }

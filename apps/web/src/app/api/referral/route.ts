@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse, type NextRequest } from "next/server"
 
 import { withApiAuth } from "@/server/http/api-route"
 import { requireSessionViewer } from "@/server/policies/viewer"
