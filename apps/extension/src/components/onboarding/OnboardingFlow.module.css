@@ -286,10 +286,7 @@
 .featuresStep {
   display: flex; flex-direction: column;
   align-items: center; width: 100%;
-  height: min(calc(100vh - 108px), 880px);
-  max-height: min(calc(100vh - 108px), 880px);
   justify-content: flex-start;
-  overflow: hidden;
   gap: 10px;
 }
 
@@ -342,10 +339,7 @@
 .featuresGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
   gap: 8px; width: 100%;
-  flex: 1;
-  min-height: 0;
 }
 
 .featureCard {
@@ -353,17 +347,17 @@
   border: 1px solid rgba(255,255,255,0.07);
   border-radius: 14px; overflow: hidden;
   text-align: left; cursor: pointer;
-  display: grid;
-  grid-template-rows: 1fr auto;
-  min-height: 0;
+  display: flex; flex-direction: column;
   transition: border-color 0.2s;
 }
 .featureCard:hover { border-color: rgba(255,255,255,0.15); }
 
 .featureMedia {
+  width: 100%;
+  aspect-ratio: 16 / 9;
   position: relative;
-  min-height: 0;
   background: #0d0d0d; overflow: hidden;
+  flex-shrink: 0;
 }
 .featureMedia video {
   position: absolute; inset: 0;
@@ -437,12 +431,16 @@
 .launchCard:hover .launchLabel { color: rgba(255,255,255,0.8); }
 
 .featuresNext {
+  position: sticky;
+  bottom: 70px; /* sits above the fixed dots row */
+  z-index: 10;
   margin-top: 8px;
   flex-shrink: 0;
 }
 
 @media (max-height: 720px) {
   .featuresStep { gap: 8px; }
+  .featureMedia { aspect-ratio: 2.5 / 1; }
   .featureBody { padding: 8px 10px; }
   .featureLabelRow { margin-bottom: 3px; }
   .featureTitle { font-size: 12px; line-height: 1.28; margin-bottom: 3px; }
@@ -453,8 +451,8 @@
 
 @media (max-height: 660px) {
   .featuresStep { gap: 6px; }
-  /* viewport too short for full 16:9 — cap launch height, video crops */
   .launchCard { aspect-ratio: unset; height: 150px; }
+  .featureMedia { aspect-ratio: 3 / 1; }
   .featureBody { padding: 6px 8px; }
   .featureIcon svg { width: 13px; height: 13px; }
   .featureLabel { font-size: 9px; }
