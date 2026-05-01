@@ -144,9 +144,9 @@ export function ActivityFeed({ feed }: { feed: ActivityEntry[] }) {
             </div>
             <div className="overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
               <div className="divide-y divide-[var(--relay-line)]">
-                {group.items.map((entry, index) => (
+                {group.items.map((entry) => (
                   <div
-                    key={`${entry.timestamp}-${index}`}
+                    key={entry.sessionId ?? entry.timestamp}
                     className={cn(
                       "group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-[var(--relay-soft)]/50",
                       entry.isArchived && "opacity-50",
@@ -271,9 +271,9 @@ export function GroupedActivityFeed({ feed }: { feed: GroupedActivityEntry[] }) 
     <>
       <div className="overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
         <div className="divide-y divide-[var(--relay-line)]">
-          {feed.map((entry, index) => (
+          {feed.map((entry) => (
             <div
-              key={`${entry.groupId}-${index}`}
+              key={entry.groupId}
               className={cn(
                 "group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-[var(--relay-soft)]/50",
                 entry.allArchived && "opacity-50",

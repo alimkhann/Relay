@@ -29,7 +29,7 @@ export function ActivityFeed({
     ...digests.map((d) => ({
       kind: "digest" as const,
       data: d,
-      at: Date.now() - digests.indexOf(d) * 60000,
+      at: new Date(d.createdAt).getTime(),
     })),
   ].sort((a, b) => b.at - a.at);
 
