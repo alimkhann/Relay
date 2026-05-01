@@ -3,6 +3,7 @@ import type { CreateMemoryItemInput, MemoryEventType, MemoryItemRow } from "@rel
 import { computeDecayScore, createMemoryItemSchema, DECAY_VISIBILITY_THRESHOLD, hasReplacementSignal, isSameTopic, updateMemoryItemSchema } from "@relay/shared"
 
 import { embedMemoryItem, embedMemoryItems, generateEmbedding } from "./embedding-service"
+import { extractAndLinkEntities } from "./entity-extraction-service"
 import { decomposeQuery } from "./query-decomposition-service"
 import { buildCurrentPreviousHint, buildReasoningEvidenceTable, buildTemporalResolutionHint } from "./reasoning-assembly-service"
 import { conditionalRerank } from "./reranker-service"
@@ -43,6 +44,7 @@ async function postCreateHook(item: MemoryItemRow, repos: ReturnType<typeof crea
   try {
     await embedMemoryItem(item, repos)
     await detectRelations(item, repos)
+    await extractAndLinkEntities(repos, item.projectId, item.id, item.content, item.title)
   } catch (error) {
     console.error("[memory-service] post-create hook failed:", error instanceof Error ? error.message : error)
   }
