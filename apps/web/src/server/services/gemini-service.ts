@@ -116,51 +116,6 @@ export function describeGeminiError(error: unknown) {
   }
 }
 
-async function countTokens(model: string, prompt: string, signal?: AbortSignal) {
-  const cachedError = getCachedUnavailableError(model, "count_tokens")
-  if (cachedError) {
-    throw cachedError
-  }
-
-  const apiKey = getGeminiApiKey()
-  if (!apiKey) {
-    return estimateTokenCount(prompt)
-  }
-
-  const response = await fetch(`${GEMINI_API_BASE}/models/${model}:countTokens`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-goog-api-key": apiKey
-    },
-    signal,
-    body: JSON.stringify({
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: prompt }]
-        }
-      ]
-    })
-  })
-
-  if (!response.ok) {
-    const message = await parseError(response)
-    if (isModelUnavailableStatus(response.status)) {
-      rememberUnavailableModel(model)
-    }
-
-    if (isRetryableStatus(response.status)) {
-      throw new GeminiRequestError(message, response.status, true, "count_tokens")
-    }
-
-    return estimateTokenCount(prompt)
-  }
-
-  const payload = (await response.json()) as { totalTokens?: number }
-  return payload.totalTokens ?? estimateTokenCount(prompt)
-}
-
 async function generateJson<T>(model: string, systemInstruction: string, prompt: string, maxOutputTokens: number, signal?: AbortSignal): Promise<{ data: T; tokenUsage: GeminiUsage }> {
   const cachedError = getCachedUnavailableError(model, "generate")
   if (cachedError) {
@@ -245,13 +200,13 @@ async function generateJson<T>(model: string, systemInstruction: string, prompt:
   }
 }
 
-async function trimPromptToBudget(model: string, prompt: string, maxInputTokens: number, signal?: AbortSignal) {
+function trimPromptToBudget(prompt: string, maxInputTokens: number) {
   let nextPrompt = normalizeText(prompt)
-  let totalTokens = await countTokens(model, nextPrompt, signal)
+  let totalTokens = estimateTokenCount(nextPrompt)
 
   while (totalTokens > maxInputTokens && nextPrompt.length > 1200) {
     nextPrompt = nextPrompt.slice(0, Math.floor(nextPrompt.length * 0.85))
-    totalTokens = await countTokens(model, nextPrompt, signal)
+    totalTokens = estimateTokenCount(nextPrompt)
   }
 
   return { prompt: nextPrompt, tokens: totalTokens }
@@ -273,7 +228,7 @@ export async function runGeminiJsonWithFallback<T>(input: {
 
   try {
     await emitStage("count_tokens_primary", input.primaryModel, false)
-    const primaryPrompt = await trimPromptToBudget(input.primaryModel, input.prompt, input.maxInputTokens, input.signal)
+    const primaryPrompt = trimPromptToBudget(input.prompt, input.maxInputTokens)
     await emitStage("generate_primary", input.primaryModel, false)
     const result = await generateJson<T>(input.primaryModel, input.systemInstruction, primaryPrompt.prompt, input.maxOutputTokens, input.signal)
     return {
@@ -290,7 +245,7 @@ export async function runGeminiJsonWithFallback<T>(input: {
   }
 
   await emitStage("count_tokens_fallback", input.fallbackModel, true)
-  const fallbackPrompt = await trimPromptToBudget(input.fallbackModel, input.prompt, input.maxInputTokens, input.signal)
+  const fallbackPrompt = trimPromptToBudget(input.prompt, input.maxInputTokens)
   await emitStage("generate_fallback", input.fallbackModel, true)
   const fallbackResult = await generateJson<T>(input.fallbackModel, input.systemInstruction, fallbackPrompt.prompt, input.maxOutputTokens, input.signal)
 

@@ -2,14 +2,25 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 
 const ENCRYPTED_PREFIX = "enc::"
 
-function getEncryptionKey() {
-  const secret = process.env.RELAY_CONTENT_ENCRYPTION_KEY ?? process.env.RELAY_BROWSER_HANDOFF_SECRET ?? process.env.NEON_AUTH_COOKIE_SECRET
+let encryptionFallbackWarned = false
 
-  if (!secret) {
+function getEncryptionKey() {
+  const primary = process.env.RELAY_CONTENT_ENCRYPTION_KEY
+  if (primary) {
+    return createHash("sha256").update(primary).digest()
+  }
+
+  const fallback = process.env.RELAY_BROWSER_HANDOFF_SECRET ?? process.env.NEON_AUTH_COOKIE_SECRET
+  if (!fallback) {
     return null
   }
 
-  return createHash("sha256").update(secret).digest()
+  if (!encryptionFallbackWarned) {
+    encryptionFallbackWarned = true
+    console.warn("[encrypted-text] Using fallback secret for encryption. Set RELAY_CONTENT_ENCRYPTION_KEY in production.")
+  }
+
+  return createHash("sha256").update(fallback).digest()
 }
 
 export function encryptTextIfConfigured(value: string) {
