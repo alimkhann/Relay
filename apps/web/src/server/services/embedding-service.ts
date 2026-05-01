@@ -24,10 +24,10 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   }
 
   const response = await fetch(
-    `${GEMINI_API_BASE}/models/${EMBEDDING_MODEL}:embedContent?key=${apiKey}`,
+    `${GEMINI_API_BASE}/models/${EMBEDDING_MODEL}:embedContent`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
       body: JSON.stringify({
         model: `models/${EMBEDDING_MODEL}`,
         content: { parts: [{ text }] }
@@ -67,10 +67,10 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
     const chunk = texts.slice(offset, offset + BATCH_LIMIT)
 
     const response = await fetch(
-      `${GEMINI_API_BASE}/models/${EMBEDDING_MODEL}:batchEmbedContents?key=${apiKey}`,
+      `${GEMINI_API_BASE}/models/${EMBEDDING_MODEL}:batchEmbedContents`,
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify({
           requests: chunk.map((text) => ({
             model: `models/${EMBEDDING_MODEL}`,

@@ -127,10 +127,11 @@ async function countTokens(model: string, prompt: string, signal?: AbortSignal) 
     return estimateTokenCount(prompt)
   }
 
-  const response = await fetch(`${GEMINI_API_BASE}/models/${model}:countTokens?key=${apiKey}`, {
+  const response = await fetch(`${GEMINI_API_BASE}/models/${model}:countTokens`, {
     method: "POST",
     headers: {
-      "content-type": "application/json"
+      "content-type": "application/json",
+      "x-goog-api-key": apiKey
     },
     signal,
     body: JSON.stringify({
@@ -171,10 +172,11 @@ async function generateJson<T>(model: string, systemInstruction: string, prompt:
     throw new GeminiRequestError("Gemini API key is not configured.", 0, false, "preflight")
   }
 
-  const response = await fetch(`${GEMINI_API_BASE}/models/${model}:generateContent?key=${apiKey}`, {
+  const response = await fetch(`${GEMINI_API_BASE}/models/${model}:generateContent`, {
     method: "POST",
     headers: {
-      "content-type": "application/json"
+      "content-type": "application/json",
+      "x-goog-api-key": apiKey
     },
     signal,
     body: JSON.stringify({

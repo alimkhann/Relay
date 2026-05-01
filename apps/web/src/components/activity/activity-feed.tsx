@@ -43,9 +43,9 @@ export function ActivityFeed({
 
   return (
     <div className="space-y-0.5">
-      {items.map((item, i) => (
+      {items.map((item) => (
         <div
-          key={i}
+          key={item.kind === "session" ? `s-${item.data.id}` : `d-${item.data.id}`}
           className="flex items-start gap-3 rounded-[var(--relay-radius-sm)] px-3 py-2.5 transition hover:bg-[var(--relay-soft)]"
         >
           {item.kind === "session" ? (
