@@ -369,6 +369,7 @@ export function BentoDashboard({ project, dashboard, statusReady, statusText }: 
                         onClick={() => setContextPages((p) => ({ ...p, [section]: p[section] + 1 }))}
                       >
                         <ChevronRight className="h-3 w-3" />
+                      </button>
                     </div>
                   )}
                 </div>
