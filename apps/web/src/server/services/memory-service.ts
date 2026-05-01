@@ -5,6 +5,7 @@ import { computeDecayScore, createMemoryItemSchema, DECAY_VISIBILITY_THRESHOLD, 
 import { embedMemoryItem, embedMemoryItems, generateEmbedding } from "./embedding-service"
 import { decomposeQuery } from "./query-decomposition-service"
 import { buildCurrentPreviousHint, buildReasoningEvidenceTable, buildTemporalResolutionHint } from "./reasoning-assembly-service"
+import { conditionalRerank } from "./reranker-service"
 import { detectRelations } from "./relation-service"
 
 /**
@@ -151,7 +152,7 @@ export async function searchMemoryItems(userId: string, projectId: string, query
 
   // Try hybrid search if query is provided
   try {
-    const queryEmbedding = await generateEmbedding(`${query}`)
+    const queryEmbedding = await generateEmbedding(`${query}`, "RETRIEVAL_QUERY")
     if (queryEmbedding) {
       results = await repositories.memory.hybridSearch(projectId, decomposition.normalizedQuery, queryEmbedding, {
         ...options,
@@ -181,6 +182,14 @@ export async function searchMemoryItems(userId: string, projectId: string, query
       return bHits - aHits
     })
   }
+
+  // Conditional cross-encoder rerank when top results are ambiguous
+  const candidates = memoryResults.map((item) => ({
+    item,
+    originalScore: (item as unknown as { similarity?: number }).similarity ?? 0,
+  }))
+  const reranked = await conditionalRerank(query, candidates)
+  if (reranked.reranked) memoryResults = reranked.items
 
   const canonResults = await repositories.canonEntries.searchByProject(projectId, decomposition.normalizedQuery, {
     kinds: decomposition.canonKinds.length > 0 ? decomposition.canonKinds : undefined,
