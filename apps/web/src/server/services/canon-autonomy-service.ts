@@ -288,13 +288,27 @@ export async function observeAndReflectDigestWithRepositories(
   }
 
   const createdSnapshots: ProjectSummarySnapshotRow[] = []
+
+  const summaryParts = [normalizeText(input.digest.summaryShort)]
+  if (input.digest.recentProgressDelta) {
+    summaryParts.push(`Progress: ${normalizeText(input.digest.recentProgressDelta)}`)
+  }
+  if (input.digest.currentObjectiveDelta) {
+    summaryParts.push(`Objective: ${normalizeText(input.digest.currentObjectiveDelta)}`)
+  }
+  const enrichedSummary = truncateSentence(summaryParts.join(" "), 800)
+
   createdSnapshots.push(
     await repositories.projectSummarySnapshots.create(userId, {
       projectId: input.projectId,
       kind: "session_summary",
-      content: truncateSentence(normalizeText(input.digest.summaryShort), 500),
+      content: enrichedSummary,
       derivedFrom: [input.sourceId],
-      generationMetadata: { sourceKind: input.sourceKind, generatedBy: "relay-reflector" },
+      generationMetadata: {
+        sourceKind: input.sourceKind,
+        generatedBy: "relay-reflector",
+        sessionDate: input.observedAt,
+      },
     }),
   )
 

@@ -19,10 +19,57 @@ export interface QueryAnalysisCore {
   asksCountOrTotal: boolean
   asksOrder: boolean
   asksDuration: boolean
+  extractedEntities: string[]
+  isMultiHop: boolean
 }
 
 function extractHistoricalAt(query: string, referenceDate?: string | null): string | null {
   return resolvePrimaryTemporalPoint(query, referenceDate)?.isoDate ?? null
+}
+
+const STOP_WORDS = new Set(["the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did", "will", "would", "could", "should", "may", "might", "shall", "can", "need", "dare", "ought", "used", "to", "of", "in", "for", "on", "with", "at", "by", "from", "as", "into", "through", "during", "before", "after", "above", "below", "between", "out", "off", "over", "under", "again", "further", "then", "once", "here", "there", "when", "where", "why", "how", "all", "each", "every", "both", "few", "more", "most", "other", "some", "such", "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very", "just", "because", "but", "and", "or", "if", "while", "about", "what", "which", "who", "whom", "this", "that", "these", "those", "am", "it", "its", "my", "we", "our", "your", "they", "them", "their", "i", "me", "he", "she", "his", "her", "up", "down"])
+
+function extractEntities(query: string): string[] {
+  const entities: string[] = []
+  const seen = new Set<string>()
+
+  // Quoted strings: "auth middleware", 'billing service'
+  for (const match of query.matchAll(/["']([^"']{2,40})["']/g)) {
+    const entity = match[1]!.trim()
+    const key = entity.toLowerCase()
+    if (!seen.has(key)) { seen.add(key); entities.push(entity) }
+  }
+
+  // PascalCase / camelCase identifiers: AuthMiddleware, userId, PostgreSQL
+  for (const match of query.matchAll(/\b([A-Z][a-z]+(?:[A-Z][a-z]+)+|[a-z]+[A-Z][a-zA-Z]*)\b/g)) {
+    const entity = match[1]!
+    const key = entity.toLowerCase()
+    if (!seen.has(key)) { seen.add(key); entities.push(entity) }
+  }
+
+  // Capitalized multi-word phrases: "Auth Service", "Rate Limiter" (2-3 words)
+  for (const match of query.matchAll(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b/g)) {
+    const entity = match[1]!
+    const key = entity.toLowerCase()
+    if (!seen.has(key) && !STOP_WORDS.has(key)) { seen.add(key); entities.push(entity) }
+  }
+
+  // Single capitalized words that aren't at sentence start and aren't stop words
+  const words = query.split(/\s+/)
+  for (let i = 1; i < words.length; i++) {
+    const word = words[i]!
+    if (/^[A-Z][a-z]{2,}$/.test(word) && !STOP_WORDS.has(word.toLowerCase()) && !seen.has(word.toLowerCase())) {
+      seen.add(word.toLowerCase())
+      entities.push(word)
+    }
+  }
+
+  return entities
+}
+
+function detectMultiHop(query: string): boolean {
+  const lower = query.toLowerCase()
+  return /\b(since (?:the|we|i) \w+|after (?:the|we|i) \w+|before (?:the|we|i) \w+|related to (?:the )?\w+|based on (?:the )?\w+|what changed (?:since|after|before)|how did .+ affect|compared to (?:the )?\w+)\b/.test(lower)
 }
 
 export function analyzeQueryCore(query: string, options?: { referenceDate?: string | null }): QueryAnalysisCore {
@@ -67,5 +114,7 @@ export function analyzeQueryCore(query: string, options?: { referenceDate?: stri
     asksCountOrTotal,
     asksOrder,
     asksDuration,
+    extractedEntities: extractEntities(normalizedQuery),
+    isMultiHop: detectMultiHop(lower),
   }
 }

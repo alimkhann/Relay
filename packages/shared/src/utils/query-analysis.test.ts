@@ -27,4 +27,28 @@ describe("analyzeQueryCore", () => {
       stateIntent: "current",
     })
   })
+
+  it("extracts quoted entities", () => {
+    const result = analyzeQueryCore('What did we decide about "auth middleware"?')
+    expect(result.extractedEntities).toContain("auth middleware")
+  })
+
+  it("extracts PascalCase identifiers", () => {
+    const result = analyzeQueryCore("Where is AuthMiddleware used?")
+    expect(result.extractedEntities).toContain("AuthMiddleware")
+  })
+
+  it("extracts camelCase identifiers", () => {
+    const result = analyzeQueryCore("What does userId refer to?")
+    expect(result.extractedEntities).toContain("userId")
+  })
+
+  it("detects multi-hop queries", () => {
+    expect(analyzeQueryCore("What changed since the auth decision?").isMultiHop).toBe(true)
+    expect(analyzeQueryCore("How did the migration affect performance?").isMultiHop).toBe(true)
+  })
+
+  it("returns false for simple queries", () => {
+    expect(analyzeQueryCore("What is the current objective?").isMultiHop).toBe(false)
+  })
 })

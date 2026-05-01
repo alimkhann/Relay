@@ -12,6 +12,8 @@ export interface QueryDecomposition {
   asksCountOrTotal: boolean
   asksOrder: boolean
   asksDuration: boolean
+  extractedEntities: string[]
+  isMultiHop: boolean
 }
 
 const projectStateKeywords = [

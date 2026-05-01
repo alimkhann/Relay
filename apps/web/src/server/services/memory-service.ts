@@ -166,9 +166,21 @@ export async function searchMemoryItems(userId: string, projectId: string, query
   }
 
   // Filter out fully decayed items
-  const memoryResults = results.filter((item) =>
+  let memoryResults = results.filter((item) =>
     computeDecayScore(item.type, item.updatedAt, item.lastReaffirmedAt, item.pinned) >= DECAY_VISIBILITY_THRESHOLD
   )
+
+  // Boost results containing extracted entities to the top
+  if (decomposition.extractedEntities.length > 0) {
+    const entityPatterns = decomposition.extractedEntities.map((e) => e.toLowerCase())
+    memoryResults.sort((a, b) => {
+      const aContent = (a.content + " " + (a.title ?? "")).toLowerCase()
+      const bContent = (b.content + " " + (b.title ?? "")).toLowerCase()
+      const aHits = entityPatterns.filter((p) => aContent.includes(p)).length
+      const bHits = entityPatterns.filter((p) => bContent.includes(p)).length
+      return bHits - aHits
+    })
+  }
 
   const canonResults = await repositories.canonEntries.searchByProject(projectId, decomposition.normalizedQuery, {
     kinds: decomposition.canonKinds.length > 0 ? decomposition.canonKinds : undefined,

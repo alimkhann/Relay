@@ -65,6 +65,8 @@ describe("reasoning assembly service", () => {
         asksCountOrTotal: true,
         asksOrder: false,
         asksDuration: false,
+        extractedEntities: [],
+        isMultiHop: false,
       },
       canonResults: [],
       memoryResults: [
