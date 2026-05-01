@@ -185,6 +185,7 @@ export function ActivityFeed({ feed }: { feed: ActivityEntry[] }) {
                         <button
                           className="absolute right-0 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
                           disabled={pending}
+                          aria-label={entry.isArchived ? "Restore chat" : "Detach chat"}
                           onClick={() =>
                             toggleSessionArchive(
                               entry.projectId,
@@ -329,7 +330,7 @@ export function GroupedActivityFeed({ feed }: { feed: GroupedActivityEntry[] }) 
                         !entry.allArchived,
                       )
                     }
-                    title={entry.allArchived ? "Restore conversation" : "Detach conversation"}
+                    aria-label={entry.allArchived ? "Restore conversation" : "Detach conversation"}
                   >
                     {entry.allArchived ? (
                       <RotateCcw className="h-3.5 w-3.5 text-[var(--relay-faint)] hover:text-[var(--relay-ink)]" />
