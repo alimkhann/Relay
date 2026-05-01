@@ -354,6 +354,7 @@ export function BentoDashboard({ project, dashboard, statusReady, statusText }: 
                       <button
                         className="p-0.5 rounded text-[var(--relay-faint)] hover:text-[var(--relay-ink)] disabled:opacity-30 transition-colors"
                         disabled={page === 0}
+                        aria-label={`Previous ${labelBySection[section]} page`}
                         onClick={() => setContextPages((p) => ({ ...p, [section]: p[section] - 1 }))}
                       >
                         <ChevronLeft className="h-3 w-3" />
@@ -364,10 +365,10 @@ export function BentoDashboard({ project, dashboard, statusReady, statusText }: 
                       <button
                         className="p-0.5 rounded text-[var(--relay-faint)] hover:text-[var(--relay-ink)] disabled:opacity-30 transition-colors"
                         disabled={page >= totalPages - 1}
+                        aria-label={`Next ${labelBySection[section]} page`}
                         onClick={() => setContextPages((p) => ({ ...p, [section]: p[section] + 1 }))}
                       >
                         <ChevronRight className="h-3 w-3" />
-                      </button>
                     </div>
                   )}
                 </div>
@@ -481,8 +482,8 @@ export function BentoDashboard({ project, dashboard, statusReady, statusText }: 
                   />
                 </div>
               ) : (
-                dashboard.packets.slice(0, 3).map((packet, i) => (
-                  <div key={i} className="px-3.5 py-2.5">
+                dashboard.packets.slice(0, 3).map((packet) => (
+                  <div key={packet.id} className="px-3.5 py-2.5">
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <span className="text-[11px] font-medium text-[var(--relay-ink)]">
                         {packet.targetProfileKey === "chatgpt_planning" ? "ChatGPT" :
@@ -542,6 +543,7 @@ export function BentoDashboard({ project, dashboard, statusReady, statusText }: 
                     <button
                       className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
                       disabled={pending}
+                      aria-label={session.isArchived ? "Restore chat" : "Detach chat"}
                       onClick={() => toggleSessionArchive(session.id, !session.isArchived)}
                     >
                       {session.isArchived ? (
