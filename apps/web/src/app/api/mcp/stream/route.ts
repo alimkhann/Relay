@@ -28,6 +28,8 @@ const SWEEP_MAX_SESSIONS = 1
 const MCP_READ_TELEMETRY_SAMPLE_RATE = 0.1
 const lastSweepAt = new Map<string, number>()
 
+export const maxDuration = 60
+
 function shouldCaptureMcpToolTelemetry(readOrWrite: "read" | "write") {
   return readOrWrite === "write" || Math.random() < MCP_READ_TELEMETRY_SAMPLE_RATE
 }

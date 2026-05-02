@@ -6,8 +6,8 @@ import { runContinuityMaintenanceForUser } from "@/server/services/continuity-ma
 import { emitDailyCostSnapshots } from "@/server/services/cost-snapshot-service"
 import { drainDigestJobs } from "@/server/services/digest-service"
 
-const MAX_USERS_PER_INVOCATION = 3
-const MAX_DIGEST_JOBS_PER_USER = 2
+const MAX_USERS_PER_INVOCATION = 1
+const MAX_DIGEST_JOBS_PER_USER = 1
 const MAX_WORK_MS = 45_000
 
 export const maxDuration = 60

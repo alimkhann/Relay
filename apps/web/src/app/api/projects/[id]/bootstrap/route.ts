@@ -9,6 +9,8 @@ import { consumeMcpReadQuota, consumeMcpWriteQuota } from "@/server/services/ent
 import { clearProjectBriefs, deleteProjectBrief, editProjectBrief } from "@/server/services/project-governance-service"
 import { recordSyncMarkForUser } from "@/server/services/sync-mark-service"
 
+export const maxDuration = 60
+
 const packetIdSchema = z.object({
   packetId: z.string().uuid(),
 })

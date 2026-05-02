@@ -5,6 +5,8 @@ import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
 import { consumeMcpReadQuota } from "@/server/services/entitlement-service"
 import { searchMemoryItems } from "@/server/services/memory-service"
 
+export const maxDuration = 60
+
 export const GET = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   const viewer = await resolveViewer(request.headers.get("authorization"))
   const { id } = await params

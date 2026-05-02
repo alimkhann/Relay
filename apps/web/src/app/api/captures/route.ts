@@ -6,6 +6,8 @@ import { saveCapture } from "@/server/services/capture-service"
 import { consumeCaptureQuota } from "@/server/services/entitlement-service"
 import { assertIpRateLimit } from "@/server/services/rate-limit-service"
 
+export const maxDuration = 60
+
 export const POST = withApiAuth(async (request: Request) => {
   await assertIpRateLimit(request, "capture_ingest_ip", 20)
   const viewer = await resolveViewer(request.headers.get("authorization"))

@@ -1,5 +1,6 @@
 {
   "buildCommand": "pnpm --filter @relay/web build",
+  "fluid": false,
   "ignoreCommand": "bash ../../scripts/vercel-ignore-build.sh",
   "crons": [
     {

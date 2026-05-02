@@ -1373,7 +1373,7 @@ export async function drainDigestJobs(userId: string, limit = 4) {
   }
 
   // Process deferred jobs in batches by project
-  const deferred = await repositories.aiJobs.listByStatuses(["deferred"], limit * 2, "session_digest")
+  const deferred = await repositories.aiJobs.listByStatuses(["deferred"], limit, "session_digest")
   if (deferred.length === 0) return
 
   const byProject = new Map<string, AiJobRunRow[]>()
