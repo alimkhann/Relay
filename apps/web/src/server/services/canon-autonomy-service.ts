@@ -10,6 +10,8 @@ import type {
 } from "@relay/shared"
 import { isSameTopic, normalizeText, sortCanonEntriesByPriority, truncateSentence } from "@relay/shared"
 
+import { GEMINI_MODELS, runGeminiJsonWithFallback } from "./gemini-service"
+
 type CanonSignalRisk = "low" | "medium"
 
 interface CanonSignal {
@@ -255,6 +257,67 @@ async function upsertObservedSignal(
   return created
 }
 
+interface ContradictionResult {
+  disputed: string[]
+  superseded: string[]
+  observations: string[]
+}
+
+async function detectContradictions(
+  repositories: RepositoryBundle,
+  userId: string,
+  projectId: string,
+  newEntries: CanonEntryRow[],
+): Promise<void> {
+  const activeEntries = sortCanonEntriesByPriority(
+    await repositories.canonEntries.listByProject(projectId, {
+      statuses: ["active"],
+      limit: 30,
+    }),
+  )
+
+  if (activeEntries.length < 3 || newEntries.length === 0) return
+
+  const existingText = activeEntries
+    .slice(0, 20)
+    .map((e) => `[${e.kind}] ${e.content}`)
+    .join("\n")
+  const newText = newEntries.map((e) => `[${e.kind}] ${e.content}`).join("\n")
+
+  const prompt = `Active canon entries:\n${existingText}\n\nNew entries from latest session:\n${newText}\n\nIdentify contradictions between new and existing entries. Return JSON: { "disputed": [ids of existing entries that conflict with new ones], "superseded": [ids of existing entries that are outdated by new ones], "observations": [brief pattern notes] }. Use empty arrays if none found. Existing entry IDs: ${activeEntries.map((e) => e.id).join(", ")}`
+
+  try {
+    const result = await runGeminiJsonWithFallback<ContradictionResult>({
+      primaryModel: GEMINI_MODELS.adjudication.primary,
+      fallbackModel: GEMINI_MODELS.adjudication.fallback,
+      systemInstruction: "You detect contradictions and outdated information in a project's knowledge base. Be conservative — only flag clear contradictions, not minor updates.",
+      prompt,
+      maxInputTokens: GEMINI_MODELS.adjudication.maxInputTokens,
+      maxOutputTokens: GEMINI_MODELS.adjudication.maxOutputTokens,
+    })
+
+    const validIds = new Set(activeEntries.map((e) => e.id))
+    for (const id of result.data.disputed ?? []) {
+      if (validIds.has(id)) {
+        const entry = activeEntries.find((e) => e.id === id)
+        if (entry && !isUserProtected(entry)) {
+          await repositories.canonEntries.update(userId, id, { status: "disputed" })
+        }
+      }
+    }
+    for (const id of result.data.superseded ?? []) {
+      if (validIds.has(id)) {
+        const entry = activeEntries.find((e) => e.id === id)
+        if (entry && !isUserProtected(entry)) {
+          await supersedeEntry(repositories, userId, entry, new Date().toISOString())
+        }
+      }
+    }
+  } catch {
+    // fire-and-forget
+  }
+}
+
 export async function observeAndReflectDigestWithRepositories(
   repositories: RepositoryBundle,
   userId: string,
@@ -286,6 +349,9 @@ export async function observeAndReflectDigestWithRepositories(
       await upsertObservedSignal(repositories, userId, input.projectId, signal, evidence, input.observedAt, autonomyMode),
     )
   }
+
+  // Fire-and-forget: detect contradictions between new and existing canon entries
+  void detectContradictions(repositories, userId, input.projectId, updatedEntries)
 
   const createdSnapshots: ProjectSummarySnapshotRow[] = []
 
