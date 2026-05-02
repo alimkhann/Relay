@@ -1,0 +1,11 @@
+{
+  "executionMode": "local-source",
+  "gitSha": "e7377f6a5746bbfbda1c9693a560f8dacacd5af1",
+  "latestMigrationFile": "0030_project_settings.sql",
+  "latestAppliedMigrationFile": "0030_project_settings.sql",
+  "migrationsCurrent": true,
+  "datasetPresent": true,
+  "benchmarkEnvValid": true,
+  "userPresent": true,
+  "checkedAt": "2026-04-13T18:40:57.763Z"
+}

@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "baseUrl": ".",
+    "paths": {
+      "@relay/shared": ["packages/shared/src/index.ts"],
+      "@relay/shared/*": ["packages/shared/src/*"],
+      "@relay/formatters": ["packages/formatters/src/index.ts"],
+      "@relay/formatters/*": ["packages/formatters/src/*"],
+      "@relay/adapters": ["packages/adapters/src/index.ts"],
+      "@relay/adapters/*": ["packages/adapters/src/*"],
+      "@relay/db": ["packages/db/src/index.ts"],
+      "@relay/db/*": ["packages/db/src/*"],
+      "@relay/cli-core": ["packages/cli-core/src/index.ts"],
+      "@relay/cli-core/*": ["packages/cli-core/src/*"]
+    }
+  }
+}

@@ -1,0 +1,265 @@
+import { createRepositoryBundle } from "@relay/db"
+import type { McpTokenScope } from "@relay/shared"
+import { hashContent } from "@relay/shared"
+import { redirect } from "next/navigation"
+
+import { getAuthProvider } from "@/lib/auth/provider"
+import { readSessionUserFromCookie } from "@/lib/auth/session-cookie"
+import { requireAuthServer } from "@/lib/auth/server"
+import { logServerEvent } from "@/server/logging/logger"
+import { reconcileProfileForAuthUser } from "@/server/services/auth-sync-service"
+
+export class AuthRequiredError extends Error {
+  constructor(message = "Authentication is required.") {
+    super(message)
+    this.name = "AuthRequiredError"
+  }
+}
+
+export interface Viewer {
+  userId: string
+  mode: "session" | "extension" | "mcp"
+  email?: string | null
+  name?: string | null
+  image?: string | null
+  projectId?: string | null
+  scopes?: McpTokenScope[]
+  mcpTokenId?: string | null
+}
+
+export type WebAuthIntent = "sign-in" | "sign-up"
+
+interface SessionUser {
+  id: string
+  email?: string | null
+  name?: string | null
+  image?: string | null
+}
+
+async function upsertProfile(user: SessionUser) {
+  if (user.email) {
+    await reconcileProfileForAuthUser({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      image: user.image
+    })
+  } else {
+    const repositories = createRepositoryBundle(user.id)
+    await repositories.profiles.upsert({
+      id: user.id,
+      email: null,
+      displayName: user.name ?? null,
+      avatarUrl: user.image ?? null
+    })
+  }
+}
+
+export async function requireSessionViewer(): Promise<Viewer> {
+  if (getAuthProvider() === "local") {
+    return requirePageSessionViewer()
+  }
+
+  const { data } = await requireAuthServer().getSession()
+  const user = data?.user as SessionUser | undefined
+
+  if (!user?.id) {
+    throw new AuthRequiredError()
+  }
+
+  return {
+    userId: user.id,
+    mode: "session",
+    email: user.email ?? null,
+    name: user.name ?? null,
+    image: user.image ?? null
+  }
+}
+
+async function requirePageSessionViewer(): Promise<Viewer> {
+  const user = await readSessionUserFromCookie()
+
+  if (!user?.id) {
+    throw new AuthRequiredError()
+  }
+
+  return {
+    userId: user.id,
+    mode: "session",
+    email: user.email ?? null,
+    name: user.name ?? null,
+    image: user.image ?? null
+  }
+}
+
+export async function resolveViewer(authorizationHeader?: string | null): Promise<Viewer> {
+  const token = authorizationHeader?.replace(/^Bearer\s+/i, "").trim()
+
+  if (token) {
+    const repositories = createRepositoryBundle()
+    const mcpTokenRecord = await repositories.mcpTokens.getValidAccessTokenByHash(hashContent(token))
+
+    if (mcpTokenRecord) {
+      await repositories.mcpTokens.touchIfStale(mcpTokenRecord.id)
+      return {
+        userId: mcpTokenRecord.userId,
+        mode: "mcp",
+        email: null,
+        name: null,
+        image: null,
+        projectId: mcpTokenRecord.projectId,
+        scopes: mcpTokenRecord.scopes,
+        mcpTokenId: mcpTokenRecord.id
+      }
+    }
+
+    // Accept expired MCP access tokens if their refresh token is still valid (30-day window).
+    // This keeps stateless HTTP clients (Smithery) working without token rotation.
+    const expiredMcpToken = await repositories.mcpTokens.getExpiredButRefreshableByHash(hashContent(token))
+    if (expiredMcpToken) {
+      await repositories.mcpTokens.touchIfStale(expiredMcpToken.id)
+      return {
+        userId: expiredMcpToken.userId,
+        mode: "mcp",
+        email: null,
+        name: null,
+        image: null,
+        projectId: expiredMcpToken.projectId,
+        scopes: expiredMcpToken.scopes,
+        mcpTokenId: expiredMcpToken.id
+      }
+    }
+
+    const tokenRecord = await repositories.extensionTokens.getValidByHash(hashContent(token))
+
+    if (tokenRecord) {
+      await repositories.extensionTokens.touchIfStale(tokenRecord.id)
+      return {
+        userId: tokenRecord.userId,
+        mode: "extension",
+        email: null,
+        name: null,
+        image: null,
+        projectId: null,
+        scopes: undefined
+      }
+    }
+  }
+
+  return requireSessionViewer()
+}
+
+export async function resolveOptionalViewer(authorizationHeader?: string | null): Promise<Viewer | null> {
+  try {
+    if (authorizationHeader?.trim()) {
+      return await resolveViewer(authorizationHeader)
+    }
+
+    return await requirePageSessionViewer()
+  } catch (error) {
+    if (isAuthRequiredError(error)) {
+      return null
+    }
+
+    throw error
+  }
+}
+
+export function isAuthRequiredError(error: unknown): error is AuthRequiredError {
+  return error instanceof AuthRequiredError || (error instanceof Error && error.message === "Authentication is required.")
+}
+
+export function resolveWebAuthIntent(value: string | null | undefined): WebAuthIntent {
+  return value === "sign-up" ? "sign-up" : "sign-in"
+}
+
+export function buildSignInHref(
+  nextPath = "/dashboard",
+  options: { intent?: WebAuthIntent } = {}
+) {
+  const safeNextPath = nextPath.startsWith("/") ? nextPath : "/dashboard"
+  const params = new URLSearchParams({
+    next: safeNextPath
+  })
+
+  if (options.intent === "sign-up") {
+    params.set("intent", "sign-up")
+  }
+
+  return `/sign-in?${params.toString()}`
+}
+
+export function resolveSafeNextPath(value: string | null | undefined, fallback = "/dashboard") {
+  if (!value || !value.startsWith("/")) {
+    return fallback
+  }
+
+  return value
+}
+
+export function requireViewerScope(viewer: Viewer, scope: McpTokenScope) {
+  if (viewer.mode === "mcp" && !(viewer.scopes ?? []).includes(scope)) {
+    throw new AuthRequiredError(`Missing required MCP scope: ${scope}`)
+  }
+}
+
+export function requireViewerProject(viewer: Viewer, projectId: string, scope?: McpTokenScope) {
+  if (viewer.mode !== "mcp") {
+    return
+  }
+
+  if (viewer.projectId !== projectId) {
+    throw new AuthRequiredError("This MCP token is scoped to a different project.")
+  }
+
+  if (scope) {
+    requireViewerScope(viewer, scope)
+  }
+}
+
+export function rejectMcpViewer(viewer: Viewer, message = "This endpoint is not available to scoped MCP tokens.") {
+  if (viewer.mode === "mcp") {
+    throw new AuthRequiredError(message)
+  }
+}
+
+export function resolveAuthenticatedAppPath(value: string | null | undefined = "/dashboard") {
+  return resolveSafeNextPath(value, "/dashboard")
+}
+
+export async function requirePageViewer(nextPath = "/dashboard"): Promise<Viewer> {
+  try {
+    return await requirePageSessionViewer()
+  } catch (error) {
+    if (isAuthRequiredError(error)) {
+      redirect(buildSignInHref(nextPath))
+    }
+
+    throw error
+  }
+}
+
+export async function syncViewerProfile(viewer: Viewer) {
+  if (viewer.mode !== "session") {
+    return
+  }
+
+  try {
+    await upsertProfile({
+      id: viewer.userId,
+      email: viewer.email ?? null,
+      name: viewer.name ?? null,
+      image: viewer.image ?? null
+    })
+  } catch (error) {
+    await logServerEvent({
+      level: "error",
+      surface: "web-dashboard",
+      area: "auth",
+      event: "viewer.profile_sync_failed",
+      message: "Viewer profile sync failed after auth.",
+      userId: viewer.userId,
+      error
+    })
+  }
+}

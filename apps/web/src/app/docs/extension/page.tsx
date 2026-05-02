@@ -1,0 +1,89 @@
+import { Suspense } from "react"
+
+import { PageTelemetry } from "@/components/telemetry/page-telemetry"
+import { DocsFooterNav } from "@/components/docs/docs-footer-nav"
+
+export default function ExtensionDocsPage() {
+  return (
+    <div className="max-w-2xl space-y-8">
+      <PageTelemetry
+        surface="web-dashboard"
+        area="docs"
+        pageName="extension_docs"
+        pageGroup="docs"
+        message="Viewed Relay extension docs."
+        secondaryEvent="docs_extension_viewed"
+      />
+      <div>
+        <h1 className="text-2xl font-bold text-[var(--relay-ink)]">Chrome Extension</h1>
+        <p className="mt-2 text-[15px] leading-relaxed text-[var(--relay-muted)]">
+          The Relay Chrome extension watches your AI chats and automatically captures decisions,
+          tasks, constraints, and context into your project memory.
+        </p>
+      </div>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Supported platforms</h2>
+        <div className="divide-y divide-[var(--relay-line)] rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
+          {[
+            { name: "ChatGPT", domain: "chatgpt.com" },
+            { name: "Claude", domain: "claude.ai" },
+            { name: "Gemini", domain: "gemini.google.com" },
+            { name: "Perplexity", domain: "perplexity.ai" },
+            { name: "Grok", domain: "grok.x.ai" },
+            { name: "DeepSeek", domain: "chat.deepseek.com" },
+            { name: "Codex", domain: "chatgpt.com/codex" },
+          ].map((p) => (
+            <div key={p.name} className="flex items-center justify-between px-4 py-2.5">
+              <span className="text-[14px] font-medium text-[var(--relay-ink)]">{p.name}</span>
+              <code className="text-[12px] font-mono text-[var(--relay-muted)]">{p.domain}</code>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Installation</h2>
+        <ol className="list-decimal list-inside space-y-2 text-[15px] text-[var(--relay-muted)]">
+          <li>Install the extension from the Chrome Web Store.</li>
+          <li>Click the Relay icon in your browser toolbar to open the side panel.</li>
+          <li>Sign in inside the Relay sidebar with the same account you use on onrelay.app.</li>
+          <li>Create your first project, then decide whether to turn on auto-capture.</li>
+        </ol>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">How capture works</h2>
+        <p className="text-[15px] text-[var(--relay-muted)]">
+          When you chat on a supported platform, the extension can observe the conversation DOM and
+          extracts structured information: decisions, tasks, constraints, and important context.
+          This data is sent to Relay&apos;s backend where it&apos;s merged with your project memory using
+          truth-scored governance.
+        </p>
+        <p className="text-[15px] text-[var(--relay-muted)]">
+          Auto-capture is off by default for new workspaces. Capture is per-project — the extension uses your active project selection to route
+          context to the correct project.
+        </p>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Settings</h2>
+        <p className="text-[15px] text-[var(--relay-muted)]">
+          You can customize extension behavior in your{" "}
+          <a href="/settings" className="text-[var(--relay-accent)] underline underline-offset-2">
+            dashboard settings
+          </a>:
+        </p>
+        <ul className="list-disc list-inside space-y-1.5 text-[15px] text-[var(--relay-muted)]">
+          <li><strong className="text-[var(--relay-ink)]">Auto-capture</strong> — Toggle automatic context extraction on/off.</li>
+          <li><strong className="text-[var(--relay-ink)]">Platforms</strong> — Enable or disable capture per AI platform.</li>
+          <li><strong className="text-[var(--relay-ink)]">Inline chip</strong> — Show a brief-insert chip when you start a new chat.</li>
+        </ul>
+      </section>
+
+      <Suspense fallback={null}>
+        <DocsFooterNav previous={{ href: "/docs/mcp", label: "MCP Integration" }} next={{ href: "/docs/plans", label: "Plans & limits" }} />
+      </Suspense>
+    </div>
+  )
+}

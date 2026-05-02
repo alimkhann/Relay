@@ -1,0 +1,16 @@
+services:
+  relay-postgres:
+    image: pgvector/pgvector:pg16
+    container_name: relay-postgres-local
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: relay
+      POSTGRES_PASSWORD: relay
+      POSTGRES_DB: relay_local
+    ports:
+      - "54329:5432"
+    volumes:
+      - relay-postgres-local:/var/lib/postgresql/data
+
+volumes:
+  relay-postgres-local:

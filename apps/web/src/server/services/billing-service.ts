@@ -1,0 +1,1302 @@
+import type { BillingSubscriptionStatus } from "@relay/shared"
+import { Polar } from "@polar-sh/sdk"
+import { SDKValidationError } from "@polar-sh/sdk/models/errors/sdkvalidationerror.js"
+import { validateEvent, WebhookVerificationError } from "@polar-sh/sdk/webhooks"
+import { createRepositoryBundle } from "@relay/db"
+import { billingCheckoutSchema, hashContent } from "@relay/shared"
+
+import { BILLING_RETURN_URL, BILLING_SUCCESS_URL, PLAN_PRODUCT_IDS } from "./billing-config"
+import {
+  sendSubscriptionCanceledEmail,
+  sendTrialStartedEmail,
+  sendWelcomeToProEmail,
+} from "./email-service"
+import { buildEntitlementRowFromPlan, resolveViewerEntitlements } from "./entitlement-service"
+import {
+  getReferralRefereeDiscountBasisPoints,
+  recordReferralPaidSubscription,
+} from "./referral-service"
+import { ForbiddenError } from "@/server/http/errors"
+import { logServerEvent } from "@/server/logging/logger"
+
+type NormalizedSubscriptionInput = {
+  providerSubscriptionId: string
+  providerCustomerId: string | null
+  productId: string | null
+  planKey: "free" | "starter" | "pro"
+  status: BillingSubscriptionStatus
+  interval: "month" | "year" | null
+  cancelAtPeriodEnd: boolean
+  currentPeriodStart: string | null
+  currentPeriodEnd: string | null
+  trialStartsAt: string | null
+  trialEndsAt: string | null
+  raw: Record<string, unknown>
+}
+
+type PlanTransition =
+  | "none"
+  | "free_to_trial"
+  | "free_to_paid"
+  | "trial_to_paid"
+  | "paid_to_free"
+  | "paid_past_due"
+  | "trial_canceled"
+
+type BillingTransitionSnapshot = {
+  planKey: "free" | "starter" | "pro"
+  status: BillingSubscriptionStatus
+  interval: "month" | "year" | null
+  currentPeriodEnd: string | null
+}
+
+function detectPlanTransition(
+  previous: { planKey: "free" | "starter" | "pro"; status: BillingSubscriptionStatus } | null,
+  next: { planKey: "free" | "starter" | "pro"; status: BillingSubscriptionStatus },
+): PlanTransition {
+  const prevPlan = previous?.planKey ?? "free"
+  const prevStatus = previous?.status ?? "inactive"
+
+  if (prevPlan === next.planKey && prevStatus === next.status) return "none"
+
+  if (prevPlan === "free" && next.planKey !== "free" && next.status === "trialing") {
+    return "free_to_trial"
+  }
+  if (prevPlan === "free" && next.planKey !== "free" && next.status === "active") {
+    return "free_to_paid"
+  }
+  if (prevPlan !== "free" && prevStatus === "trialing" && next.planKey !== "free" && next.status === "active") {
+    return "trial_to_paid"
+  }
+  if (prevPlan !== "free" && prevStatus === "trialing" && next.planKey === "free") {
+    return "trial_canceled"
+  }
+  if (prevPlan !== "free" && prevStatus !== "past_due" && next.status === "past_due") {
+    return "paid_past_due"
+  }
+  if (prevPlan !== "free" && next.planKey === "free") {
+    return "paid_to_free"
+  }
+  return "none"
+}
+
+async function fireTransitionEmail(
+  transition: PlanTransition,
+  recipient: {
+    email: string | null
+    name: string | null
+    previous: BillingTransitionSnapshot | null
+    next: BillingTransitionSnapshot
+  },
+) {
+  if (!recipient.email) return
+
+  try {
+    switch (transition) {
+      case "free_to_trial":
+        await sendTrialStartedEmail(recipient.email, recipient.name, 3)
+        return
+      case "free_to_paid":
+      case "trial_to_paid":
+        await sendWelcomeToProEmail(recipient.email, {
+          name: recipient.name,
+          plan: recipient.next.planKey === "pro" ? "Pro" : "Starter",
+          interval: recipient.next.interval,
+          currentPeriodEnd: recipient.next.currentPeriodEnd,
+        })
+        return
+      case "paid_to_free":
+      case "trial_canceled":
+        const previousPaidPlan =
+          recipient.previous && recipient.previous.planKey !== "free"
+            ? recipient.previous
+            : recipient.next
+        await sendSubscriptionCanceledEmail(recipient.email, {
+          name: recipient.name,
+          plan: previousPaidPlan.planKey === "pro" ? "Pro" : "Starter",
+          currentPeriodEnd: previousPaidPlan.currentPeriodEnd ?? recipient.next.currentPeriodEnd,
+        })
+        return
+      default:
+        return
+    }
+  } catch (error) {
+    await logServerEvent({
+      level: "error",
+      surface: "web-api",
+      area: "billing",
+      event: "billing.transition_email_failed",
+      message: "Failed to send plan transition email.",
+      context: { transition, recipientName: recipient.name ? "present" : "null" },
+      error,
+    })
+  }
+}
+
+function normalizePolarStatus(status: unknown): BillingSubscriptionStatus {
+  switch (status) {
+    case "trialing":
+      return "trialing"
+    case "active":
+      return "active"
+    case "past_due":
+      return "past_due"
+    case "canceled":
+    case "revoked":
+      return "canceled"
+    default:
+      return "inactive"
+  }
+}
+
+function pickActiveSubscription(subs: NormalizedSubscriptionInput[]): NormalizedSubscriptionInput | null {
+  const activeStatuses = new Set<BillingSubscriptionStatus>(["active", "trialing", "past_due"])
+  const planRank = { free: 0, starter: 1, pro: 2 } as const
+  const activeSubs = subs.filter((s) => s.planKey !== "free" && activeStatuses.has(s.status))
+  activeSubs.sort((a, b) => {
+    const rankDelta = planRank[b.planKey] - planRank[a.planKey]
+    if (rankDelta !== 0) return rankDelta
+    return (b.currentPeriodEnd ?? "").localeCompare(a.currentPeriodEnd ?? "")
+  })
+  return activeSubs[0] ?? null
+}
+
+function toReferralSubscriptionRow(userId: string, subscription: NormalizedSubscriptionInput) {
+  return {
+    id: subscription.providerSubscriptionId,
+    userId,
+    provider: "polar" as const,
+    providerSubscriptionId: subscription.providerSubscriptionId,
+    providerCustomerId: subscription.providerCustomerId,
+    productId: subscription.productId,
+    planKey: subscription.planKey,
+    status: subscription.status,
+    interval: subscription.interval,
+    cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+    currentPeriodStart: subscription.currentPeriodStart,
+    currentPeriodEnd: subscription.currentPeriodEnd,
+    trialStartsAt: subscription.trialStartsAt,
+    trialEndsAt: subscription.trialEndsAt,
+    raw: subscription.raw,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+function coercePolarTimestamp(value: unknown): string | null {
+  if (typeof value === "string" && value.length > 0) return value
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString()
+  return null
+}
+
+function getPolarClient() {
+  const accessToken = process.env["POLAR_ACCESS_TOKEN"]
+  if (!accessToken) {
+    throw new Error("POLAR_ACCESS_TOKEN is not configured.")
+  }
+
+  const server = process.env["POLAR_SANDBOX"] === "true" ? "sandbox" : "production"
+  return new Polar({ accessToken, server })
+}
+
+function isPolarCustomerNotFoundError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false
+  const maybeError = error as { name?: unknown; message?: unknown }
+  const name = typeof maybeError.name === "string" ? maybeError.name : ""
+  const message = typeof maybeError.message === "string" ? maybeError.message : ""
+  return (
+    name === "ResourceNotFound" ||
+    message.includes("\"error\":\"ResourceNotFound\"") ||
+    message.includes("ResourceNotFound")
+  )
+}
+
+function resolveProductId(plan: "starter" | "pro", interval: "month" | "year") {
+  const productId = interval === "year" ? PLAN_PRODUCT_IDS[plan].year : PLAN_PRODUCT_IDS[plan].month
+  if (!productId) {
+    throw new Error(`Polar product ID for ${interval}ly ${plan} is not configured.`)
+  }
+  return productId
+}
+
+async function createRefereeDiscountForCheckout(input: {
+  polar: Polar
+  userId: string
+  plan: "starter" | "pro"
+  interval: "month" | "year"
+  productId: string
+}) {
+  const repositories = createRepositoryBundle(input.userId)
+  const referral = await repositories.referrals.getByRefereeId(input.userId)
+  if (!referral || (referral.status !== "pending_signup" && referral.status !== "activated")) return null
+
+  const discount = await input.polar.discounts.create({
+    duration: "once",
+    type: "percentage",
+    basisPoints: getReferralRefereeDiscountBasisPoints(input.interval),
+    name: `Relay referral ${input.interval === "year" ? "annual" : "monthly"} discount`,
+    maxRedemptions: 1,
+    products: [input.productId],
+    metadata: {
+      relay_referral_id: referral.id,
+      relay_referee_id: input.userId,
+      relay_discount_kind: "referee_first_paid_period",
+    },
+  })
+
+  return discount.id
+}
+
+async function createAndApplyReferrerRewardDiscount(input: {
+  rewardId: string
+  referrerId: string
+  plan: "starter" | "pro"
+  basisPoints: number
+  valueCents: number
+  subscriptionId: string
+}) {
+  const polar = getPolarClient()
+  const discount = await polar.discounts.create({
+    duration: "once",
+    type: "fixed",
+    amounts: { usd: input.valueCents },
+    name: `Relay referral reward ${input.basisPoints / 100}%`,
+    maxRedemptions: 1,
+    metadata: {
+      relay_reward_id: input.rewardId,
+      relay_referrer_id: input.referrerId,
+      relay_discount_kind: "referrer_monthly_equivalent_credit",
+    },
+  })
+
+  await polar.subscriptions.update({
+    id: input.subscriptionId,
+    subscriptionUpdate: { discountId: discount.id },
+  })
+
+  return { providerDiscountId: discount.id }
+}
+
+function derivePlanFromProductId(productId: string | null | undefined) {
+  if (!productId) return "free" as const
+  if (productId === PLAN_PRODUCT_IDS.starter.month || productId === PLAN_PRODUCT_IDS.starter.year) {
+    return "starter" as const
+  }
+  if (productId === PLAN_PRODUCT_IDS.pro.month || productId === PLAN_PRODUCT_IDS.pro.year) {
+    return "pro" as const
+  }
+  return "free" as const
+}
+
+function deriveIntervalFromProductId(productId: string | null | undefined) {
+  if (productId === PLAN_PRODUCT_IDS.starter.year || productId === PLAN_PRODUCT_IDS.pro.year) return "year" as const
+  if (productId === PLAN_PRODUCT_IDS.starter.month || productId === PLAN_PRODUCT_IDS.pro.month) return "month" as const
+  return null
+}
+
+function derivePlanFromMetadata(subscription: Record<string, unknown>) {
+  const metadata = subscription.metadata
+  if (!metadata || typeof metadata !== "object") return "free" as const
+  const planRaw = (metadata as Record<string, unknown>).plan
+  if (typeof planRaw !== "string") return "free" as const
+  if (planRaw.startsWith("starter")) return "starter" as const
+  if (planRaw.startsWith("pro")) return "pro" as const
+  return "free" as const
+}
+
+function parsePlanFromText(value: unknown) {
+  if (typeof value !== "string") return "free" as const
+  const normalized = value.trim().toLowerCase()
+  if (normalized.includes("starter")) return "starter" as const
+  if (normalized.includes("pro")) return "pro" as const
+  return "free" as const
+}
+
+function deriveIntervalFromMetadata(subscription: Record<string, unknown>) {
+  const metadata = subscription.metadata
+  if (!metadata || typeof metadata !== "object") return null
+  const planRaw = (metadata as Record<string, unknown>).plan
+  if (typeof planRaw !== "string") return null
+  if (planRaw.endsWith("_monthly")) return "month" as const
+  if (planRaw.endsWith("_yearly")) return "year" as const
+  return null
+}
+
+function getStringMetadataValue(record: Record<string, unknown>, key: string): string | null {
+  const metadata = record.metadata
+  if (!metadata || typeof metadata !== "object") return null
+  const value = (metadata as Record<string, unknown>)[key]
+  return typeof value === "string" && value.length > 0 ? value : null
+}
+
+function extractRelayUserIdFromSubscription(subscription: Record<string, unknown>): string | null {
+  return getStringMetadataValue(subscription, "relay_user_id")
+}
+
+function extractRelayUserIdFromCustomerState(data: Record<string, unknown>): string | null {
+  const rawSubscriptions = Array.isArray(data.activeSubscriptions)
+    ? data.activeSubscriptions
+    : Array.isArray(data.active_subscriptions)
+      ? data.active_subscriptions
+      : Array.isArray(data.subscriptions)
+        ? data.subscriptions
+        : []
+
+  for (const subscription of rawSubscriptions as Array<Record<string, unknown>>) {
+    const relayUserId = extractRelayUserIdFromSubscription(subscription)
+    if (relayUserId) return relayUserId
+  }
+
+  return getStringMetadataValue(data, "relay_user_id")
+}
+
+function deriveProductIdFromSubscription(subscription: Record<string, unknown>) {
+  if (typeof subscription.productId === "string") return subscription.productId
+  if (typeof subscription.product_id === "string") return subscription.product_id
+
+  const product = subscription.product
+  if (product && typeof product === "object" && typeof (product as Record<string, unknown>).id === "string") {
+    return (product as Record<string, unknown>).id as string
+  }
+
+  const price = subscription.price
+  if (price && typeof price === "object") {
+    const priceObj = price as Record<string, unknown>
+    if (typeof priceObj.productId === "string") return priceObj.productId
+    const nestedProduct = priceObj.product
+    if (
+      nestedProduct &&
+      typeof nestedProduct === "object" &&
+      typeof (nestedProduct as Record<string, unknown>).id === "string"
+    ) {
+      return (nestedProduct as Record<string, unknown>).id as string
+    }
+  }
+
+  return null
+}
+
+function derivePlanFromSubscription(subscription: Record<string, unknown>, productId: string | null) {
+  const planFromProduct = derivePlanFromProductId(productId)
+  if (planFromProduct !== "free") return planFromProduct
+
+  const planFromMetadata = derivePlanFromMetadata(subscription)
+  if (planFromMetadata !== "free") return planFromMetadata
+
+  const product = subscription.product
+  if (product && typeof product === "object") {
+    const productObj = product as Record<string, unknown>
+    const fromName = parsePlanFromText(productObj.name)
+    if (fromName !== "free") return fromName
+    const fromSlug = parsePlanFromText(productObj.slug)
+    if (fromSlug !== "free") return fromSlug
+  }
+
+  const fromProductName = parsePlanFromText(subscription.productName)
+  if (fromProductName !== "free") return fromProductName
+  const fromProductSlug = parsePlanFromText(subscription.productSlug)
+  if (fromProductSlug !== "free") return fromProductSlug
+
+  return "free" as const
+}
+
+async function resolveBillingUserId(input: {
+  candidateUserId: string | null
+  customerEmail: string | null
+  repositories: ReturnType<typeof createRepositoryBundle>
+  source: string
+}): Promise<string | null> {
+  const { candidateUserId, customerEmail, repositories, source } = input
+
+  if (candidateUserId) {
+    const profile = await repositories.profiles.getById(candidateUserId)
+    if (profile) return candidateUserId
+  }
+
+  if (customerEmail) {
+    const profile = await repositories.profiles.getByEmail(customerEmail)
+    if (profile) {
+      await logServerEvent({
+        level: "warn",
+        surface: "web-api",
+        area: "billing",
+        event: "billing.user_resolved_by_email",
+        message: "Resolved a Polar billing event to the current Relay profile by email.",
+        userId: profile.id,
+        context: {
+          provider: "polar",
+          source,
+          staleExternalCustomerId: candidateUserId,
+        },
+      })
+      return profile.id
+    }
+  }
+
+  return null
+}
+
+async function replayLatestBillingWebhookForUser(userId: string): Promise<boolean> {
+  const repositories = createRepositoryBundle(userId)
+  const rows = await repositories.provider.query(
+    `select payload
+     from billing_webhook_events
+     where provider = 'polar'
+       and status = 'processed'
+       and (
+         payload::text like $1
+         or payload::text like $2
+       )
+       and event_type in (
+         'customer.state_changed',
+         'subscription.created',
+         'subscription.active',
+         'subscription.updated',
+         'subscription.uncanceled',
+         'subscription.canceled',
+         'subscription.revoked',
+         'subscription.past_due'
+       )
+     order by
+       case when event_type = 'customer.state_changed' then 0 else 1 end,
+       created_at desc
+     limit 1`,
+    [`%"relay_user_id":"${userId}"%`, `%"relay_user_id": "${userId}"%`],
+  )
+  const payload = rows[0]?.payload
+  if (!payload || typeof payload !== "object") return false
+
+  await dispatchPolarEvent(payload as { type: string; data?: Record<string, unknown> })
+  return true
+}
+
+export async function createPolarCheckoutForUser(user: {
+  id: string
+  email?: string | null
+  name?: string | null
+}, input: unknown) {
+  const parsed = billingCheckoutSchema.parse(input)
+  const currentEntitlements = await resolveViewerEntitlements(user.id)
+  if (
+    currentEntitlements.isPaid &&
+    (currentEntitlements.status === "active" || currentEntitlements.status === "trialing" || currentEntitlements.status === "past_due")
+  ) {
+    throw new ForbiddenError("You already have an active Relay subscription. Use the billing portal to manage it.")
+  }
+  const polar = getPolarClient()
+  const repositories = createRepositoryBundle(user.id)
+  const productId = resolveProductId(parsed.plan, parsed.interval)
+  const referralDiscountId = parsed.referralCode
+    ? await createRefereeDiscountForCheckout({
+        polar,
+        userId: user.id,
+        plan: parsed.plan,
+        interval: parsed.interval,
+        productId,
+      })
+    : null
+
+  const checkout = await polar.checkouts.create({
+    products: [productId],
+    customerEmail: user.email ?? undefined,
+    customerName: user.name ?? undefined,
+    externalCustomerId: user.id,
+    successUrl: BILLING_SUCCESS_URL,
+    returnUrl: BILLING_RETURN_URL,
+    discountId: referralDiscountId ?? undefined,
+    allowDiscountCodes: referralDiscountId ? false : undefined,
+    metadata: {
+      relay_user_id: user.id,
+      plan: `${parsed.plan}_${parsed.interval === "year" ? "yearly" : "monthly"}`,
+      relay_referral_discount: referralDiscountId ? "true" : "false",
+    },
+    trialInterval: "day",
+    trialIntervalCount: 3,
+  })
+
+  await repositories.billingCustomers.upsert({
+    userId: user.id,
+    externalCustomerId: user.id,
+    email: user.email ?? null,
+    name: user.name ?? null,
+  })
+
+  await logServerEvent({
+    level: "info",
+    surface: "web-api",
+    area: "billing",
+    event: "billing.checkout_created",
+    message: "Created a billing checkout session.",
+    userId: user.id,
+    context: {
+      interval: parsed.interval,
+      plan: parsed.plan,
+      provider: "polar",
+    },
+  })
+
+  return {
+    checkoutUrl: checkout.url,
+    checkoutId: checkout.id,
+  }
+}
+
+export async function resyncBillingStateForUser(userId: string) {
+  const polar = getPolarClient()
+  // Fetch the authoritative customer state directly from Polar. This is the
+  // same payload shape that `customer.state_changed` webhooks deliver, so we
+  // can run it through the existing sync path.
+  let state: Record<string, unknown>
+  try {
+    state = (await polar.customers.getStateExternal({ externalId: userId })) as unknown as Record<string, unknown>
+  } catch (error) {
+    if (!isPolarCustomerNotFoundError(error)) throw error
+
+    const recovered = await replayLatestBillingWebhookForUser(userId)
+    if (recovered) {
+      await logServerEvent({
+        level: "warn",
+        surface: "web-api",
+        area: "billing",
+        event: "billing.manual_resync_replayed_webhook",
+        message: "Manual billing resync recovered state from a processed Polar webhook.",
+        userId,
+        context: {
+          provider: "polar",
+        },
+        error,
+      })
+      return
+    }
+
+    // If Polar has no customer yet for this user, reconcile local billing
+    // state to free/inactive instead of failing the resync request.
+    await syncBillingStateFromCustomerState({
+      data: {
+        externalId: userId,
+        id: null,
+        email: null,
+        name: null,
+        activeSubscriptions: [],
+      },
+    })
+
+    await logServerEvent({
+      level: "warn",
+      surface: "web-api",
+      area: "billing",
+      event: "billing.manual_resync_missing_customer",
+      message: "Manual billing resync found no Polar customer; reconciled local state to free.",
+      userId,
+      context: {
+        provider: "polar",
+      },
+      error,
+    })
+    return
+  }
+
+  await syncBillingStateFromCustomerState({ data: state })
+
+  await logServerEvent({
+    level: "info",
+    surface: "web-api",
+    area: "billing",
+    event: "billing.manual_resync",
+    message: "Manually resynced billing state from Polar customer state.",
+    userId,
+    context: {
+      provider: "polar",
+    },
+  })
+}
+
+export async function createPolarPortalForUser(userId: string) {
+  const polar = getPolarClient()
+  const repositories = createRepositoryBundle(userId)
+  const customer = await repositories.billingCustomers.getByUserId(userId)
+
+  if (!customer) {
+    throw new Error("No billing customer exists yet for this user.")
+  }
+
+  const createSessionByExternalCustomerId = async () => ({
+    lookup: "external_customer_id" as const,
+    session: await polar.customerSessions.create({
+      externalCustomerId: customer.externalCustomerId,
+      returnUrl: BILLING_RETURN_URL,
+    }),
+  })
+
+  let portalSession: {
+    lookup: "provider_customer_id" | "external_customer_id"
+    session: Awaited<ReturnType<typeof polar.customerSessions.create>>
+  }
+  if (customer.providerCustomerId) {
+    try {
+      portalSession = {
+        lookup: "provider_customer_id",
+        session: await polar.customerSessions.create({
+          customerId: customer.providerCustomerId,
+          returnUrl: BILLING_RETURN_URL,
+        }),
+      }
+    } catch (error) {
+      if (!isPolarCustomerNotFoundError(error)) throw error
+
+      await logServerEvent({
+        level: "warn",
+        surface: "web-api",
+        area: "billing",
+        event: "billing.portal_provider_customer_missing",
+        message: "Polar portal customer session lookup by provider customer id failed; retrying by external customer id.",
+        userId,
+        context: {
+          provider: "polar",
+          providerCustomerId: customer.providerCustomerId,
+        },
+        error,
+      })
+
+      portalSession = await createSessionByExternalCustomerId()
+    }
+  } else {
+    portalSession = await createSessionByExternalCustomerId()
+  }
+
+  await logServerEvent({
+    level: "info",
+    surface: "web-api",
+    area: "billing",
+    event: "billing.portal_created",
+    message: "Created a billing portal session.",
+    userId,
+    context: {
+      provider: "polar",
+      customerLookup: portalSession.lookup,
+    },
+  })
+
+  return {
+    portalUrl: portalSession.session.customerPortalUrl,
+  }
+}
+
+function normalizeSubscriptionPayload(
+  subscription: Record<string, unknown>,
+  providerCustomerId: string | null,
+): NormalizedSubscriptionInput {
+  const productId = deriveProductIdFromSubscription(subscription)
+  const normalizedStatus = normalizePolarStatus(subscription.status)
+  const currentPeriodStart =
+    coercePolarTimestamp(subscription.currentPeriodStart) ??
+    coercePolarTimestamp(subscription.current_period_start)
+  const currentPeriodEnd =
+    coercePolarTimestamp(subscription.currentPeriodEnd) ??
+    coercePolarTimestamp(subscription.current_period_end)
+  const planKey = derivePlanFromSubscription(subscription, productId)
+  const interval =
+    deriveIntervalFromProductId(productId) ??
+    deriveIntervalFromMetadata(subscription) ??
+    (subscription.recurringInterval === "year"
+      ? "year"
+      : subscription.recurringInterval === "month"
+        ? "month"
+        : subscription.recurring_interval === "year"
+          ? "year"
+          : subscription.recurring_interval === "month"
+            ? "month"
+            : null)
+  return {
+    providerSubscriptionId: String(subscription.id),
+    providerCustomerId,
+    productId,
+    planKey,
+    status: normalizedStatus,
+    interval,
+    cancelAtPeriodEnd: Boolean(subscription.cancelAtPeriodEnd ?? subscription.cancel_at_period_end),
+    currentPeriodStart,
+    currentPeriodEnd: currentPeriodEnd ?? coercePolarTimestamp(subscription.endsAt),
+    trialStartsAt: coercePolarTimestamp(subscription.trialStart) ?? coercePolarTimestamp(subscription.trial_start),
+    trialEndsAt: coercePolarTimestamp(subscription.trialEnd) ?? coercePolarTimestamp(subscription.trial_end),
+    raw: subscription,
+  }
+}
+
+export async function revokeBillingSubscriptionsForAccountDeletion(userId: string) {
+  const repositories = createRepositoryBundle(userId)
+  const subscriptions = await repositories.subscriptions.listByUser(userId)
+  const activeSubscriptions = subscriptions.filter(
+    (subscription) =>
+      subscription.planKey !== "free" &&
+      (subscription.status === "active" || subscription.status === "trialing" || subscription.status === "past_due"),
+  )
+
+  if (activeSubscriptions.length === 0) return
+
+  const polar = getPolarClient()
+  for (const subscription of activeSubscriptions) {
+    try {
+      await polar.subscriptions.revoke({ id: subscription.providerSubscriptionId })
+    } catch (error) {
+      await logServerEvent({
+        level: "error",
+        surface: "web-api",
+        area: "billing",
+        event: "billing.account_delete_revoke_failed",
+        message: "Failed to revoke a billing subscription during account deletion.",
+        userId,
+        context: {
+          provider: "polar",
+          providerSubscriptionId: subscription.providerSubscriptionId,
+          plan: subscription.planKey,
+          status: subscription.status,
+        },
+        error,
+      })
+      throw new Error("Could not cancel the active billing subscription. Please try again.")
+    }
+  }
+}
+
+async function applyEntitlementAndEmit(opts: {
+  userId: string
+  providerCustomerId: string | null
+  activeSubscription: NormalizedSubscriptionInput | null
+  customerEmail: string | null
+  customerName: string | null
+}) {
+  const { userId, providerCustomerId, activeSubscription, customerEmail, customerName } = opts
+  const repositories = createRepositoryBundle(userId)
+
+  const previousEntitlement = await repositories.entitlements.getByUserId(userId)
+
+  const entitlement = buildEntitlementRowFromPlan({
+    userId,
+    plan: activeSubscription ? activeSubscription.planKey : "free",
+    status: (activeSubscription?.status ?? "inactive") as BillingSubscriptionStatus,
+    interval: activeSubscription?.interval ?? null,
+    providerCustomerId,
+    providerSubscriptionId: activeSubscription?.providerSubscriptionId ?? null,
+    trialEndsAt: activeSubscription?.trialEndsAt ?? null,
+    currentPeriodEnd: activeSubscription?.currentPeriodEnd ?? null,
+  })
+
+  await repositories.entitlements.upsert(entitlement)
+
+  const transition = detectPlanTransition(
+    previousEntitlement
+      ? { planKey: previousEntitlement.planKey, status: previousEntitlement.status }
+      : null,
+    { planKey: entitlement.planKey, status: entitlement.status },
+  )
+
+  if (transition !== "none") {
+    let recipientEmail = customerEmail
+    let recipientName = customerName
+    if (!recipientEmail) {
+      const customer = await repositories.billingCustomers.getByUserId(userId)
+      recipientEmail = customer?.email ?? null
+      recipientName = recipientName ?? customer?.name ?? null
+    }
+
+    await fireTransitionEmail(transition, {
+      email: recipientEmail,
+      name: recipientName,
+      previous: previousEntitlement
+        ? {
+            planKey: previousEntitlement.planKey,
+            status: previousEntitlement.status,
+            interval: previousEntitlement.interval,
+            currentPeriodEnd: previousEntitlement.currentPeriodEnd,
+          }
+        : null,
+      next: {
+        planKey: entitlement.planKey,
+        status: entitlement.status,
+        interval: entitlement.interval,
+        currentPeriodEnd: entitlement.currentPeriodEnd,
+      },
+    })
+
+    await logServerEvent({
+      level: "info",
+      surface: "web-api",
+      area: "billing",
+      event: "billing.plan_transition",
+      message: "Detected a billing plan transition.",
+      userId,
+      context: {
+        transition,
+        from: previousEntitlement
+          ? { plan: previousEntitlement.planKey, status: previousEntitlement.status }
+          : { plan: "free", status: "inactive" },
+        to: { plan: entitlement.planKey, status: entitlement.status },
+        provider: "polar",
+      },
+    })
+  }
+
+  return entitlement
+}
+
+export async function syncBillingStateFromCustomerState(payload: Record<string, unknown>) {
+  const data = (payload.data ?? payload) as Record<string, unknown>
+  const polarExternalCustomerId =
+    typeof data.externalId === "string"
+      ? data.externalId
+      : typeof data.external_id === "string"
+        ? data.external_id
+        : null
+  const metadataUserId = extractRelayUserIdFromCustomerState(data)
+  const customerEmail = typeof data.email === "string" ? data.email : null
+  const customerName = typeof data.name === "string" ? data.name : null
+  const repositories = createRepositoryBundle(metadataUserId ?? polarExternalCustomerId ?? undefined)
+  const userId = await resolveBillingUserId({
+    candidateUserId: metadataUserId ?? polarExternalCustomerId,
+    customerEmail,
+    repositories,
+    source: "customer.state_changed",
+  })
+
+  if (!userId) {
+    throw new Error("Polar customer state payload missing externalId.")
+  }
+
+  const providerCustomerId =
+    typeof data.id === "string"
+      ? data.id
+      : typeof data.customerId === "string"
+        ? data.customerId
+        : typeof data.customer_id === "string"
+          ? data.customer_id
+          : null
+  const rawSubscriptions = Array.isArray(data.activeSubscriptions)
+    ? data.activeSubscriptions
+    : Array.isArray(data.active_subscriptions)
+      ? data.active_subscriptions
+      : Array.isArray(data.subscriptions)
+        ? data.subscriptions
+        : []
+  const activeSubscriptions = (rawSubscriptions as Array<Record<string, unknown>>).filter((subscription) => {
+    const status = normalizePolarStatus(subscription.status)
+    return status === "active" || status === "trialing" || status === "past_due"
+  })
+
+  const normalizedSubscriptions = activeSubscriptions.map((subscription) =>
+    normalizeSubscriptionPayload(subscription, providerCustomerId),
+  )
+
+  await repositories.billingCustomers.upsert({
+    userId,
+    externalCustomerId: userId,
+    providerCustomerId,
+    email: customerEmail,
+    name: customerName,
+    trialClaimedAt:
+      normalizedSubscriptions.find((subscription) => Boolean(subscription.trialEndsAt))?.trialStartsAt ?? null,
+  })
+
+  await repositories.subscriptions.upsertMany(userId, normalizedSubscriptions)
+  await repositories.subscriptions.markMissingAsCanceled(
+    userId,
+    normalizedSubscriptions.map((subscription) => subscription.providerSubscriptionId),
+  )
+
+  const activeSubscription = pickActiveSubscription(normalizedSubscriptions)
+
+  const entitlement = await applyEntitlementAndEmit({
+    userId,
+    providerCustomerId,
+    activeSubscription,
+    customerEmail,
+    customerName,
+  })
+
+  if (activeSubscription?.status === "active") {
+    await recordReferralPaidSubscription({
+      userId,
+      subscription: toReferralSubscriptionRow(userId, activeSubscription),
+      repositories,
+      applyRewardDiscount: createAndApplyReferrerRewardDiscount,
+    })
+  }
+
+  await logServerEvent({
+    level: "info",
+    surface: "web-api",
+    area: "billing",
+    event: "billing.subscription_state_synced",
+    message: "Synchronized billing state from Polar customer state.",
+    userId,
+    context: {
+      plan: entitlement.planKey,
+      status: entitlement.status,
+      provider: "polar",
+      interval: entitlement.interval,
+      source: "customer.state_changed",
+    },
+  })
+}
+
+export async function syncBillingStateFromSubscriptionEvent(event: {
+  type: string
+  data?: Record<string, unknown>
+}) {
+  const subscription = (event.data ?? {}) as Record<string, unknown>
+  const customer = (subscription.customer ?? {}) as Record<string, unknown>
+  const polarExternalCustomerId =
+    typeof customer.externalId === "string"
+      ? customer.externalId
+      : typeof customer.external_id === "string"
+        ? customer.external_id
+      : typeof subscription.customerExternalId === "string"
+        ? subscription.customerExternalId
+        : typeof subscription.customer_external_id === "string"
+          ? subscription.customer_external_id
+        : null
+  const metadataUserId = extractRelayUserIdFromSubscription(subscription)
+  const customerEmail = typeof customer.email === "string" ? customer.email : null
+  const customerName = typeof customer.name === "string" ? customer.name : null
+  const repositories = createRepositoryBundle(metadataUserId ?? polarExternalCustomerId ?? undefined)
+  const userId = await resolveBillingUserId({
+    candidateUserId: metadataUserId ?? polarExternalCustomerId,
+    customerEmail,
+    repositories,
+    source: event.type,
+  })
+
+  if (!userId) {
+    await logServerEvent({
+      level: "warn",
+      surface: "web-api",
+      area: "billing",
+      event: "billing.subscription_event_missing_external_id",
+      message: "Polar subscription event missing customer.externalId — cannot attribute to a user.",
+      context: { provider: "polar", type: event.type },
+    })
+    return
+  }
+
+  const providerCustomerId =
+    typeof customer.id === "string"
+      ? customer.id
+      : typeof customer.customerId === "string"
+        ? customer.customerId
+        : typeof customer.customer_id === "string"
+          ? customer.customer_id
+      : typeof subscription.customerId === "string"
+        ? subscription.customerId
+        : typeof subscription.customer_id === "string"
+          ? subscription.customer_id
+        : null
+  const normalized = normalizeSubscriptionPayload(subscription, providerCustomerId)
+
+  // Only revocation is immediately terminal. Polar cancellation can mean
+  // cancel-at-period-end while the subscription remains active, so trust that
+  // payload status and keep paid entitlements active until the period ends.
+  if (event.type === "subscription.revoked") {
+    normalized.status = "canceled"
+  }
+
+  if (normalized.status === "canceled") {
+    await repositories.referrals.rejectBySubscription(normalized.providerSubscriptionId, event.type).catch(() => null)
+  }
+
+  await repositories.billingCustomers.upsert({
+    userId,
+    externalCustomerId: userId,
+    providerCustomerId,
+    email: customerEmail,
+    name: customerName,
+    trialClaimedAt: normalized.trialStartsAt ?? null,
+  })
+
+  await repositories.subscriptions.upsertMany(userId, [normalized])
+
+  // Re-read all subs for the user so entitlement reflects the whole picture,
+  // not just this single event.
+  const allSubs = await repositories.subscriptions.listByUser(userId)
+  const activeNormalized: NormalizedSubscriptionInput[] = allSubs.map((row) => ({
+    providerSubscriptionId: row.providerSubscriptionId,
+    providerCustomerId: row.providerCustomerId,
+    productId: row.productId,
+    planKey: row.planKey,
+    status: row.status,
+    interval: row.interval,
+    cancelAtPeriodEnd: row.cancelAtPeriodEnd,
+    currentPeriodStart: row.currentPeriodStart,
+    currentPeriodEnd: row.currentPeriodEnd,
+    trialStartsAt: row.trialStartsAt,
+    trialEndsAt: row.trialEndsAt,
+    raw: {},
+  }))
+
+  const activeSubscription = pickActiveSubscription(activeNormalized)
+
+  const entitlement = await applyEntitlementAndEmit({
+    userId,
+    providerCustomerId,
+    activeSubscription,
+    customerEmail,
+    customerName,
+  })
+
+  if (activeSubscription?.status === "active") {
+    await recordReferralPaidSubscription({
+      userId,
+      subscription: toReferralSubscriptionRow(userId, activeSubscription),
+      repositories,
+      applyRewardDiscount: createAndApplyReferrerRewardDiscount,
+    })
+  }
+
+  await logServerEvent({
+    level: "info",
+    surface: "web-api",
+    area: "billing",
+    event: "billing.subscription_state_synced",
+    message: "Synchronized billing state from Polar subscription event.",
+    userId,
+    context: {
+      plan: entitlement.planKey,
+      status: entitlement.status,
+      provider: "polar",
+      interval: entitlement.interval,
+      source: event.type,
+    },
+  })
+}
+
+function extractWebhookHeader(headers: Headers, name: string): string | null {
+  const value = headers.get(name)
+  return value && value.length > 0 ? value : null
+}
+
+function sanitizeHeadersForAudit(headers: Headers): Record<string, unknown> {
+  const safe: Record<string, unknown> = {}
+  const allow = new Set([
+    "webhook-id",
+    "webhook-timestamp",
+    "webhook-signature",
+    "content-type",
+    "content-length",
+    "user-agent",
+    "x-polar-event",
+    "x-polar-delivery",
+    "x-forwarded-for",
+    "x-vercel-id",
+    "host",
+  ])
+  headers.forEach((value, key) => {
+    const lower = key.toLowerCase()
+    if (!allow.has(lower)) return
+    // Never persist the full signature — keep a short prefix as a diagnostic
+    // shape indicator (algorithm + length) without giving away the HMAC.
+    if (lower === "webhook-signature") {
+      safe[lower] = `${value.slice(0, 16)}… (${value.length} chars)`
+      return
+    }
+    safe[lower] = value
+  })
+  return safe
+}
+
+export async function handlePolarWebhook(rawBody: string, headers: Headers) {
+  // 1. Persist a raw delivery audit row FIRST, before any validation. This
+  //    gives us a durable trail even when `validateEvent` throws, which was
+  //    impossible in the previous implementation and left us completely blind
+  //    to why Polar retries were failing.
+  const auditRepositories = createRepositoryBundle()
+  const polarEventId = extractWebhookHeader(headers, "webhook-id")
+  const polarEventType = extractWebhookHeader(headers, "webhook-type")
+    ?? extractWebhookHeader(headers, "x-polar-event")
+  const sanitizedHeaders = sanitizeHeadersForAudit(headers)
+  const bodyHash = rawBody.length > 0 ? hashContent(rawBody) : null
+
+  const rawDelivery = await auditRepositories.billingWebhookRawDeliveries.record({
+    polarEventId,
+    polarEventType,
+    headers: sanitizedHeaders,
+    bodyHash,
+    bodyLength: rawBody.length,
+  })
+
+  const secret = process.env["POLAR_WEBHOOK_SECRET"]
+  if (!secret) {
+    await auditRepositories.billingWebhookRawDeliveries.markStatus(
+      rawDelivery.id,
+      "failed",
+      "POLAR_WEBHOOK_SECRET is not configured",
+    )
+    await logServerEvent({
+      level: "error",
+      surface: "web-api",
+      area: "billing",
+      event: "billing.webhook_secret_missing",
+      message: "Polar webhook rejected — POLAR_WEBHOOK_SECRET is not configured.",
+      context: {
+        provider: "polar",
+        rawDeliveryId: rawDelivery.id,
+      },
+    })
+    return { ok: false, reason: "secret_missing" as const }
+  }
+
+  // 2. Validate signature. Distinguish between signature failures (fix the
+  //    secret/URL) and unknown-event-type failures (SDK version skew with
+  //    Polar's event catalog — non-fatal, should mark ignored not failed).
+  let event: { type: string; data?: Record<string, unknown>; timestamp?: string | Date }
+  try {
+    event = validateEvent(
+      rawBody,
+      Object.fromEntries(headers.entries()),
+      secret,
+    ) as unknown as { type: string; data?: Record<string, unknown>; timestamp?: string | Date }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "validateEvent threw a non-Error"
+
+    if (error instanceof WebhookVerificationError) {
+      await auditRepositories.billingWebhookRawDeliveries.markStatus(rawDelivery.id, "failed", `signature: ${message}`)
+      await logServerEvent({
+        level: "error",
+        surface: "web-api",
+        area: "billing",
+        event: "billing.webhook_signature_invalid",
+        message: "Polar webhook signature validation failed.",
+        context: {
+          provider: "polar",
+          rawDeliveryId: rawDelivery.id,
+          polarEventId,
+          polarEventType,
+        },
+        error,
+      })
+      return { ok: false, reason: "signature_invalid" as const }
+    }
+
+    if (error instanceof SDKValidationError) {
+      // SDK doesn't recognise this event type — payload is still trusted
+      // (signature passed), we just can't parse it. Record and move on.
+      await auditRepositories.billingWebhookRawDeliveries.markStatus(rawDelivery.id, "ignored", `unknown_event: ${message}`)
+      await logServerEvent({
+        level: "warn",
+        surface: "web-api",
+        area: "billing",
+        event: "billing.webhook_unknown_event",
+        message: "Polar webhook event type not recognised by installed SDK version.",
+        context: {
+          provider: "polar",
+          rawDeliveryId: rawDelivery.id,
+          polarEventId,
+          polarEventType,
+        },
+      })
+      return { ok: true, reason: "unknown_event" as const }
+    }
+
+    await auditRepositories.billingWebhookRawDeliveries.markStatus(rawDelivery.id, "failed", `validate_event: ${message}`)
+    await logServerEvent({
+      level: "error",
+      surface: "web-api",
+      area: "billing",
+      event: "billing.webhook_validate_threw",
+      message: "Polar webhook validateEvent threw unexpectedly.",
+      context: {
+        provider: "polar",
+        rawDeliveryId: rawDelivery.id,
+        polarEventId,
+        polarEventType,
+      },
+      error,
+    })
+    return { ok: false, reason: "validate_threw" as const }
+  }
+
+  // 3. Mark the raw delivery as verified — signature is good, we know the
+  //    event type, we trust the payload.
+  await auditRepositories.billingWebhookRawDeliveries.markStatus(rawDelivery.id, "verified")
+
+  // 4. Deduplicate processing via the existing billing_webhook_events table.
+  const repositories = createRepositoryBundle()
+  const eventId = hashContent(rawBody)
+
+  const { created, record } = await repositories.billingWebhookEvents.createIfAbsent({
+    providerEventId: eventId,
+    eventType: event.type,
+    payload: event as unknown as Record<string, unknown>,
+  })
+
+  if (!created && record.status === "processed") {
+    await auditRepositories.billingWebhookRawDeliveries.markStatus(rawDelivery.id, "processed", "duplicate")
+    return { ok: true, duplicate: true }
+  }
+
+  try {
+    await dispatchPolarEvent(event)
+    await repositories.billingWebhookEvents.markProcessed(record.id)
+    await auditRepositories.billingWebhookRawDeliveries.markStatus(rawDelivery.id, "processed")
+
+    await logServerEvent({
+      level: "info",
+      surface: "web-api",
+      area: "billing",
+      event: "billing.webhook_processed",
+      message: "Processed a Polar billing webhook.",
+      context: {
+        provider: "polar",
+        type: event.type,
+        rawDeliveryId: rawDelivery.id,
+      },
+    })
+
+    return { ok: true, duplicate: false }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Webhook processing failed"
+    await repositories.billingWebhookEvents.markFailed(record.id, message)
+    await auditRepositories.billingWebhookRawDeliveries.markStatus(rawDelivery.id, "failed", `handler: ${message}`)
+
+    await logServerEvent({
+      level: "error",
+      surface: "web-api",
+      area: "billing",
+      event: "billing.webhook_failed",
+      message: "Failed to process a Polar billing webhook.",
+      context: {
+        provider: "polar",
+        type: event.type,
+        rawDeliveryId: rawDelivery.id,
+      },
+      error,
+    })
+
+    throw error
+  }
+}
+
+async function dispatchPolarEvent(event: { type: string; data?: Record<string, unknown> }) {
+  // `customer.state_changed` is the authoritative full-state event; keep it as
+  // the primary source of truth. Subscription-level events are handled in
+  // Phase 1 via syncBillingStateFromSubscriptionEvent.
+  if (event.type === "customer.state_changed") {
+    await syncBillingStateFromCustomerState(event as unknown as Record<string, unknown>)
+    return
+  }
+
+  if (
+    event.type === "subscription.created" ||
+    event.type === "subscription.active" ||
+    event.type === "subscription.updated" ||
+    event.type === "subscription.uncanceled" ||
+    event.type === "subscription.canceled" ||
+    event.type === "subscription.revoked" ||
+    event.type === "subscription.past_due"
+  ) {
+    await syncBillingStateFromSubscriptionEvent(event)
+    return
+  }
+
+  // order.paid, checkout.*, organization.updated, etc. are recorded for audit
+  // but do not require a DB mutation — subscription/customer events are the
+  // source of truth.
+}

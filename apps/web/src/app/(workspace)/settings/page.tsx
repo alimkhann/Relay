@@ -1,0 +1,99 @@
+import { SettingsPreferences } from "@/components/settings/settings-preferences"
+import { SettingsContent } from "@/components/settings/settings-content"
+import { BillingSection } from "@/components/settings/billing-section"
+import { PageTelemetry } from "@/components/telemetry/page-telemetry"
+import Link from "next/link"
+import { requirePageViewer } from "@/server/policies/viewer"
+import { listExtensionTokensForUser } from "@/server/services/extension-token-service"
+import { getUserSettings } from "@/server/services/settings-service"
+import { getBillingStatusForUser } from "@/server/services/entitlement-service"
+import { getReferralProgramForUser } from "@/server/services/referral-service"
+import { CreditCard, Sliders, Puzzle, User } from "lucide-react"
+
+export const dynamic = "force-dynamic"
+
+const navItems = [
+  { key: "account", label: "Account", icon: User },
+  { key: "app", label: "App", icon: Sliders },
+  { key: "integrations", label: "Integrations", icon: Puzzle },
+  { key: "billing", label: "Billing & Usage", icon: CreditCard },
+] as const
+
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const viewer = await requirePageViewer("/settings")
+  const params = await searchParams
+  const checkoutSuccess = params.checkout === "success"
+  const sectionParam = typeof params.section === "string" ? params.section : "account"
+  const section = ["account", "app", "integrations", "billing"].includes(sectionParam)
+    ? (sectionParam as "account" | "app" | "integrations" | "billing")
+    : "account"
+
+  const [settings, tokens, billing, referralProgram] = await Promise.all([
+    getUserSettings(viewer.userId),
+    listExtensionTokensForUser(viewer.userId),
+    getBillingStatusForUser(viewer.userId),
+    section === "billing" ? getReferralProgramForUser(viewer.userId).catch(() => null) : Promise.resolve(null),
+  ])
+  const hasConnectedExtension = tokens.some((token) => !token.revokedAt)
+  const activeTokens = tokens.filter((token) => !token.revokedAt)
+
+  return (
+    <div className="flex flex-col md:flex-row gap-4 md:gap-8">
+      <PageTelemetry
+        surface="web-settings"
+        area="page"
+        pageName="settings"
+        pageGroup="workspace"
+        message="Rendered the settings page."
+        context={{ section }}
+      />
+      <nav className="w-full md:w-44 md:shrink-0 md:sticky md:top-0 pt-2 md:pt-6">
+        <div className="flex md:flex-col gap-1 overflow-x-auto pb-2 md:pb-0 border-b md:border-b-0 border-[var(--relay-line)]">
+          {navItems.map((item) => {
+            const Icon = item.icon
+            const href = item.key === "billing" && checkoutSuccess
+              ? `/settings?section=${item.key}&checkout=success`
+              : `/settings?section=${item.key}`
+
+            return (
+              <Link
+                key={item.key}
+                href={href}
+                className={[
+                  "flex shrink-0 whitespace-nowrap items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-3 py-2 text-[13px] font-medium transition-colors",
+                  section === item.key
+                    ? "bg-[var(--relay-soft)] text-[var(--relay-ink)]"
+                    : "text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]",
+                ].join(" ")}
+              >
+                <Icon className="h-4 w-4" />
+                {item.label}
+              </Link>
+            )
+          })}
+        </div>
+      </nav>
+
+      <div className="flex-1 max-w-2xl pt-6">
+        <SettingsContent section={section}>
+          {section === "billing" ? (
+            <BillingSection billing={billing} checkoutSuccess={checkoutSuccess} referralProgram={referralProgram ?? undefined} />
+          ) : (
+            <SettingsPreferences
+              initialSettings={settings.settings}
+              hasConnectedExtension={hasConnectedExtension}
+              initialTokens={activeTokens}
+              section={section}
+              viewer={{ displayName: viewer.name ?? null, email: viewer.email ?? null }}
+            />
+          )}
+        </SettingsContent>
+
+      </div>
+    </div>
+  )
+}
