@@ -1,5 +1,5 @@
 import type { RepositoryBundle } from "@relay/db"
-import { analyzeQueryCore } from "@relay/shared"
+import { extractEntities } from "@relay/shared"
 
 export async function extractAndLinkEntities(
   repositories: RepositoryBundle,
@@ -9,9 +9,11 @@ export async function extractAndLinkEntities(
   title?: string | null,
 ): Promise<void> {
   const text = title ? `${title} ${content}` : content
-  const { extractedEntities } = analyzeQueryCore(text)
+  // Memory content often starts with a meaningful proper noun (e.g. "Stripe handles..."),
+  // unlike user queries which usually start with a question word — so don't skip the first token.
+  const entities = extractEntities(text, { skipFirstWord: false })
 
-  for (const entityName of extractedEntities.slice(0, 10)) {
+  for (const entityName of entities.slice(0, 10)) {
     try {
       const entity = await repositories.entities.findOrCreateByName(projectId, entityName)
       await repositories.entities.addMention(memoryItemId, entity.id, entityName)

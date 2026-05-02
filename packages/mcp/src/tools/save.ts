@@ -1,13 +1,13 @@
 import { z } from "zod"
 import type { RelayClient } from "../client.js"
-import { saveContext } from "./save-context.js"
-import { addMemory } from "./add-memory.js"
-import { manageMemory } from "./manage-memory.js"
-import { setProjectState } from "./set-project-state.js"
-import { updateProject } from "./update-project.js"
-import { archiveSession } from "./archive-session.js"
-import { regenerateBrief } from "./regenerate-brief.js"
-import { deleteBrief } from "./delete-brief.js"
+import { saveContext, saveContextSchema } from "./save-context.js"
+import { addMemory, addMemorySchema } from "./add-memory.js"
+import { manageMemory, manageMemorySchema } from "./manage-memory.js"
+import { setProjectState, setProjectStateSchema } from "./set-project-state.js"
+import { updateProject, updateProjectSchema } from "./update-project.js"
+import { archiveSession, archiveSessionSchema } from "./archive-session.js"
+import { regenerateBrief, regenerateBriefSchema } from "./regenerate-brief.js"
+import { deleteBrief, deleteBriefSchema } from "./delete-brief.js"
 
 const actionEnum = z.enum([
   "save_session",
@@ -27,70 +27,110 @@ export const saveSchema = z.object({
   payload: z.record(z.string(), z.unknown()).describe("Action-specific payload. See individual tool docs for fields."),
 })
 
+interface MutationInput {
+  eventType: string
+  eventPayload?: Record<string, unknown>
+  summary?: string | null
+  progress?: string | null
+  currentObjective?: string | null
+  decisions?: string[]
+  constraints?: string[]
+  nextSteps?: string[]
+  notes?: string[]
+  relevantTools?: string[]
+  touchedFiles?: string[]
+  reaffirmedFacts?: string[]
+}
+
 export async function save(
   client: RelayClient,
   args: z.infer<typeof saveSchema>,
   projectId: string,
-  recordMutation: (projectId: string, mutation: Record<string, unknown>) => Promise<void>,
+  recordMutation: (projectId: string, mutation: MutationInput) => Promise<void>,
+  recordEvent: (projectId: string, eventType: string, payload: Record<string, unknown>) => Promise<void>,
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const p = args.payload as Record<string, unknown>
+  const p: Record<string, unknown> = { ...(args.payload as Record<string, unknown>), projectId }
 
   switch (args.action) {
-    case "save_session":
-      return saveContext(client, { ...p, projectId, finalize: p.finalize !== false } as never, projectId)
+    case "save_session": {
+      const parsed = saveContextSchema.parse({ ...p, finalize: p.finalize !== false })
+      return saveContext(client, parsed, projectId)
+    }
 
-    case "checkpoint":
-      return saveContext(client, { ...p, projectId, finalize: false } as never, projectId)
+    case "checkpoint": {
+      const parsed = saveContextSchema.parse({ ...p, finalize: false })
+      return saveContext(client, parsed, projectId)
+    }
 
     case "add_memory": {
-      const result = await addMemory(
-        client,
-        { projectId, content: String(p.content ?? ""), type: String(p.type ?? "note") as "note" | "decision" | "constraint" | "requirement" | "task" | "artifact", title: p.title as string | undefined, tags: p.tags as string[] | undefined },
-        projectId,
-      )
+      const parsed = addMemorySchema.parse(p)
+      const result = await addMemory(client, parsed, projectId)
       await recordMutation(projectId, {
         eventType: "memory_added",
-        eventPayload: { type: p.type, title: p.title ?? null },
-        decisions: p.type === "decision" ? [p.content] : undefined,
-        constraints: p.type === "constraint" ? [p.content] : undefined,
-        nextSteps: p.type === "task" ? [p.content] : undefined,
+        eventPayload: { type: parsed.type, title: parsed.title ?? null },
+        decisions: parsed.type === "decision" ? [parsed.content] : undefined,
+        constraints: parsed.type === "constraint" ? [parsed.content] : undefined,
+        nextSteps: parsed.type === "task" ? [parsed.content] : undefined,
+        notes: parsed.type === "note" || parsed.type === "artifact" || parsed.type === "requirement" ? [parsed.content] : undefined,
       }).catch(() => {})
       return result
     }
 
-    case "manage_memory":
-      return manageMemory(client, {
-        memoryId: String(p.memoryId ?? ""),
-        action: String(p.action ?? "update") as "update" | "delete" | "archive" | "unarchive",
-        ...(p.updates ? { updates: p.updates as Record<string, unknown> } : {}),
-      } as never)
+    case "manage_memory": {
+      const parsed = manageMemorySchema.parse(p)
+      const result = await manageMemory(client, parsed)
+      await recordEvent(projectId, "memory_managed", {
+        action: parsed.action,
+        memoryId: parsed.memoryId,
+      }).catch(() => {})
+      return result
+    }
 
     case "set_state": {
-      const result = await setProjectState(client, { ...p, projectId } as never, projectId)
+      const parsed = setProjectStateSchema.parse(p)
+      const result = await setProjectState(client, parsed, projectId)
       await recordMutation(projectId, {
         eventType: "project_state_updated",
-        eventPayload: { replaceLists: p.replaceLists ?? false },
+        eventPayload: { replaceLists: parsed.replaceLists ?? false },
+        summary: parsed.projectOverview,
+        currentObjective: parsed.currentObjective,
+        progress: parsed.recentProgress,
+        decisions: parsed.decisions,
+        constraints: parsed.constraints,
+        nextSteps: parsed.openTasks,
+        relevantTools: parsed.relevantTools,
       }).catch(() => {})
       return result
     }
 
     case "update_project": {
-      const result = await updateProject(client, { ...p, projectId } as never, projectId)
+      const parsed = updateProjectSchema.parse(p)
+      const result = await updateProject(client, parsed, projectId)
       await recordMutation(projectId, {
         eventType: "project_updated",
-        eventPayload: { name: p.name ?? null },
+        eventPayload: {
+          name: parsed.name ?? null,
+          descriptionChanged: typeof parsed.description === "string",
+        },
+        summary: parsed.description ?? undefined,
       }).catch(() => {})
       return result
     }
 
-    case "archive_session":
-      return archiveSession(client, { sessionId: String(p.sessionId ?? ""), archived: Boolean(p.archived ?? true), projectId } as never, projectId)
+    case "archive_session": {
+      const parsed = archiveSessionSchema.parse(p)
+      return archiveSession(client, parsed, projectId)
+    }
 
-    case "regenerate_brief":
-      return regenerateBrief(client, { projectId, ...p } as never, projectId)
+    case "regenerate_brief": {
+      const parsed = regenerateBriefSchema.parse(p)
+      return regenerateBrief(client, parsed, projectId)
+    }
 
-    case "delete_brief":
-      return deleteBrief(client, { briefId: String(p.briefId ?? ""), projectId } as never, projectId)
+    case "delete_brief": {
+      const parsed = deleteBriefSchema.parse(p)
+      return deleteBrief(client, parsed, projectId)
+    }
 
     default:
       return {

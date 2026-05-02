@@ -50,7 +50,7 @@ async function postCreateHook(item: MemoryItemRow, repos: ReturnType<typeof crea
   }
 }
 
-/** Generate embeddings and detect relations for a batch of items (fire-and-forget safe) */
+/** Generate embeddings, detect relations, and extract entities for a batch of items (fire-and-forget safe) */
 export async function embedAndRelateItems(items: MemoryItemRow[], repos: RepositoryBundle): Promise<void> {
   if (items.length === 0) return
   try {
@@ -58,8 +58,9 @@ export async function embedAndRelateItems(items: MemoryItemRow[], repos: Reposit
     for (const item of items) {
       try {
         await detectRelations(item, repos)
+        await extractAndLinkEntities(repos, item.projectId, item.id, item.content, item.title)
       } catch (error) {
-        console.error("[memory-service] relation detection failed:", error instanceof Error ? error.message : error)
+        console.error("[memory-service] post-batch enrichment failed:", error instanceof Error ? error.message : error)
       }
     }
   } catch (error) {
@@ -129,14 +130,14 @@ export async function createMemoryItemBatch(userId: string, projectId: string, i
     })
   }
 
-  // Async: generate embeddings for all new items
+  // Async: generate embeddings, detect relations, extract entities for all new items
   void embedMemoryItems(created, repositories).then(async () => {
-    // After embeddings, detect relations for each
     for (const item of created) {
       try {
         await detectRelations(item, repositories)
+        await extractAndLinkEntities(repositories, item.projectId, item.id, item.content, item.title)
       } catch (error) {
-        console.error("[memory-service] relation detection failed:", error instanceof Error ? error.message : error)
+        console.error("[memory-service] post-batch enrichment failed:", error instanceof Error ? error.message : error)
       }
     }
   }).catch((error) => {
@@ -151,6 +152,7 @@ export async function searchMemoryItems(userId: string, projectId: string, query
   const decomposition = decomposeQuery(query)
 
   let results: MemoryItemRow[]
+  let hasSimilarityScores = false
 
   // Try hybrid search if query is provided
   try {
@@ -161,6 +163,7 @@ export async function searchMemoryItems(userId: string, projectId: string, query
         dateRange: decomposition.sourceDateRange,
         includeSuperseded: decomposition.stateIntent === "historical",
       })
+      hasSimilarityScores = true
     } else {
       results = await repositories.memory.search(projectId, query, options)
     }
@@ -173,7 +176,25 @@ export async function searchMemoryItems(userId: string, projectId: string, query
     computeDecayScore(item.type, item.updatedAt, item.lastReaffirmedAt, item.pinned) >= DECAY_VISIBILITY_THRESHOLD
   )
 
-  // Boost results containing extracted entities to the top
+  // Conditional cross-encoder rerank when top results are ambiguous.
+  // Built BEFORE entity boost so candidates[0] is the highest-similarity hit.
+  // Skipped entirely when no similarity scores are available (fallback search path).
+  if (hasSimilarityScores && memoryResults.length >= 2) {
+    const candidates = memoryResults.map((item) => ({
+      item,
+      originalScore: (item as unknown as { similarity?: number }).similarity ?? null,
+    }))
+    const ac = new AbortController()
+    const timer = setTimeout(() => ac.abort(), 1500)
+    try {
+      const reranked = await conditionalRerank(query, candidates, { signal: ac.signal })
+      if (reranked.reranked) memoryResults = reranked.items
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  // Boost results containing extracted entities to the top (after rerank)
   if (decomposition.extractedEntities.length > 0) {
     const entityPatterns = decomposition.extractedEntities.map((e) => e.toLowerCase())
     memoryResults.sort((a, b) => {
@@ -184,14 +205,6 @@ export async function searchMemoryItems(userId: string, projectId: string, query
       return bHits - aHits
     })
   }
-
-  // Conditional cross-encoder rerank when top results are ambiguous
-  const candidates = memoryResults.map((item) => ({
-    item,
-    originalScore: (item as unknown as { similarity?: number }).similarity ?? 0,
-  }))
-  const reranked = await conditionalRerank(query, candidates)
-  if (reranked.reranked) memoryResults = reranked.items
 
   const canonResults = await repositories.canonEntries.searchByProject(projectId, decomposition.normalizedQuery, {
     kinds: decomposition.canonKinds.length > 0 ? decomposition.canonKinds : undefined,

@@ -29,9 +29,10 @@ function extractHistoricalAt(query: string, referenceDate?: string | null): stri
 
 const STOP_WORDS = new Set(["the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did", "will", "would", "could", "should", "may", "might", "shall", "can", "need", "dare", "ought", "used", "to", "of", "in", "for", "on", "with", "at", "by", "from", "as", "into", "through", "during", "before", "after", "above", "below", "between", "out", "off", "over", "under", "again", "further", "then", "once", "here", "there", "when", "where", "why", "how", "all", "each", "every", "both", "few", "more", "most", "other", "some", "such", "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very", "just", "because", "but", "and", "or", "if", "while", "about", "what", "which", "who", "whom", "this", "that", "these", "those", "am", "it", "its", "my", "we", "our", "your", "they", "them", "their", "i", "me", "he", "she", "his", "her", "up", "down"])
 
-function extractEntities(query: string): string[] {
+export function extractEntities(query: string, options?: { skipFirstWord?: boolean }): string[] {
   const entities: string[] = []
   const seen = new Set<string>()
+  const skipFirstWord = options?.skipFirstWord ?? true
 
   // Quoted strings: "auth middleware", 'billing service'
   for (const match of query.matchAll(/["']([^"']{2,40})["']/g)) {
@@ -47,16 +48,25 @@ function extractEntities(query: string): string[] {
     if (!seen.has(key)) { seen.add(key); entities.push(entity) }
   }
 
-  // Capitalized multi-word phrases: "Auth Service", "Rate Limiter" (2-3 words)
+  // Capitalized multi-word phrases: "Auth Service", "Rate Limiter" (2-3 words).
+  // Reject phrases whose tokens are all stop-words (e.g. "What Is", "How Did The")
   for (const match of query.matchAll(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b/g)) {
     const entity = match[1]!
     const key = entity.toLowerCase()
-    if (!seen.has(key) && !STOP_WORDS.has(key)) { seen.add(key); entities.push(entity) }
+    if (seen.has(key)) continue
+    const tokens = key.split(/\s+/)
+    const allStopWords = tokens.every((t) => STOP_WORDS.has(t))
+    if (allStopWords) continue
+    seen.add(key)
+    entities.push(entity)
   }
 
-  // Single capitalized words that aren't at sentence start and aren't stop words
+  // Single capitalized words that aren't stop words.
+  // Skip the sentence-starting word for queries (where it's almost always a question word),
+  // but include it for ingestion content where a leading proper noun is common.
   const words = query.split(/\s+/)
-  for (let i = 1; i < words.length; i++) {
+  const start = skipFirstWord ? 1 : 0
+  for (let i = start; i < words.length; i++) {
     const word = words[i]!
     if (/^[A-Z][a-z]{2,}$/.test(word) && !STOP_WORDS.has(word.toLowerCase()) && !seen.has(word.toLowerCase())) {
       seen.add(word.toLowerCase())

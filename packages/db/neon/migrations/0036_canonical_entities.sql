@@ -22,3 +22,4 @@ CREATE INDEX idx_canonical_entities_project ON canonical_entities(project_id);
 CREATE UNIQUE INDEX idx_canonical_entities_project_name ON canonical_entities(project_id, lower(name)) WHERE merged_into_id IS NULL;
 CREATE INDEX idx_entity_mentions_entity ON entity_mentions(entity_id);
 CREATE INDEX idx_entity_mentions_memory ON entity_mentions(memory_item_id);
+CREATE UNIQUE INDEX idx_entity_mentions_unique ON entity_mentions(memory_item_id, entity_id);

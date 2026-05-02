@@ -451,10 +451,13 @@ Pass action-specific fields in payload. Examples:
     saveSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
-      const recordMutation = async (pid: string, mutation: Record<string, unknown>) => {
-        await client.recordSessionMutation(pid, mutation as Parameters<typeof client.recordSessionMutation>[1]).catch(() => {})
+      const recordMutation: Parameters<typeof save>[3] = async (pid, mutation) => {
+        await client.recordSessionMutation(pid, mutation).catch(() => {})
       }
-      return save(client, args, projectId, recordMutation)
+      const recordEvent: Parameters<typeof save>[4] = async (pid, eventType, payload) => {
+        await client.recordSessionEvent(pid, eventType, payload).catch(() => undefined)
+      }
+      return save(client, args, projectId, recordMutation, recordEvent)
     }
   )
 }

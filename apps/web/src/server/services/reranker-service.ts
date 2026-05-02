@@ -8,7 +8,7 @@ const MAX_CANDIDATES = 30
 
 interface RerankCandidate {
   item: MemoryItemRow
-  originalScore: number
+  originalScore: number | null
 }
 
 interface RerankResult {
@@ -19,8 +19,10 @@ interface RerankResult {
 function shouldRerank(candidates: RerankCandidate[]): boolean {
   if (candidates.length < 2) return false
   const top = candidates[0]!.originalScore
+  const second = candidates[1]!.originalScore
+  if (top === null || second === null) return false
   if (top >= RERANK_SCORE_THRESHOLD) return false
-  const gap = top - candidates[1]!.originalScore
+  const gap = top - second
   return gap < RERANK_GAP_THRESHOLD
 }
 

@@ -53,7 +53,14 @@ export async function recall(
   if (args.filters && !args.query) {
     const result = await listMemory(
       client,
-      { projectId, ...args.filters, types: args.filters.types as ("note" | "decision" | "constraint" | "requirement" | "task" | "artifact")[] },
+      {
+        projectId,
+        types: args.filters.types as ("note" | "decision" | "constraint" | "requirement" | "task" | "artifact")[],
+        // listMemory accepts singular `tag`; pass the first if any provided
+        tag: args.filters.tags?.[0],
+        pinned: args.filters.pinned,
+        archived: args.filters.archived,
+      },
       projectId,
     )
     sections.push(extractText(result))
@@ -70,7 +77,8 @@ export async function recall(
 
   const include = args.include ?? []
 
-  if (include.includes("state")) {
+  // Skip when args.query is set — recallContext already emits a project-state block
+  if (include.includes("state") && !args.query) {
     const result = await getProjectState(client, projectId)
     sections.push(extractText(result))
   }

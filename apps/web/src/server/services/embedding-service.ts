@@ -2,7 +2,11 @@ import type { MemoryRepository } from "@relay/db"
 
 const GEMINI_API_BASE = process.env.GEMINI_API_BASE_URL ?? "https://generativelanguage.googleapis.com/v1beta"
 
-export const EMBEDDING_MODEL = "text-embedding-004"
+// Identifier stored in memory_items.embedding_model. Bumped to mark vectors that
+// were embedded with taskType=RETRIEVAL_DOCUMENT, distinguishing them from older
+// no-taskType embeddings so backfillStaleEmbeddings can re-embed legacy rows.
+export const EMBEDDING_MODEL = "text-embedding-004:rd"
+const EMBEDDING_API_MODEL = "text-embedding-004"
 
 const BATCH_LIMIT = 100
 
@@ -26,13 +30,13 @@ export async function generateEmbedding(text: string, taskType?: EmbeddingTaskTy
   }
 
   const body: Record<string, unknown> = {
-    model: `models/${EMBEDDING_MODEL}`,
+    model: `models/${EMBEDDING_API_MODEL}`,
     content: { parts: [{ text }] },
   }
   if (taskType) body.taskType = taskType
 
   const response = await fetch(
-    `${GEMINI_API_BASE}/models/${EMBEDDING_MODEL}:embedContent`,
+    `${GEMINI_API_BASE}/models/${EMBEDDING_API_MODEL}:embedContent`,
     {
       method: "POST",
       headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
@@ -72,14 +76,14 @@ export async function generateEmbeddings(texts: string[], taskType?: EmbeddingTa
     const chunk = texts.slice(offset, offset + BATCH_LIMIT)
 
     const response = await fetch(
-      `${GEMINI_API_BASE}/models/${EMBEDDING_MODEL}:batchEmbedContents`,
+      `${GEMINI_API_BASE}/models/${EMBEDDING_API_MODEL}:batchEmbedContents`,
       {
         method: "POST",
         headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify({
           requests: chunk.map((text) => {
             const req: Record<string, unknown> = {
-              model: `models/${EMBEDDING_MODEL}`,
+              model: `models/${EMBEDDING_API_MODEL}`,
               content: { parts: [{ text }] },
             }
             if (taskType) req.taskType = taskType
@@ -170,6 +174,23 @@ export async function backfillMissingEmbeddings(
   limit?: number
 ): Promise<number> {
   const items = await repos.memory.getItemsWithoutEmbeddings(limit)
+  if (items.length === 0) return 0
+
+  return embedMemoryItems(
+    items.map((item) => ({ id: item.id, title: item.title, content: item.content })),
+    repos
+  )
+}
+
+/**
+ * Re-embeds items whose stored embedding_model does not match EMBEDDING_MODEL.
+ * Used to migrate legacy no-taskType embeddings to the RETRIEVAL_DOCUMENT subspace.
+ */
+export async function backfillStaleEmbeddings(
+  repos: { memory: MemoryRepository },
+  limit?: number
+): Promise<number> {
+  const items = await repos.memory.getItemsWithStaleEmbeddingModel(EMBEDDING_MODEL, limit)
   if (items.length === 0) return 0
 
   return embedMemoryItems(

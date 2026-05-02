@@ -46,14 +46,12 @@ export class EntityRepository {
   constructor(private readonly provider: DatabaseProvider) {}
 
   async findOrCreateByName(projectId: string, name: string, kind = "unknown"): Promise<CanonicalEntityRow> {
-    const existing = await this.provider.query(
-      `SELECT * FROM canonical_entities WHERE project_id = $1 AND lower(name) = lower($2) AND merged_into_id IS NULL LIMIT 1`,
-      [projectId, name],
-    )
-    if (existing[0]) return toEntityRow(existing[0] as Record<string, unknown>)
-
     const rows = await this.provider.query(
-      `INSERT INTO canonical_entities (project_id, name, kind) VALUES ($1, $2, $3) RETURNING *`,
+      `INSERT INTO canonical_entities (project_id, name, kind)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (project_id, lower(name)) WHERE merged_into_id IS NULL
+       DO UPDATE SET updated_at = now()
+       RETURNING *`,
       [projectId, name, kind],
     )
     return toEntityRow(rows[0] as Record<string, unknown>)
@@ -68,14 +66,11 @@ export class EntityRepository {
   }
 
   async addMention(memoryItemId: string, entityId: string, mentionText: string): Promise<EntityMentionRow> {
-    const existing = await this.provider.query(
-      `SELECT * FROM entity_mentions WHERE memory_item_id = $1 AND entity_id = $2 LIMIT 1`,
-      [memoryItemId, entityId],
-    )
-    if (existing[0]) return toMentionRow(existing[0] as Record<string, unknown>)
-
     const rows = await this.provider.query(
-      `INSERT INTO entity_mentions (memory_item_id, entity_id, mention_text) VALUES ($1, $2, $3) RETURNING *`,
+      `INSERT INTO entity_mentions (memory_item_id, entity_id, mention_text)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (memory_item_id, entity_id) DO UPDATE SET mention_text = EXCLUDED.mention_text
+       RETURNING *`,
       [memoryItemId, entityId, mentionText],
     )
     return toMentionRow(rows[0] as Record<string, unknown>)
