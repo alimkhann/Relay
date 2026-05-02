@@ -34,6 +34,15 @@ function resolveRouteKind(pathname: string): PageRouteKind {
   return "chat"
 }
 
+function resolvePageFingerprint(url: URL, routeKind: PageRouteKind) {
+  const parts = url.pathname.split("/").filter(Boolean)
+  if (routeKind === "project_root") {
+    return parts[0] === "g" && parts[1] ? `g:${parts[1]}` : null
+  }
+
+  return parts.at(-1) ?? null
+}
+
 export class ChatgptAdapter extends BaseSiteAdapter {
   canHandle(url: string): boolean {
     const parsedUrl = new URL(url)
@@ -64,13 +73,14 @@ export class ChatgptAdapter extends BaseSiteAdapter {
 
   getPageMetadata(doc = document): PageMetadata {
     const url = new URL(doc.location.href)
+    const routeKind = resolveRouteKind(url.pathname)
     return {
       title: doc.title,
       url: url.toString(),
       pathname: url.pathname,
-      pageFingerprint: url.pathname.split("/").pop() ?? null,
+      pageFingerprint: resolvePageFingerprint(url, routeKind),
       domain: url.hostname,
-      routeKind: resolveRouteKind(url.pathname),
+      routeKind,
     }
   }
 }

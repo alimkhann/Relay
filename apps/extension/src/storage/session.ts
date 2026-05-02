@@ -255,7 +255,6 @@ export async function clearRelaySession() {
   await localStorageArea.remove(Object.values(keys).filter((key) => key !== keys.token))
   if (sessionStorageArea) {
     await sessionStorageArea.remove(keys.token)
-  } else {
-    await localStorageArea.remove(keys.token)
   }
+  await localStorageArea.remove(keys.token)
 }

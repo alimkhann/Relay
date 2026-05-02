@@ -43,7 +43,6 @@ This is the canonical repository policy for coding agents working in Relay. Clie
 
 ## Edit Discipline
 
-- Do not touch `apps/extension` unless the user explicitly asks.
 - Do not rewrite unrelated files.
 - Do not remove or revert user changes you did not make.
 - Use ASCII unless a file already needs Unicode.

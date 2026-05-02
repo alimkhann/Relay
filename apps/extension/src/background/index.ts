@@ -228,7 +228,17 @@ function scheduleDrain(projectId: string, delayMs = DRAIN_DELAY_MS) {
 let rehydratedSignatures: Record<number, TabCaptureSignature> | null = null;
 
 void getAllPersistedSignatures()
-  .then((sigs: Record<number, TabCaptureSignature>) => { rehydratedSignatures = sigs; })
+  .then((sigs: Record<number, TabCaptureSignature>) => {
+    rehydratedSignatures = sigs;
+    for (const [tabId, state] of tabStates.entries()) {
+      const persisted = sigs[tabId];
+      if (!persisted || state.lastCapturedSignature) continue;
+      state.lastCapturedSignature = persisted.lastCapturedSignature;
+      state.lastCapturedTurns = persisted.lastCapturedTurns;
+      state.lastRoutedSignature = persisted.lastRoutedSignature;
+      delete rehydratedSignatures[tabId];
+    }
+  })
   .catch(() => { rehydratedSignatures = {}; });
 const dashboardCache = new Map<
   string,
@@ -2998,7 +3008,7 @@ async function captureObservedChange(
       state.lastCapturedTurns = state.page.turns ?? state.lastObservedTurns;
 
       // Persist to chrome.storage.session so dedup survives worker suspension
-      void persistTabSignature(tabId, {
+      await persistTabSignature(tabId, {
         lastCapturedSignature: state.lastCapturedSignature,
         lastCapturedTurns: state.lastCapturedTurns,
         lastRoutedSignature: state.lastRoutedSignature,

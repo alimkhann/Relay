@@ -24,17 +24,31 @@ export interface TabCaptureSignature {
 }
 
 type SignatureMap = Record<string, TabCaptureSignature>
+let signatureWriteQueue: Promise<void> = Promise.resolve()
+
+async function updateSignatureMap(mutator: (map: SignatureMap) => void): Promise<void> {
+  if (!storage) return
+
+  const operation = signatureWriteQueue
+    .catch(() => undefined)
+    .then(async () => {
+      const map = await getSignatureMap()
+      mutator(map)
+      await storage.set({ [STORAGE_KEY]: map })
+    })
+
+  signatureWriteQueue = operation
+  await operation
+}
 
 /** Persist a tab's capture signature after successful capture. */
 export async function persistTabSignature(
   tabId: number,
   data: TabCaptureSignature
 ): Promise<void> {
-  if (!storage) return
-
-  const map = await getSignatureMap()
-  map[String(tabId)] = data
-  await storage.set({ [STORAGE_KEY]: map })
+  await updateSignatureMap((map) => {
+    map[String(tabId)] = data
+  })
 }
 
 /** Retrieve a tab's persisted capture signature on worker wake. */
@@ -49,11 +63,9 @@ export async function getPersistedTabSignature(
 
 /** Clean up when a tab is closed. */
 export async function removeTabSignature(tabId: number): Promise<void> {
-  if (!storage) return
-
-  const map = await getSignatureMap()
-  delete map[String(tabId)]
-  await storage.set({ [STORAGE_KEY]: map })
+  await updateSignatureMap((map) => {
+    delete map[String(tabId)]
+  })
 }
 
 /** Bulk retrieve all persisted signatures (used on worker cold start). */

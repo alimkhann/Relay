@@ -190,7 +190,16 @@ export function filterInsertedContextCapture(
       input.pending.insertedContent,
       delta,
     )
-    assistantOutcome = classification.outcome
+    if (classification.keep) {
+      assistantOutcome = "kept_novel"
+    } else if (assistantOutcome === "none") {
+      assistantOutcome = classification.outcome
+    } else if (
+      assistantOutcome === "dropped_ack" &&
+      classification.outcome === "dropped_overlap"
+    ) {
+      assistantOutcome = "dropped_overlap"
+    }
     if (classification.keep) {
       keptAssistantTurns.push({
         role: "assistant",

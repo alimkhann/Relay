@@ -515,6 +515,7 @@
 
     window.postMessage({
       type: "RELAY_NETWORK_CAPTURE",
+      relaySource: "relay-network-intercept",
       payload: {
         platform: match.platform,
         conversationId: match.conversationId,
@@ -571,7 +572,13 @@
           return response;
         }
 
-        var method = (init && init.method ? init.method : "GET").toUpperCase();
+        var method = (
+          init && init.method
+            ? init.method
+            : input instanceof Request
+              ? input.method
+              : "GET"
+        ).toUpperCase();
         if (method !== "GET") return response;
 
         if (!response.ok) return response;

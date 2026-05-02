@@ -3260,16 +3260,62 @@
   // Receives network-intercepted conversation data from the MAIN world
   // content script (network-intercept.ts) and stores it in the cache so
   // the next collectTurns() call can merge network + DOM turns.
-  window.addEventListener("message", (event) => {
-    if (event.source !== window) return;
-    if (event.data?.type !== "RELAY_NETWORK_CAPTURE") return;
-
-    const payload = event.data.payload;
+  function isRelayNetworkPayloadForCurrentPage(payload) {
     if (
       !payload ||
       typeof payload.platform !== "string" ||
       !Array.isArray(payload.turns)
     ) {
+      return false;
+    }
+
+    var currentHost = window.location.hostname;
+    var platformHosts = {
+      chatgpt: /(^|\.)chatgpt\.com$|(^|\.)chat\.openai\.com$/,
+      codex: /^codex\.openai\.com$/,
+      claude: /(^|\.)claude\.ai$/,
+      perplexity: /(^|\.)perplexity\.ai$/,
+      gemini: /(^|\.)gemini\.google\.com$|(^|\.)aistudio\.google\.com$/,
+      grok: /(^|\.)grok\.com$/,
+      deepseek: /(^|\.)chat\.deepseek\.com$/,
+    };
+    var hostPattern = platformHosts[payload.platform];
+    if (!hostPattern || !hostPattern.test(currentHost)) {
+      return false;
+    }
+
+    try {
+      var payloadUrl = new URL(payload.url || window.location.href);
+      if (payloadUrl.origin !== window.location.origin) {
+        return false;
+      }
+    } catch (_e) {
+      return false;
+    }
+
+    if (payload.turns.length > 400) {
+      return false;
+    }
+
+    return payload.turns.every(function (turn, index) {
+      return (
+        turn &&
+        (turn.role === "user" || turn.role === "assistant" || turn.role === "system") &&
+        typeof turn.content === "string" &&
+        turn.content.length > 0 &&
+        turn.content.length <= 200000 &&
+        (typeof turn.turnIndex === "number" || turn.turnIndex === index)
+      );
+    });
+  }
+
+  window.addEventListener("message", (event) => {
+    if (event.source !== window) return;
+    if (event.data?.type !== "RELAY_NETWORK_CAPTURE") return;
+    if (event.data?.relaySource !== "relay-network-intercept") return;
+
+    const payload = event.data.payload;
+    if (!isRelayNetworkPayloadForCurrentPage(payload)) {
       return;
     }
 

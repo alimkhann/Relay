@@ -2125,7 +2125,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             </button>
           </div>
 
-          <p className={styles.settingsVersion}>Relay · v{chrome?.runtime?.getManifest?.()?.version ?? "0.4.0"}</p>
+          <p className={styles.settingsVersion}>Relay · v{chrome?.runtime?.getManifest?.()?.version ?? "0.4.1"}</p>
         </section>
       ) : authenticating ? (
         <section className={styles.panel}>

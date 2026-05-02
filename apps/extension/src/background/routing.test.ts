@@ -6,6 +6,69 @@ import {
 } from "./routing"
 
 describe("evaluateProjectRouting", () => {
+  it("does not match approved associations across platforms by shared fingerprint", () => {
+    const approvedAssociations = [
+      {
+        key: "chatgpt:fingerprint:project",
+        projectId: "project_relay",
+        projectName: "Relay",
+        projectSlug: "relay",
+        platform: "chatgpt" as const,
+        domain: "chatgpt.com",
+        pathname: "/g/custom-gpt/project",
+        pageFingerprint: "project",
+        sourceConversationId: null,
+        url: "https://chatgpt.com/g/custom-gpt/project",
+        title: "Relay",
+        recentUserTurnText: "Relay work",
+        sessionId: "session_1",
+        approvedAt: "2026-03-13T00:00:00.000Z"
+      }
+    ]
+
+    expect(
+      findApprovedAssociationMatch(
+        {
+          platform: "claude",
+          pageFingerprint: "project",
+          sourceConversationId: null,
+          pathname: "/project",
+          url: "https://claude.ai/project"
+        },
+        approvedAssociations
+      )
+    ).toBeNull()
+  })
+
+  it("does not treat short project names as substrings inside unrelated words", () => {
+    const result = evaluateProjectRouting({
+      page: {
+        supported: true,
+        platform: "chatgpt",
+        pathname: "/c/chat_123",
+        title: "Relayable UI polish",
+        recentRoutingText: "user: Make this more relayable without referencing the app.",
+        recentUserTurnText: "Make this more relayable without referencing the app."
+      },
+      projects: [
+        {
+          id: "project_relay",
+          name: "Relay",
+          slug: "relay",
+          memoryCount: 0,
+          sessionCount: 0,
+          routingContext: { hasMeaningfulContext: false, keywords: [] }
+        }
+      ],
+      selectedProjectId: null,
+      lastTabProjectId: null,
+      boundProject: null,
+      approvedAssociations: []
+    })
+
+    expect(result.mode).toBe("ignore")
+  })
+
   it("recognizes an already approved chat before broader routing signals", () => {
     const approvedAssociations = [
       {

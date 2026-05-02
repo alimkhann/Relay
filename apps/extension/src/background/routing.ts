@@ -146,12 +146,30 @@ function hasProjectNameMention(project: RelayProjectOption, haystack: string | n
   if (!normalizedHaystack) return false
 
   const projectName = normalizeText(project.name).toLowerCase()
-  if (projectName && normalizedHaystack.includes(projectName)) {
+  if (projectName && hasPhraseMention(normalizedHaystack, projectName)) {
     return true
   }
 
   const slug = project.slug ? slugify(project.slug) : ""
-  return Boolean(slug && normalizedHaystack.includes(slug))
+  return Boolean(slug && hasPhraseMention(normalizedHaystack, slug))
+}
+
+function hasPhraseMention(normalizedHaystack: string, normalizedNeedle: string) {
+  const tokens = normalizedNeedle.split(/[^a-z0-9]+/g).filter(Boolean)
+  if (tokens.length === 0) return false
+  const pattern = tokens.map(escapeRegExp).join("[^a-z0-9]+")
+  return new RegExp(`(^|[^a-z0-9])${pattern}([^a-z0-9]|$)`, "i").test(normalizedHaystack)
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+function samePlatform(
+  page: Pick<RelayPageState, "platform">,
+  association: RelayApprovedAssociation,
+) {
+  return Boolean(page.platform) && association.platform === page.platform
 }
 
 function hasIncidentalReferenceMention(project: RelayProjectOption, haystack: string | null | undefined) {
@@ -241,11 +259,15 @@ export function findApprovedAssociationMatch(
     approvedAssociations.find((association) => association.key === exactKey) ??
     approvedAssociations.find(
       (association) =>
-        Boolean(page.sourceConversationId) && association.sourceConversationId === page.sourceConversationId
+        samePlatform(page, association) &&
+        Boolean(page.sourceConversationId) &&
+        association.sourceConversationId === page.sourceConversationId
     ) ??
     approvedAssociations.find(
       (association) =>
-        Boolean(page.pageFingerprint) && association.pageFingerprint === page.pageFingerprint
+        samePlatform(page, association) &&
+        Boolean(page.pageFingerprint) &&
+        association.pageFingerprint === page.pageFingerprint
     ) ??
     approvedAssociations.find((association) => Boolean(page.url) && association.url === page.url) ??
     approvedAssociations.find(
@@ -279,7 +301,7 @@ function scoreApprovedAssociation(
     return
   }
 
-  if (page.pageFingerprint && association.pageFingerprint === page.pageFingerprint) {
+  if (samePlatform(page, association) && page.pageFingerprint && association.pageFingerprint === page.pageFingerprint) {
     candidate.score += 100
     candidate.highConfidenceEligible = true
     candidate.signalCategories.add("association")
@@ -287,7 +309,7 @@ function scoreApprovedAssociation(
     return
   }
 
-  if (page.sourceConversationId && association.sourceConversationId === page.sourceConversationId) {
+  if (samePlatform(page, association) && page.sourceConversationId && association.sourceConversationId === page.sourceConversationId) {
     candidate.score += 104
     candidate.highConfidenceEligible = true
     candidate.signalCategories.add("association")

@@ -101,6 +101,29 @@ describe("filterInsertedContextCapture", () => {
     expect(result.metadata.assistantOutcome).toBe("kept_novel")
   })
 
+  it("keeps assistant outcome as novel even when a later assistant turn is dropped", () => {
+    const result = filterInsertedContextCapture({
+      pending,
+      turns: [
+        makeTurn(
+          "user",
+          `${pending.insertedContent}\nAdd a regression test for assistant outcomes.`,
+          0,
+        ),
+        makeTurn(
+          "assistant",
+          "Implementation detail: aggregate assistant outcomes so any kept novel response remains visible in metadata.",
+          1,
+        ),
+        makeTurn("assistant", "Understood.", 2),
+      ],
+    })
+
+    expect(result.kind).toBe("capture")
+    if (result.kind !== "capture") return
+    expect(result.metadata.assistantOutcome).toBe("kept_novel")
+  })
+
   it("keeps assistant-only novel output when the user submitted the inserted brief unchanged", () => {
     const result = filterInsertedContextCapture({
       pending,
