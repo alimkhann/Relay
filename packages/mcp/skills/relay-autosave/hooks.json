@@ -1,0 +1,37 @@
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx -y -p @onrelay/mcp relay-flush precompact --quiet"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx -y -p @onrelay/mcp relay-flush session_end --quiet"
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx -y -p @onrelay/mcp relay-flush stop_failure --quiet"
+          }
+        ]
+      }
+    ]
+  }
+}

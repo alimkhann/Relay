@@ -1,0 +1,128 @@
+{
+  "name": "@relay/extension",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "plasmo dev",
+    "build": "plasmo build",
+    "build:prod": "plasmo build --tag prod",
+    "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@lobehub/icons": "^5.0.1",
+    "@relay/adapters": "workspace:*",
+    "@relay/shared": "workspace:*",
+    "plasmo": "^0.90.5",
+    "posthog-js": "^1.363.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "manifest": {
+    "name": "Relay — AI Chat Memory & Context Sync",
+    "description": "Stop repeating yourself to every AI. Relay keeps your project context synced across all your AI chats and IDE agents.",
+    "permissions": [
+      "storage",
+      "tabs",
+      "activeTab",
+      "sidePanel",
+      "identity",
+      "scripting",
+      "contextMenus"
+    ],
+    "host_permissions": [
+      "https://chatgpt.com/*",
+      "https://chat.openai.com/*",
+      "https://perplexity.ai/*",
+      "https://www.perplexity.ai/*",
+      "https://codex.openai.com/*",
+      "https://claude.ai/*",
+      "https://gemini.google.com/*",
+      "https://aistudio.google.com/*",
+      "https://grok.com/*",
+      "https://chat.deepseek.com/*",
+      "https://www.onrelay.app/*",
+      "https://onrelay.app/*",
+      "https://t.onrelay.app/*",
+      "$PLASMO_PUBLIC_POSTHOG_HOST/*",
+      "$PLASMO_PUBLIC_RELAY_API_BASE/*"
+    ],
+    "externally_connectable": {
+      "matches": [
+        "https://www.onrelay.app/*",
+        "https://onrelay.app/*",
+        "$PLASMO_PUBLIC_RELAY_API_BASE/*"
+      ]
+    },
+    "content_security_policy": {
+      "extension_pages": "script-src 'self'; object-src 'self'"
+    },
+    "content_scripts": [
+      {
+        "matches": [
+          "https://chatgpt.com/*",
+          "https://chat.openai.com/*",
+          "https://perplexity.ai/*",
+          "https://www.perplexity.ai/*",
+          "https://codex.openai.com/*",
+          "https://claude.ai/*",
+          "https://gemini.google.com/*",
+          "https://aistudio.google.com/*",
+          "https://grok.com/*",
+          "https://chat.deepseek.com/*"
+        ],
+        "js": [
+          "../contents/relay-content.ts"
+        ],
+        "run_at": "document_end"
+      }
+    ],
+    "options_ui": {
+      "page": "options.html",
+      "open_in_tab": true
+    },
+    "side_panel": {
+      "default_path": "sidepanel.html"
+    },
+    "action": {
+      "default_title": "Relay",
+      "default_popup": "popup.html"
+    },
+    "web_accessible_resources": [
+      {
+        "resources": [
+          "assets/relay_logo_white.png",
+          "static/network-intercept.js"
+        ],
+        "matches": [
+          "https://chatgpt.com/*",
+          "https://chat.openai.com/*",
+          "https://perplexity.ai/*",
+          "https://www.perplexity.ai/*",
+          "https://codex.openai.com/*",
+          "https://claude.ai/*",
+          "https://gemini.google.com/*",
+          "https://aistudio.google.com/*",
+          "https://grok.com/*",
+          "https://chat.deepseek.com/*"
+        ]
+      }
+    ],
+    "commands": {
+      "insert-project-brief": {
+        "suggested_key": {
+          "default": "Ctrl+Shift+I",
+          "mac": "Command+Shift+I"
+        },
+        "description": "Insert the current project brief"
+      },
+      "open-sidebar": {
+        "suggested_key": {
+          "default": "Alt+Shift+S"
+        },
+        "description": "Open Relay sidebar"
+      }
+    }
+  }
+}

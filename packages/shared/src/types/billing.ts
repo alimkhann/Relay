@@ -1,0 +1,60 @@
+export type BillingPlanKey = "free" | "starter" | "pro"
+export type BillingInterval = "month" | "year" | null
+export type BillingSubscriptionStatus = "inactive" | "trialing" | "active" | "past_due" | "canceled"
+
+export interface EntitlementLimitsDto {
+  activeProjects: number
+  historyRetentionDays: number
+  captureMonthly: number
+  mcpReadDaily: number
+  mcpDeepReadDaily: number
+  mcpWriteDaily: number
+  aiAnalysesPerProjectDaily: number
+  aiAnalysesPerUserDaily: number
+  memoryItemsPerProject: number
+}
+
+export interface UserEntitlementsDto {
+  plan: BillingPlanKey
+  status: BillingSubscriptionStatus
+  interval: BillingInterval
+  isPaid: boolean
+  isPro: boolean
+  isTrialing: boolean
+  trialEndsAt: string | null
+  currentPeriodEnd: string | null
+  features: {
+    browserCapture: boolean
+    mcpRead: boolean
+    mcpWrite: boolean
+    handoffPacks: boolean
+    autonomousCanon: boolean
+    highQualityModel: boolean
+  }
+  limits: EntitlementLimitsDto
+}
+
+export interface BillingStatusDto {
+  entitlements: UserEntitlementsDto
+  subscription: {
+    providerSubscriptionId: string
+    plan: BillingPlanKey
+    status: BillingSubscriptionStatus
+    interval: BillingInterval
+    cancelAtPeriodEnd: boolean
+    currentPeriodEnd: string | null
+  } | null
+  customer: {
+    providerCustomerId: string | null
+    email: string | null
+    name: string | null
+  }
+  usage: {
+    capturesThisMonth: number
+    mcpReadsToday: number
+    mcpWritesToday: number
+    handoffsThisMonth: number
+    activeProjects: number
+    aiAnalysesToday: number
+  }
+}

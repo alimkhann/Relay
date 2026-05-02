@@ -1,0 +1,184 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 8px;
+  flex-shrink: 0;
+}
+
+.stepLabel {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.closeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.closeBtn:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 14px;
+  min-height: 0;
+}
+
+.media {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #000;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.media video,
+.media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 4px;
+  line-height: 1.3;
+}
+
+.description {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+
+.cta {
+  margin-bottom: 12px;
+}
+
+.ctaLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+
+.ctaLink:hover {
+  opacity: 0.85;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dot {
+  height: 5px;
+  border-radius: 9999px;
+  border: none;
+  cursor: pointer;
+  transition: width 0.2s, background 0.2s;
+  padding: 0;
+}
+
+.dotActive {
+  width: 14px;
+  background: var(--accent);
+}
+
+.dotDone {
+  width: 5px;
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.dotFuture {
+  width: 5px;
+  background: var(--line);
+}
+
+.buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.skipBtn {
+  padding: 5px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+
+.skipBtn:hover {
+  color: var(--ink);
+}
+
+.nextBtn {
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-text);
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.nextBtn:hover {
+  opacity: 0.85;
+}

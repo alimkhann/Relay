@@ -1,0 +1,12 @@
+---
+description: Relay-managed Cursor guidance for using Relay MCP without noisy reads or writes.
+alwaysApply: true
+---
+
+The canonical repository policy is in `AGENTS.md`. Follow it first.
+
+- Start or resume with `get_brief`. Only call `list_projects` and `set_current_project` if Relay reports project ambiguity or the wrong project.
+- Prefer `search_context` or `recall_context` before architectural, product, or process decisions when local context may be incomplete.
+- Use `add_memory` only for clearly confirmed durable facts. Use `checkpoint_context` before compaction risk, task switches, or explicit milestone saves, and `save_context` only when wrapping a meaningful unit of work.
+- Do not read or write Relay repeatedly when the current conversation already has the context you need.
+- Cursor has no Relay-managed hook flow here, so checkpoint only at meaningful boundaries.

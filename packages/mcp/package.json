@@ -1,0 +1,44 @@
+{
+  "name": "@onrelay/mcp",
+  "version": "0.4.2",
+  "description": "Relay MCP server for local AI coding tools",
+  "license": "UNLICENSED",
+  "type": "module",
+  "homepage": "https://www.onrelay.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alimkhann/Relay.git",
+    "directory": "packages/mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/alimkhann/Relay/issues"
+  },
+  "bin": {
+    "relay-mcp": "./dist/index.js",
+    "relay-flush": "./dist/flush-cli.js"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src --ext .ts",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "posthog-node": "^5.28.4",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2"
+  }
+}

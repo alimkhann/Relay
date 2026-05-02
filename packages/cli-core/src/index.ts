@@ -1,0 +1,48 @@
+export { RelayApiClient } from "./api-client"
+export { RelayNodeAnalytics, type RelayNodeAnalyticsProperties } from "./analytics"
+export {
+  type RelayCliConfig,
+  loadConfig,
+  saveConfig,
+  getConfigPath,
+  requireConfig,
+  clearConfig
+} from "./config"
+export {
+  type DetectedIDE,
+  detectIDEs,
+  detectSupportedClients,
+  getAllClients,
+  resolveClientInstallTarget,
+  getClientCompatibilityMatrix,
+  isDevMode,
+  getMcpCommand
+} from "./detect"
+export {
+  type InstallMcpConfigResult,
+  type InstallMcpConfigStatus,
+  installMcpConfig,
+  installMcpConfigDetailed,
+  uninstallMcpConfig,
+  validateInstalledMcpConfig,
+  buildManualMcpConfig,
+} from "./install-mcp"
+export {
+  installClientSetup,
+  uninstallClientSetup,
+  validateInstalledClientSetup,
+  installSkillFile,
+  installUniversalSkillFile,
+  uninstallSkillFile,
+  uninstallUniversalSkillFile
+} from "./install-client-setup"
+export { type ProjectSummary, listProjects, getProjectDashboard } from "./project-api"
+export { printBanner, success, info, warn, error, step } from "./ui"
+export {
+  type AuthResult,
+  type UnifiedAuthResult,
+  type ScopedMcpAuthResult,
+  startAuthFlow,
+  startScopedMcpAuthFlow,
+  startUnifiedAuthFlow
+} from "./auth"

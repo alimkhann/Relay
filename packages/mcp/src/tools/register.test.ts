@@ -1,0 +1,101 @@
+import { describe, expect, it, vi } from "vitest"
+import { registerTools } from "./register.js"
+
+function createServerHarness() {
+  const registrations: Array<{
+    name: string
+    description: string
+    schema: unknown
+    handler: (args: Record<string, unknown>) => Promise<unknown>
+  }> = []
+
+  return {
+    registrations,
+    server: {
+      tool(name: string, description: string, schema: unknown, maybeHandler: unknown, maybeFinalHandler?: unknown) {
+        const handler = (typeof maybeFinalHandler === "function" ? maybeFinalHandler : maybeHandler) as (args: Record<string, unknown>) => Promise<unknown>
+        registrations.push({ name, description, schema, handler })
+      },
+    },
+  }
+}
+
+describe("registerTools analytics wrapper", () => {
+  it("emits MCP tool lifecycle events once for a read tool", async () => {
+    const harness = createServerHarness()
+    const captureAnalytics = vi.fn()
+    const client = {
+      get: vi.fn().mockResolvedValue({ projects: [] }),
+      captureAnalytics,
+      getAgentName: vi.fn().mockReturnValue("codex"),
+      getClientName: vi.fn().mockReturnValue("relay-mcp:codex"),
+    }
+
+    registerTools(harness.server as never, {
+      client: client as never,
+      resolveProjectId: vi.fn(async (projectId?: string) => projectId ?? "proj-1"),
+      resolveProjectSelection: undefined,
+      getCachedProjectId: () => "proj-1",
+      setCachedProjectId: vi.fn(),
+    })
+
+    const listProjects = harness.registrations.find((tool) => tool.name === "list_projects")
+    expect(listProjects).toBeDefined()
+
+    await listProjects!.handler({})
+
+    expect(captureAnalytics).toHaveBeenNthCalledWith(1, "mcp_tool_called", expect.objectContaining({
+      tool_name: "list_projects",
+      transport: "stdio",
+      read_or_write: "read",
+      project_id: "proj-1",
+      success: true,
+    }))
+    expect(captureAnalytics).toHaveBeenNthCalledWith(2, "mcp_tool_completed", expect.objectContaining({
+      tool_name: "list_projects",
+      transport: "stdio",
+      read_or_write: "read",
+      project_id: "proj-1",
+      success: true,
+    }))
+  })
+
+  it("emits MCP tool failure analytics once for an erroring tool", async () => {
+    const harness = createServerHarness()
+    const captureAnalytics = vi.fn()
+    const client = {
+      post: vi.fn().mockRejectedValue(new Error("boom")),
+      captureAnalytics,
+      getAgentName: vi.fn().mockReturnValue("codex"),
+      getClientName: vi.fn().mockReturnValue("relay-mcp:codex"),
+    }
+
+    registerTools(harness.server as never, {
+      client: client as never,
+      resolveProjectId: vi.fn(async (projectId?: string) => projectId ?? "proj-1"),
+      resolveProjectSelection: undefined,
+      getCachedProjectId: () => "proj-1",
+      setCachedProjectId: vi.fn(),
+    })
+
+    const addMemory = harness.registrations.find((tool) => tool.name === "add_memory")
+    expect(addMemory).toBeDefined()
+
+    await expect(addMemory!.handler({ type: "note", content: "test" })).rejects.toThrow("boom")
+
+    expect(captureAnalytics).toHaveBeenNthCalledWith(1, "mcp_tool_called", expect.objectContaining({
+      tool_name: "add_memory",
+      transport: "stdio",
+      read_or_write: "write",
+      project_id: "proj-1",
+      success: true,
+    }))
+    expect(captureAnalytics).toHaveBeenNthCalledWith(2, "mcp_tool_failed", expect.objectContaining({
+      tool_name: "add_memory",
+      transport: "stdio",
+      read_or_write: "write",
+      project_id: "proj-1",
+      success: false,
+    }))
+  })
+})
