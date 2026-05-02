@@ -587,6 +587,20 @@ export class MemoryRepository {
     return rows.map((record) => toMemoryRow(record as Record<string, unknown>))
   }
 
+  async getItemsWithStaleEmbeddingModel(currentModel: string, limit?: number): Promise<MemoryItemRow[]> {
+    const rows = await this.provider.query(
+      `select ${MEMORY_COLS} from memory_items
+       where embedding is not null
+         and is_archived = false
+         and (embedding_model is null or embedding_model <> $1)
+       order by created_at desc
+       limit $2`,
+      [currentModel, limit ?? 100]
+    )
+
+    return rows.map((record) => toMemoryRow(record as Record<string, unknown>))
+  }
+
   async archiveExpiredItems(projectId: string): Promise<number> {
     const rows = await this.provider.query(
       `update memory_items

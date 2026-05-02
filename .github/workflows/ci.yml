@@ -30,6 +30,9 @@ jobs:
       - name: Repo Hygiene
         run: pnpm repo:check
 
+      - name: Security Audit
+        run: pnpm audit --audit-level=high || true
+
       - name: Lint
         run: pnpm lint
 

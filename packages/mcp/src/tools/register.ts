@@ -19,6 +19,8 @@ import { regenerateBriefSchema, regenerateBrief } from "./regenerate-brief.js"
 import { deleteBriefSchema, deleteBrief } from "./delete-brief.js"
 import { traceContextSourcesSchema, traceContextSources } from "./trace-context-sources.js"
 import { listRecentActivitySchema, listRecentActivity } from "./list-recent-activity.js"
+import { recallSchema, recall } from "./recall.js"
+import { saveSchema, save } from "./save.js"
 import { z } from "zod"
 import type { RelayProjectResolutionResult } from "@relay/shared"
 
@@ -47,6 +49,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
     "manage_memory",
     "set_project_state",
     "update_project",
+    "save",
   ])
   const originalTool = server.tool.bind(server)
 
@@ -187,7 +190,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "get_project_state",
-    "Get full structured project state including overview, objectives, decisions, constraints, tasks, and all memory items grouped by type. Use this only when the brief is stale, contradictory, or you specifically need raw structured data for debugging.",
+    "[Prefer 'recall' instead] Get full structured project state including overview, objectives, decisions, constraints, tasks, and all memory items grouped by type. Use this only when the brief is stale, contradictory, or you specifically need raw structured data for debugging.",
     getProjectStateSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -197,7 +200,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "list_memory",
-    "List project memory items with filters for type, archive state, pinned status, or tag. Use this when the user asks what Relay currently knows, or before choosing a memory item to update or archive.",
+    "[Prefer 'recall' instead] List project memory items with filters for type, archive state, pinned status, or tag. Use this when the user asks what Relay currently knows, or before choosing a memory item to update or archive.",
     listMemorySchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -207,14 +210,14 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "get_memory",
-    "Get one memory item by ID, including provenance, conflict status, and relation metadata. Use after list_memory or search_context when you need to inspect an item before mutating it.",
+    "[Prefer 'recall' instead] Get one memory item by ID, including provenance, conflict status, and relation metadata. Use after list_memory or search_context when you need to inspect an item before mutating it.",
     getMemorySchema.shape,
     async (args) => getMemory(client, args)
   )
 
   server.tool(
     "search_context",
-    "Search memory items and project context by keyword. Supports stemming (e.g., 'auth' matches 'authentication') and tag filtering. Use this before high-impact decisions or when local context is incomplete, not as a default follow-up to a coherent get_brief result.",
+    "[Prefer 'recall' instead] Search memory items and project context by keyword. Supports stemming (e.g., 'auth' matches 'authentication') and tag filtering. Use this before high-impact decisions or when local context is incomplete, not as a default follow-up to a coherent get_brief result.",
     searchContextSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -224,7 +227,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "list_sessions",
-    "List captured source sessions and Relay work sessions that currently influence continuity. Use this when the user explicitly asks what Relay captured, or when debugging stale or contradictory continuity. Do not call this for a normal resume when get_brief is coherent.",
+    "[Prefer 'recall' with include: [\"sessions\"]] List captured source sessions and Relay work sessions that currently influence continuity.",
     listSessionsSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -234,7 +237,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "archive_session",
-    "Archive or restore a captured source session. Use this to detach stale or polluted captures from the continuity pipeline.",
+    "[Prefer 'save' with action: \"archive_session\"] Archive or restore a captured source session.",
     archiveSessionSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -244,7 +247,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "list_briefs",
-    "List generated Relay brief packets for the current project, including profile, kind, created time, and edited status. Use this for debugging stale or contradictory continuity, not for a normal resume when get_brief succeeded.",
+    "[Prefer 'recall' with include: [\"briefs\"]] List generated Relay brief packets for the current project.",
     listBriefsSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -254,7 +257,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "regenerate_brief",
-    "Regenerate a project brief packet explicitly. Use this after cleanup or when the user wants a fresh brief instead of reusing cached continuity.",
+    "[Prefer 'save' with action: \"regenerate_brief\"] Regenerate a project brief packet explicitly.",
     regenerateBriefSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -264,7 +267,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "delete_brief",
-    "Delete a specific brief packet by ID. Use this to remove stale or polluted generated briefs before regenerating.",
+    "[Prefer 'save' with action: \"delete_brief\"] Delete a specific brief packet by ID.",
     deleteBriefSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -274,7 +277,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "trace_context_sources",
-    "Trace why a phrase or project-state field appears in Relay context. Returns likely contributing memory items, digests, canon entries, sessions, summary snapshots, and briefs.",
+    "[Prefer 'recall' with tracePhrase] Trace why a phrase or project-state field appears in Relay context.",
     traceContextSourcesSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -284,7 +287,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "list_recent_activity",
-    "List recent continuity activity such as captures, digests, memory mutations, work-session events, and brief generation. Use this to answer what changed recently.",
+    "[Prefer 'recall' with include: [\"activity\"]] List recent continuity activity.",
     listRecentActivitySchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -294,7 +297,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "add_memory",
-    "Add a single memory item to the project. Use for recording decisions, constraints, tasks, notes, or other structured knowledge during a coding session. Tag items with relevant keywords for easier search.",
+    "[Prefer 'save' with action: \"add_memory\"] Add a single memory item to the project.",
     addMemorySchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -316,11 +319,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "save_context",
-    `Push a structured session snapshot (summary, decisions, progress, constraints, next steps, notes) into Relay's active work session and run it through the digest + reconcile pipeline.
-
-You DO NOT need to call this at natural break points — Relay auto-flushes on supported client hooks, on stdio shutdown, and opportunistically on the server before MCP requests. Call it explicitly only when the agent or user wants an immediate checkpoint (e.g. "save this decision now"), when wrapping a meaningful unit of work, or when ending a session from a client without hooks.
-
-Set finalize=false to record state without closing the session — useful for mid-session snapshots. Default finalize=true flushes and closes.`,
+    `[Prefer 'save' with action: "save_session"] Push a structured session snapshot into Relay's active work session and run it through the digest + reconcile pipeline. Auto-flushes on hooks/shutdown — call explicitly only for immediate checkpoints or session end.`,
     saveContextSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -330,7 +329,7 @@ Set finalize=false to record state without closing the session — useful for mi
 
   server.tool(
     "checkpoint_context",
-    "Mid-session snapshot: identical payload to save_context but never closes the work session. Use when you want the current decisions/progress persisted in the work session without triggering a full flush. Relay will flush automatically at the next hook/shutdown/sweep.",
+    "[Prefer 'save' with action: \"checkpoint\"] Mid-session snapshot without closing the work session.",
     saveContextSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -340,7 +339,7 @@ Set finalize=false to record state without closing the session — useful for mi
 
   server.tool(
     "manage_memory",
-    "Update, delete, or archive memory items. Supports bulk operations for cleaning up outdated or contradicting items. Use to keep project context lean and accurate.",
+    "[Prefer 'save' with action: \"manage_memory\"] Update, delete, or archive memory items.",
     manageMemorySchema.shape,
     async (args) => {
       const result = await manageMemory(client, args)
@@ -357,7 +356,7 @@ Set finalize=false to record state without closing the session — useful for mi
 
   server.tool(
     "set_project_state",
-    "Upsert the high-level project state used for briefs and dashboard overview. Use this when bootstrapping or correcting canonical project context from an agent session. Omitted scalar fields stay unchanged; list fields merge uniquely unless replaceLists is true.",
+    "[Prefer 'save' with action: \"set_state\"] Upsert the high-level project state. Omitted scalar fields stay unchanged; list fields merge uniquely unless replaceLists is true.",
     setProjectStateSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -381,7 +380,7 @@ Set finalize=false to record state without closing the session — useful for mi
 
   server.tool(
     "update_project",
-    "Update a project's name or description. Use this to fix outdated project metadata.",
+    "[Prefer 'save' with action: \"update_project\"] Update a project's name or description.",
     updateProjectSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -400,7 +399,7 @@ Set finalize=false to record state without closing the session — useful for mi
 
   server.tool(
     "recall_context",
-    "Search memory and retrieve project state in one call. Use before making decisions to check for existing constraints, decisions, or prior context. Combines search_context results with a project state snapshot.",
+    "[Prefer 'recall' instead] Search memory and retrieve project state in one call. Use before making decisions to check for existing constraints, decisions, or prior context. Combines search_context results with a project state snapshot.",
     recallContextSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -409,6 +408,56 @@ Set finalize=false to record state without closing the session — useful for mi
         query: args.query,
       }).catch(() => {})
       return result
+    }
+  )
+
+  // ── Unified tools (Phase 7) ──
+
+  server.tool(
+    "recall",
+    `Unified read tool — replaces recall_context, search_context, get_project_state, list_memory, get_memory, list_sessions, list_recent_activity, trace_context_sources, and list_briefs.
+
+- No params → project state overview
+- query → hybrid search + project state (like recall_context)
+- memoryId → single item detail
+- include: ["sessions"] → list sessions
+- include: ["activity"] → recent activity
+- include: ["briefs"] → list briefs
+- tracePhrase → trace provenance of a phrase
+- filters → filter memory listing by type/tags/pinned/archived`,
+    recallSchema.shape,
+    async (args) => {
+      const projectId = await resolveProjectId(args.projectId)
+      const result = await recall(client, args, projectId)
+      if (args.query) {
+        await client.recordSessionEvent(projectId, "context_recalled", {
+          query: args.query,
+        }).catch(() => {})
+      }
+      return result
+    }
+  )
+
+  server.tool(
+    "save",
+    `Unified write tool — replaces save_context, checkpoint_context, add_memory, manage_memory, set_project_state, update_project, archive_session, regenerate_brief, and delete_brief.
+
+Actions: save_session, checkpoint, add_memory, manage_memory, set_state, update_project, archive_session, regenerate_brief, delete_brief.
+
+Pass action-specific fields in payload. Examples:
+- { action: "add_memory", payload: { type: "decision", content: "Use PostgreSQL", tags: ["db"] } }
+- { action: "checkpoint", payload: { summary: "Auth implementation done" } }
+- { action: "archive_session", payload: { sessionId: "...", archived: true } }`,
+    saveSchema.shape,
+    async (args) => {
+      const projectId = await resolveProjectId(args.projectId)
+      const recordMutation: Parameters<typeof save>[3] = async (pid, mutation) => {
+        await client.recordSessionMutation(pid, mutation).catch(() => {})
+      }
+      const recordEvent: Parameters<typeof save>[4] = async (pid, eventType, payload) => {
+        await client.recordSessionEvent(pid, eventType, payload).catch(() => undefined)
+      }
+      return save(client, args, projectId, recordMutation, recordEvent)
     }
   )
 }

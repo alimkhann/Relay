@@ -10,6 +10,8 @@ import type {
 } from "@relay/shared"
 import { isSameTopic, normalizeText, sortCanonEntriesByPriority, truncateSentence } from "@relay/shared"
 
+import { GEMINI_MODELS, runGeminiJsonWithFallback } from "./gemini-service"
+
 type CanonSignalRisk = "low" | "medium"
 
 interface CanonSignal {
@@ -255,6 +257,72 @@ async function upsertObservedSignal(
   return created
 }
 
+interface ContradictionResult {
+  disputed: string[]
+  superseded: string[]
+  observations: string[]
+}
+
+async function detectContradictions(
+  repositories: RepositoryBundle,
+  userId: string,
+  projectId: string,
+  createdEntries: CanonEntryRow[],
+): Promise<void> {
+  try {
+    if (createdEntries.length === 0) return
+
+    const newIds = new Set(createdEntries.map((e) => e.id))
+    const activeEntries = sortCanonEntriesByPriority(
+      await repositories.canonEntries.listByProject(projectId, {
+        statuses: ["active"],
+        limit: 30,
+      }),
+    ).filter((e) => !newIds.has(e.id))
+
+    if (activeEntries.length < 3) return
+
+    const existingPrintable = activeEntries.slice(0, 20)
+    const existingText = existingPrintable
+      .map((e) => `[${e.id}] [${e.kind}] ${e.content}`)
+      .join("\n")
+    const newText = createdEntries
+      .map((e) => `[${e.id}] [${e.kind}] ${e.content}`)
+      .join("\n")
+
+    const prompt = `Active canon entries (existing):\n${existingText}\n\nNew entries from latest session:\n${newText}\n\nIdentify contradictions between new and existing entries. Return JSON: { "disputed": [ids of existing entries that conflict with new ones], "superseded": [ids of existing entries that are outdated by new ones], "observations": [brief pattern notes] }. Use empty arrays if none found. Only return ids that appear in the [id] tags above.`
+
+    const result = await runGeminiJsonWithFallback<ContradictionResult>({
+      primaryModel: GEMINI_MODELS.adjudication.primary,
+      fallbackModel: GEMINI_MODELS.adjudication.fallback,
+      systemInstruction: "You detect contradictions and outdated information in a project's knowledge base. Be conservative — only flag clear contradictions, not minor updates.",
+      prompt,
+      maxInputTokens: GEMINI_MODELS.adjudication.maxInputTokens,
+      maxOutputTokens: GEMINI_MODELS.adjudication.maxOutputTokens,
+    })
+
+    const validIds = new Set(existingPrintable.map((e) => e.id))
+    for (const id of result.data.disputed ?? []) {
+      if (validIds.has(id)) {
+        const entry = existingPrintable.find((e) => e.id === id)
+        if (entry && !isUserProtected(entry)) {
+          await repositories.canonEntries.update(userId, id, { status: "disputed" })
+        }
+      }
+    }
+    for (const id of result.data.superseded ?? []) {
+      if (validIds.has(id)) {
+        const entry = existingPrintable.find((e) => e.id === id)
+        if (entry && !isUserProtected(entry)) {
+          await supersedeEntry(repositories, userId, entry, new Date().toISOString())
+        }
+      }
+    }
+  } catch {
+    // fire-and-forget
+  }
+}
+
 export async function observeAndReflectDigestWithRepositories(
   repositories: RepositoryBundle,
   userId: string,
@@ -281,20 +349,40 @@ export async function observeAndReflectDigestWithRepositories(
   }]
 
   const updatedEntries: CanonEntryRow[] = []
+  const createdEntries: CanonEntryRow[] = []
   for (const signal of signals) {
-    updatedEntries.push(
-      await upsertObservedSignal(repositories, userId, input.projectId, signal, evidence, input.observedAt, autonomyMode),
-    )
+    const entry = await upsertObservedSignal(repositories, userId, input.projectId, signal, evidence, input.observedAt, autonomyMode)
+    updatedEntries.push(entry)
+    if (entry.createdAt === input.observedAt || entry.validFrom === input.observedAt) {
+      createdEntries.push(entry)
+    }
   }
 
+  // Fire-and-forget: detect contradictions between freshly-created entries and pre-existing canon
+  void detectContradictions(repositories, userId, input.projectId, createdEntries)
+
   const createdSnapshots: ProjectSummarySnapshotRow[] = []
+
+  const summaryParts = [normalizeText(input.digest.summaryShort)]
+  if (input.digest.recentProgressDelta) {
+    summaryParts.push(`Progress: ${normalizeText(input.digest.recentProgressDelta)}`)
+  }
+  if (input.digest.currentObjectiveDelta) {
+    summaryParts.push(`Objective: ${normalizeText(input.digest.currentObjectiveDelta)}`)
+  }
+  const enrichedSummary = truncateSentence(summaryParts.join(" "), 800)
+
   createdSnapshots.push(
     await repositories.projectSummarySnapshots.create(userId, {
       projectId: input.projectId,
       kind: "session_summary",
-      content: truncateSentence(normalizeText(input.digest.summaryShort), 500),
+      content: enrichedSummary,
       derivedFrom: [input.sourceId],
-      generationMetadata: { sourceKind: input.sourceKind, generatedBy: "relay-reflector" },
+      generationMetadata: {
+        sourceKind: input.sourceKind,
+        generatedBy: "relay-reflector",
+        sessionDate: input.observedAt,
+      },
     }),
   )
 

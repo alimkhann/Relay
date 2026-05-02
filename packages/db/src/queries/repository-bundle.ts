@@ -7,6 +7,7 @@ import { BillingWebhookEventRepository } from "../repositories/billing-webhook-e
 import { BillingWebhookRawDeliveryRepository } from "../repositories/billing-webhook-raw-delivery-repository"
 import { BootstrapPacketRepository } from "../repositories/bootstrap-packet-repository"
 import { CanonEntryRepository } from "../repositories/canon-entry-repository"
+import { EntityRepository } from "../repositories/entity-repository"
 import { CanonEvidenceRepository } from "../repositories/canon-evidence-repository"
 import { ContextPacketRepository } from "../repositories/context-packet-repository"
 import { EventRepository } from "../repositories/event-repository"
@@ -86,6 +87,7 @@ export interface RepositoryBundle {
   workSessions: WorkSessionRepository
   workSessionEvents: WorkSessionEventRepository
   workSessionCheckpoints: WorkSessionCheckpointRepository
+  entities: EntityRepository
 }
 
 export function createRepositoryBundle(
@@ -137,6 +139,7 @@ export function createRepositoryBundle(
     cliAuthSessions: new CliAuthSessionRepository(provider),
     workSessions: new WorkSessionRepository(provider),
     workSessionEvents: new WorkSessionEventRepository(provider),
-    workSessionCheckpoints: new WorkSessionCheckpointRepository(provider)
+    workSessionCheckpoints: new WorkSessionCheckpointRepository(provider),
+    entities: new EntityRepository(provider),
   }
 }
