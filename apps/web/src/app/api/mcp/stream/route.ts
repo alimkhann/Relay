@@ -5,6 +5,7 @@ import { z } from "zod"
 
 import { isAuthRequiredError, resolveViewer, type Viewer } from "@/server/policies/viewer"
 import { assertIpRateLimit } from "@/server/services/rate-limit-service"
+import { consumeQuota, resolveViewerEntitlements } from "@/server/services/entitlement-service"
 import { createRepositoryBundle } from "@relay/db"
 import { detectCrossSurfaceDrifts } from "@/server/services/drift-reconciler"
 import { sweepOpenWorkSessions } from "@/server/services/work-session-flush-service"
@@ -157,6 +158,12 @@ function registerHttpTools(
               ? "cached"
               : null
       const readOrWrite = writeTools.has(name) ? "write" : "read"
+
+      const entitlements = await resolveViewerEntitlements(viewer.userId)
+      const quotaKey = readOrWrite === "write" ? "mcp_write_daily" : "mcp_read_daily"
+      const quotaLimit = readOrWrite === "write" ? entitlements.limits.mcpWriteDaily : entitlements.limits.mcpReadDaily
+      await consumeQuota(viewer.userId, quotaKey, "day", quotaLimit, 1, entitlements.plan)
+
       const captureToolTelemetry = shouldCaptureMcpToolTelemetry(readOrWrite)
 
       if (captureToolTelemetry) {
@@ -538,7 +545,7 @@ function registerHttpTools(
     "Add a memory item to the project. Use this to persist decisions, constraints, tasks, or notes discovered during the session.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
-      type: z.string().describe("Memory type: decision, constraint, task, note, artifact, or requirement"),
+      type: z.enum(["decision", "constraint", "task", "note", "artifact", "requirement"]).describe("Memory type"),
       content: z.string().describe("The memory content to store"),
       title: z.string().optional().describe("Short title for the memory item"),
       tags: z.array(z.string()).optional().describe("Tags for categorizing and searching"),
@@ -623,7 +630,7 @@ function registerHttpTools(
     RELAY_MCP_TOOL_NAMES[17],
     "Update, delete, or archive an existing memory item by its ID.",
     {
-      action: z.string().describe("Action to perform: update, delete, or archive"),
+      action: z.enum(["update", "delete", "archive"]).describe("Action to perform"),
       memoryId: z.string().describe("The ID of the memory item to manage"),
       content: z.string().optional().describe("New content (for update action)"),
       title: z.string().optional().describe("New title (for update action)"),

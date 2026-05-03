@@ -376,11 +376,13 @@ export class RelayHttpMcpClient {
         await repositories.memory.update(memoryId, { isArchived: true })
       }
     } else if (action === "update") {
-      await repositories.memory.update(memoryIds[0]!, {
-        content: args.content as string | undefined,
-        title: args.title as string | undefined,
-        tags: args.tags as string[] | undefined,
-      })
+      for (const memoryId of memoryIds) {
+        await repositories.memory.update(memoryId, {
+          content: args.content as string | undefined,
+          title: args.title as string | undefined,
+          tags: args.tags as string[] | undefined,
+        })
+      }
     }
   }
 

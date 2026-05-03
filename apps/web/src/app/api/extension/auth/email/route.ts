@@ -1,4 +1,4 @@
-import { createHash } from "crypto"
+import { createHash, randomInt } from "node:crypto"
 
 import { NextResponse } from "next/server"
 
@@ -102,7 +102,7 @@ export async function POST(request: Request) {
       if (intent === "sign-up") {
         if (!body.otp) {
           // Send OTP only — do NOT create account yet to prevent bypass via reload
-          const otp = Math.floor(100000 + Math.random() * 900000).toString()
+          const otp = randomInt(0, 1_000_000).toString().padStart(6, "0")
           const otpHash = createHash("sha256").update(otp).digest("hex")
           const db = createRepositoryProvider()
           await db.query(

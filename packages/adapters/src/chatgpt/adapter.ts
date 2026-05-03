@@ -37,7 +37,9 @@ function resolveRouteKind(pathname: string): PageRouteKind {
 function resolvePageFingerprint(url: URL, routeKind: PageRouteKind) {
   const parts = url.pathname.split("/").filter(Boolean)
   if (routeKind === "project_root") {
-    return parts[0] === "g" && parts[1] ? `g:${parts[1]}` : null
+    if (parts[0] !== "g" || !parts[1]) return null
+    const suffix = parts[2] === "project" ? ":project" : ":root"
+    return `g:${parts[1]}${suffix}`
   }
 
   return parts.at(-1) ?? null

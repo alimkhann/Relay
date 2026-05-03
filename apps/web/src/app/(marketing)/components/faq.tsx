@@ -31,7 +31,7 @@ const FAQ_ITEMS = [
   {
     question: "Is Relay free?",
     answer:
-      "Yes. The Free plan supports up to 2 projects with no card required. Pro is $9/month for unlimited everything.",
+      "Yes. The Free plan supports up to 2 projects with no card required. Starter is $12/month and Pro is $18/month.",
   },
   {
     question: "Do I need to change how I work?",

@@ -182,9 +182,26 @@ export async function scanProjectUrl(rawUrl: string): Promise<ProjectScanResult>
         "user-agent": "RelayProjectScanner/1.0 (+https://www.onrelay.app)",
       },
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      redirect: "manual",
     })
   } catch {
     throw new BadRequestError("Relay could not fetch that URL.")
+  }
+
+  if (response.status >= 300 && response.status < 400) {
+    const location = response.headers.get("location")
+    if (location) {
+      const redirectUrl = new URL(location, url)
+      normalizeScannableProjectUrl(redirectUrl.toString())
+      response = await fetch(redirectUrl.toString(), {
+        headers: {
+          accept: "text/html,application/xhtml+xml",
+          "user-agent": "RelayProjectScanner/1.0 (+https://www.onrelay.app)",
+        },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        redirect: "manual",
+      })
+    }
   }
 
   if (!response.ok) {

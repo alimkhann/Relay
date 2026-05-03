@@ -190,7 +190,7 @@ export function buildSignInHref(
 }
 
 export function resolveSafeNextPath(value: string | null | undefined, fallback = "/dashboard") {
-  if (!value || !value.startsWith("/")) {
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) {
     return fallback
   }
 

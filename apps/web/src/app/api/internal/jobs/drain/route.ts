@@ -1,3 +1,5 @@
+import { timingSafeEqual } from "node:crypto"
+
 import { NextResponse } from "next/server"
 
 import { runContinuityMaintenanceForUser } from "@/server/services/continuity-maintenance-service"
@@ -18,7 +20,12 @@ export async function POST(request: Request) {
   const secret = normalizeSecret(process.env.RELAY_INTERNAL_API_SECRET)
   const provided = normalizeSecret(request.headers.get("x-relay-internal-secret"))
 
-  if (!secret || provided !== secret) {
+  if (!secret || !provided) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
+  }
+  const a = Buffer.from(provided)
+  const b = Buffer.from(secret)
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
   }
 

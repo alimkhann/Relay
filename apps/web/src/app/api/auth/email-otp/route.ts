@@ -1,9 +1,10 @@
-import { createHash } from "crypto"
+import { createHash, randomInt } from "node:crypto"
 
 import { createRepositoryProvider } from "@relay/db"
 import { NextResponse } from "next/server"
 
 import { sendEmailVerificationOtp } from "@/server/services/email-service"
+import { assertIpRateLimit } from "@/server/services/rate-limit-service"
 
 const EMAIL_OTP_TTL_SQL = "5 minutes"
 
@@ -22,7 +23,8 @@ export async function POST(request: Request) {
     }
 
     if (action === "send") {
-      const otp = Math.floor(100000 + Math.random() * 900000).toString()
+      await assertIpRateLimit(request, "email_otp_send_ip", 5)
+      const otp = randomInt(0, 1_000_000).toString().padStart(6, "0")
       const otpHash = createHash("sha256").update(otp).digest("hex")
 
       const db = createRepositoryProvider()
@@ -42,6 +44,7 @@ export async function POST(request: Request) {
     }
 
     if (action === "verify") {
+      await assertIpRateLimit(request, "email_otp_verify_ip", 10)
       const { otp } = body
       if (!otp || typeof otp !== "string") {
         return NextResponse.json({ error: "otp is required." }, { status: 400 })

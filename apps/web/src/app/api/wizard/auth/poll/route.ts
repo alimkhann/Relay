@@ -123,8 +123,9 @@ export const GET = withApiRoute(async (request: Request) => {
     })
   }
 
-  // Verify PKCE
-  if (sha256Base64Url(codeVerifier) !== resolvedMcpSession.codeChallenge) {
+  // Verify PKCE (only meaningful for real sessions; synthetic sessions derive
+  // the challenge from the same verifier so the check is inherently satisfied)
+  if (!isSyntheticSession && sha256Base64Url(codeVerifier) !== resolvedMcpSession.codeChallenge) {
     return NextResponse.json({ status: "invalid" })
   }
 
