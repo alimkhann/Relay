@@ -137,13 +137,14 @@ describe("WorkspaceLayout", () => {
     expect(listProjectsForUserMock).not.toHaveBeenCalled()
   })
 
-  it("does not sync the viewer profile on every authenticated workspace render", async () => {
-    resolveOptionalViewerMock.mockResolvedValue({
+  it("syncs the viewer profile before FK-dependent operations on authenticated render", async () => {
+    const viewer = {
       userId: "user-1",
       mode: "session",
       email: "user@example.com",
       name: "Relay User",
-    })
+    }
+    resolveOptionalViewerMock.mockResolvedValue(viewer)
     createRepositoryBundleMock.mockReturnValue({
       profiles: {
         getById: vi.fn().mockResolvedValue({
@@ -171,6 +172,6 @@ describe("WorkspaceLayout", () => {
     )
 
     expect(screen.getByText("Workspace body")).toBeTruthy()
-    expect(syncViewerProfileMock).not.toHaveBeenCalled()
+    expect(syncViewerProfileMock).toHaveBeenCalledWith(viewer)
   })
 })

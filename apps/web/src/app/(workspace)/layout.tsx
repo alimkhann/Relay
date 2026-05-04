@@ -9,7 +9,7 @@ import { SidebarMainArea } from "@/components/layout/sidebar-main-area"
 import { SessionKeepalive } from "@/components/auth/session-keepalive"
 import { PostHogIdentity } from "@/components/telemetry/posthog-identity"
 import { WorkspaceSidebarShell } from "@/components/layout/workspace-sidebar-shell"
-import { resolveOptionalViewer } from "@/server/policies/viewer"
+import { resolveOptionalViewer, syncViewerProfile } from "@/server/policies/viewer"
 import { resolveViewerEntitlements, getUsageCount } from "@/server/services/entitlement-service"
 import {
   attachReferralForUser,
@@ -32,6 +32,8 @@ export default async function WorkspaceLayout({
   if (!viewer) {
     return children
   }
+
+  await syncViewerProfile(viewer)
 
   const referralCode = decodeReferralCookie((await cookies()).get(REFERRAL_COOKIE_NAME)?.value)
   if (referralCode) {
