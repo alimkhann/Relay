@@ -23,7 +23,11 @@ export default function BriefLoading() {
                 <div className="h-4 w-20 animate-pulse rounded bg-[var(--relay-soft)]" />
                 <div className="h-4 w-16 animate-pulse rounded-full bg-[var(--relay-soft)]" />
               </div>
-              <div className="h-5 w-24 animate-pulse rounded bg-[var(--relay-soft)]" />
+              <div className="flex items-center gap-1">
+                <div className="h-5 w-12 animate-pulse rounded bg-[var(--relay-soft)]" />
+                <div className="h-5 w-10 animate-pulse rounded bg-[var(--relay-soft)]" />
+                <div className="h-5 w-20 animate-pulse rounded bg-[var(--relay-soft)]" />
+              </div>
             </div>
             <div className="px-4 py-4 space-y-2">
               <div className="h-4 w-full animate-pulse rounded bg-[var(--relay-soft)]" />

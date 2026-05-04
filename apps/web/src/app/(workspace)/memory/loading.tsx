@@ -31,7 +31,7 @@ export default function MemoryLoading() {
 
       {/* Governance cards */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        {["Decisions", "Open Tasks", "Constraints"].map((label) => (
+        {["Decisions", "Tasks", "Constraints"].map((label) => (
           <div
             key={label}
             className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden"
