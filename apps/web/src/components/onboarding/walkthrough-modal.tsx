@@ -157,6 +157,7 @@ export function WalkthroughModal({ open, onOpenChange, surface }: WalkthroughMod
 
   async function dismiss() {
     onOpenChange(false)
+    window.dispatchEvent(new CustomEvent("relay:walkthrough-dismissed"))
     await relayClientFetch("/api/settings", {
       method: "PATCH",
       body: JSON.stringify({

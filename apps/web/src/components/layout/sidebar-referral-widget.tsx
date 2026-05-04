@@ -29,8 +29,12 @@ export function SidebarReferralWidget({ code, link, qualifiedCount, collapsed }:
     if (collapsed || qualifiedCount > 0) return
     if (typeof window === "undefined") return
     if (localStorage.getItem(NUDGE_STORAGE_KEY) === "1") return
-    const timer = setTimeout(() => setShowNudge(true), 600)
-    return () => clearTimeout(timer)
+    const handler = () => {
+      const timer = setTimeout(() => setShowNudge(true), 600)
+      return () => clearTimeout(timer)
+    }
+    window.addEventListener("relay:walkthrough-dismissed", handler)
+    return () => window.removeEventListener("relay:walkthrough-dismissed", handler)
   }, [collapsed, qualifiedCount])
 
   useEffect(() => {
