@@ -1,10 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Copy, Check, Gift } from "lucide-react"
 import * as Tooltip from "@radix-ui/react-tooltip"
 
 import { cn } from "@/lib/cn"
+
+const NUDGE_STORAGE_KEY = "relay:referral-sidebar-tooltip-dismissed"
 
 const TIERS = [
   { count: 1, label: "25%", pct: 33 },
@@ -21,10 +23,34 @@ interface SidebarReferralWidgetProps {
 
 export function SidebarReferralWidget({ code, link, qualifiedCount, collapsed }: SidebarReferralWidgetProps) {
   const [copied, setCopied] = useState(false)
+  const [showNudge, setShowNudge] = useState(false)
+
+  useEffect(() => {
+    if (collapsed || qualifiedCount > 0) return
+    if (typeof window === "undefined") return
+    if (localStorage.getItem(NUDGE_STORAGE_KEY) === "1") return
+    const timer = setTimeout(() => setShowNudge(true), 600)
+    return () => clearTimeout(timer)
+  }, [collapsed, qualifiedCount])
+
+  useEffect(() => {
+    if (!showNudge) return
+    const timer = setTimeout(() => {
+      setShowNudge(false)
+      localStorage.setItem(NUDGE_STORAGE_KEY, "1")
+    }, 8000)
+    return () => clearTimeout(timer)
+  }, [showNudge])
+
+  function dismissNudge() {
+    setShowNudge(false)
+    localStorage.setItem(NUDGE_STORAGE_KEY, "1")
+  }
 
   function copy() {
     navigator.clipboard.writeText(link).catch(() => {})
     setCopied(true)
+    dismissNudge()
     setTimeout(() => setCopied(false), 2000)
   }
 
@@ -61,7 +87,9 @@ export function SidebarReferralWidget({ code, link, qualifiedCount, collapsed }:
   }
 
   return (
-    <div className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-soft)]/50 px-3 py-2.5">
+    <Tooltip.Root open={showNudge} onOpenChange={(v) => { if (!v) dismissNudge() }}>
+    <Tooltip.Trigger asChild>
+    <div className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-soft)]/50 px-3 py-2.5" onClick={dismissNudge}>
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--relay-faint)]">
           <Gift className="h-3 w-3" />
@@ -129,5 +157,17 @@ export function SidebarReferralWidget({ code, link, qualifiedCount, collapsed }:
             : `${qualifiedCount} qualified · max tier reached`}
       </p>
     </div>
+    </Tooltip.Trigger>
+    <Tooltip.Portal>
+      <Tooltip.Content
+        side="right"
+        sideOffset={8}
+        className="z-50 max-w-[220px] rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-3 py-2.5 text-[12px] font-medium text-[var(--relay-bg)] shadow-[var(--relay-shadow)] animate-in fade-in-0 zoom-in-95"
+      >
+        Share your link and earn discounts when friends upgrade
+        <Tooltip.Arrow className="fill-[var(--relay-ink)]" />
+      </Tooltip.Content>
+    </Tooltip.Portal>
+    </Tooltip.Root>
   )
 }

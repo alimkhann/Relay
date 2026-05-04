@@ -784,7 +784,7 @@ export function BillingSection({ billing, checkoutSuccess, referralProgram }: Bi
         </section>
       ) : null}
 
-      <section className="overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
+      <section className="mt-6 overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
         <div className="px-5 py-4">
           <h2 className="text-sm font-semibold text-[var(--relay-ink)]">Usage</h2>
           <p className="mt-1 text-[13px] text-[var(--relay-muted)]">Track plan limits for the current period.</p>

@@ -7,6 +7,8 @@ import { X } from "lucide-react"
 import { motion, AnimatePresence } from "motion/react"
 
 import { ChromeWebstoreBadge } from "@/components/chrome-webstore-badge"
+import { PRICING } from "@/app/(marketing)/pricing.config"
+import { Button } from "@/components/ui/button"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
 
 const ease = [0.25, 0.1, 0.25, 1] as const
@@ -17,6 +19,7 @@ interface Step {
   video?: { mp4: string; webm?: string; poster: string }
   image?: { src: string; alt: string }
   cta?: React.ReactNode
+  planPicker?: boolean
 }
 
 const DASHBOARD_STEPS: Step[] = [
@@ -56,6 +59,11 @@ const DASHBOARD_STEPS: Step[] = [
     },
     cta: <ChromeWebstoreBadge source="walkthrough_modal" label="Add to Chrome — it's free" />,
   },
+  {
+    title: "Choose your plan",
+    body: "Start free with generous limits. Upgrade anytime as Relay becomes part of your workflow.",
+    planPicker: true,
+  },
 ]
 
 interface WalkthroughModalProps {
@@ -64,12 +72,75 @@ interface WalkthroughModalProps {
   surface: "web"
 }
 
+function PlanPickerCards({ onContinueFree }: { onContinueFree: () => void }) {
+  const [loading, setLoading] = useState<"starter" | "pro" | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function checkout(plan: "starter" | "pro") {
+    setLoading(plan)
+    setError(null)
+    try {
+      const response = await relayClientFetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ plan, interval: "month" }),
+        telemetry: {
+          surface: "web-dashboard",
+          area: "billing",
+          event: "walkthrough_plan_cta_clicked",
+          context: { plan, interval: "month" },
+          logSuccess: true,
+        },
+      })
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string }
+        throw new Error(payload.error ?? "Checkout failed.")
+      }
+      const payload = (await response.json()) as { checkoutUrl: string }
+      window.location.href = payload.checkoutUrl
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Checkout failed.")
+      setLoading(null)
+    }
+  }
+
+  return (
+    <div className="px-6 pt-4 pb-2">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="flex flex-col rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] p-4">
+          <h3 className="text-sm font-semibold text-[var(--relay-ink)]">Free</h3>
+          <p className="mt-1 flex-1 text-xs text-[var(--relay-muted)]">$0 / forever · {PRICING.free.description}</p>
+          <Button className="mt-4 w-full" variant="secondary" onClick={onContinueFree}>
+            Continue Free
+          </Button>
+        </div>
+        <div className="flex flex-col rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-bg)] p-4">
+          <h3 className="text-sm font-semibold text-[var(--relay-ink)]">Starter</h3>
+          <p className="mt-1 flex-1 text-xs text-[var(--relay-muted)]">${PRICING.starter.monthlyPrice}/mo · {PRICING.starter.description}</p>
+          <Button className="mt-4 w-full" disabled={loading !== null} onClick={() => void checkout("starter")}>
+            {loading === "starter" ? "Opening…" : "Get Starter"}
+          </Button>
+        </div>
+        <div className="flex flex-col rounded-[var(--relay-radius-sm)] border border-[var(--relay-accent)]/30 bg-[var(--relay-accent)]/[0.03] p-4">
+          <h3 className="text-sm font-semibold text-[var(--relay-ink)]">Pro</h3>
+          <p className="mt-1 flex-1 text-xs text-[var(--relay-muted)]">${PRICING.pro.monthlyPrice}/mo · {PRICING.pro.description}</p>
+          <Button className="mt-4 w-full" disabled={loading !== null} onClick={() => void checkout("pro")}>
+            {loading === "pro" ? "Opening…" : "Get Pro"}
+          </Button>
+        </div>
+      </div>
+      {error ? <p className="mt-3 text-xs font-medium text-[var(--relay-danger)]">{error}</p> : null}
+    </div>
+  )
+}
+
 export function WalkthroughModal({ open, onOpenChange, surface }: WalkthroughModalProps) {
   const [step, setStep] = useState(0)
   const videoRef = useRef<HTMLVideoElement>(null)
   const steps = DASHBOARD_STEPS
   const current = steps[step]!
   const isLast = step === steps.length - 1
+  const isPlanStep = Boolean(current.planPicker)
 
   useEffect(() => {
     if (!open) return
@@ -149,7 +220,7 @@ export function WalkthroughModal({ open, onOpenChange, surface }: WalkthroughMod
                     </button>
                   </div>
 
-                  {/* Media */}
+                  {/* Media / Content */}
                   <AnimatePresence mode="wait">
                     <motion.div
                       key={step}
@@ -157,50 +228,65 @@ export function WalkthroughModal({ open, onOpenChange, surface }: WalkthroughMod
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -12 }}
                       transition={{ duration: 0.18, ease }}
-                      className="px-6 pt-4"
                     >
-                      {current.video ? (
-                        <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-[var(--relay-line)] bg-black">
-                          <video
-                            ref={videoRef}
-                            className="h-full w-full object-cover"
-                            poster={current.video.poster}
-                            autoPlay
-                            loop
-                            muted
-                            playsInline
-                            preload="metadata"
-                          >
-                            {current.video.webm ? <source src={current.video.webm} type="video/webm" /> : null}
-                            <source src={current.video.mp4} type="video/mp4" />
-                          </video>
-                        </div>
-                      ) : current.image ? (
-                        <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-[var(--relay-line)] bg-[var(--relay-soft)]">
-                          <Image
-                            src={current.image.src}
-                            alt={current.image.alt}
-                            fill
-                            className="object-cover"
-                            sizes="(max-width: 768px) 100vw, 672px"
-                          />
-                        </div>
-                      ) : null}
+                      {current.planPicker ? (
+                        <>
+                          <div className="px-6 pt-4 pb-2 space-y-1.5">
+                            <h2 className="text-[18px] font-semibold tracking-tight text-[var(--relay-ink)]">
+                              {current.title}
+                            </h2>
+                            <p className="text-[14px] leading-relaxed text-[var(--relay-muted)]">
+                              {current.body}
+                            </p>
+                          </div>
+                          <PlanPickerCards onContinueFree={() => void dismiss()} />
+                        </>
+                      ) : (
+                        <div className="px-6 pt-4">
+                          {current.video ? (
+                            <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-[var(--relay-line)] bg-black">
+                              <video
+                                ref={videoRef}
+                                className="h-full w-full object-cover"
+                                poster={current.video.poster}
+                                autoPlay
+                                loop
+                                muted
+                                playsInline
+                                preload="metadata"
+                              >
+                                {current.video.webm ? <source src={current.video.webm} type="video/webm" /> : null}
+                                <source src={current.video.mp4} type="video/mp4" />
+                              </video>
+                            </div>
+                          ) : current.image ? (
+                            <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-[var(--relay-line)] bg-[var(--relay-soft)]">
+                              <Image
+                                src={current.image.src}
+                                alt={current.image.alt}
+                                fill
+                                className="object-cover"
+                                sizes="(max-width: 768px) 100vw, 672px"
+                              />
+                            </div>
+                          ) : null}
 
-                      {/* Text */}
-                      <div className="py-5 space-y-1.5">
-                        <h2 className="text-[18px] font-semibold tracking-tight text-[var(--relay-ink)]">
-                          {current.title}
-                        </h2>
-                        <p className="text-[14px] leading-relaxed text-[var(--relay-muted)]">
-                          {current.body}
-                        </p>
-                      </div>
+                          {/* Text */}
+                          <div className="py-5 space-y-1.5">
+                            <h2 className="text-[18px] font-semibold tracking-tight text-[var(--relay-ink)]">
+                              {current.title}
+                            </h2>
+                            <p className="text-[14px] leading-relaxed text-[var(--relay-muted)]">
+                              {current.body}
+                            </p>
+                          </div>
 
-                      {/* CTA (step 4) */}
-                      {current.cta ? (
-                        <div className="pb-2">{current.cta}</div>
-                      ) : null}
+                          {/* CTA */}
+                          {current.cta ? (
+                            <div className="pb-2">{current.cta}</div>
+                          ) : null}
+                        </div>
+                      )}
                     </motion.div>
                   </AnimatePresence>
 
@@ -224,23 +310,25 @@ export function WalkthroughModal({ open, onOpenChange, surface }: WalkthroughMod
                       ))}
                     </div>
 
-                    {/* Buttons */}
-                    <div className="flex items-center gap-2">
-                      {!isLast && (
+                    {/* Buttons — hidden on plan picker step since the cards are the CTAs */}
+                    {!isPlanStep && (
+                      <div className="flex items-center gap-2">
+                        {!isLast && (
+                          <button
+                            onClick={() => void dismiss()}
+                            className="px-3 py-1.5 text-sm text-[var(--relay-muted)] hover:text-[var(--relay-ink)] transition-colors"
+                          >
+                            Skip
+                          </button>
+                        )}
                         <button
-                          onClick={() => void dismiss()}
-                          className="px-3 py-1.5 text-sm text-[var(--relay-muted)] hover:text-[var(--relay-ink)] transition-colors"
+                          onClick={next}
+                          className="px-4 py-1.5 text-sm font-medium rounded-lg bg-[var(--relay-accent)] text-[var(--relay-accent-text)] hover:opacity-90 transition-opacity"
                         >
-                          Skip
+                          {isLast ? "Done" : "Next →"}
                         </button>
-                      )}
-                      <button
-                        onClick={next}
-                        className="px-4 py-1.5 text-sm font-medium rounded-lg bg-[var(--relay-accent)] text-[var(--relay-accent-text)] hover:opacity-90 transition-opacity"
-                      >
-                        {isLast ? "Done" : "Next →"}
-                      </button>
-                    </div>
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               </motion.div>
