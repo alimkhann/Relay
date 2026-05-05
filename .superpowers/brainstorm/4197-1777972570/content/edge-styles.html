@@ -1,0 +1,52 @@
+<h2>How should different edge types look?</h2>
+<p class="subtitle">You have 3 explicit relation types + similarity edges. Each needs a distinct visual.</p>
+
+<div class="section">
+  <div class="label">Your relation types</div>
+  <p><strong>supersedes</strong> — item A replaces/invalidates item B<br>
+  <strong>extends</strong> — item A builds upon item B<br>
+  <strong>derives</strong> — item A was merged/derived from item B<br>
+  <strong>similar</strong> — vector-similarity fallback (no explicit relation)</p>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Color-Coded Edges</h3>
+      <p>Each relation type gets a distinct color:</p>
+      <p>
+        <span style="color:#ef4444">━━━</span> supersedes (red — destructive/replacing)<br>
+        <span style="color:#3b82f6">━━━</span> extends (blue — building on)<br>
+        <span style="color:#8b5cf6">━━━</span> derives (purple — lineage)<br>
+        <span style="color:#71717a">╌╌╌</span> similar (gray dashed — weak/implicit)
+      </p>
+      <p style="color: #10b981; margin-top: 8px;">Clear at a glance. Risk: colorful spaghetti if many edges.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Style-Coded (Subtle)</h3>
+      <p>Same muted color, different line styles:</p>
+      <p>
+        <span style="color:#a1a1aa">━━━━━━</span> supersedes (solid, thicker)<br>
+        <span style="color:#a1a1aa">━ ━ ━ ━</span> extends (dashed)<br>
+        <span style="color:#a1a1aa">╌╌╌╌╌╌</span> derives (dotted)<br>
+        <span style="color:#a1a1aa; opacity:0.4">╌╌╌╌╌╌</span> similar (dotted, very faint)
+      </p>
+      <p style="color: #3b82f6; margin-top: 8px;">Clean, minimal. Edges don't compete with nodes. Harder to distinguish from afar.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Hybrid — Subtle Default, Color on Interaction</h3>
+      <p><strong>Default state:</strong> All edges same muted gray, varying only in opacity (explicit=stronger, similar=fainter). Directed edges have small arrows.</p>
+      <p><strong>On hover/click of a node:</strong> Connected edges reveal their type color + animate a pulse along the edge direction. Unrelated edges dim further.</p>
+      <p style="color: #8b5cf6; margin-top: 8px;">Best of both: clean default view, rich info on interaction. Matches A+C interaction model.</p>
+    </div>
+  </div>
+</div>

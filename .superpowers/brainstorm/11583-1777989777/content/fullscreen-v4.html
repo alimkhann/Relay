@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memory Graph — Fullscreen Layout</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1a1a1c; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #e4e4e7; overflow: hidden; }
+
+  .graph-container { position: fixed; inset: 0; }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  .exit-btn {
+    position: fixed; top: 16px; left: 16px; z-index: 10;
+    background: rgba(32,32,34,0.92); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px; padding: 8px 12px; backdrop-filter: blur(8px);
+    cursor: pointer; display: flex; align-items: center; gap: 6px;
+  }
+  .exit-btn:hover { background: rgba(39,39,42,0.95); }
+  .exit-btn span { color: #a1a1aa; font-size: 11px; }
+
+  .legend {
+    position: fixed; bottom: 16px; left: 16px; z-index: 10;
+    background: rgba(32,32,34,0.92); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px; padding: 8px 14px; display: flex; gap: 10px;
+    align-items: center; backdrop-filter: blur(8px);
+  }
+  .legend-item { display: flex; gap: 5px; align-items: center; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .legend-label { color: #a1a1aa; font-size: 9px; }
+  .legend-sep { width: 1px; height: 14px; background: rgba(255,255,255,0.1); margin: 0 2px; }
+  .legend-stat { color: #71717a; font-size: 9px; }
+
+  .detail-panel {
+    position: fixed; top: 56px; right: 16px; bottom: 16px; width: 310px;
+    background: rgba(32,32,34,0.95); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px; padding: 20px; backdrop-filter: blur(12px);
+    display: flex; flex-direction: column; gap: 14px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3); z-index: 5;
+  }
+  .panel-header { display: flex; justify-content: space-between; align-items: flex-start; }
+  .panel-close { color: #71717a; font-size: 14px; cursor: pointer; padding: 4px; line-height: 1; }
+  .panel-close:hover { color: #e4e4e7; }
+  .type-badge { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .type-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .type-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .panel-title { font-size: 14px; font-weight: 600; line-height: 1.3; }
+
+  .meta-row {
+    display: flex; gap: 12px; padding: 8px 10px;
+    background: rgba(255,255,255,0.03); border-radius: 6px;
+  }
+  .meta-key { color: #71717a; font-size: 9px; display: block; }
+  .meta-val { font-size: 11px; }
+  .meta-val.green { color: #10b981; font-weight: 500; }
+  .meta-val.muted { color: #a1a1aa; }
+
+  .section-label { color: #71717a; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px; }
+  .content-text { color: #d4d4d8; font-size: 12px; line-height: 1.6; margin: 0; }
+  .content-area { flex: 1; overflow-y: auto; }
+
+  .relation-row {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+    background: rgba(255,255,255,0.02); border-radius: 4px; cursor: pointer;
+  }
+  .relation-row:hover { background: rgba(255,255,255,0.05); }
+  .relation-type { font-size: 9px; min-width: 58px; }
+  .relation-target { color: #a1a1aa; font-size: 10px; }
+  .relation-conf { color: #71717a; font-size: 9px; margin-left: auto; }
+
+  .actions { display: flex; gap: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); }
+  .action-btn {
+    padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 11px;
+    border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.04); color: #a1a1aa;
+  }
+  .action-btn:hover { background: rgba(255,255,255,0.08); }
+  .action-btn.primary { background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.2); color: #f59e0b; }
+</style>
+</head>
+<body>
+
+<div class="graph-container">
+  <canvas id="graph"></canvas>
+</div>
+
+<div class="exit-btn">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e4e4e7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="4 14 10 14 10 20"></polyline>
+    <polyline points="20 10 14 10 14 4"></polyline>
+    <line x1="14" y1="10" x2="21" y2="3"></line>
+    <line x1="3" y1="21" x2="10" y2="14"></line>
+  </svg>
+  <span>Exit</span>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div><span class="legend-label">Decision</span></div>
+  <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6"></div><span class="legend-label">Task</span></div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div><span class="legend-label">Constraint</span></div>
+  <div class="legend-item"><div class="legend-dot" style="background:#10b981"></div><span class="legend-label">Note</span></div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div><span class="legend-label">Req</span></div>
+  <div class="legend-item"><div class="legend-dot" style="background:#6366f1"></div><span class="legend-label">Artifact</span></div>
+  <div class="legend-sep"></div>
+  <span class="legend-stat">24 nodes · 16 edges</span>
+</div>
+
+<div class="detail-panel">
+  <div class="panel-header">
+    <div>
+      <div class="type-badge">
+        <div class="type-dot" style="background:#f59e0b; box-shadow:0 0 6px rgba(245,158,11,0.4)"></div>
+        <span class="type-label" style="color:#f59e0b">Constraint</span>
+      </div>
+      <span class="panel-title">No PII in local storage</span>
+    </div>
+    <span class="panel-close">✕</span>
+  </div>
+  <div class="meta-row">
+    <div><span class="meta-key">Decay</span><span class="meta-val green">0.91</span></div>
+    <div><span class="meta-key">Source</span><span class="meta-val muted">Claude</span></div>
+    <div><span class="meta-key">Captured</span><span class="meta-val muted">Apr 28</span></div>
+    <div><span class="meta-key">Pinned</span><span class="meta-val muted">No</span></div>
+  </div>
+  <div class="content-area">
+    <span class="section-label">Content</span>
+    <p class="content-text">Never store personally identifiable information in browser localStorage or sessionStorage. All PII must go through encrypted server-side storage with proper access controls and audit logging.</p>
+  </div>
+  <div>
+    <span class="section-label" style="margin-bottom:8px">Relations (3)</span>
+    <div style="display:flex; flex-direction:column; gap:6px;">
+      <div class="relation-row">
+        <span class="relation-type" style="color:#ef4444">supersedes</span>
+        <span class="relation-target">Old storage policy</span>
+        <span class="relation-conf">0.95</span>
+      </div>
+      <div class="relation-row">
+        <span class="relation-type" style="color:#3b82f6">extends</span>
+        <span class="relation-target">Auth architecture</span>
+        <span class="relation-conf">0.88</span>
+      </div>
+      <div class="relation-row">
+        <span class="relation-type" style="color:#8b5cf6">derives</span>
+        <span class="relation-target">Security review notes</span>
+        <span class="relation-conf">0.72</span>
+      </div>
+    </div>
+  </div>
+  <div class="actions">
+    <div class="action-btn primary">Edit</div>
+    <div class="action-btn">Pin</div>
+    <div class="action-btn">Archive</div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('graph');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  ctx.scale(dpr, dpr);
+}
+resize();
+window.addEventListener('resize', () => { resize(); draw(); });
+
+const W = () => window.innerWidth;
+const H = () => window.innerHeight;
+
+// Nodes positioned as fractions of viewport (leaving right 340px for panel)
+const graphW = () => W() - 360;
+
+const nodes = [
+  { fx: 0.22, fy: 0.25, r: 14, color: '#3b82f6', glow: [59,130,246], label: 'Auth flow', op: 1 },
+  { fx: 0.50, fy: 0.50, r: 11, color: '#8b5cf6', glow: [139,92,246], label: 'Fix auth bug', op: 1 },
+  { fx: 0.72, fy: 0.35, r: 18, color: '#f59e0b', glow: [245,158,11], label: 'No PII', op: 1, selected: true },
+  { fx: 0.60, fy: 0.18, r: 13, color: '#10b981', glow: [16,185,129], label: 'Storage notes', op: 1 },
+  { fx: 0.30, fy: 0.72, r: 10, color: '#3b82f6', glow: [59,130,246], label: 'API design', op: 0.2 },
+  { fx: 0.15, fy: 0.62, r: 8, color: '#ef4444', glow: [239,68,68], label: 'Perf req', op: 0.35 },
+  { fx: 0.80, fy: 0.70, r: 11, color: '#6366f1', glow: [99,102,241], label: 'Schema v2', op: 0.2 },
+  { fx: 0.10, fy: 0.42, r: 16, color: '#3b82f6', glow: [59,130,246], label: 'OAuth decision', op: 1 },
+  { fx: 0.55, fy: 0.78, r: 8, color: '#10b981', glow: [16,185,129], label: 'Old note', op: 0.2 },
+];
+
+function nodePos(n) {
+  return { x: n.fx * graphW() + 40, y: n.fy * H() };
+}
+
+const edges = [
+  [0, 2, 'explicit'],
+  [2, 3, 'explicit'],
+  [2, 1, 'explicit'],
+  [0, 7, 'explicit'],
+  [0, 1, 'explicit'],
+  [4, 5, 'similarity'],
+  [6, 8, 'similarity'],
+  [3, 0, 'similarity'],
+  [7, 5, 'explicit'],
+];
+
+let time = 0;
+function draw() {
+  const w = W(), h = H();
+  ctx.clearRect(0, 0, w, h);
+
+  const selectedIdx = nodes.findIndex(n => n.selected);
+  const selectedEdges = new Set();
+  edges.forEach((e, i) => {
+    if (e[0] === selectedIdx || e[1] === selectedIdx) selectedEdges.add(i);
+  });
+
+  // Edges
+  edges.forEach((e, i) => {
+    const from = nodePos(nodes[e[0]]);
+    const to = nodePos(nodes[e[1]]);
+    const isSel = selectedEdges.has(i);
+    const isSim = e[2] === 'similarity';
+
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+
+    if (isSel) {
+      const pulse = 0.45 + 0.2 * Math.sin(time * 0.03);
+      ctx.strokeStyle = `rgba(245,158,11,${pulse})`;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([]);
+    } else if (isSim) {
+      ctx.strokeStyle = 'rgba(161,161,170,0.1)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+    } else {
+      ctx.strokeStyle = 'rgba(161,161,170,0.2)';
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([]);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Small arrow at midpoint for explicit
+    if (e[2] === 'explicit') {
+      const mx = (from.x + to.x) / 2;
+      const my = (from.y + to.y) / 2;
+      const angle = Math.atan2(to.y - from.y, to.x - from.x);
+      const sz = 5;
+      ctx.beginPath();
+      ctx.moveTo(mx + sz * Math.cos(angle), my + sz * Math.sin(angle));
+      ctx.lineTo(mx - sz * Math.cos(angle - 0.5), my - sz * Math.sin(angle - 0.5));
+      ctx.lineTo(mx - sz * Math.cos(angle + 0.5), my - sz * Math.sin(angle + 0.5));
+      ctx.closePath();
+      ctx.fillStyle = isSel ? 'rgba(245,158,11,0.4)' : 'rgba(161,161,170,0.15)';
+      ctx.fill();
+    }
+  });
+
+  // Nodes
+  nodes.forEach((n) => {
+    const p = nodePos(n);
+    ctx.save();
+    ctx.globalAlpha = n.op;
+
+    // Glow
+    if (n.op > 0.3) {
+      const grad = ctx.createRadialGradient(p.x, p.y, n.r * 0.5, p.x, p.y, n.r * 2.5);
+      grad.addColorStop(0, `rgba(${n.glow.join(',')},${0.35 * n.op})`);
+      grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, n.r * 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Circle
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, n.r, 0, Math.PI * 2);
+    ctx.fillStyle = n.color;
+    ctx.fill();
+
+    // Selection ring
+    if (n.selected) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, n.r + 4, 0, Math.PI * 2);
+      ctx.strokeStyle = n.color;
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.7;
+      ctx.stroke();
+    }
+
+    // Label
+    if (n.op > 0.3) {
+      ctx.globalAlpha = n.op * 0.8;
+      ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillStyle = '#a1a1aa';
+      ctx.textAlign = 'center';
+      ctx.fillText(n.label, p.x, p.y + n.r + 16);
+    }
+
+    ctx.restore();
+  });
+
+  time++;
+  requestAnimationFrame(draw);
+}
+draw();
+</script>
+</body>
+</html>

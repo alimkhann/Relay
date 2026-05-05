@@ -1,0 +1,38 @@
+<h2>How should node interactions work?</h2>
+<p class="subtitle">Pick the interaction model that feels right for exploring project memory</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Hover-Rich (Obsidian-style)</h3>
+      <p><strong>Hover:</strong> Node expands slightly, shows title + type badge + decay indicator. Connected edges highlight. Adjacent nodes glow.</p>
+      <p><strong>Click:</strong> Opens inline detail panel (slides in from right) with full content, edit button, relations list. Node stays highlighted.</p>
+      <p><strong>Double-click:</strong> Enters edit mode for that item directly in the panel.</p>
+      <p style="color: #10b981; margin-top: 8px;">Best for: exploration-first, seeing connections at a glance</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Tooltip + Modal</h3>
+      <p><strong>Hover:</strong> Floating tooltip near cursor with title, type, decay score. Minimal — just enough to identify.</p>
+      <p><strong>Click:</strong> Opens centered modal/dialog with full item details, edit form, relation links. Graph dims behind.</p>
+      <p><strong>Double-click:</strong> Pins the node (prevents it from drifting in physics).</p>
+      <p style="color: #3b82f6; margin-top: 8px;">Best for: clean graph view, focused editing when needed</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Progressive Disclosure</h3>
+      <p><strong>Hover:</strong> Node pulses, shows truncated title label that was hidden. Connected nodes + edges highlight with type-colored glow.</p>
+      <p><strong>Click:</strong> "Focuses" the node — graph zooms to neighborhood, unrelated nodes fade to 20% opacity. Bottom sheet shows details.</p>
+      <p><strong>Second click / Escape:</strong> Returns to full graph view.</p>
+      <p><strong>Long press or right-click:</strong> Context menu with Edit, Pin, Archive options.</p>
+      <p style="color: #8b5cf6; margin-top: 8px;">Best for: deep exploration, understanding relationships in context</p>
+    </div>
+  </div>
+</div>

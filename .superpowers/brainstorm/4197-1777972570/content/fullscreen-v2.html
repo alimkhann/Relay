@@ -1,0 +1,183 @@
+<h2>Refined fullscreen — exit top-left + visible edges</h2>
+<p class="subtitle">Exit icon moved to top-left (minimize icon like video players). Edges now visible between nodes.</p>
+
+<div class="mockup">
+  <div class="mockup-header">Fullscreen Graph View (dark mode)</div>
+  <div class="mockup-body" style="background:#1a1a1c; position:relative; min-height:380px; overflow:hidden;">
+
+    <!-- Top bar -->
+    <div style="position:absolute; top:12px; left:12px; right:12px; display:flex; justify-content:space-between; align-items:center; z-index:10;">
+      <!-- Left: exit fullscreen (minimize icon) -->
+      <div style="background:rgba(32,32,34,0.92); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:8px 12px; backdrop-filter:blur(8px); cursor:pointer; display:flex; align-items:center; gap:6px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e4e4e7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="4 14 10 14 10 20"></polyline>
+          <polyline points="20 10 14 10 14 4"></polyline>
+          <line x1="14" y1="10" x2="21" y2="3"></line>
+          <line x1="3" y1="21" x2="10" y2="14"></line>
+        </svg>
+        <span style="color:#a1a1aa; font-size:10px;">Exit</span>
+      </div>
+      <!-- Right: filters + legend -->
+      <div style="background:rgba(32,32,34,0.92); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:8px 14px; display:flex; gap:10px; align-items:center; backdrop-filter:blur(8px);">
+        <div style="display:flex; gap:6px; align-items:center;">
+          <div style="width:8px; height:8px; border-radius:50%; background:#3b82f6;"></div>
+          <span style="color:#a1a1aa; font-size:9px;">Decision</span>
+        </div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <div style="width:8px; height:8px; border-radius:50%; background:#8b5cf6;"></div>
+          <span style="color:#a1a1aa; font-size:9px;">Task</span>
+        </div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <div style="width:8px; height:8px; border-radius:50%; background:#f59e0b;"></div>
+          <span style="color:#a1a1aa; font-size:9px;">Constraint</span>
+        </div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <div style="width:8px; height:8px; border-radius:50%; background:#10b981;"></div>
+          <span style="color:#a1a1aa; font-size:9px;">Note</span>
+        </div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <div style="width:8px; height:8px; border-radius:50%; background:#ef4444;"></div>
+          <span style="color:#a1a1aa; font-size:9px;">Req</span>
+        </div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <div style="width:8px; height:8px; border-radius:50%; background:#6366f1;"></div>
+          <span style="color:#a1a1aa; font-size:9px;">Artifact</span>
+        </div>
+        <div style="width:1px; height:14px; background:rgba(255,255,255,0.1); margin:0 4px;"></div>
+        <span style="color:#71717a; font-size:9px;">24 nodes · 16 edges</span>
+      </div>
+    </div>
+
+    <!-- SVG edges layer -->
+    <svg style="position:absolute; inset:0; width:100%; height:100%; z-index:1; pointer-events:none;">
+      <!-- Explicit edges (stronger opacity) -->
+      <!-- Decision -> Constraint (extends) -->
+      <line x1="22%" y1="38%" x2="36%" y2="42%" stroke="rgba(161,161,170,0.5)" stroke-width="1.5"/>
+      <!-- Constraint -> Note (extends) -->
+      <line x1="36%" y1="42%" x2="44%" y2="28%" stroke="rgba(161,161,170,0.5)" stroke-width="1.5"/>
+      <!-- Decision -> Task (derives) -->
+      <line x1="22%" y1="38%" x2="27%" y2="60%" stroke="rgba(161,161,170,0.4)" stroke-width="1"/>
+      <!-- Constraint -> highlighted edge (selected node connection) -->
+      <line x1="36%" y1="42%" x2="17%" y2="52%" stroke="rgba(245,158,11,0.7)" stroke-width="2">
+        <animate attributeName="stroke-opacity" values="0.5;0.9;0.5" dur="2s" repeatCount="indefinite"/>
+      </line>
+      <!-- Task -> Artifact -->
+      <line x1="27%" y1="60%" x2="12%" y2="72%" stroke="rgba(161,161,170,0.2)" stroke-width="1" stroke-dasharray="4 3"/>
+      <!-- Note -> Decision2 -->
+      <line x1="44%" y1="28%" x2="17%" y2="22%" stroke="rgba(161,161,170,0.4)" stroke-width="1.5"/>
+      <!-- Similarity edges (dashed, faint) -->
+      <line x1="22%" y1="38%" x2="44%" y2="28%" stroke="rgba(161,161,170,0.15)" stroke-width="1" stroke-dasharray="3 4"/>
+      <line x1="12%" y1="72%" x2="27%" y2="60%" stroke="rgba(161,161,170,0.15)" stroke-width="1" stroke-dasharray="3 4"/>
+      <!-- Small directional arrows on explicit edges -->
+      <polygon points="35,158 38,154 38,162" fill="rgba(161,161,170,0.4)" transform="translate(50,0)"/>
+    </svg>
+
+    <!-- Graph nodes -->
+    <div style="position:absolute; inset:56px 340px 16px 16px; z-index:2;">
+      <!-- Decision node (large, fresh) -->
+      <div style="width:18px; height:18px; border-radius:50%; background:#3b82f6; box-shadow:0 0 12px rgba(59,130,246,0.45); position:absolute; top:30%; left:22%;"></div>
+      <!-- Constraint node (SELECTED - has outline) -->
+      <div style="width:24px; height:24px; border-radius:50%; background:#f59e0b; box-shadow:0 0 16px rgba(245,158,11,0.5); position:absolute; top:35%; left:36%; outline:2px solid rgba(245,158,11,0.8); outline-offset:3px;"></div>
+      <!-- Task node -->
+      <div style="width:12px; height:12px; border-radius:50%; background:#8b5cf6; box-shadow:0 0 8px rgba(139,92,246,0.35); position:absolute; top:55%; left:27%;"></div>
+      <!-- Note node -->
+      <div style="width:16px; height:16px; border-radius:50%; background:#10b981; box-shadow:0 0 10px rgba(16,185,129,0.4); position:absolute; top:20%; left:44%;"></div>
+      <!-- Req node (fading) -->
+      <div style="width:9px; height:9px; border-radius:50%; background:#ef4444; opacity:0.4; position:absolute; top:65%; left:42%;"></div>
+      <!-- Decision2 -->
+      <div style="width:20px; height:20px; border-radius:50%; background:#3b82f6; box-shadow:0 0 12px rgba(59,130,246,0.4); position:absolute; top:15%; left:17%;"></div>
+      <!-- Artifact (dimmed - unrelated to selection) -->
+      <div style="width:14px; height:14px; border-radius:50%; background:#6366f1; opacity:0.2; position:absolute; top:68%; left:12%;"></div>
+      <!-- Note2 (dimmed) -->
+      <div style="width:10px; height:10px; border-radius:50%; background:#10b981; opacity:0.2; position:absolute; top:80%; left:35%;"></div>
+    </div>
+
+    <!-- Right detail panel -->
+    <div style="position:absolute; top:56px; right:16px; bottom:16px; width:310px; background:rgba(32,32,34,0.95); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:20px; backdrop-filter:blur(12px); display:flex; flex-direction:column; gap:14px; box-shadow:0 8px 32px rgba(0,0,0,0.3); z-index:5;">
+
+      <!-- Panel header -->
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div>
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+            <div style="width:10px; height:10px; border-radius:50%; background:#f59e0b; box-shadow:0 0 6px rgba(245,158,11,0.4);"></div>
+            <span style="color:#f59e0b; font-size:10px; text-transform:uppercase; letter-spacing:0.5px;">Constraint</span>
+          </div>
+          <span style="color:#e4e4e7; font-size:14px; font-weight:600; line-height:1.3;">No PII in local storage</span>
+        </div>
+        <span style="color:#71717a; font-size:14px; cursor:pointer; padding:4px; line-height:1;">✕</span>
+      </div>
+
+      <!-- Metadata row -->
+      <div style="display:flex; gap:12px; padding:8px 10px; background:rgba(255,255,255,0.03); border-radius:6px;">
+        <div>
+          <span style="color:#71717a; font-size:9px; display:block;">Decay</span>
+          <span style="color:#10b981; font-size:11px; font-weight:500;">0.91</span>
+        </div>
+        <div>
+          <span style="color:#71717a; font-size:9px; display:block;">Source</span>
+          <span style="color:#a1a1aa; font-size:11px;">Claude</span>
+        </div>
+        <div>
+          <span style="color:#71717a; font-size:9px; display:block;">Captured</span>
+          <span style="color:#a1a1aa; font-size:11px;">Apr 28</span>
+        </div>
+        <div>
+          <span style="color:#71717a; font-size:9px; display:block;">Pinned</span>
+          <span style="color:#a1a1aa; font-size:11px;">No</span>
+        </div>
+      </div>
+
+      <!-- Content -->
+      <div style="flex:1; overflow-y:auto;">
+        <span style="color:#71717a; font-size:9px; text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:6px;">Content</span>
+        <p style="color:#d4d4d8; font-size:12px; line-height:1.6; margin:0;">Never store personally identifiable information in browser localStorage or sessionStorage. All PII must go through encrypted server-side storage with proper access controls and audit logging.</p>
+      </div>
+
+      <!-- Relations section -->
+      <div>
+        <span style="color:#71717a; font-size:9px; text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:8px;">Relations (3)</span>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; align-items:center; gap:8px; padding:6px 8px; background:rgba(255,255,255,0.02); border-radius:4px; cursor:pointer;">
+            <span style="color:#ef4444; font-size:9px; min-width:58px;">supersedes</span>
+            <span style="color:#a1a1aa; font-size:10px;">Old storage policy</span>
+            <span style="color:#71717a; font-size:9px; margin-left:auto;">0.95</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; padding:6px 8px; background:rgba(255,255,255,0.02); border-radius:4px; cursor:pointer;">
+            <span style="color:#3b82f6; font-size:9px; min-width:58px;">extends</span>
+            <span style="color:#a1a1aa; font-size:10px;">Auth architecture decision</span>
+            <span style="color:#71717a; font-size:9px; margin-left:auto;">0.88</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; padding:6px 8px; background:rgba(255,255,255,0.02); border-radius:4px; cursor:pointer;">
+            <span style="color:#8b5cf6; font-size:9px; min-width:58px;">derives</span>
+            <span style="color:#a1a1aa; font-size:10px;">Security review notes</span>
+            <span style="color:#71717a; font-size:9px; margin-left:auto;">0.72</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div style="display:flex; gap:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.06);">
+        <div style="padding:6px 12px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.2); border-radius:6px; cursor:pointer;">
+          <span style="color:#f59e0b; font-size:11px;">Edit</span>
+        </div>
+        <div style="padding:6px 12px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:6px; cursor:pointer;">
+          <span style="color:#a1a1aa; font-size:11px;">Pin</span>
+        </div>
+        <div style="padding:6px 12px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:6px; cursor:pointer;">
+          <span style="color:#a1a1aa; font-size:11px;">Archive</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:16px;">
+  <div class="label">Changes from previous</div>
+  <ul style="color:#a1a1aa; font-size:12px; line-height:1.8;">
+    <li><strong>Exit button moved to top-left</strong> with minimize/shrink icon (like video player exit-fullscreen)</li>
+    <li><strong>Edges now visible</strong> — solid lines for explicit relations, dashed for similarity</li>
+    <li><strong>Selected node's edges highlighted</strong> in type color with subtle pulse animation</li>
+    <li><strong>Unrelated edges</strong> stay muted gray at low opacity</li>
+    <li><strong>Small directional indicators</strong> on explicit edges</li>
+  </ul>
+</div>
