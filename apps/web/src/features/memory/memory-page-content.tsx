@@ -8,6 +8,8 @@ import { Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { FadeIn } from "@/components/ui/fade-in";
+import { MemoryGraphContainer } from "@/features/graph/memory-graph-container";
+import { MIN_GRAPH_ITEMS } from "@/features/graph/memory-graph-utils";
 import { GovernanceSection } from "@/features/projects/governance-section";
 import { MemoryItemsList } from "@/features/memory/memory-items-list";
 import { NotesSection } from "@/features/memory/notes-section";
@@ -266,6 +268,15 @@ export function MemoryPageContent({
           </div>
         </div>
       </FadeIn>
+
+      {dashboard.memory.length >= MIN_GRAPH_ITEMS && (
+        <FadeIn delay={0.08}>
+          <MemoryGraphContainer
+            projectId={project.id}
+            memoryItems={dashboard.memory}
+          />
+        </FadeIn>
+      )}
 
       {/* Tab pills */}
       <FadeIn delay={0.1}>

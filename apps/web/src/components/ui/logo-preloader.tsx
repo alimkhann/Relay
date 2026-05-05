@@ -39,6 +39,7 @@ export function LogoPreloader() {
       path.startsWith("/dashboard/") ||
       path.startsWith("/activity") ||
       path.startsWith("/memory") ||
+      path.startsWith("/graph") ||
       path.startsWith("/settings") ||
       path.startsWith("/projects") ||
       path.startsWith("/brief");
