@@ -40,6 +40,7 @@ describe("SidebarNav", () => {
 
     expect(screen.getByText("Overview")).toBeTruthy()
     expect(screen.getByText("Memory")).toBeTruthy()
+    expect(screen.getByText("Graph")).toBeTruthy()
     expect(screen.getByText("Brief")).toBeTruthy()
     expect(screen.getByText("Activity")).toBeTruthy()
   })
@@ -50,6 +51,10 @@ describe("SidebarNav", () => {
     const memoryEl = screen.getByText("Memory").closest("[aria-disabled]")
     expect(memoryEl).toBeTruthy()
     expect(memoryEl?.getAttribute("aria-disabled")).toBe("true")
+
+    const graphEl = screen.getByText("Graph").closest("[aria-disabled]")
+    expect(graphEl).toBeTruthy()
+    expect(graphEl?.getAttribute("aria-disabled")).toBe("true")
   })
 
   it("renders links with correct hrefs when project is selected", () => {
@@ -60,5 +65,8 @@ describe("SidebarNav", () => {
 
     const memoryLink = screen.getByText("Memory").closest("a")
     expect(memoryLink?.getAttribute("href")).toBe("/memory?project=project-1")
+
+    const graphLink = screen.getByText("Graph").closest("a")
+    expect(graphLink?.getAttribute("href")).toBe("/graph?project=project-1")
   })
 })

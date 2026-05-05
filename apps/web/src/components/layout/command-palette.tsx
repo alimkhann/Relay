@@ -9,6 +9,7 @@ import {
   Activity,
   Brain,
   FileDown,
+  Network,
   Settings,
   RefreshCw,
   ArrowRight,
@@ -55,6 +56,17 @@ export function CommandPalette({ projects = [], currentProjectId }: CommandPalet
       shortcut: "G M",
       action: () => {
         const href = currentProjectId ? `/memory?project=${currentProjectId}` : "/memory";
+        router.push(href);
+      },
+      section: "Navigation",
+    },
+    {
+      id: "nav-graph",
+      label: "Go to Graph",
+      icon: <Network className="h-4 w-4" />,
+      shortcut: "G G",
+      action: () => {
+        const href = currentProjectId ? `/graph?project=${currentProjectId}` : "/graph";
         router.push(href);
       },
       section: "Navigation",
