@@ -139,6 +139,7 @@ interface RelayTabState {
   syncQueued: boolean;
   syncRequestKey: string | null;
   capturePending: boolean;
+  capturePendingAt: number | null;
   captureTimer: ReturnType<typeof setTimeout> | null;
   associationToast: RelayAssociationToastState;
   associationToastTimer: ReturnType<typeof setTimeout> | null;
@@ -727,6 +728,7 @@ function createTabState(tabId: number): RelayTabState {
     syncQueued: false,
     syncRequestKey: null,
     capturePending: false,
+    capturePendingAt: null,
     captureTimer: null,
     associationToast: createEmptyAssociationToast(),
     associationToastTimer: null,
@@ -1556,6 +1558,7 @@ async function buildActiveProjectState(
     remoteStatus: state.remoteStatus,
     lastSuccessfulSyncAt: state.lastSuccessfulSyncAt,
     capturePending: state.capturePending,
+    capturePendingAt: state.capturePendingAt,
     lastError: state.lastError,
     contextPreview: state.contextPreview,
     chatAssociation: state.chatAssociation,
@@ -1814,6 +1817,7 @@ function updateTabPageState(tabId: number, page: RelayPageState) {
   if (routeChanged) {
     state.lastError = null;
     state.capturePending = false;
+    state.capturePendingAt = null;
     state.chatAssociation = createEmptyChatAssociation();
     state.routingReview = null;
     state.lastRoutedSignature = null;
@@ -2174,6 +2178,7 @@ function logAutoCaptureGate(
     lastCapturedSignature: state.lastCapturedSignature?.slice(0, 16) ?? null,
     lastRoutedSignature: state.lastRoutedSignature?.slice(0, 16) ?? null,
     capturePending: state.capturePending,
+    capturePendingAt: state.capturePendingAt,
     projectOptions: state.projectOptions.length,
     sessionProjectOptions: sessionProjectOptionsCount,
     remoteStatus: state.remoteStatus,
@@ -2568,10 +2573,11 @@ async function captureObservedChange(
   // captureObservedChange arriving mid-flight (e.g. from the DOM observer
   // firing while a manual selection is still running) short-circuits
   // instead of mutating shared tab state concurrently.
-  if (state.capturePending) {
+  if (state.capturePending && state.capturePendingAt && (Date.now() - state.capturePendingAt) < 3 * 60 * 1000) {
     return { ok: false, reason: "Capture already in progress for this tab." };
   }
   state.capturePending = true;
+  state.capturePendingAt = Date.now();
   const flowId = createFlowId("ext-capture");
   let session = await getRelaySession();
   hydrateTabStateFromSession(state, session);
@@ -3218,6 +3224,7 @@ async function captureObservedChange(
     return result ?? { ok: false, reason: "Capture failed." };
   } finally {
     state.capturePending = false;
+    state.capturePendingAt = null;
     clearCaptureTimer(state);
     await broadcastActiveProjectState(tabId);
   }

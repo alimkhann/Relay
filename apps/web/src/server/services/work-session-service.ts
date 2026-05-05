@@ -262,7 +262,7 @@ export async function checkpointWorkSession(
       latestSummary: checkpoint.summaryShort,
       latestStructuredState: structuredState as Record<string, unknown>,
     })
-    await tx.bootstrapPackets.clearProject(projectId)
+    await tx.projectState.markDirty(projectId)
 
     return { session: await tx.workSessions.getById(session.id), checkpoint }
   })
@@ -337,7 +337,7 @@ export async function closeWorkSession(
       status: "closed",
       endedAt: new Date().toISOString(),
     })
-    await tx.bootstrapPackets.clearProject(projectId)
+    await tx.projectState.markDirty(projectId)
 
     return { session: closed }
   })

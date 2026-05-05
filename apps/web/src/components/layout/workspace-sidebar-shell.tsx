@@ -24,7 +24,10 @@ export function WorkspaceSidebarShell({
   plan,
 }: WorkspaceSidebarShellProps) {
   const searchParams = useSearchParams()
-  const currentProjectId = searchParams.get("project") ?? projects[0]?.id
+  const cookieProjectId = typeof document !== "undefined"
+    ? document.cookie.match(/relay-last-project=([^;]+)/)?.[1]
+    : undefined
+  const currentProjectId = searchParams.get("project") ?? cookieProjectId ?? projects[0]?.id
   const { setMobileOpen } = useSidebar()
 
   return (

@@ -8,6 +8,14 @@ interface DeriveProjectStateStatusInput {
   digestJobs: Array<Pick<AiJobRunRow, "id" | "status" | "errorMessage" | "createdAt" | "completedAt" | "attempts" | "fallbackUsed" | "outputPayload">>
 }
 
+const STALE_JOB_MS = 10 * 60 * 1000
+
+function isStaleJob(job: Pick<AiJobRunRow, "status" | "createdAt">): boolean {
+  if (job.status !== "pending") return false
+  const age = Date.now() - new Date(job.createdAt).getTime()
+  return age > STALE_JOB_MS
+}
+
 export function deriveProjectStateStatus(input: DeriveProjectStateStatusInput): ProjectStateStatusDto {
   const latestSession = input.sessions[0] ?? null
   const latestDigest = input.digests[0] ?? null
@@ -15,9 +23,11 @@ export function deriveProjectStateStatus(input: DeriveProjectStateStatusInput): 
   const rawCapturePresent = input.sessions.length > 0
   const projectStateReady = Boolean(input.projectState)
 
+  const jobIsStale = latestJob ? isStaleJob(latestJob) : false
+
   let digestStatus: ProjectStateStatusDto["digestStatus"] = "idle"
   if (latestJob) {
-    digestStatus = latestJob.status
+    digestStatus = jobIsStale ? "timed_out" : latestJob.status
   } else if (projectStateReady || latestDigest) {
     digestStatus = "completed"
   } else if (rawCapturePresent) {
@@ -42,7 +52,7 @@ export function deriveProjectStateStatus(input: DeriveProjectStateStatusInput): 
     lastCapturedAt: latestSession?.capturedAt ?? null,
     lastDigestAt: latestDigest?.createdAt ?? latestJob?.completedAt ?? null,
     activeJobId: latestJob?.id ?? null,
-    activeJobStatus: latestJob?.status ?? (projectStateReady || latestDigest ? "completed" : "idle"),
+    activeJobStatus: latestJob ? (jobIsStale ? "timed_out" : latestJob.status) : (projectStateReady || latestDigest ? "completed" : "idle"),
     activeJobStage,
     activeJobAttempts: latestJob?.attempts ?? 0,
     fallbackPlanned,

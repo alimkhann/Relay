@@ -32,6 +32,7 @@ export interface BuildRelayActiveProjectStateInput {
   remoteStatus: RelayRemoteStatus
   lastSuccessfulSyncAt: string | null
   capturePending: boolean
+  capturePendingAt: number | null
   contextPreview: RelayContextPreview
   chatAssociation: RelayChatAssociation
   routingReview: RelayRoutingReview | null
@@ -296,12 +297,16 @@ function deriveViewState(input: BuildRelayActiveProjectStateInput): RelaySidebar
   return "connected-loading"
 }
 
+const CAPTURE_STALE_MS = 3 * 60 * 1000
+
 export function deriveRelayActiveProjectState(input: BuildRelayActiveProjectStateInput): RelayActiveProjectState {
   const insertKind = inferInsertKind(input.page)
   const projectStateReady = Boolean(input.stateStatus?.projectStateReady)
   const activeDigest = isActiveDigest(input.stateStatus)
   const issue = deriveRelayIssue(input)
   const viewState = deriveViewState(input)
+  const capturePendingEffective = input.capturePending &&
+    (input.capturePendingAt == null || (Date.now() - input.capturePendingAt) < CAPTURE_STALE_MS)
 
   let status: RelayActiveProjectState["status"] = "unavailable"
   let message = "Open a supported AI chat to use Relay."
@@ -326,7 +331,7 @@ export function deriveRelayActiveProjectState(input: BuildRelayActiveProjectStat
     } else if (input.stateStatus?.digestStatus === "timed_out") {
       status = "updating"
       message = "Updating your project brief"
-    } else if (input.capturePending || input.remoteStatus === "loading" || activeDigest || input.stateStatus?.rawCapturePresent) {
+    } else if (capturePendingEffective || input.remoteStatus === "loading" || activeDigest || input.stateStatus?.rawCapturePresent) {
       status = "updating"
       message = "Updating your project brief"
     } else {
@@ -341,7 +346,7 @@ export function deriveRelayActiveProjectState(input: BuildRelayActiveProjectStat
   } else if (input.stateStatus?.digestStatus === "timed_out") {
     status = "updating"
     message = "Updating your project brief"
-  } else if (input.capturePending || input.remoteStatus === "loading" || activeDigest || input.stateStatus?.rawCapturePresent) {
+  } else if (capturePendingEffective || input.remoteStatus === "loading" || activeDigest || input.stateStatus?.rawCapturePresent) {
     status = "updating"
     message = "Updating your project brief"
   } else {

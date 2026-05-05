@@ -90,11 +90,17 @@ export function getProjectContextCounts(dashboard: ProjectDashboardDto) {
   const decisions = preview.decisions.length
   const constraints = preview.constraints.length
   const tasks = preview.tasks.length
+  const notes = dashboard.memory.filter((i) => i.type === "note").length
+  const requirements = dashboard.memory.filter((i) => i.type === "requirement").length
+  const artifacts = dashboard.memory.filter((i) => i.type === "artifact").length
 
   return {
-    all: decisions + constraints + tasks,
+    all: decisions + constraints + tasks + notes + requirements + artifacts,
     decisions,
     constraints,
     tasks,
+    notes,
+    requirements,
+    artifacts,
   }
 }

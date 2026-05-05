@@ -291,9 +291,6 @@ export function GroupedActivityFeed({ feed }: { feed: GroupedActivityEntry[] }) 
               />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--relay-muted)]">
-                    {entry.projectName}
-                  </span>
                   <span className="text-[10px] text-[var(--relay-faint)]">
                     {entry.kind === "capture-group"
                       ? platformLabel(entry.platform)

@@ -83,6 +83,16 @@ export class ProjectStateRepository {
     return toProjectStateRow(rows[0] as Record<string, unknown>)
   }
 
+  async markDirty(projectId: string): Promise<void> {
+    await this.provider.query(
+      `update project_state
+       set dirty = true,
+           updated_at = now()
+       where project_id = $1`,
+      [projectId]
+    )
+  }
+
   async markBootstrapped(projectId: string): Promise<void> {
     await this.provider.query(
       `update project_state

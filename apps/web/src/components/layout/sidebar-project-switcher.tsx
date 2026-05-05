@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ChevronDown, Plus, Check, Loader2 } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Tooltip from "@radix-ui/react-tooltip";
@@ -21,6 +21,7 @@ export function SidebarProjectSwitcher({
   collapsed?: boolean;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [switchPending, startSwitchTransition] = useTransition();
@@ -58,8 +59,11 @@ export function SidebarProjectSwitcher({
     setOptimisticCurrentId(nextProjectId);
     setPendingProjectId(nextProjectId);
     setOpen(false);
+    document.cookie = `relay-last-project=${nextProjectId};path=/;max-age=31536000;samesite=lax`;
     startSwitchTransition(() => {
-      router.push(`/dashboard?project=${nextProjectId}`);
+      const params = new URLSearchParams(window.location.search);
+      params.set("project", nextProjectId);
+      router.push(`${pathname}?${params.toString()}`);
       router.refresh();
     });
   }

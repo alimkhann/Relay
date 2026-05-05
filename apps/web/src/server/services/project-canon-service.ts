@@ -109,7 +109,7 @@ export async function createCanonEntry(userId: string, input: unknown): Promise<
     })
 
     const evidence = await tx.canonEvidence.replaceForEntry(parsed.projectId, entry.id, parsed.evidence ?? [])
-    await tx.bootstrapPackets.clearProject(parsed.projectId)
+    await tx.projectState.markDirty(parsed.projectId)
 
     return toCanonEntryDto(entry, evidence.map(toCanonEvidenceDto))
   })
@@ -131,7 +131,7 @@ export async function updateCanonEntry(userId: string, projectId: string, entryI
       ? await tx.canonEvidence.replaceForEntry(projectId, entry.id, parsed.evidence)
       : await tx.canonEvidence.listByEntry(entry.id)
 
-    await tx.bootstrapPackets.clearProject(projectId)
+    await tx.projectState.markDirty(projectId)
 
     return toCanonEntryDto(entry, evidence.map(toCanonEvidenceDto))
   })

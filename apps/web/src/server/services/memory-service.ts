@@ -97,7 +97,7 @@ export async function createMemoryItem(userId: string, input: unknown) {
   }
 
   const item = await repositories.memory.create(userId, parsed)
-  await repositories.bootstrapPackets.clearProject(parsed.projectId)
+  await repositories.projectState.markDirty(parsed.projectId)
 
   void emitMemoryEvent(repositories, {
     projectId: item.projectId,
@@ -239,7 +239,7 @@ export async function updateMemoryItem(userId: string, memoryId: string, input: 
     throw new Error("This MCP token cannot update memory from another project.")
   }
   const item = await repositories.memory.update(memoryId, parsed)
-  await repositories.bootstrapPackets.clearProject(existing?.projectId ?? item.projectId)
+  await repositories.projectState.markDirty(existing?.projectId ?? item.projectId)
 
   const becameArchived = !existing?.isArchived && item.isArchived
   void emitMemoryEvent(repositories, {
@@ -265,7 +265,7 @@ export async function deleteMemoryItem(userId: string, memoryId: string, project
   }
   await repositories.memory.remove(memoryId)
   if (existing?.projectId) {
-    await repositories.bootstrapPackets.clearProject(existing.projectId)
+    await repositories.projectState.markDirty(existing.projectId)
     void emitMemoryEvent(repositories, {
       projectId: existing.projectId,
       memoryItemId: memoryId,

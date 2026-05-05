@@ -9,6 +9,7 @@ import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FadeIn } from "@/components/ui/fade-in";
 import { GovernanceSection } from "@/features/projects/governance-section";
+import { MemoryItemsList } from "@/features/memory/memory-items-list";
 import { NotesSection } from "@/features/memory/notes-section";
 import { selectPinnedNotes } from "@/features/memory/notes-selector";
 import {
@@ -18,7 +19,7 @@ import {
 import { cn } from "@/lib/cn";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
 
-type MemoryTab = "all" | "decisions" | "tasks" | "constraints";
+type MemoryTab = "all" | "decisions" | "tasks" | "constraints" | "notes" | "requirements" | "artifacts";
 
 interface MemoryPageContentProps {
   project: { id: string; name: string; description?: string | null };
@@ -36,7 +37,8 @@ export function MemoryPageContent({
   const [editingMemory, setEditingMemory] = useState(false);
 
   const tabParam = searchParams.get("tab") as MemoryTab | null;
-  const urlTab: MemoryTab = tabParam && ["all", "decisions", "tasks", "constraints"].includes(tabParam) ? tabParam : "all";
+  const validTabs: MemoryTab[] = ["all", "decisions", "tasks", "constraints", "notes", "requirements", "artifacts"];
+  const urlTab: MemoryTab = tabParam && validTabs.includes(tabParam) ? tabParam : "all";
   const [localTab, setLocalTab] = useState<MemoryTab>(urlTab);
   const [tabPending, startTabTransition] = useTransition();
 
@@ -62,8 +64,15 @@ export function MemoryPageContent({
     if (activeTab === "decisions") return ["decision"] as const;
     if (activeTab === "tasks") return ["task"] as const;
     if (activeTab === "constraints") return ["constraint"] as const;
+    if (activeTab === "notes" || activeTab === "requirements" || activeTab === "artifacts") return [] as const;
     return ["decision", "task", "constraint"] as const;
   }, [activeTab]);
+
+  const memoryItemsByType = useMemo(() => ({
+    notes: dashboard.memory.filter((i) => i.type === "note"),
+    requirements: dashboard.memory.filter((i) => i.type === "requirement"),
+    artifacts: dashboard.memory.filter((i) => i.type === "artifact"),
+  }), [dashboard.memory]);
 
   const initialDrafts = deriveProjectMemoryDrafts({
     dashboard,
@@ -266,7 +275,10 @@ export function MemoryPageContent({
             { key: "decisions" as const, label: "Decisions", count: tabCounts.decisions },
             { key: "tasks" as const, label: "Tasks", count: tabCounts.tasks },
             { key: "constraints" as const, label: "Constraints", count: tabCounts.constraints },
-          ]).map((tab) => (
+            { key: "notes" as const, label: "Notes", count: tabCounts.notes },
+            { key: "requirements" as const, label: "Requirements", count: tabCounts.requirements },
+            { key: "artifacts" as const, label: "Artifacts", count: tabCounts.artifacts },
+          ]).filter((tab) => tab.key === "all" || tab.count > 0).map((tab) => (
             <button
               key={tab.key}
               type="button"
@@ -296,24 +308,62 @@ export function MemoryPageContent({
       </FadeIn>
 
       {/* Governance (decisions, tasks, constraints) */}
-      <FadeIn delay={0.15}>
-        <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
-        <GovernanceSection
-          projectId={project.id}
-          dashboard={dashboard}
-          visibleSections={visibleSections}
-        />
-        </div>
-      </FadeIn>
+      {visibleSections.length > 0 && (
+        <FadeIn delay={0.15}>
+          <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
+            <GovernanceSection
+              projectId={project.id}
+              dashboard={dashboard}
+              visibleSections={visibleSections}
+            />
+          </div>
+        </FadeIn>
+      )}
 
-      {/* Pinned notes (full width below governance) */}
-      <FadeIn delay={0.2}>
-        <NotesSection
-          notes={selectPinnedNotes(dashboard.memory)}
-          variant="memory-page"
-          projectId={project.id}
-        />
-      </FadeIn>
+      {/* Memory items for notes/requirements/artifacts tabs */}
+      {(activeTab === "notes" || activeTab === "all") && memoryItemsByType.notes.length > 0 && (
+        <FadeIn delay={0.15}>
+          <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
+            {activeTab === "all" && (
+              <h3 className="text-[12px] font-semibold text-[var(--relay-ink)] mb-2">Notes</h3>
+            )}
+            <MemoryItemsList items={memoryItemsByType.notes} label="Notes" projectId={project.id} />
+          </div>
+        </FadeIn>
+      )}
+
+      {(activeTab === "requirements" || activeTab === "all") && memoryItemsByType.requirements.length > 0 && (
+        <FadeIn delay={0.18}>
+          <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
+            {activeTab === "all" && (
+              <h3 className="text-[12px] font-semibold text-[var(--relay-ink)] mb-2">Requirements</h3>
+            )}
+            <MemoryItemsList items={memoryItemsByType.requirements} label="Requirements" projectId={project.id} />
+          </div>
+        </FadeIn>
+      )}
+
+      {(activeTab === "artifacts" || activeTab === "all") && memoryItemsByType.artifacts.length > 0 && (
+        <FadeIn delay={0.2}>
+          <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
+            {activeTab === "all" && (
+              <h3 className="text-[12px] font-semibold text-[var(--relay-ink)] mb-2">Artifacts</h3>
+            )}
+            <MemoryItemsList items={memoryItemsByType.artifacts} label="Artifacts" projectId={project.id} />
+          </div>
+        </FadeIn>
+      )}
+
+      {/* Pinned notes (only show in All tab or when not on notes-specific tab) */}
+      {activeTab === "all" && (
+        <FadeIn delay={0.25}>
+          <NotesSection
+            notes={selectPinnedNotes(dashboard.memory)}
+            variant="memory-page"
+            projectId={project.id}
+          />
+        </FadeIn>
+      )}
 
       {status && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 py-2 text-[12px] font-medium text-[var(--relay-bg)] shadow-[var(--relay-shadow-lg)]">

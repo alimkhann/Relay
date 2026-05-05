@@ -58,8 +58,6 @@ export async function saveCapture(userId: string, input: unknown) {
       turnCount: turns.length
     }
   })
-  await repositories.bootstrapPackets.clearProject(normalizedInput.projectId)
-
   const shouldQueueDigest = latestComparable?.captureSignature !== normalizedInput.session.captureSignature
   let jobId: string | null = null
   let digestStrategy: "skip" | "ai" | "deferred" = "skip"

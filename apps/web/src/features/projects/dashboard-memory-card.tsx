@@ -23,7 +23,7 @@ export function DashboardMemoryCard({
       {/* Header */}
       <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-[var(--relay-line)]">
         <span className="text-xs font-medium text-[var(--relay-ink)]">
-          Memory
+          Project State
         </span>
         <Link
           href={`/memory?project=${projectId}`}
@@ -34,23 +34,37 @@ export function DashboardMemoryCard({
       </div>
 
       {/* Body */}
-      <div className="px-3.5 py-3 space-y-3">
+      <div className="px-3.5 py-3 space-y-2.5">
         {hasContent ? (
           <>
             {overview && (
-              <p className="text-[12px] leading-relaxed text-[var(--relay-ink)] line-clamp-3">
-                {overview}
-              </p>
+              <div>
+                <span className="text-[11px] font-medium text-[var(--relay-muted)]">Overview</span>
+                <p className="mt-0.5 text-[12px] leading-relaxed text-[var(--relay-ink)]">
+                  {overview}
+                </p>
+              </div>
             )}
             {objective && (
-              <p className="text-[11px] text-[var(--relay-muted)] truncate">
-                {objective}
-              </p>
+              <div>
+                <span className="text-[11px] font-medium text-[var(--relay-muted)]">Objective</span>
+                <p className="mt-0.5 text-[12px] leading-relaxed text-[var(--relay-ink)]">
+                  {objective}
+                </p>
+              </div>
+            )}
+            {progress && (
+              <div>
+                <span className="text-[11px] font-medium text-[var(--relay-muted)]">Progress</span>
+                <p className="mt-0.5 text-[12px] leading-relaxed text-[var(--relay-ink)]">
+                  {progress}
+                </p>
+              </div>
             )}
           </>
         ) : (
           <EmptyState
-            title="No memory yet"
+            title="No state yet"
             description="Relay will populate this after your first chat."
             className="py-4"
           />

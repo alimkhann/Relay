@@ -32,6 +32,9 @@ export function SidebarNav({
   const briefHref = currentProjectId
     ? `/brief?project=${currentProjectId}`
     : "/brief";
+  const activityHref = currentProjectId
+    ? `/activity?project=${currentProjectId}`
+    : "/activity";
   const docsHref = currentProjectId
     ? `/docs?project=${currentProjectId}`
     : "/docs";
@@ -55,7 +58,7 @@ export function SidebarNav({
       requiresProject: true,
     },
     {
-      href: "/activity",
+      href: activityHref,
       label: "Activity",
       icon: <Activity className="h-4 w-4" />,
       requiresProject: true,
