@@ -70,6 +70,7 @@ interface WalkthroughModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   surface: "web"
+  initialStep?: number
 }
 
 function PlanPickerCards({ onContinueFree }: { onContinueFree: () => void }) {
@@ -83,7 +84,7 @@ function PlanPickerCards({ onContinueFree }: { onContinueFree: () => void }) {
       const response = await relayClientFetch("/api/billing/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ plan, interval: "month" }),
+        body: JSON.stringify({ plan, interval: "month", source: "walkthrough" }),
         telemetry: {
           surface: "web-dashboard",
           area: "billing",
@@ -134,8 +135,8 @@ function PlanPickerCards({ onContinueFree }: { onContinueFree: () => void }) {
   )
 }
 
-export function WalkthroughModal({ open, onOpenChange, surface }: WalkthroughModalProps) {
-  const [step, setStep] = useState(0)
+export function WalkthroughModal({ open, onOpenChange, surface, initialStep = 0 }: WalkthroughModalProps) {
+  const [step, setStep] = useState(initialStep)
   const videoRef = useRef<HTMLVideoElement>(null)
   const steps = DASHBOARD_STEPS
   const current = steps[step]!
@@ -144,8 +145,8 @@ export function WalkthroughModal({ open, onOpenChange, surface }: WalkthroughMod
 
   useEffect(() => {
     if (!open) return
-    setStep(0)
-  }, [open])
+    setStep(initialStep)
+  }, [open, initialStep])
 
   useEffect(() => {
     if (!open) return
@@ -240,7 +241,7 @@ export function WalkthroughModal({ open, onOpenChange, surface }: WalkthroughMod
                               {current.body}
                             </p>
                           </div>
-                          <PlanPickerCards onContinueFree={() => void dismiss()} />
+                          <PlanPickerCards onContinueFree={next} />
                         </>
                       ) : (
                         <div className="px-6 pt-4">

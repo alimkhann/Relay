@@ -81,9 +81,10 @@ interface DashboardContentProps {
   project: { id: string; name: string; description?: string | null; projectUrl?: string | null };
   dashboard: ProjectDashboardDto;
   walkthroughInitiallyOpen?: boolean;
+  walkthroughInitialStep?: number;
 }
 
-export function DashboardContent({ project, dashboard, walkthroughInitiallyOpen = false }: DashboardContentProps) {
+export function DashboardContent({ project, dashboard, walkthroughInitiallyOpen = false, walkthroughInitialStep = 0 }: DashboardContentProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
@@ -566,6 +567,7 @@ export function DashboardContent({ project, dashboard, walkthroughInitiallyOpen 
         open={walkthroughOpen}
         onOpenChange={setWalkthroughOpen}
         surface="web"
+        initialStep={walkthroughInitialStep}
       />
     </div>
   );

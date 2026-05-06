@@ -123,4 +123,5 @@ export function getDefaultEntitlements(): UserEntitlementsDto {
 
 const appUrl = process.env["NEXT_PUBLIC_RELAY_APP_URL"] ?? "https://www.onrelay.app"
 export const BILLING_SUCCESS_URL = `${appUrl}/settings?section=billing&checkout=success`
+export const BILLING_WALKTHROUGH_SUCCESS_URL = `${appUrl}/dashboard?walkthrough=extension`
 export const BILLING_RETURN_URL = `${appUrl}/settings?section=billing`

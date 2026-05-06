@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic"
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ project?: string; projectName?: string; projectDescription?: string; projectUrl?: string }>
+  searchParams: Promise<{ project?: string; projectName?: string; projectDescription?: string; projectUrl?: string; walkthrough?: string }>
 }) {
   const viewer = await requirePageViewer("/dashboard")
   const projects = await listProjectsForUser(viewer.userId)
@@ -82,7 +82,7 @@ export default async function DashboardPage({
     )
   }
 
-  const { project: selectedProjectId } = await searchParams
+  const { project: selectedProjectId, walkthrough: walkthroughParam } = await searchParams
   const currentProject =
     (selectedProjectId
       ? projects.find((p) => p.id === selectedProjectId)
@@ -127,9 +127,11 @@ export default async function DashboardPage({
             }}
             dashboard={dashboard}
             walkthroughInitiallyOpen={
-              !settings.settings.walkthrough?.dismissedAt &&
-              onboarding.completedVia !== "extension"
+              walkthroughParam === "extension" ||
+              (!settings.settings.walkthrough?.dismissedAt &&
+              onboarding.completedVia !== "extension")
             }
+            walkthroughInitialStep={walkthroughParam === "extension" ? 4 : 0}
           />
         </div>
       ) : null}

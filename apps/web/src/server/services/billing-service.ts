@@ -5,7 +5,7 @@ import { validateEvent, WebhookVerificationError } from "@polar-sh/sdk/webhooks"
 import { createRepositoryBundle } from "@relay/db"
 import { billingCheckoutSchema, hashContent } from "@relay/shared"
 
-import { BILLING_RETURN_URL, BILLING_SUCCESS_URL, PLAN_PRODUCT_IDS } from "./billing-config"
+import { BILLING_RETURN_URL, BILLING_SUCCESS_URL, BILLING_WALKTHROUGH_SUCCESS_URL, PLAN_PRODUCT_IDS } from "./billing-config"
 import {
   sendSubscriptionCanceledEmail,
   sendTrialStartedEmail,
@@ -501,7 +501,7 @@ export async function createPolarCheckoutForUser(user: {
     customerEmail: user.email ?? undefined,
     customerName: user.name ?? undefined,
     externalCustomerId: user.id,
-    successUrl: BILLING_SUCCESS_URL,
+    successUrl: parsed.source === "walkthrough" ? BILLING_WALKTHROUGH_SUCCESS_URL : BILLING_SUCCESS_URL,
     returnUrl: BILLING_RETURN_URL,
     discountId: referralDiscountId ?? undefined,
     allowDiscountCodes: referralDiscountId ? false : undefined,
