@@ -200,15 +200,20 @@ export default function MachinePage() {
       </h2>
       <p style={{ fontSize: "0.85rem" }}>
         <strong style={{ color: "#ccc" }}>Free — $0/forever:</strong> Up to 2
-        active projects, 6 AI analyses per project per day, 20 MCP reads + 5
-        writes per day, 200 captures per month, browser capture across
+        active projects, 4 AI analyses per day, 12 MCP reads + 1 write per day,
+        100 captures per month, 14-day source retention, browser capture across
         supported AI tools.
       </p>
       <p style={{ fontSize: "0.85rem" }}>
-        <strong style={{ color: "#ccc" }}>Pro — $9/month ($90/year):</strong>{" "}
-        Up to 10 active projects, 32 AI analyses per project per day, 200 MCP
-        reads + 50 writes per day, 2,000 captures per month, 500 memory items
-        per project, priority support.
+        <strong style={{ color: "#ccc" }}>Starter — $6/month ($60/year):</strong>{" "}
+        Up to 5 active projects, 25 AI analyses per day, 120 MCP reads + 20
+        writes per day, 500 captures per month across all projects.
+      </p>
+      <p style={{ fontSize: "0.85rem" }}>
+        <strong style={{ color: "#ccc" }}>Pro — $12/month ($120/year):</strong>{" "}
+        Up to 15 active projects, 60 AI analyses per day, 300 MCP reads + 60
+        writes per day, 1,000 captures per month across all projects, high-quality
+        model access, priority support.
       </p>
 
       <h2

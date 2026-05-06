@@ -12,8 +12,8 @@ export const PRICING = {
   },
   starter: {
     name: "Starter",
-    monthlyPrice: 12,
-    yearlyPrice: 120,
+    monthlyPrice: 6,
+    yearlyPrice: 60,
     description: "For solo builders who live inside AI tools",
     cta: "Get Starter",
     ctaVariant: "primary" as const,
@@ -21,8 +21,8 @@ export const PRICING = {
   },
   pro: {
     name: "Pro",
-    monthlyPrice: 18,
-    yearlyPrice: 180,
+    monthlyPrice: 12,
+    yearlyPrice: 120,
     description: "Full autonomy, deep continuity, every surface",
     cta: "Get Pro",
     ctaVariant: "outline" as const,

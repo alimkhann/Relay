@@ -2,38 +2,38 @@ import type { BillingPlanKey, EntitlementLimitsDto, UserEntitlementsDto } from "
 
 export const FREE_LIMITS: EntitlementLimitsDto = {
   activeProjects: 2,
-  historyRetentionDays: 7,
+  historyRetentionDays: 14,
   captureMonthly: 100,
   mcpReadDaily: 12,
   mcpDeepReadDaily: 2,
   mcpWriteDaily: 1,
-  aiAnalysesPerProjectDaily: 2,
+  aiAnalysesPerProjectDaily: 4,
   aiAnalysesPerUserDaily: 4,
   memoryItemsPerProject: 150,
 }
 
 export const STARTER_LIMITS: EntitlementLimitsDto = {
-  activeProjects: 10,
-  historyRetentionDays: 180,
-  captureMonthly: 1200,
-  mcpReadDaily: 200,
-  mcpDeepReadDaily: 12,
-  mcpWriteDaily: 15,
-  aiAnalysesPerProjectDaily: 8,
-  aiAnalysesPerUserDaily: 40,
-  memoryItemsPerProject: 1500,
+  activeProjects: 5,
+  historyRetentionDays: 3650,
+  captureMonthly: 500,
+  mcpReadDaily: 120,
+  mcpDeepReadDaily: 8,
+  mcpWriteDaily: 20,
+  aiAnalysesPerProjectDaily: 25,
+  aiAnalysesPerUserDaily: 25,
+  memoryItemsPerProject: 1000,
 }
 
 export const PRO_LIMITS: EntitlementLimitsDto = {
-  activeProjects: 20,
-  historyRetentionDays: 365,
-  captureMonthly: 3000,
-  mcpReadDaily: 500,
-  mcpDeepReadDaily: 30,
-  mcpWriteDaily: 40,
-  aiAnalysesPerProjectDaily: 18,
-  aiAnalysesPerUserDaily: 90,
-  memoryItemsPerProject: 4000,
+  activeProjects: 15,
+  historyRetentionDays: 3650,
+  captureMonthly: 1000,
+  mcpReadDaily: 300,
+  mcpDeepReadDaily: 20,
+  mcpWriteDaily: 60,
+  aiAnalysesPerProjectDaily: 60,
+  aiAnalysesPerUserDaily: 60,
+  memoryItemsPerProject: 5000,
 }
 
 export const PLAN_PRODUCT_IDS = {
@@ -54,7 +54,7 @@ function formatNumber(value: number) {
 export const PLAN_LIMIT_ROWS = [
   { label: "Active projects", key: "activeProjects" },
   { label: "Captures / month", key: "captureMonthly" },
-  { label: "Retention", key: "historyRetentionDays" },
+  { label: "Source retention", key: "historyRetentionDays" },
   { label: "MCP basic reads / day", key: "mcpReadDaily" },
   { label: "MCP deep reads / day", key: "mcpDeepReadDaily" },
   { label: "MCP writes / day", key: "mcpWriteDaily" },
@@ -67,7 +67,7 @@ export const PLAN_MARKETING_COPY = {
     features: [
       `Up to ${FREE_LIMITS.activeProjects} active projects`,
       `${formatNumber(FREE_LIMITS.mcpReadDaily)} MCP reads + ${formatNumber(FREE_LIMITS.mcpDeepReadDaily)} deep reads / day`,
-      `${FREE_LIMITS.historyRetentionDays}-day retention, ${formatNumber(FREE_LIMITS.captureMonthly)} captures / month`,
+      `${FREE_LIMITS.historyRetentionDays}-day source retention, ${formatNumber(FREE_LIMITS.captureMonthly)} captures / month`,
       "Browser capture across supported AI tools",
       "Basic context briefs",
     ],
@@ -76,7 +76,7 @@ export const PLAN_MARKETING_COPY = {
     features: [
       `Up to ${STARTER_LIMITS.activeProjects} active projects`,
       `${formatNumber(STARTER_LIMITS.mcpReadDaily)} MCP reads + ${formatNumber(STARTER_LIMITS.mcpDeepReadDaily)} deep reads / day`,
-      `${STARTER_LIMITS.historyRetentionDays}-day retention, ${formatNumber(STARTER_LIMITS.captureMonthly)} captures / month`,
+      `${formatNumber(STARTER_LIMITS.captureMonthly)} captures / month across all projects`,
       "Autonomous context updates",
       "Full + continuity briefs",
     ],
@@ -85,7 +85,7 @@ export const PLAN_MARKETING_COPY = {
     features: [
       `Up to ${PRO_LIMITS.activeProjects} active projects`,
       `${formatNumber(PRO_LIMITS.mcpReadDaily)} MCP reads + ${formatNumber(PRO_LIMITS.mcpDeepReadDaily)} deep reads / day`,
-      `${PRO_LIMITS.historyRetentionDays}-day retention, ${formatNumber(PRO_LIMITS.captureMonthly)} captures / month`,
+      `${formatNumber(PRO_LIMITS.captureMonthly)} captures / month across all projects`,
       "High-quality model for reflections",
       "Aggressive autonomy + conflict resolution",
       "Priority support",

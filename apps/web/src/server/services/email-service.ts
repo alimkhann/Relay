@@ -206,7 +206,7 @@ export async function sendWelcomeToProEmail(
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 20px;">
         <h1 style="font-size: 24px; font-weight: 600; margin-bottom: 16px;">${greeting}, welcome to Relay ${input.plan}!</h1>
         <p style="font-size: 16px; line-height: 1.5; color: #374151;">
-          Thanks for upgrading. Your account has been switched to the ${input.plan} plan with higher daily limits, more active projects, and unlimited handoff packs across ChatGPT, Claude, Gemini, Grok, and Perplexity.
+          Thanks for upgrading. Your account has been switched to the ${input.plan} plan with higher daily limits, more active projects, and deeper context across ChatGPT, Claude, Gemini, Grok, and Perplexity.
         </p>
         <p style="font-size: 16px; line-height: 1.5; color: #374151;">
           ${renewalNote} You can manage or cancel your subscription any time from the billing settings.

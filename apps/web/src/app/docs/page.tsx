@@ -22,7 +22,7 @@ const cards = [
   {
     href: "/docs/plans",
     title: "Plans & Limits",
-    desc: "Compare Free and Pro limits before you upgrade.",
+    desc: "Compare Free, Starter, and Pro limits before you upgrade.",
   },
   {
     href: "/docs/api",

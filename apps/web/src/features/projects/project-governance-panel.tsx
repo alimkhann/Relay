@@ -400,7 +400,7 @@ export function ProjectGovernancePanel({
             </h3>
           </div>
           <div className="rounded-full border border-[var(--relay-line)] bg-[var(--relay-soft)] px-3 py-1 text-[11px] font-medium text-[var(--relay-muted)]">
-            AI Budget limit: {dashboard.aiBudget.dailyProjectAiUsed}/{dashboard.aiBudget.dailyProjectAiLimit} today
+            AI budget: {dashboard.aiBudget.dailyUserAiUsed}/{dashboard.aiBudget.dailyUserAiLimit} today
           </div>
         </div>
 

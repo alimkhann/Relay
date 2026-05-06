@@ -94,7 +94,7 @@ export default function GettingStartedPage() {
             <Link href="/docs/plans" className="text-[var(--relay-accent)] underline underline-offset-2">
               Plans & limits
             </Link>{" "}
-            — compare Free and Pro before upgrading
+            — compare Free, Starter, and Pro before upgrading
           </li>
         </ul>
       </div>

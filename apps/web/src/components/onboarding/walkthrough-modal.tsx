@@ -51,6 +51,11 @@ const DASHBOARD_STEPS: Step[] = [
     },
   },
   {
+    title: "Choose your plan",
+    body: "Start free. Upgrade when you need more captures, deeper MCP usage, and more daily AI analyses across your account.",
+    planPicker: true,
+  },
+  {
     title: "Get the browser extension",
     body: "Install the Chrome extension to capture context from ChatGPT, Claude, Gemini, and other AI chats directly in your browser.",
     image: {
@@ -58,11 +63,6 @@ const DASHBOARD_STEPS: Step[] = [
       alt: "Relay browser extension",
     },
     cta: <ChromeWebstoreBadge source="walkthrough_modal" label="Add to Chrome — it's free" />,
-  },
-  {
-    title: "Choose your plan",
-    body: "Start free with generous limits. Upgrade anytime as Relay becomes part of your workflow.",
-    planPicker: true,
   },
 ]
 

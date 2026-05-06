@@ -304,7 +304,7 @@ export function BentoDashboard({ project, dashboard, statusReady, statusText }: 
             },
             {
               label: "AI budget",
-              value: `${dashboard.aiBudget.dailyProjectAiUsed}/${dashboard.aiBudget.dailyProjectAiLimit}`,
+              value: `${dashboard.aiBudget.dailyUserAiUsed}/${dashboard.aiBudget.dailyUserAiLimit}`,
               icon: <Clock className="h-3.5 w-3.5" />,
             },
           ].map((stat) => (

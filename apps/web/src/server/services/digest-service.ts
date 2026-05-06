@@ -453,9 +453,9 @@ export async function decideDigestStrategy(
   }
 
   const budgetStatus: DigestBudgetStatus = {
-    aiUsed: budget.dailyProjectAiUsed,
-    aiLimit: budget.dailyProjectAiLimit,
-    aiRemaining: budget.dailyProjectAiRemaining,
+    aiUsed: budget.dailyUserAiUsed,
+    aiLimit: budget.dailyUserAiLimit,
+    aiRemaining: budget.dailyUserAiRemaining,
     plan: budget.plan,
   }
 

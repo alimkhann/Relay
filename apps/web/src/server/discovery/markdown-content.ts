@@ -45,7 +45,7 @@ function buildApiMarkdown() {
     "- `GET /api/projects/:id/context/history` List generated context packets",
     "- `POST /api/projects/:id/bootstrap` Generate a bootstrap brief",
     "- `GET /api/projects/:id/bootstrap/latest` Get the latest cached bootstrap brief",
-    "- `POST /api/projects/:id/handoff` Generate a fresh-chat export",
+    "- `POST /api/projects/:id/handoff` Compose paid fresh-chat context",
     "## Work Sessions",
     "- `POST /api/projects/:id/work-sessions/open` Open a new work session",
     "- `POST /api/projects/:id/work-sessions/checkpoint` Save a checkpoint",
@@ -166,7 +166,7 @@ function buildMcpMarkdown() {
 function buildPlansMarkdown() {
   return join([
     "# Relay Plans & Limits",
-    "Three tiers: Free to explore, Starter for daily use, Pro for full autonomy.",
+    "Three tiers: Free to explore, Starter for daily use, Pro for heavier solo workflows.",
     "## Included on every plan",
     "- Browser capture across supported AI tools",
     "- Project context and continuity briefs",
@@ -174,13 +174,14 @@ function buildPlansMarkdown() {
     "## Key limits",
     "| Limit | Free | Starter | Pro |",
     "| --- | --- | --- | --- |",
-    "| Active projects | 2 | 10 | 20 |",
-    "| Captures / month | 100 | 1,200 | 3,000 |",
-    "| Retention | 7 days | 180 days | 365 days |",
-    "| MCP basic reads / day | 12 | 200 | 500 |",
-    "| MCP deep reads / day | 2 | 12 | 30 |",
-    "| MCP writes / day | 1 | 15 | 40 |",
-    "| Memory items / project | 150 | 1,500 | 4,000 |",
+    "| Active projects | 2 | 5 | 15 |",
+    "| Captures / month | 100 | 500 | 1,000 |",
+    "| Source retention | 14 days | Included | Included |",
+    "| MCP basic reads / day | 12 | 120 | 300 |",
+    "| MCP deep reads / day | 2 | 8 | 20 |",
+    "| MCP writes / day | 1 | 20 | 60 |",
+    "| AI analyses / day | 4 | 25 | 60 |",
+    "| Memory items / project | 150 | 1,000 | 5,000 |",
   ])
 }
 

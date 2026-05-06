@@ -11,17 +11,19 @@ describe("billing plan limits", () => {
   })
 
   it("keeps free intentionally trial-like and starter/pro meaningfully bounded", () => {
-    expect(FREE_LIMITS.historyRetentionDays).toBe(7)
+    expect(FREE_LIMITS.historyRetentionDays).toBe(14)
     expect(FREE_LIMITS.mcpDeepReadDaily).toBe(2)
     expect(FREE_LIMITS.mcpWriteDaily).toBe(1)
 
-    expect(STARTER_LIMITS.historyRetentionDays).toBe(180)
-    expect(STARTER_LIMITS.mcpDeepReadDaily).toBe(12)
-    expect(STARTER_LIMITS.aiAnalysesPerUserDaily).toBe(40)
+    expect(STARTER_LIMITS.captureMonthly).toBe(500)
+    expect(STARTER_LIMITS.mcpDeepReadDaily).toBe(8)
+    expect(STARTER_LIMITS.aiAnalysesPerProjectDaily).toBe(STARTER_LIMITS.aiAnalysesPerUserDaily)
+    expect(STARTER_LIMITS.aiAnalysesPerUserDaily).toBe(25)
 
-    expect(PRO_LIMITS.historyRetentionDays).toBe(365)
-    expect(PRO_LIMITS.mcpDeepReadDaily).toBe(30)
-    expect(PRO_LIMITS.aiAnalysesPerUserDaily).toBe(90)
+    expect(PRO_LIMITS.captureMonthly).toBe(1000)
+    expect(PRO_LIMITS.mcpDeepReadDaily).toBe(20)
+    expect(PRO_LIMITS.aiAnalysesPerProjectDaily).toBe(PRO_LIMITS.aiAnalysesPerUserDaily)
+    expect(PRO_LIMITS.aiAnalysesPerUserDaily).toBe(60)
   })
 
   it("derives plan marketing copy from the runtime limits", () => {

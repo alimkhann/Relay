@@ -193,7 +193,7 @@ export async function assertProjectCreationAllowed(userId: string) {
 export async function assertHandoffEnabled(userId: string) {
   const entitlements = await resolveViewerEntitlements(userId)
   if (!entitlements.features.handoffPacks) {
-    throw new ForbiddenError("Brief exports are available on Relay Pro.")
+    throw new ForbiddenError("Fresh-chat context is available on paid Relay plans.")
   }
 }
 
@@ -226,23 +226,16 @@ export async function consumeMcpWriteQuota(userId: string, amount = 1) {
 // menu). Kept in its own bucket so it doesn't compete with MCP write budget.
 // Free is intentionally tight so users can see value without camping on the
 // free tier indefinitely.
-const FREE_EXTENSION_MEMORY_WRITE_LIMIT = 2
-const PRO_EXTENSION_MEMORY_WRITE_LIMIT = 200
+const EXTENSION_MEMORY_WRITE_LIMITS = {
+  free: 2,
+  starter: 25,
+  pro: 100,
+} as const
 
 export async function consumeExtensionMemoryWriteQuota(userId: string, amount = 1) {
   const entitlements = await resolveViewerEntitlements(userId)
-  const limit =
-    entitlements.plan === "pro"
-      ? PRO_EXTENSION_MEMORY_WRITE_LIMIT
-      : FREE_EXTENSION_MEMORY_WRITE_LIMIT
+  const limit = EXTENSION_MEMORY_WRITE_LIMITS[entitlements.plan]
   return consumeQuota(userId, "extension_memory_write_daily", "day", limit, amount, entitlements.plan)
-}
-
-export async function consumeHandoffQuota(userId: string) {
-  await assertHandoffEnabled(userId)
-  const entitlements = await resolveViewerEntitlements(userId)
-  const limit = entitlements.plan === "pro" ? 300 : entitlements.plan === "starter" ? 120 : 0
-  return consumeQuota(userId, "handoff_monthly", "month", limit, 1, entitlements.plan)
 }
 
 export async function consumeIpRateLimit(scopeKey: string, featureKey: string, perMinuteLimit: number) {

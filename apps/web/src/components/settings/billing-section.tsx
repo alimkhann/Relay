@@ -176,28 +176,28 @@ export function BillingSection({ billing, checkoutSuccess, referralProgram }: Bi
         used: usage.capturesThisMonth,
         limit: entitlements.limits.captureMonthly,
         periodLabel: "/ month",
-        upgradeCopy: `unlock ${2000} captures per month`,
+        upgradeCopy: `unlock more monthly captures across all projects`,
       },
       {
         label: "MCP reads",
         used: usage.mcpReadsToday,
         limit: entitlements.limits.mcpReadDaily,
         periodLabel: "/ day",
-        upgradeCopy: `unlock ${200} MCP reads per day`,
+        upgradeCopy: `unlock more MCP reads per day`,
       },
       {
         label: "MCP writes",
         used: usage.mcpWritesToday,
         limit: entitlements.limits.mcpWriteDaily,
         periodLabel: "/ day",
-        upgradeCopy: `unlock ${50} MCP writes per day`,
+        upgradeCopy: `unlock more MCP writes per day`,
       },
       {
         label: "AI analyses",
         used: usage.aiAnalysesToday,
         limit: entitlements.limits.aiAnalysesPerUserDaily,
         periodLabel: "/ day",
-        upgradeCopy: `unlock ${120} AI analyses per day`,
+        upgradeCopy: `unlock more AI analyses per day`,
       },
     ],
     [entitlements.limits, usage],
@@ -653,7 +653,7 @@ export function BillingSection({ billing, checkoutSuccess, referralProgram }: Bi
               title="Starter"
               subtitle={starterSubtitle}
               price={yearly ? `$${Math.round(PRICING.starter.yearlyPrice / 12)}/mo` : `$${PRICING.starter.monthlyPrice}/mo`}
-              priceNote={yearly ? "Billed $120/yr · -17%" : undefined}
+              priceNote={yearly ? `Billed $${PRICING.starter.yearlyPrice}/yr` : undefined}
               badge={entitlements.plan === "starter" ? (cancellationScheduled ? "Cancels" : "Current") : undefined}
               features={[...PRICING.starter.features]}
               actions={
@@ -692,7 +692,7 @@ export function BillingSection({ billing, checkoutSuccess, referralProgram }: Bi
               title="Pro"
               subtitle={proSubtitle}
               price={yearly ? `$${Math.round(PRICING.pro.yearlyPrice / 12)}/mo` : `$${PRICING.pro.monthlyPrice}/mo`}
-              priceNote={yearly ? "Billed $180/yr · -17%" : undefined}
+              priceNote={yearly ? `Billed $${PRICING.pro.yearlyPrice}/yr` : undefined}
               badge={entitlements.plan === "pro" ? (cancellationScheduled ? "Cancels" : "Current") : undefined}
               tone="accent"
               features={[...PRICING.pro.features]}

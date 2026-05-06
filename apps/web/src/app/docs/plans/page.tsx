@@ -11,17 +11,17 @@ const PLAN_TABLE_ROWS = PLAN_LIMIT_ROWS.map((row) => {
     return {
       label: row.label,
       free: `${FREE_LIMITS.historyRetentionDays} days`,
-      starter: `${STARTER_LIMITS.historyRetentionDays} days`,
-      pro: `${PRO_LIMITS.historyRetentionDays} days`,
+      starter: "Included",
+      pro: "Included",
     }
   }
 
   if (row.key === "aiAnalysesPerUserDaily") {
     return {
       label: row.label,
-      free: `${FREE_LIMITS.aiAnalysesPerProjectDaily} / proj · ${FREE_LIMITS.aiAnalysesPerUserDaily} total`,
-      starter: `${STARTER_LIMITS.aiAnalysesPerProjectDaily} / proj · ${STARTER_LIMITS.aiAnalysesPerUserDaily} total`,
-      pro: `${PRO_LIMITS.aiAnalysesPerProjectDaily} / proj · ${PRO_LIMITS.aiAnalysesPerUserDaily} total`,
+      free: `${FREE_LIMITS.aiAnalysesPerUserDaily} total`,
+      starter: `${STARTER_LIMITS.aiAnalysesPerUserDaily} total`,
+      pro: `${PRO_LIMITS.aiAnalysesPerUserDaily} total`,
     }
   }
 
@@ -40,7 +40,7 @@ export default function PlansDocsPage() {
       <div>
         <h1 className="text-2xl font-bold text-[var(--relay-ink)]">Plans &amp; limits</h1>
         <p className="mt-2 text-[15px] leading-relaxed text-[var(--relay-muted)]">
-          Three tiers: Free to explore, Starter for daily use, Pro for full autonomy.
+          Three tiers: Free to explore, Starter for daily use, Pro for heavier solo workflows.
         </p>
       </div>
 
@@ -86,7 +86,7 @@ export default function PlansDocsPage() {
           </div>
         </div>
         <p className="text-[13px] text-[var(--relay-muted)]">
-          AI analyses have both a per-project limit and an overall per-account daily cap.
+          Capture limits are monthly account-level limits shared across all projects. AI analyses use one account-level daily cap.
         </p>
       </section>
 

@@ -33,7 +33,7 @@ export class RelayApiClient {
       const retryAfter = response.headers.get("Retry-After")
       let message = data.error ?? "Rate limit exceeded."
       if (data.plan !== "pro" && data.upgradeUrl) {
-        message += `\n  Upgrade to Relay Pro: ${data.upgradeUrl}`
+        message += `\n  Upgrade Relay for higher limits: ${data.upgradeUrl}`
       } else if (retryAfter) {
         message += `\n  Try again in ${retryAfter} seconds.`
       }

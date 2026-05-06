@@ -7,7 +7,7 @@ function planBudgetFromEntitlements(entitlements: UserEntitlementsDto) {
   return {
     plan: entitlements.plan,
     dailyUserAiLimit: entitlements.limits.aiAnalysesPerUserDaily,
-    dailyProjectAiLimit: entitlements.limits.aiAnalysesPerProjectDaily,
+    dailyProjectAiLimit: entitlements.limits.aiAnalysesPerUserDaily,
   }
 }
 
@@ -29,9 +29,6 @@ export async function resolveProjectAiBudget(
   if (dailyUserAiUsed >= planConfig.dailyUserAiLimit) {
     aiEligible = false
     reason = "Daily AI budget reached for this account."
-  } else if (dailyProjectAiUsed >= planConfig.dailyProjectAiLimit) {
-    aiEligible = false
-    reason = "Daily AI budget reached for this project."
   }
 
   return {
@@ -42,7 +39,7 @@ export async function resolveProjectAiBudget(
     dailyProjectAiLimit: planConfig.dailyProjectAiLimit,
     dailyUserAiUsed,
     dailyUserAiLimit: planConfig.dailyUserAiLimit,
-    dailyProjectAiRemaining: Math.max(0, planConfig.dailyProjectAiLimit - dailyProjectAiUsed),
+    dailyProjectAiRemaining: Math.max(0, planConfig.dailyUserAiLimit - dailyUserAiUsed),
     dailyUserAiRemaining: Math.max(0, planConfig.dailyUserAiLimit - dailyUserAiUsed),
     nextAiAllowedAt: null
   }

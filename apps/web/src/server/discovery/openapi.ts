@@ -189,7 +189,7 @@ export function buildOpenApiDocument() {
         get: { summary: "Get the latest bootstrap brief", responses: { "200": { description: "Bootstrap payload" } } },
       },
       "/api/projects/{id}/handoff": {
-        post: { summary: "Generate a handoff export", responses: { "200": { description: "Handoff generated" } } },
+        post: { summary: "Compose fresh-chat context", responses: { "200": { description: "Fresh-chat context composed" } } },
       },
       "/api/projects/{id}/work-sessions/open": {
         post: { summary: "Open a work session", responses: { "200": { description: "Session opened" } } },
