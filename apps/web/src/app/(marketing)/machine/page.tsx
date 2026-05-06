@@ -200,8 +200,8 @@ export default function MachinePage() {
       </h2>
       <p style={{ fontSize: "0.85rem" }}>
         <strong style={{ color: "#ccc" }}>Free — $0/forever:</strong> Up to 2
-        active projects, 4 AI analyses per day, 12 MCP reads + 1 write per day,
-        100 captures per month, 14-day source retention, browser capture across
+        active projects, 2 AI analyses per day, 5 MCP reads + 1 write per day,
+        40 captures per month, 14-day source retention, browser capture across
         supported AI tools.
       </p>
       <p style={{ fontSize: "0.85rem" }}>

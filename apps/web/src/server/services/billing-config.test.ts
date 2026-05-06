@@ -12,7 +12,7 @@ describe("billing plan limits", () => {
 
   it("keeps free intentionally trial-like and starter/pro meaningfully bounded", () => {
     expect(FREE_LIMITS.historyRetentionDays).toBe(14)
-    expect(FREE_LIMITS.mcpDeepReadDaily).toBe(2)
+    expect(FREE_LIMITS.mcpDeepReadDaily).toBe(1)
     expect(FREE_LIMITS.mcpWriteDaily).toBe(1)
 
     expect(STARTER_LIMITS.captureMonthly).toBe(500)

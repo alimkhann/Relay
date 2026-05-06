@@ -79,7 +79,7 @@ export default function ApiDocsPage() {
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Rate limits</h2>
         <p className="text-[15px] text-[var(--relay-muted)]">
-          API rate limits depend on your plan. Free includes 12 MCP reads and 1 MCP write per day.
+          API rate limits depend on your plan. Free includes 5 MCP reads and 1 MCP write per day.
           Starter includes 120 reads and 20 writes per day. Pro includes 300 reads and 60 writes per day.
           Rate limit info is returned in response headers.
         </p>

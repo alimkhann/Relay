@@ -3,13 +3,13 @@ import type { BillingPlanKey, EntitlementLimitsDto, UserEntitlementsDto } from "
 export const FREE_LIMITS: EntitlementLimitsDto = {
   activeProjects: 2,
   historyRetentionDays: 14,
-  captureMonthly: 100,
-  mcpReadDaily: 12,
-  mcpDeepReadDaily: 2,
+  captureMonthly: 40,
+  mcpReadDaily: 5,
+  mcpDeepReadDaily: 1,
   mcpWriteDaily: 1,
-  aiAnalysesPerProjectDaily: 4,
-  aiAnalysesPerUserDaily: 4,
-  memoryItemsPerProject: 150,
+  aiAnalysesPerProjectDaily: 2,
+  aiAnalysesPerUserDaily: 2,
+  memoryItemsPerProject: 100,
 }
 
 export const STARTER_LIMITS: EntitlementLimitsDto = {
