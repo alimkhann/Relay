@@ -71,8 +71,8 @@ describe("referral reward policy", () => {
   })
 
   it("caps referrer reward value to a monthly-equivalent credit", () => {
-    expect(getReferralRewardValueCents("starter", 2500)).toBe(300)
-    expect(getReferralRewardValueCents("starter", 10000)).toBe(1200)
-    expect(getReferralRewardValueCents("pro", 5000)).toBe(900)
+    expect(getReferralRewardValueCents("starter", 2500)).toBe(150)
+    expect(getReferralRewardValueCents("starter", 10000)).toBe(600)
+    expect(getReferralRewardValueCents("pro", 5000)).toBe(600)
   })
 })
