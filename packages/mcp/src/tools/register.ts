@@ -217,7 +217,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "search_context",
-    "[Prefer 'recall' instead] Search memory items and project context by keyword. Supports stemming (e.g., 'auth' matches 'authentication') and tag filtering. Use this before high-impact decisions or when local context is incomplete, not as a default follow-up to a coherent get_brief result.",
+    "[Prefer 'recall' instead] Search memory items and project context by keyword. Supports stemming (e.g., 'auth' matches 'authentication') and tag filtering. Use this before high-impact decisions or when local context is incomplete, not as a default follow-up to a coherent get_brief result. If search returns no useful memory, investigate locally and save only confirmed durable findings, not the empty search attempt.",
     searchContextSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -399,7 +399,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "recall_context",
-    "[Prefer 'recall' instead] Search memory and retrieve project state in one call. Use before making decisions to check for existing constraints, decisions, or prior context. Combines search_context results with a project state snapshot.",
+    "[Prefer 'recall' instead] Search memory and retrieve project state in one call. Use before making decisions to check for existing constraints, decisions, or prior context. Combines search_context results with a project state snapshot. If recall returns no useful memory, investigate locally and save only confirmed durable findings, not the empty recall attempt.",
     recallContextSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)
@@ -424,7 +424,9 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 - include: ["activity"] → recent activity
 - include: ["briefs"] → list briefs
 - tracePhrase → trace provenance of a phrase
-- filters → filter memory listing by type/tags/pinned/archived`,
+- filters → filter memory listing by type/tags/pinned/archived
+
+If a query returns no useful memory, investigate locally and save only confirmed durable findings, not the empty recall attempt.`,
     recallSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)

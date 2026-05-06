@@ -310,6 +310,7 @@ describe("installClientSetup", () => {
     const instructions = await readFile(join(homeDir, "AGENTS.md"), "utf-8")
     expect(instructions).toContain("BEGIN RELAY MANAGED BLOCK: codex")
     expect(instructions).toContain("Start or resume with `get_brief`")
+    expect(instructions).toContain("If a Relay recall/search returns nothing")
   })
 
   it("installs a Cursor rule file", async () => {
@@ -322,7 +323,9 @@ describe("installClientSetup", () => {
     const result = await installClientSetup(ide)
     expect(result.artifacts.some((artifact) => artifact.kind === "rules")).toBe(true)
     expect(await validateInstalledClientSetup(ide)).toBe(true)
-    expect(await readFile(join(workspaceDir, ".cursor", "rules", "relay.mdc"), "utf-8")).toContain("Relay-managed Cursor guidance")
+    const rule = await readFile(join(workspaceDir, ".cursor", "rules", "relay.mdc"), "utf-8")
+    expect(rule).toContain("Relay-managed Cursor guidance")
+    expect(rule).toContain("If a Relay recall/search returns nothing")
   })
 
   it("installs a Copilot instructions block", async () => {
@@ -350,6 +353,11 @@ describe("installClientSetup", () => {
 
     const config = JSON.parse(await readFile(configPath, "utf-8")) as { instructions?: string[] }
     expect(config.instructions).toContain(".agents/instructions/relay.md")
-    expect(await readFile(join(workspaceDir, ".agents", "skills", "relay-context", "SKILL.md"), "utf-8")).toContain("name: relay-context")
+    expect(await readFile(join(workspaceDir, ".agents", "instructions", "relay.md"), "utf-8")).toContain(
+      "If a Relay recall/search returns nothing",
+    )
+    const skill = await readFile(join(workspaceDir, ".agents", "skills", "relay-context", "SKILL.md"), "utf-8")
+    expect(skill).toContain("name: relay-context")
+    expect(skill).toContain("After an empty recall/search")
   })
 })

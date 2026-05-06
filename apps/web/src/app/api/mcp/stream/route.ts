@@ -388,7 +388,7 @@ function registerHttpTools(
 
   server.tool(
     RELAY_MCP_TOOL_NAMES[6],
-    "Search memory items by keyword or semantic query. Returns matching decisions, constraints, tasks, notes, and other memory items. Use this before high-impact decisions or when local context is incomplete, not as a default follow-up to a coherent get_brief result.",
+    "Search memory items by keyword or semantic query. Returns matching decisions, constraints, tasks, notes, and other memory items. Use this before high-impact decisions or when local context is incomplete, not as a default follow-up to a coherent get_brief result. If search returns no useful memory, investigate locally and save only confirmed durable findings, not the empty search attempt.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
       query: z.string().describe("Search query to find relevant memory items"),
@@ -693,7 +693,7 @@ function registerHttpTools(
 
   server.tool(
     RELAY_MCP_TOOL_NAMES[20],
-    "Search memory and retrieve project state in one call. Use before making decisions to check for existing constraints and context.",
+    "Search memory and retrieve project state in one call. Use before making decisions to check for existing constraints and context. If recall returns no useful memory, investigate locally and save only confirmed durable findings, not the empty recall attempt.",
     {
       projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
       query: z.string().describe("What to search for in project memory"),
@@ -724,6 +724,7 @@ You have access to Relay, a project memory system that keeps context synchronize
 ### During the Session
 - Before making architectural, product, or process decisions, call \`search_context\` or \`recall_context\` when local context may be incomplete.
 - When the user confirms a durable decision, constraint, task, or stable product truth, call \`add_memory\` to persist that single fact.
+- If recall/search returns no useful memory and you then investigate files, docs, tests, config, or history, save any confirmed durable findings you discover. Do not save the empty search attempt itself.
 - Do not save speculative brainstorming, partial ideas, or every conversational turn.
 - If Relay context looks stale or wrong, inspect it before mutating:
   use \`list_memory\`, \`list_sessions\`, \`list_briefs\`, \`trace_context_sources\`, and \`list_recent_activity\`.

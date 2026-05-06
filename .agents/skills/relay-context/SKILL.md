@@ -19,6 +19,7 @@ Use this skill when you are resuming work, switching projects, or deciding wheth
 3. Use `search_context` or `recall_context` before major architecture, product, or process decisions when local context may be incomplete.
 4. Save back deliberately:
    - `add_memory` only for clearly confirmed durable facts
+   - After an empty recall/search, save confirmed durable facts discovered by local investigation, not the empty search attempt
    - `checkpoint_context` before compaction risk, task switches, or explicit milestones
    - `save_context` when wrapping a meaningful unit of work
 

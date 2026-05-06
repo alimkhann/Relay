@@ -63,6 +63,7 @@ The default agent flow is:
 - start or resume with `get_brief`
 - only call `list_projects` and `set_current_project` if Relay reports ambiguity
 - search before high-impact decisions when local context is incomplete
+- if search finds nothing, investigate locally and save only confirmed durable findings
 - save only at meaningful boundaries or for clearly confirmed durable facts
 
 ## Troubleshooting

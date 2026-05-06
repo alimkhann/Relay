@@ -13,6 +13,7 @@ You have access to Relay, a project memory system that keeps context synchronize
 ### During the Session
 - Before making architectural, product, or process decisions, call \`search_context\` or \`recall_context\` when local context may be incomplete.
 - When the user confirms a durable decision, constraint, task, or stable product truth, call \`add_memory\` to persist that single fact.
+- If recall/search returns no useful memory and you then investigate files, docs, tests, config, or history, save any confirmed durable findings you discover. Do not save the empty search attempt itself.
 - Do not save speculative brainstorming, partial ideas, or every conversational turn.
 - For coding work, save the facts a future agent needs to continue: files/modules touched, public API or schema changes, migrations, commands/tests run with outcomes, unresolved blockers, and exact small snippets only when the exact text matters.
 - If Relay context looks stale or wrong, inspect it before mutating:

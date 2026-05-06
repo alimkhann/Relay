@@ -324,6 +324,7 @@ function buildRelayBehaviorBody(clientName: string, options: { hooks?: string[];
     "- Before architecture, product, or process decisions, prefer `search_context` or `recall_context` when local context may be incomplete.",
     "- Use `get_project_state` when you need the structured objective, constraints, or open tasks instead of a prose brief.",
     "- Use `add_memory` only for clearly confirmed durable facts: decisions, constraints, tasks, and stable product truths. Do not save speculative brainstorming until it is confirmed.",
+    "- If a Relay recall/search returns nothing, continue with normal local investigation. If that investigation discovers confirmed durable facts, save those facts; do not save the empty search attempt itself.",
     "- For coding work, save files/modules touched, public API or schema changes, migrations, tests run, unresolved blockers, and next steps when those facts would help a future session continue.",
     "- Use `checkpoint_context` only before compaction-equivalent risk, task switches, or explicit milestone saves. Use `save_context` only when wrapping up a meaningful unit of work.",
     hookLine,
@@ -342,6 +343,7 @@ The canonical repository policy is in \`AGENTS.md\`. Follow it first.
 - Start or resume with \`get_brief\`. Only call \`list_projects\` and \`set_current_project\` if Relay reports project ambiguity or the wrong project.
 - Prefer \`search_context\` or \`recall_context\` before architectural, product, or process decisions when local context may be incomplete.
 - Use \`add_memory\` only for clearly confirmed durable facts. Use \`checkpoint_context\` before compaction risk, task switches, or explicit milestone saves, and \`save_context\` only when wrapping a meaningful unit of work.
+- If a Relay recall/search returns nothing, investigate locally and save only confirmed durable findings, not the empty search attempt.
 - Do not read or write Relay repeatedly when the current conversation already has the context you need.
 - Cursor has no Relay-managed hook flow here, so checkpoint only at meaningful boundaries.
 `
@@ -355,6 +357,7 @@ The canonical repository policy is in \`AGENTS.md\`. Follow it first.
 - Start or resume with \`get_brief\`. Only call \`list_projects\` and \`set_current_project\` if Relay reports project ambiguity or the wrong project.
 - Use \`search_context\` or \`recall_context\` before making architecture, product, or workflow decisions that might conflict with prior context.
 - Use \`add_memory\` only for clearly confirmed durable facts. Use \`checkpoint_context\` before compaction risk, task switches, or milestone saves, and \`save_context\` only when ending a meaningful unit of work.
+- If a Relay recall/search returns nothing, investigate locally and save only confirmed durable findings, not the empty search attempt.
 - Relay does not install noisy per-tool Windsurf autosave hooks by default. Keep saves deliberate and boundary-oriented.
 `
 }
@@ -365,6 +368,7 @@ function buildProjectRelayInstructions() {
 - Start or resume with \`get_brief\`. Only call \`list_projects\` and \`set_current_project\` if Relay reports project ambiguity or the wrong project.
 - Use \`search_context\` or \`recall_context\` before major architecture, product, or process decisions.
 - Use \`add_memory\` only for clearly confirmed durable facts. Use \`checkpoint_context\` before compaction risk, task switches, or milestone saves, and \`save_context\` when you finish a meaningful unit of work.
+- If a Relay recall/search returns nothing, investigate locally and save only confirmed durable findings, not the empty search attempt.
 - Do not overuse Relay when the current conversation already contains the necessary context.
 `
 }
@@ -391,6 +395,7 @@ Use this skill when you are resuming work, switching projects, or deciding wheth
 3. Use \`search_context\` or \`recall_context\` before major architecture, product, or process decisions when local context may be incomplete.
 4. Save back deliberately:
    - \`add_memory\` only for clearly confirmed durable facts
+   - After an empty recall/search, save confirmed durable facts discovered by local investigation, not the empty search attempt
    - \`checkpoint_context\` before compaction risk, task switches, or explicit milestones
    - \`save_context\` when wrapping a meaningful unit of work
 

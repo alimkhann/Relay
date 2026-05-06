@@ -21,6 +21,29 @@ function createServerHarness() {
 }
 
 describe("registerTools analytics wrapper", () => {
+  it("guides agents to save confirmed findings after empty recall and manual investigation", () => {
+    const harness = createServerHarness()
+    const client = {
+      captureAnalytics: vi.fn(),
+      getAgentName: vi.fn().mockReturnValue("codex"),
+      getClientName: vi.fn().mockReturnValue("relay-mcp:codex"),
+    }
+
+    registerTools(harness.server as never, {
+      client: client as never,
+      resolveProjectId: vi.fn(async (projectId?: string) => projectId ?? "proj-1"),
+      resolveProjectSelection: undefined,
+      getCachedProjectId: () => "proj-1",
+      setCachedProjectId: vi.fn(),
+    })
+
+    const recall = harness.registrations.find((tool) => tool.name === "recall")
+    const searchContext = harness.registrations.find((tool) => tool.name === "search_context")
+
+    expect(recall?.description).toContain("If a query returns no useful memory")
+    expect(searchContext?.description).toContain("If search returns no useful memory")
+  })
+
   it("emits MCP tool lifecycle events once for a read tool", async () => {
     const harness = createServerHarness()
     const captureAnalytics = vi.fn()

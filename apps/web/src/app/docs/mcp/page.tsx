@@ -35,7 +35,7 @@ export default function McpDocsPage() {
             The default install path is local stdio. The wizard focuses on two surfaces only: the browser extension and MCP-connected coding agents.
           </p>
           <p className="text-[13px] text-[var(--relay-muted)]">
-            Relay is designed to be used automatically and sparingly: start with <code className="text-[13px] font-mono text-[var(--relay-ink)]">get_brief</code>, search only when local context is incomplete, and save only at meaningful boundaries.
+            Relay is designed to be used automatically and sparingly: start with <code className="text-[13px] font-mono text-[var(--relay-ink)]">get_brief</code>, search only when local context is incomplete, and save only confirmed durable findings from follow-up investigation.
           </p>
         </section>
 
