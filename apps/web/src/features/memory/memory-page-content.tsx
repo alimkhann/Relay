@@ -273,6 +273,7 @@ export function MemoryPageContent({
         <FadeIn delay={0.08}>
           <MemoryGraphContainer
             projectId={project.id}
+            projectName={project.name}
             memoryItems={dashboard.memory}
           />
         </FadeIn>
@@ -331,35 +332,26 @@ export function MemoryPageContent({
         </FadeIn>
       )}
 
-      {/* Memory items for notes/requirements/artifacts tabs */}
-      {(activeTab === "notes" || activeTab === "all") && memoryItemsByType.notes.length > 0 && (
+      {/* Memory items for notes/requirements/artifacts tabs (only shown on their specific tabs) */}
+      {activeTab === "notes" && memoryItemsByType.notes.length > 0 && (
         <FadeIn delay={0.15}>
           <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
-            {activeTab === "all" && (
-              <h3 className="text-[12px] font-semibold text-[var(--relay-ink)] mb-2">Notes</h3>
-            )}
             <MemoryItemsList items={memoryItemsByType.notes} label="Notes" projectId={project.id} />
           </div>
         </FadeIn>
       )}
 
-      {(activeTab === "requirements" || activeTab === "all") && memoryItemsByType.requirements.length > 0 && (
+      {activeTab === "requirements" && memoryItemsByType.requirements.length > 0 && (
         <FadeIn delay={0.18}>
           <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
-            {activeTab === "all" && (
-              <h3 className="text-[12px] font-semibold text-[var(--relay-ink)] mb-2">Requirements</h3>
-            )}
             <MemoryItemsList items={memoryItemsByType.requirements} label="Requirements" projectId={project.id} />
           </div>
         </FadeIn>
       )}
 
-      {(activeTab === "artifacts" || activeTab === "all") && memoryItemsByType.artifacts.length > 0 && (
+      {activeTab === "artifacts" && memoryItemsByType.artifacts.length > 0 && (
         <FadeIn delay={0.2}>
           <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
-            {activeTab === "all" && (
-              <h3 className="text-[12px] font-semibold text-[var(--relay-ink)] mb-2">Artifacts</h3>
-            )}
             <MemoryItemsList items={memoryItemsByType.artifacts} label="Artifacts" projectId={project.id} />
           </div>
         </FadeIn>

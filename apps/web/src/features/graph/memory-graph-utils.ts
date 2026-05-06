@@ -29,12 +29,16 @@ export const RELATION_COLORS = {
 
 export type GraphRelationType = keyof typeof RELATION_COLORS;
 
+export type HubRole = "root" | "type-hub";
+
 export interface GraphNode {
   id: string;
   label: string;
   type: MemoryItemType;
   decayScore: number;
   pinned: boolean;
+  archived: boolean;
+  hub?: HubRole;
   sourceSurface: SourceSurface | null;
   sourceUrl: string | null;
   content: string;
@@ -55,6 +59,7 @@ export interface GraphLink {
   relationType: GraphRelationType;
   confidence: number;
   fallback?: boolean;
+  hubLink?: "root-to-hub" | "hub-to-item";
 }
 
 export interface GraphData {
@@ -84,10 +89,10 @@ export const DEFAULT_GRAPH_SETTINGS: MemoryGraphSettings = {
   textFadeThreshold: 1.55,
   nodeScale: 1.05,
   linkThickness: 1,
-  centerForce: 0.9,
-  repelForce: 38,
-  linkForce: 0.58,
-  linkDistance: 46,
+  centerForce: 0.45,
+  repelForce: 85,
+  linkForce: 0.28,
+  linkDistance: 58,
 };
 
 export interface RelationDto {
@@ -114,13 +119,63 @@ function truncateLabel(value: string, maxLength = 44) {
   return `${normalized.slice(0, maxLength - 1).trim()}...`;
 }
 
-export function buildGraphNodes(items: MemoryItemDto[]): GraphNode[] {
-  return items.map((item) => ({
+const HUB_NODE_PREFIX = "__hub__";
+const ROOT_NODE_ID = "__root__";
+
+export function isHubNode(node: GraphNode) {
+  return node.id === ROOT_NODE_ID || node.id.startsWith(HUB_NODE_PREFIX);
+}
+
+function makeHubNode(type: MemoryItemType): GraphNode {
+  return {
+    id: `${HUB_NODE_PREFIX}${type}`,
+    label: TYPE_LABELS[type],
+    type,
+    decayScore: 1,
+    pinned: false,
+    archived: false,
+    hub: "type-hub",
+    sourceSurface: null,
+    sourceUrl: null,
+    content: `Hub node for ${TYPE_LABELS[type]}`,
+    title: TYPE_LABELS[type],
+    updatedAt: new Date().toISOString(),
+    capturedAt: null,
+    lastReaffirmedAt: null,
+  };
+}
+
+function makeRootNode(projectName: string): GraphNode {
+  return {
+    id: ROOT_NODE_ID,
+    label: projectName,
+    type: "note" as MemoryItemType,
+    decayScore: 1,
+    pinned: false,
+    archived: false,
+    hub: "root",
+    sourceSurface: null,
+    sourceUrl: null,
+    content: projectName,
+    title: projectName,
+    updatedAt: new Date().toISOString(),
+    capturedAt: null,
+    lastReaffirmedAt: null,
+  };
+}
+
+export function buildGraphNodes(
+  items: MemoryItemDto[],
+  archivedIds?: Set<string>,
+  projectName?: string,
+): GraphNode[] {
+  const itemNodes = items.map((item) => ({
     id: item.id,
     label: truncateLabel(item.title ?? item.content),
     type: item.type,
     decayScore: Number.isFinite(item.decayScore) ? item.decayScore : 0.5,
     pinned: item.pinned,
+    archived: archivedIds?.has(item.id) ?? false,
     sourceSurface: item.sourceSurface,
     sourceUrl: item.sourceUrl,
     content: item.content,
@@ -130,6 +185,12 @@ export function buildGraphNodes(items: MemoryItemDto[]): GraphNode[] {
     lastReaffirmedAt: item.lastReaffirmedAt,
     metadata: item.metadata,
   }));
+
+  const presentTypes = new Set(items.map((i) => i.type));
+  const hubNodes = Array.from(presentTypes).map(makeHubNode);
+  const rootNode = makeRootNode(projectName ?? "Project");
+
+  return [rootNode, ...hubNodes, ...itemNodes];
 }
 
 function endpointId(endpoint: string | GraphNode) {
@@ -147,17 +208,46 @@ export function buildGraphLinks(
 ): GraphLink[] {
   const nodeIds = new Set(nodes.map((node) => node.id));
   const links: GraphLink[] = [];
-  const linkedNodeIds = new Set<string>();
   const seen = new Set<string>();
 
+  // Hub topology: root → type hubs → items
+  const itemNodes = nodes.filter((n) => !n.hub);
+  const hubNodes = nodes.filter((n) => n.hub === "type-hub");
+
+  for (const hub of hubNodes) {
+    links.push({
+      source: ROOT_NODE_ID,
+      target: hub.id,
+      relationType: "extends",
+      confidence: 1,
+      fallback: true,
+      hubLink: "root-to-hub",
+    });
+    seen.add(linkKey(ROOT_NODE_ID, hub.id, "extends"));
+
+    for (const item of itemNodes) {
+      if (item.type === hub.type) {
+        const key = linkKey(hub.id, item.id, "extends");
+        links.push({
+          source: hub.id,
+          target: item.id,
+          relationType: "extends",
+          confidence: 0.8,
+          fallback: true,
+          hubLink: "hub-to-item",
+        });
+        seen.add(key);
+      }
+    }
+  }
+
+  // Explicit relations between items
   for (const relation of relations) {
     if (!nodeIds.has(relation.sourceId) || !nodeIds.has(relation.targetId)) {
       continue;
     }
-
     const key = linkKey(relation.sourceId, relation.targetId, relation.relationType);
     if (seen.has(key)) continue;
-
     links.push({
       source: relation.sourceId,
       target: relation.targetId,
@@ -165,18 +255,15 @@ export function buildGraphLinks(
       confidence: relation.confidence,
     });
     seen.add(key);
-    linkedNodeIds.add(relation.sourceId);
-    linkedNodeIds.add(relation.targetId);
   }
 
+  // Similarity edges between items
   for (const edge of similarityEdges) {
     if (!nodeIds.has(edge.sourceId) || !nodeIds.has(edge.targetId)) {
       continue;
     }
-
     const key = linkKey(edge.sourceId, edge.targetId, "similar");
     if (seen.has(key)) continue;
-
     links.push({
       source: edge.sourceId,
       target: edge.targetId,
@@ -184,33 +271,6 @@ export function buildGraphLinks(
       confidence: edge.similarity,
     });
     seen.add(key);
-    linkedNodeIds.add(edge.sourceId);
-    linkedNodeIds.add(edge.targetId);
-  }
-
-  const orphansByType = new Map<MemoryItemType, GraphNode[]>();
-  for (const node of nodes) {
-    if (linkedNodeIds.has(node.id)) continue;
-    const group = orphansByType.get(node.type) ?? [];
-    group.push(node);
-    orphansByType.set(node.type, group);
-  }
-
-  for (const group of orphansByType.values()) {
-    for (let index = 0; index < group.length - 1; index += 1) {
-      const source = group[index]!;
-      const target = group[index + 1]!;
-      const key = linkKey(source.id, target.id, "similar");
-      if (seen.has(key)) continue;
-      links.push({
-        source: source.id,
-        target: target.id,
-        relationType: "similar",
-        confidence: 0.35,
-        fallback: true,
-      });
-      seen.add(key);
-    }
   }
 
   return links;

@@ -5,6 +5,7 @@ import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
 
 import {
   graphEndpointId,
+  isHubNode,
   labelOpacity,
   nodeOpacity,
   nodeRadius,
@@ -20,7 +21,6 @@ interface MemoryGraphProps {
   data: GraphData;
   width: number;
   height: number;
-  compact?: boolean;
   selectedNodeId?: string | null;
   settings: MemoryGraphSettings;
   onSelectNode?: (node: GraphNode | null) => void;
@@ -106,7 +106,6 @@ export function MemoryGraph({
   data,
   width,
   height,
-  compact = false,
   selectedNodeId,
   settings,
   onSelectNode,
@@ -131,8 +130,8 @@ export function MemoryGraph({
     const graph = graphRef.current as
       | (ForceGraphMethods<GraphNode, GraphLink> & {
           d3Force?: (name: string) => {
-            strength?: (value: number) => unknown;
-            distance?: (value: number) => unknown;
+            strength?: (value: number | ((link: GraphLink) => number)) => unknown;
+            distance?: (value: number | ((link: GraphLink) => number)) => unknown;
           } | undefined;
           d3ReheatSimulation?: () => void;
         })
@@ -141,8 +140,15 @@ export function MemoryGraph({
     if (!graph) return;
 
     graph.d3Force?.("charge")?.strength?.(-settings.repelForce);
-    graph.d3Force?.("link")?.distance?.(settings.linkDistance);
-    graph.d3Force?.("link")?.strength?.(settings.linkForce);
+    graph.d3Force?.("link")?.distance?.((link: GraphLink) => {
+      if (link.hubLink === "root-to-hub") return settings.linkDistance * 1.8;
+      if (link.hubLink === "hub-to-item") return settings.linkDistance * 0.7;
+      return settings.linkDistance;
+    });
+    graph.d3Force?.("link")?.strength?.((link: GraphLink) => {
+      if (link.hubLink) return settings.linkForce * 1.2;
+      return settings.linkForce;
+    });
     graph.d3Force?.("center")?.strength?.(settings.centerForce);
     graph.d3ReheatSimulation?.();
   }, [settings.centerForce, settings.linkDistance, settings.linkForce, settings.repelForce, visibleLinks.length]);
@@ -172,17 +178,75 @@ export function MemoryGraph({
   ) => {
     if (!hasPosition(node)) return;
 
-    const color = TYPE_COLORS[node.type];
+    const isHub = isHubNode(node);
+    const color = node.hub === "root" ? "#94a3b8" : TYPE_COLORS[node.type];
     const isActive = activeNodeId === node.id;
-    const isAdjacent = connected.nodes.has(node.id);
-    const shouldDim = Boolean(activeNodeId) && !isAdjacent;
+
+    if (isHub) {
+      const hubRadius = node.hub === "root" ? 12 * settings.nodeScale : 8 * settings.nodeScale;
+      const radius = isActive || hoveredNodeId === node.id ? hubRadius + 2 : hubRadius;
+      const opacity = 0.92;
+
+      ctx.save();
+
+      // Glow
+      ctx.globalAlpha = 0.15;
+      const glow = ctx.createRadialGradient(node.x, node.y, radius * 0.3, node.x, node.y, radius * 3);
+      glow.addColorStop(0, color);
+      glow.addColorStop(0.2, color);
+      glow.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, radius * 2.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Fill
+      ctx.globalAlpha = opacity;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Ring
+      ctx.globalAlpha = 0.6;
+      ctx.strokeStyle = "rgba(255,255,255,0.5)";
+      ctx.lineWidth = 1.8 / globalScale;
+      ctx.stroke();
+
+      if (isActive) {
+        ctx.globalAlpha = 0.95;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.5 / globalScale;
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, radius + 5 / globalScale, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // Label inside hub
+      const scale = 1 / Math.max(globalScale, 0.01);
+      const fontSize = node.hub === "root"
+        ? compactNumber(11 * scale, 8 * scale, 13 * scale)
+        : compactNumber(9 * scale, 6.5 * scale, 10 * scale);
+      ctx.globalAlpha = 0.95;
+      ctx.font = `600 ${fontSize}px Outfit, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(node.label, node.x, node.y, radius * 2.2);
+
+      ctx.restore();
+      return;
+    }
+
+    // Regular item nodes
     const baseRadius = nodeRadius(node.decayScore, settings.nodeScale);
     const radius = isActive || hoveredNodeId === node.id ? baseRadius + 1.6 : baseRadius;
-    const opacity = shouldDim ? 0.18 : nodeOpacity(node.decayScore);
+    const archiveFade = node.archived ? 0.4 : 1;
+    const opacity = nodeOpacity(node.decayScore) * archiveFade;
     const ringColor = "rgba(245,245,245,0.7)";
 
     ctx.save();
-    ctx.globalAlpha = shouldDim ? 0.035 : Math.min(0.12, 0.035 + node.decayScore * 0.085);
+    ctx.globalAlpha = Math.min(0.12, 0.035 + node.decayScore * 0.085);
     const gradient = ctx.createRadialGradient(node.x, node.y, radius * 0.2, node.x, node.y, radius * 2.6);
     gradient.addColorStop(0, color);
     gradient.addColorStop(0.14, color);
@@ -197,7 +261,7 @@ export function MemoryGraph({
     ctx.beginPath();
     ctx.arc(node.x, node.y, radius, 0, Math.PI * 2);
     ctx.fill();
-    ctx.globalAlpha = shouldDim ? 0.18 : 0.5;
+    ctx.globalAlpha = 0.5;
     ctx.strokeStyle = ringColor;
     ctx.lineWidth = 1.4 / globalScale;
     ctx.stroke();
@@ -211,10 +275,10 @@ export function MemoryGraph({
       ctx.stroke();
     }
 
-    if (!compact && settings.showLabels) {
+    if (settings.showLabels) {
       const textOpacity = isActive || hoveredNodeId === node.id ? 1 : labelOpacity(globalScale, settings.textFadeThreshold);
       if (textOpacity > 0.02) {
-        ctx.globalAlpha = shouldDim ? 0.14 : textOpacity;
+        ctx.globalAlpha = textOpacity;
         if (isActive || hoveredNodeId === node.id) {
           drawLabelPill(ctx, node.label, node.x, node.y + radius + 6 / globalScale, globalScale);
         } else {
@@ -224,7 +288,7 @@ export function MemoryGraph({
     }
 
     ctx.restore();
-  }, [activeNodeId, compact, connected.nodes, hoveredNodeId, settings.nodeScale, settings.showLabels, settings.textFadeThreshold]);
+  }, [activeNodeId, connected.nodes, hoveredNodeId, settings.nodeScale, settings.showLabels, settings.textFadeThreshold]);
 
   const drawLink = useCallback((
     link: GraphLink,
@@ -237,9 +301,9 @@ export function MemoryGraph({
     if (!hasPosition(source) || !hasPosition(target)) return;
 
     const isHighlighted = connected.links.has(link);
-    const hasActive = Boolean(activeNodeId);
+    const isHub = Boolean(link.hubLink);
     const color = isHighlighted ? RELATION_COLORS[link.relationType] : "rgba(107,114,128,0.9)";
-    const alpha = isHighlighted ? 0.84 : hasActive ? 0.2 : link.relationType === "similar" ? 0.42 : 0.52;
+    const alpha = isHighlighted ? 0.84 : isHub ? 0.18 : link.relationType === "similar" ? 0.35 : 0.45;
 
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -254,7 +318,7 @@ export function MemoryGraph({
     ctx.stroke();
     ctx.setLineDash([]);
 
-    if (settings.showArrows && link.relationType !== "similar" && !compact) {
+    if (settings.showArrows && link.relationType !== "similar") {
       const midX = (source.x + target.x) / 2;
       const midY = (source.y + target.y) / 2;
       const angle = Math.atan2(target.y - source.y, target.x - source.x);
@@ -270,7 +334,7 @@ export function MemoryGraph({
       ctx.fill();
     }
     ctx.restore();
-  }, [activeNodeId, compact, connected.links, settings.linkThickness, settings.showArrows]);
+  }, [activeNodeId, connected.links, settings.linkThickness, settings.showArrows]);
 
   return (
     <ForceGraph2D
@@ -287,33 +351,26 @@ export function MemoryGraph({
       linkDirectionalParticles={(link) => settings.animate && activeNodeId && connected.links.has(link) ? 1 : 0}
       linkDirectionalParticleWidth={1.8}
       linkDirectionalParticleSpeed={0.004}
-      cooldownTicks={compact ? 80 : settings.animate ? 220 : 110}
-      d3AlphaDecay={0.025}
-      d3VelocityDecay={0.34}
-      enableNodeDrag={!compact}
-      enablePanInteraction={!compact}
-      enableZoomInteraction={!compact}
-      minZoom={compact ? 0.55 : 0.32}
-      maxZoom={compact ? 1.8 : 2.4}
+      cooldownTicks={settings.animate ? 220 : 110}
+      d3AlphaDecay={0.018}
+      d3VelocityDecay={0.45}
+      enableNodeDrag
+      enablePanInteraction
+      enableZoomInteraction
+      minZoom={0.32}
+      maxZoom={2.4}
       onNodeHover={(node) => setHoveredNodeId(node?.id ?? null)}
       onNodeClick={(node) => onSelectNode?.(node)}
       onNodeDragEnd={(node) => {
-        node.fx = undefined;
-        node.fy = undefined;
-        (
-          graphRef.current as
-            | (ForceGraphMethods<GraphNode, GraphLink> & {
-                d3ReheatSimulation?: () => void;
-              })
-            | undefined
-        )?.d3ReheatSimulation?.();
+        node.fx = node.x;
+        node.fy = node.y;
       }}
       onBackgroundClick={() => onSelectNode?.(null)}
       onZoom={({ k }) => setZoom(k)}
       onEngineStop={() => {
         if (!didFitRef.current) {
           didFitRef.current = true;
-          graphRef.current?.zoomToFit(350, compact ? 24 : 72);
+          graphRef.current?.zoomToFit(350, 40);
         }
       }}
       nodePointerAreaPaint={(node, color, ctx) => {

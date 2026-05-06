@@ -2,11 +2,12 @@
 
 import dynamic from "next/dynamic";
 import type { MemoryItemDto } from "@relay/shared";
-import { Expand, Minimize2, Network, RotateCcw, Settings2, X } from "lucide-react";
+import { ChevronDown, Expand, Minimize2, Network, RotateCcw, Settings2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+import { relayClientFetch } from "@/lib/telemetry/fetch";
 import { MemoryGraphDetailPanel } from "./memory-graph-detail-panel";
 import {
   DEFAULT_GRAPH_SETTINGS,
@@ -32,6 +33,7 @@ const MemoryGraph = dynamic(
 
 interface MemoryGraphContainerProps {
   projectId: string;
+  projectName?: string;
   memoryItems: MemoryItemDto[];
   mode?: "compact" | "fullscreen";
   variant?: "default" | "minimap";
@@ -199,8 +201,14 @@ function GraphSettingsPanel({
   );
 }
 
+interface ProjectListItem {
+  id: string;
+  name: string;
+}
+
 export function MemoryGraphContainer({
   projectId,
+  projectName,
   memoryItems,
   mode = "compact",
   variant = "default",
@@ -211,9 +219,63 @@ export function MemoryGraphContainer({
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(mode === "fullscreen");
   const [settings, setSettings] = useState<MemoryGraphSettings>(DEFAULT_GRAPH_SETTINGS);
+  const [projects, setProjects] = useState<ProjectListItem[]>([]);
+  const [activeProjectId, setActiveProjectId] = useState(projectId);
+  const [switchedItems, setSwitchedItems] = useState<MemoryItemDto[] | null>(null);
   const compactSize = useElementSize<HTMLDivElement>();
   const fullscreenSize = useElementSize<HTMLDivElement>();
-  const { data, loading, error } = useGraphData(projectId, memoryItems);
+
+  const effectiveItems = activeProjectId === projectId ? memoryItems : (switchedItems ?? []);
+  const activeProjectName = activeProjectId === projectId
+    ? projectName
+    : projects.find((p) => p.id === activeProjectId)?.name;
+  const { data, loading, error } = useGraphData(activeProjectId, effectiveItems, activeProjectName);
+
+  useEffect(() => {
+    if (!expanded) return;
+    void (async () => {
+      try {
+        const res = await relayClientFetch("/api/projects");
+        if (res.ok) {
+          const payload = (await res.json()) as { projects: ProjectListItem[] };
+          setProjects(payload.projects);
+        }
+      } catch {}
+    })();
+  }, [expanded]);
+
+  useEffect(() => {
+    if (activeProjectId === projectId) {
+      setSwitchedItems(null);
+      return;
+    }
+    void (async () => {
+      try {
+        const res = await relayClientFetch(`/api/projects/${activeProjectId}/memory`);
+        if (res.ok) {
+          const payload = (await res.json()) as { memory: Array<{
+            id: string; type: MemoryItemDto["type"]; title: string | null;
+            content: string; pinned: boolean; updatedAt?: string;
+            provenance?: { sourceSurface?: string | null; sourceUrl?: string | null; capturedAt?: string | null };
+            status?: { lastReaffirmedAt?: string | null };
+          }> };
+          setSwitchedItems(payload.memory.map((i) => ({
+            id: i.id,
+            type: i.type,
+            title: i.title,
+            content: i.content,
+            pinned: i.pinned,
+            updatedAt: i.updatedAt ?? new Date().toISOString(),
+            sourceSurface: (i.provenance?.sourceSurface as MemoryItemDto["sourceSurface"]) ?? null,
+            sourceUrl: i.provenance?.sourceUrl ?? null,
+            capturedAt: i.provenance?.capturedAt ?? null,
+            decayScore: 0.5,
+            lastReaffirmedAt: i.status?.lastReaffirmedAt ?? null,
+          })));
+        }
+      } catch {}
+    })();
+  }, [activeProjectId, projectId]);
 
   if (memoryItems.length < MIN_GRAPH_ITEMS) {
     return null;
@@ -229,7 +291,6 @@ export function MemoryGraphContainer({
   function renderGraphBody(surface: "compact" | "fullscreen") {
     const isFullscreen = surface === "fullscreen";
     const size = isFullscreen ? fullscreenSize.size : compactSize.size;
-    const graphCompact = !isFullscreen;
     const isMinimap = variant === "minimap" && !isFullscreen;
 
     return (
@@ -237,7 +298,7 @@ export function MemoryGraphContainer({
       ref={isFullscreen ? fullscreenSize.ref : compactSize.ref}
       className={cn(
         "relative overflow-hidden rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[radial-gradient(circle_at_25%_15%,rgba(59,130,246,0.14),transparent_28%),radial-gradient(circle_at_76%_86%,rgba(16,185,129,0.13),transparent_30%),var(--relay-bg)]",
-        isFullscreen ? "h-full" : isMinimap ? "h-full min-h-[120px]" : "h-[220px]",
+        isFullscreen ? "h-full border-0" : isMinimap ? "h-full min-h-[120px]" : "h-[320px]",
       )}
     >
       {error && (
@@ -254,7 +315,6 @@ export function MemoryGraphContainer({
         data={data}
         width={size.width}
         height={size.height}
-        compact={graphCompact}
         selectedNodeId={selectedNode?.id ?? null}
         settings={settings}
         onSelectNode={selectNode}
@@ -263,40 +323,27 @@ export function MemoryGraphContainer({
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className={cn(
-            "absolute inset-0 flex justify-end bg-transparent p-2 transition-opacity",
-            isMinimap ? "items-start opacity-100" : "items-end opacity-0 hover:opacity-100",
-          )}
-          aria-label="Open memory graph"
+          className="absolute right-2 top-2 z-10 inline-flex items-center gap-1.5 rounded-full border border-[var(--relay-line)] bg-[var(--relay-surface)]/90 p-1.5 font-medium text-[var(--relay-ink)] shadow-[var(--relay-shadow-sm)] backdrop-blur opacity-0 hover:opacity-100 transition-opacity"
+          aria-label="Open memory graph fullscreen"
         >
-          <span className={cn(
-            "inline-flex items-center gap-1.5 rounded-full border border-[var(--relay-line)] bg-[var(--relay-surface)]/90 font-medium text-[var(--relay-ink)] shadow-[var(--relay-shadow-sm)] backdrop-blur",
-            isMinimap ? "p-1.5" : "px-3 py-1.5 text-[12px]",
-          )}>
-            <Expand className="h-3.5 w-3.5" />
-            {!isMinimap && "Open graph"}
-          </span>
+          <Expand className="h-3.5 w-3.5" />
         </button>
       )}
-      {isFullscreen && (
-        <>
-          {settingsOpen && (
-            <GraphSettingsPanel
-              settings={settings}
-              onChange={setSettings}
-              onReset={() => setSettings(DEFAULT_GRAPH_SETTINGS)}
-              onClose={() => setSettingsOpen(false)}
-            />
-          )}
-          <MemoryGraphDetailPanel
-            node={selectedNode}
-            links={data.links}
-            allNodes={data.nodes}
-            onClose={() => setSelectedNode(null)}
-            onSelectNode={selectNode}
-          />
-        </>
+      {settingsOpen && isFullscreen && (
+        <GraphSettingsPanel
+          settings={settings}
+          onChange={setSettings}
+          onReset={() => setSettings(DEFAULT_GRAPH_SETTINGS)}
+          onClose={() => setSettingsOpen(false)}
+        />
       )}
+      <MemoryGraphDetailPanel
+        node={selectedNode}
+        links={data.links}
+        allNodes={data.nodes}
+        onClose={() => setSelectedNode(null)}
+        onSelectNode={selectNode}
+      />
     </div>
     );
   }
@@ -343,7 +390,7 @@ export function MemoryGraphContainer({
               type="button"
               variant="secondary"
               size="sm"
-              className="gap-2 bg-[var(--relay-surface)]/90 backdrop-blur"
+              className="gap-2 bg-[var(--relay-surface)]/80 backdrop-blur"
               onClick={() => {
                 if (mode === "fullscreen") {
                   history.back();
@@ -356,9 +403,27 @@ export function MemoryGraphContainer({
               <Minimize2 className="h-4 w-4" />
               Exit
             </Button>
-            <div className="rounded-full border border-[var(--relay-line)] bg-[var(--relay-surface)]/90 px-3 py-1.5 text-[12px] font-medium text-[var(--relay-ink)] backdrop-blur">
-              {title}
-            </div>
+            {projects.length > 1 ? (
+              <div className="relative">
+                <select
+                  value={activeProjectId}
+                  onChange={(e) => {
+                    setActiveProjectId(e.target.value);
+                    setSelectedNode(null);
+                  }}
+                  className="appearance-none rounded-full border border-[var(--relay-line)] bg-[var(--relay-surface)]/80 pl-3 pr-7 py-1.5 text-[12px] font-medium text-[var(--relay-ink)] backdrop-blur outline-none cursor-pointer"
+                >
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-[var(--relay-muted)]" />
+              </div>
+            ) : (
+              <div className="rounded-full border border-[var(--relay-line)] bg-[var(--relay-surface)]/80 px-3 py-1.5 text-[12px] font-medium text-[var(--relay-ink)] backdrop-blur">
+                {title}
+              </div>
+            )}
           </div>
           <button
             type="button"
@@ -371,7 +436,7 @@ export function MemoryGraphContainer({
           <div className="absolute bottom-4 left-4 z-20 max-w-[calc(100%-32px)] rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]/88 px-3 py-2 backdrop-blur">
             <GraphLegend nodeCount={data.nodes.length} linkCount={data.links.length} />
           </div>
-          <div className="h-full p-3 pt-16">
+          <div className="h-full">
             {renderGraphBody("fullscreen")}
           </div>
         </div>

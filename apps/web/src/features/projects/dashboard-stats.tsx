@@ -1,6 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { MessageSquare, Database, FileText } from "lucide-react";
 import { cn } from "@/lib/cn";
 
@@ -11,7 +10,6 @@ interface DashboardStatsProps {
   totalContextItems: number;
   briefStatus: "ready" | "stale" | "none";
   briefGeneratedAt?: string | null;
-  graphPreview?: ReactNode;
 }
 
 // ---------------------------------------------------------------------------
@@ -39,12 +37,11 @@ export function DashboardStats({
   totalContextItems,
   briefStatus,
   briefGeneratedAt,
-  graphPreview,
 }: DashboardStatsProps) {
   const brief = briefDisplayMap[briefStatus];
 
   return (
-    <div className={cn("grid grid-cols-1 gap-3", graphPreview ? "sm:grid-cols-2 xl:grid-cols-4" : "sm:grid-cols-3")}>
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       {/* ---- Chats ---- */}
       <div className="border border-[var(--relay-line)] rounded-lg p-4 bg-[var(--relay-surface)]">
         <div className="flex items-center gap-3">
@@ -106,11 +103,6 @@ export function DashboardStats({
         </div>
       </div>
 
-      {graphPreview ? (
-        <div className="min-h-[152px]">
-          {graphPreview}
-        </div>
-      ) : null}
     </div>
   );
 }

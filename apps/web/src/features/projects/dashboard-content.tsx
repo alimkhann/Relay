@@ -368,16 +368,19 @@ export function DashboardContent({ project, dashboard, walkthroughInitiallyOpen 
           totalContextItems={totalContextItems}
           briefStatus={briefStatus}
           briefGeneratedAt={briefGeneratedAt}
-          graphPreview={
-            dashboard.memory.length >= MIN_GRAPH_ITEMS ? (
-              <DashboardGraphMinimap
-                projectId={project.id}
-                memoryItems={dashboard.memory}
-              />
-            ) : null
-          }
         />
       </FadeIn>
+
+      {/* ─── Graph minimap ─── */}
+      {dashboard.memory.length >= MIN_GRAPH_ITEMS && (
+        <FadeIn delay={0.06}>
+          <DashboardGraphMinimap
+            projectId={project.id}
+            projectName={project.name}
+            memoryItems={dashboard.memory}
+          />
+        </FadeIn>
+      )}
 
       {/* ─── Analytics bar ─── */}
       <FadeIn delay={0.07}>

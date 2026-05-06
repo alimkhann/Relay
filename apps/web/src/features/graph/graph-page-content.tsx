@@ -32,6 +32,7 @@ export function GraphPageContent({ project, dashboard }: GraphPageContentProps) 
         <FadeIn delay={0.04}>
           <MemoryGraphContainer
             projectId={project.id}
+            projectName={project.name}
             memoryItems={memoryItems}
             mode="fullscreen"
             title={`${project.name} Graph`}
