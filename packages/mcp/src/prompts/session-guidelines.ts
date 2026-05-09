@@ -7,21 +7,21 @@ You have access to Relay, a project memory system that keeps context synchronize
 ### At Session Start
 - Call \`get_brief\` first. Relay will try to resolve the correct project automatically.
 - Only call \`list_projects\` and then \`set_current_project\` if \`get_brief\` reports project ambiguity or clearly resolves to the wrong project.
-- If \`get_brief\` succeeds and the brief is coherent, stop there for a basic resume. Do not immediately follow it with \`get_project_state\`, \`list_sessions\`, \`list_briefs\`, or \`search_context\`.
+- If \`get_brief\` succeeds and the brief is coherent, stop there for a basic resume. Do not immediately follow it with \`recall\` just to restate the same continuity.
 - This prevents you from re-discovering things the user has already decided.
 
 ### During the Session
-- Before making architectural, product, or process decisions, call \`search_context\` or \`recall_context\` when local context may be incomplete.
-- When the user confirms a durable decision, constraint, task, or stable product truth, call \`add_memory\` to persist that single fact.
+- Before making architectural, product, or process decisions, call \`recall\` when local context may be incomplete.
+- When the user confirms a durable decision, constraint, task, or stable product truth, call \`save\` with action \`add_memory\` to persist that single fact.
 - If recall/search returns no useful memory and you then investigate files, docs, tests, config, or history, save any confirmed durable findings you discover. Do not save the empty search attempt itself.
+- If \`get_brief\` or \`recall\` shows stale, completed, contradicted, or superseded context, clean it up with \`save\` action \`manage_memory\` or correct project state with \`save\` action \`set_state\`. Prefer archiving obsolete memory over adding duplicate correction notes.
 - Do not save speculative brainstorming, partial ideas, or every conversational turn.
 - For coding work, save the facts a future agent needs to continue: files/modules touched, public API or schema changes, migrations, commands/tests run with outcomes, unresolved blockers, and exact small snippets only when the exact text matters.
-- If Relay context looks stale or wrong, inspect it before mutating:
-  use \`list_memory\`, \`list_sessions\`, \`list_briefs\`, \`trace_context_sources\`, and \`list_recent_activity\`.
+- If Relay context looks stale or wrong, inspect it before mutating with \`recall\` filters, includes, memoryId, or tracePhrase.
 
 ### At Session End
-- Use \`checkpoint_context\` only at meaningful boundaries: before compaction-equivalent actions, before switching tasks, or after finishing a logical milestone.
-- Use \`save_context\` when wrapping a meaningful unit of work, not after every turn.
+- Use \`save\` action \`checkpoint\` only at meaningful boundaries: before compaction-equivalent actions, before switching tasks, or after finishing a logical milestone.
+- Use \`save\` action \`save_session\` when wrapping a meaningful unit of work, not after every turn.
 - This keeps Relay current without turning it into a noisy per-turn write path.
 
 ## Memory Types

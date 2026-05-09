@@ -38,10 +38,34 @@ describe("registerTools analytics wrapper", () => {
     })
 
     const recall = harness.registrations.find((tool) => tool.name === "recall")
-    const searchContext = harness.registrations.find((tool) => tool.name === "search_context")
 
     expect(recall?.description).toContain("If a query returns no useful memory")
-    expect(searchContext?.description).toContain("If search returns no useful memory")
+    expect(recall?.description).toContain("stale, completed, contradicted, or superseded")
+  })
+
+  it("registers only the compact public MCP surface", () => {
+    const harness = createServerHarness()
+    const client = {
+      captureAnalytics: vi.fn(),
+      getAgentName: vi.fn().mockReturnValue("codex"),
+      getClientName: vi.fn().mockReturnValue("relay-mcp:codex"),
+    }
+
+    registerTools(harness.server as never, {
+      client: client as never,
+      resolveProjectId: vi.fn(async (projectId?: string) => projectId ?? "proj-1"),
+      resolveProjectSelection: undefined,
+      getCachedProjectId: () => "proj-1",
+      setCachedProjectId: vi.fn(),
+    })
+
+    expect(harness.registrations.map((tool) => tool.name)).toEqual([
+      "list_projects",
+      "set_current_project",
+      "get_brief",
+      "recall",
+      "save",
+    ])
   })
 
   it("emits MCP tool lifecycle events once for a read tool", async () => {
@@ -101,20 +125,23 @@ describe("registerTools analytics wrapper", () => {
       setCachedProjectId: vi.fn(),
     })
 
-    const addMemory = harness.registrations.find((tool) => tool.name === "add_memory")
-    expect(addMemory).toBeDefined()
+    const save = harness.registrations.find((tool) => tool.name === "save")
+    expect(save).toBeDefined()
 
-    await expect(addMemory!.handler({ type: "note", content: "test" })).rejects.toThrow("boom")
+    await expect(save!.handler({
+      action: "add_memory",
+      payload: { type: "note", content: "test" },
+    })).rejects.toThrow("boom")
 
     expect(captureAnalytics).toHaveBeenNthCalledWith(1, "mcp_tool_called", expect.objectContaining({
-      tool_name: "add_memory",
+      tool_name: "save",
       transport: "stdio",
       read_or_write: "write",
       project_id: "proj-1",
       success: true,
     }))
     expect(captureAnalytics).toHaveBeenNthCalledWith(2, "mcp_tool_failed", expect.objectContaining({
-      tool_name: "add_memory",
+      tool_name: "save",
       transport: "stdio",
       read_or_write: "write",
       project_id: "proj-1",

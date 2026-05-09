@@ -83,7 +83,11 @@ This is the canonical repository policy for coding agents working in Relay. Clie
 ## Relay-Specific Behavior
 
 - Relay hook-capable clients should rely on native lifecycle hooks for autosave.
-- Hookless clients should call `checkpoint_context` only at meaningful boundaries:
+- Relay MCP exposes five public tools: `get_brief`, `recall`, `save`, `list_projects`, and `set_current_project`.
+- Use `recall` for memory search, state inspection, source tracing, sessions, activity, and briefs.
+- Use `save` for session writeback, checkpoints, durable memory, memory cleanup, state updates, and brief/session maintenance.
+- If Relay context is stale, completed, contradicted, or superseded, clean it up with `save` action `manage_memory` or `set_state`.
+- Hookless clients should call `save` action `checkpoint` only at meaningful boundaries:
   - before compaction-equivalent actions
   - before switching threads or tasks
   - after completing a logical unit of work

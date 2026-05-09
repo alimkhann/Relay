@@ -35,7 +35,7 @@ export default function McpDocsPage() {
             The default install path is local stdio. The wizard focuses on two surfaces only: the browser extension and MCP-connected coding agents.
           </p>
           <p className="text-[13px] text-[var(--relay-muted)]">
-            Relay is designed to be used automatically and sparingly: start with <code className="text-[13px] font-mono text-[var(--relay-ink)]">get_brief</code>, search only when local context is incomplete, and save only confirmed durable findings from follow-up investigation.
+            Relay is designed to be used automatically and sparingly: start with <code className="text-[13px] font-mono text-[var(--relay-ink)]">get_brief</code>, use <code className="text-[13px] font-mono text-[var(--relay-ink)]">recall</code> only when local context is incomplete, and use <code className="text-[13px] font-mono text-[var(--relay-ink)]">save</code> for durable writeback and cleanup.
           </p>
         </section>
 
@@ -123,26 +123,10 @@ export default function McpDocsPage() {
           <div className="divide-y divide-[var(--relay-line)] rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
             {[
               { name: "get_brief", desc: "Load current project context and recent decisions" },
-              { name: "get_project_state", desc: "Get full project state including objectives and constraints" },
-              { name: "list_memory", desc: "Inspect the current memory items Relay is carrying forward" },
-              { name: "get_memory", desc: "Inspect one memory item with provenance, status, and relations" },
+              { name: "recall", desc: "Search memory, inspect state, trace sources, and list continuity data" },
+              { name: "save", desc: "Save sessions, checkpoint work, add memory, archive stale memory, and update state" },
               { name: "list_projects", desc: "List all Relay projects" },
-              { name: "list_sessions", desc: "Inspect captured source sessions and work sessions affecting continuity" },
-              { name: "archive_session", desc: "Detach or restore a captured source session" },
-              { name: "list_briefs", desc: "Inspect generated brief packets and their target profiles" },
-              { name: "regenerate_brief", desc: "Force a fresh brief packet after cleanup or new capture" },
-              { name: "delete_brief", desc: "Remove one stale or polluted brief packet" },
-              { name: "trace_context_sources", desc: "Explain why a phrase or state field appears in Relay context" },
-              { name: "list_recent_activity", desc: "See recent captures, digests, memory mutations, and brief generation" },
-              { name: "add_memory", desc: "Save a decision, constraint, or note to project memory" },
-              { name: "checkpoint_context", desc: "Save a mid-session snapshot without finalizing the work session" },
-              { name: "manage_memory", desc: "Update, archive, or delete a memory item" },
-              { name: "recall_context", desc: "Search memory and pull project state in one call" },
-              { name: "search_context", desc: "Search across project context and memory" },
-              { name: "save_context", desc: "Save a session summary with decisions and next steps" },
               { name: "set_current_project", desc: "Pin the active Relay project for the current MCP session" },
-              { name: "set_project_state", desc: "Correct or bootstrap high-level project state" },
-              { name: "update_project", desc: "Rename a project or refresh its description" },
             ].map((tool) => (
               <div key={tool.name} className="px-4 py-3">
                 <code className="text-[13px] font-mono font-medium text-[var(--relay-ink)]">{tool.name}</code>
@@ -151,8 +135,7 @@ export default function McpDocsPage() {
             ))}
           </div>
           <p className="text-[13px] text-[var(--relay-muted)]">
-            Relay&apos;s MCP surface is intentionally split between resume tools, writeback tools, and explainability tools.
-            The explainability layer is what lets coding agents inspect why a brief or project state looks the way it does before mutating anything.
+            Relay&apos;s MCP surface is intentionally compact. Legacy split tools are folded into <code className="text-[13px] font-mono text-[var(--relay-ink)]">recall</code> and <code className="text-[13px] font-mono text-[var(--relay-ink)]">save</code>, which keeps tool count and prompt tokens low while preserving explainability and cleanup actions.
           </p>
         </section>
 

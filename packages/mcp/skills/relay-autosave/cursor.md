@@ -10,7 +10,7 @@ pipeline as the Claude Code hook setup.
 ## Path 1 — Opportunistic sweep (fully automatic, recommended)
 
 Relay's MCP HTTP stream route runs an in-request sweep at the head of every
-call. If you use Relay's `get_brief`, `recall_context`, `save_context`, or
+call. If you use Relay's `get_brief`, `recall`, `save`, or
 any other tool from Cursor, stale open work sessions for your project are
 flushed automatically before your request runs. Throttled to once per user
 every 30 seconds so it never adds meaningful latency.
@@ -68,13 +68,13 @@ this one-line shell task so you can run it via `Ctrl/Cmd+Shift+P → Run Task`:
 ## Path 3 — Agent instruction snippet (for Cursor's built-in agent)
 
 If you drive Cursor via its built-in Composer/Agent, you can instruct the
-agent to call Relay's `checkpoint_context` tool at natural break points.
+agent to call Relay's `save` tool with action `checkpoint` at natural break points.
 Paste this into your project's `.cursorrules` (or the top of your prompt):
 
 ```
 When you finish a logical unit of work — a refactor, a feature, a bug fix,
-or before compaction-equivalent risk — call the Relay MCP tool `checkpoint_context`
-with the current decisions, constraints, and next steps. This keeps Relay
+or before compaction-equivalent risk — call the Relay MCP tool `save`
+with action `checkpoint` and the current decisions, constraints, and next steps. This keeps Relay
 in sync with your progress so that the next session picks up exactly where
 this one left off.
 ```

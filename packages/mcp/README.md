@@ -32,18 +32,18 @@ Relay does not promise a universal pre-rate-limit save hook. The fallback model
 is best-effort pre-loss protection: native hooks where supported, opportunistic
 server sweeps, and explicit checkpoints for hookless clients.
 
-## Explainability tools
+## Public tools
 
-Relay now exposes a small explainability layer in MCP so coding agents can
-inspect and repair continuity instead of treating project memory as a black box:
+Relay exposes five MCP tools so coding agents get a small prompt footprint:
 
-- `list_memory` / `get_memory`
-- `list_sessions` / `archive_session`
-- `list_briefs` / `regenerate_brief` / `delete_brief`
-- `trace_context_sources`
-- `list_recent_activity`
+- `get_brief`: session-start continuity
+- `recall`: memory search, state inspection, source tracing, sessions, activity, and briefs
+- `save`: session writeback, checkpoints, memory cleanup, state updates, and brief/session maintenance
+- `list_projects`: project disambiguation
+- `set_current_project`: session-local project pinning
 
-These complement the core resume and writeback tools rather than replacing them.
+Legacy split tools are folded into `recall` and `save` rather than advertised as
+separate MCP tools.
 
 ## Behavior bridges
 
@@ -62,9 +62,10 @@ The default agent flow is:
 
 - start or resume with `get_brief`
 - only call `list_projects` and `set_current_project` if Relay reports ambiguity
-- search before high-impact decisions when local context is incomplete
-- if search finds nothing, investigate locally and save only confirmed durable findings
-- save only at meaningful boundaries or for clearly confirmed durable facts
+- use `recall` before high-impact decisions when local context is incomplete
+- if recall finds nothing, investigate locally and save only confirmed durable findings
+- use `save` only at meaningful boundaries or for clearly confirmed durable facts
+- use `save` to archive or correct stale, completed, contradicted, or superseded context
 
 ## Troubleshooting
 
