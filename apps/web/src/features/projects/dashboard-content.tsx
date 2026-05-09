@@ -14,9 +14,9 @@ import { DashboardStats } from "@/features/projects/dashboard-stats";
 import { DashboardAnalyticsBar } from "@/features/projects/dashboard-analytics-bar";
 import { DashboardMemoryCard } from "@/features/projects/dashboard-memory-card";
 import { DashboardBriefCard } from "@/features/projects/dashboard-brief-card";
-import { DashboardGraphMinimap } from "@/features/projects/dashboard-graph-minimap";
 import { DashboardActivityCard } from "@/features/projects/dashboard-activity-card";
 import { DashboardGovernanceSummary } from "@/features/projects/dashboard-governance-summary";
+import { MemoryGraphContainer } from "@/features/graph/memory-graph-container";
 import { MIN_GRAPH_ITEMS } from "@/features/graph/memory-graph-utils";
 import { WalkthroughModal } from "@/components/onboarding/walkthrough-modal";
 import { logClientEvent } from "@/lib/telemetry/client";
@@ -375,7 +375,7 @@ export function DashboardContent({ project, dashboard, walkthroughInitiallyOpen 
       {/* ─── Graph minimap ─── */}
       {dashboard.memory.length >= MIN_GRAPH_ITEMS && (
         <FadeIn delay={0.06}>
-          <DashboardGraphMinimap
+          <MemoryGraphContainer
             projectId={project.id}
             projectName={project.name}
             memoryItems={dashboard.memory}
