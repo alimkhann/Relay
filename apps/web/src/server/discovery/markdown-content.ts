@@ -232,10 +232,13 @@ function buildAgentGetStartedMarkdown() {
 function buildPrivacyMarkdown() {
   return join([
     "# Relay Privacy Policy",
-    "Last updated: April 2, 2026",
-    "Relay collects account data, captured AI chat content when capture is enabled, derived summaries and decisions, project metadata, extension state, and product analytics needed to operate the service.",
-    "Relay uses this data to maintain project canon and context packets, render the dashboard, authenticate users, and improve service reliability.",
-    "Relay states that it does not sell personal data or chat content for advertising or marketing purposes.",
+    "Last updated: May 9, 2026",
+    "Relay collects account data, captured AI chat content when capture is explicitly enabled, derived summaries and decisions, project metadata, extension connection state, and product analytics needed to operate the service.",
+    "Relay Chrome extension 0.4.1 can read the URL, title, visible page text, and relevant chat interface markup on supported AI chat websites only when capture is enabled. It does not collect browsing history, bookmarks, keystrokes, passwords, payment information, or content from unsupported websites.",
+    "Relay handles captured content as user-controlled project memory: the extension sends it to Relay over HTTPS, Relay stores it in a Neon PostgreSQL database, and Relay processes it into project summaries, decisions, tasks, constraints, and context packets.",
+    "Extension device tokens, connection status, capture state, and preferences are stored locally in Chrome storage and, where needed, on Relay servers to authenticate the extension connection. Captured chat transcripts are not permanently stored in Chrome storage.",
+    "Relay shares data only with service providers needed to operate the service: Vercel and Neon for hosting and database infrastructure, PostHog for usage analytics and error tracking, and Google OAuth for authentication. Captured chat content, project memory, and extension connection data are not shared with analytics providers.",
+    "Relay does not sell, rent, or share personal data or chat content for advertising, marketing, credit, lending, or resale.",
     `Read the full policy at [${APP_ORIGIN}/privacy](${APP_ORIGIN}/privacy).`,
   ])
 }

@@ -21,7 +21,7 @@ export default function PrivacyPage() {
           Privacy Policy
         </h1>
         <p className="mt-2 text-sm text-gray-400">
-          Last updated: April 28, 2026
+          Last updated: May 9, 2026
         </p>
 
         <div className="mt-10 space-y-8 text-[15px] leading-relaxed text-gray-600">
@@ -84,8 +84,22 @@ export default function PrivacyPage() {
               </p>
               <p>
                 <strong className="text-gray-900">Extension Data:</strong>{" "}
-                Device tokens, connection status, and extension preferences
-                stored locally in your browser via Chrome storage APIs.
+                Relay Chrome extension 0.4.1 collects and stores only the
+                extension data needed to connect your browser to your Relay
+                account: device tokens, connection status, capture state, and
+                extension preferences. This data is stored locally in your
+                browser via Chrome storage APIs and, where needed, on Relay
+                servers to authenticate the extension connection.
+              </p>
+              <p>
+                <strong className="text-gray-900">
+                  Browser Page Data Accessed by the Extension:
+                </strong>{" "}
+                The extension can read the URL, title, visible page text, and
+                relevant chat interface markup on supported AI chat websites
+                only when capture is enabled. We do not collect browsing
+                history, bookmarks, keystrokes, passwords, payment information,
+                or content from unsupported websites.
               </p>
               <p>
                 <strong className="text-gray-900">
@@ -154,6 +168,15 @@ export default function PrivacyPage() {
                 </li>
               </ul>
               <p>
+                Relay handles captured chat content as user-controlled project
+                memory. The extension sends captured content to Relay over
+                HTTPS only after you enable capture for a supported AI chat
+                session. Relay processes that content to extract summaries,
+                decisions, tasks, and constraints for your projects, and then
+                displays or returns that context to you through the dashboard,
+                extension, and MCP tools.
+              </p>
+              <p>
                 We do <strong className="text-gray-900">not</strong> sell,
                 rent, or share your data with third parties for advertising or
                 marketing purposes.
@@ -181,6 +204,15 @@ export default function PrivacyPage() {
                 Certain data, such as your immediate extension state and local
                 preferences, is stored locally on your device within
                 Chrome&apos;s storage mechanisms.
+              </p>
+              <p>
+                <strong className="text-gray-900">
+                  Extension Content Storage:
+                </strong>{" "}
+                Captured chat transcripts and derived project memory are stored
+                in Relay&apos;s server-side database so they can sync across
+                your Relay account. The extension does not store captured chat
+                transcripts permanently in Chrome storage.
               </p>
               <p>
                 <strong className="text-gray-900">Encryption:</strong> All
@@ -234,6 +266,11 @@ export default function PrivacyPage() {
                   Google&apos;s privacy practices.
                 </li>
               </ul>
+              <p>
+                Captured chat content, project memory, and extension connection
+                data are not shared with analytics providers and are not used
+                for advertising, credit, lending, or resale.
+              </p>
               <p>
                 We are not responsible for the privacy practices of the AI
                 tools you use (such as ChatGPT, Claude, Gemini, Grok, Codex,
