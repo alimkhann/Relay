@@ -67,6 +67,30 @@ function GoodbyeContent() {
           setError(err instanceof Error ? err.message : "Could not delete account. Try again.")
           return
         }
+      } else {
+        try {
+          const flowId = createClientFlowId("extension-uninstall-feedback")
+          const response = await relayClientFetch("/api/feedback/uninstall", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(feedback),
+            telemetry: {
+              surface: "web-settings",
+              area: "feedback",
+              event: "extension.uninstall_feedback",
+              flowId,
+              logSuccess: true,
+            },
+          })
+
+          if (!response.ok) {
+            const data = (await response.json().catch(() => ({}))) as { error?: string }
+            throw new Error(data.error ?? "Could not send feedback")
+          }
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Could not send feedback. Try again.")
+          return
+        }
       }
 
       setDone(true)
