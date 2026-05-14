@@ -26,7 +26,12 @@ export default async function SourcesPage({
       ? projects.find((project) => project.id === selectedProjectId)
       : projects[0]) ?? projects[0]!
 
-  const sources = await listProjectSources(viewer.userId, currentProject.id)
+  let sources: Awaited<ReturnType<typeof listProjectSources>> = []
+  try {
+    sources = await listProjectSources(viewer.userId, currentProject.id)
+  } catch {
+    // Sources tables may not exist yet (migration 0037)
+  }
 
   return (
     <>

@@ -35,7 +35,7 @@ const source: SourceGraphDto = {
 };
 
 describe("memory graph source topology", () => {
-  it("adds a separate Sources branch with file preview nodes", () => {
+  it("connects source file nodes directly to root", () => {
     const nodes = buildGraphNodes(
       [memoryItem("memory-manual", "Manual decision"), memoryItem("memory-source", "Source decision")],
       new Set(),
@@ -47,17 +47,16 @@ describe("memory graph source topology", () => {
     ]);
 
     expect(nodes).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "__branch__sources", hub: "sources-branch" }),
+      expect.objectContaining({ id: "__root__", hub: "root" }),
       expect.objectContaining({ id: "__source__source-1", kind: "source-file", source: expect.objectContaining({ displayName: "architecture.md" }) }),
     ]));
     expect(links).toEqual(expect.arrayContaining([
-      expect.objectContaining({ source: "__root__", target: "__branch__sources" }),
-      expect.objectContaining({ source: "__branch__sources", target: "__source__source-1" }),
+      expect.objectContaining({ source: "__root__", target: "__source__source-1" }),
       expect.objectContaining({ source: "__source__source-1", target: "memory-source", sourceLink: true }),
     ]));
   });
 
-  it("keeps source-derived memory out of Relay type hub fallback links", () => {
+  it("keeps source-derived memory out of type hub fallback links", () => {
     const nodes = buildGraphNodes(
       [memoryItem("memory-manual", "Manual decision"), memoryItem("memory-source", "Source decision")],
       new Set(),

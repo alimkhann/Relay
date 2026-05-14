@@ -29,7 +29,7 @@ export const RELATION_COLORS = {
 
 export type GraphRelationType = keyof typeof RELATION_COLORS;
 
-export type HubRole = "root" | "relay-branch" | "sources-branch" | "type-hub";
+export type HubRole = "root" | "type-hub";
 export type GraphNodeKind = "hub" | "memory" | "source-file";
 
 export interface GraphNode {
@@ -159,8 +159,6 @@ function truncateLabel(value: string, maxLength = 44) {
 
 const HUB_NODE_PREFIX = "__hub__";
 const ROOT_NODE_ID = "__root__";
-const RELAY_BRANCH_NODE_ID = "__branch__relay";
-const SOURCES_BRANCH_NODE_ID = "__branch__sources";
 const SOURCE_NODE_PREFIX = "__source__";
 
 export function isHubNode(node: GraphNode) {
@@ -181,26 +179,6 @@ function makeHubNode(type: MemoryItemType): GraphNode {
     sourceUrl: null,
     content: `Hub node for ${TYPE_LABELS[type]}`,
     title: TYPE_LABELS[type],
-    updatedAt: new Date().toISOString(),
-    capturedAt: null,
-    lastReaffirmedAt: null,
-  };
-}
-
-function makeBranchNode(id: string, label: string, content: string): GraphNode {
-  return {
-    id,
-    label,
-    type: "artifact" as MemoryItemType,
-    kind: "hub",
-    decayScore: 1,
-    pinned: false,
-    archived: false,
-    hub: id === RELAY_BRANCH_NODE_ID ? "relay-branch" : "sources-branch",
-    sourceSurface: null,
-    sourceUrl: null,
-    content,
-    title: label,
     updatedAt: new Date().toISOString(),
     capturedAt: null,
     lastReaffirmedAt: null,
@@ -278,10 +256,8 @@ export function buildGraphNodes(
   const presentTypes = new Set(items.map((i) => i.type));
   const hubNodes = Array.from(presentTypes).map(makeHubNode);
   const rootNode = makeRootNode(projectName ?? "Project");
-  const relayBranch = makeBranchNode(RELAY_BRANCH_NODE_ID, "Relay", "Memory created directly from Relay captures and saves.");
-  const sourcesBranch = makeBranchNode(SOURCES_BRANCH_NODE_ID, "Sources", "Imported files and documents linked to durable memory.");
 
-  return [rootNode, relayBranch, sourcesBranch, ...hubNodes, ...sources.map(makeSourceNode), ...itemNodes];
+  return [rootNode, ...hubNodes, ...sources.map(makeSourceNode), ...itemNodes];
 }
 
 function endpointId(endpoint: string | GraphNode) {
@@ -303,33 +279,20 @@ export function buildGraphLinks(
   const seen = new Set<string>();
   const sourceLinkedMemoryIds = new Set(sourceMemoryLinks.map((link) => link.memoryItemId));
 
-  // Hub topology: root → Relay/Sources branches → type hubs/source files → items
   const itemNodes = nodes.filter((n) => n.kind === "memory");
   const hubNodes = nodes.filter((n) => n.hub === "type-hub");
   const sourceNodes = nodes.filter((n) => n.kind === "source-file");
 
-  for (const branchId of [RELAY_BRANCH_NODE_ID, SOURCES_BRANCH_NODE_ID]) {
-    links.push({
-      source: ROOT_NODE_ID,
-      target: branchId,
-      relationType: "extends",
-      confidence: 1,
-      fallback: true,
-      hubLink: "root-to-hub",
-    });
-    seen.add(linkKey(ROOT_NODE_ID, branchId, "extends"));
-  }
-
   for (const hub of hubNodes) {
     links.push({
-      source: RELAY_BRANCH_NODE_ID,
+      source: ROOT_NODE_ID,
       target: hub.id,
       relationType: "extends",
       confidence: 1,
       fallback: true,
       hubLink: "root-to-hub",
     });
-    seen.add(linkKey(RELAY_BRANCH_NODE_ID, hub.id, "extends"));
+    seen.add(linkKey(ROOT_NODE_ID, hub.id, "extends"));
 
     for (const item of itemNodes) {
       if (item.type === hub.type && !sourceLinkedMemoryIds.has(item.id)) {
@@ -349,7 +312,7 @@ export function buildGraphLinks(
 
   for (const source of sourceNodes) {
     links.push({
-      source: SOURCES_BRANCH_NODE_ID,
+      source: ROOT_NODE_ID,
       target: source.id,
       relationType: "extends",
       confidence: 1,
