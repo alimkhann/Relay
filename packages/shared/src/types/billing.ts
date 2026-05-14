@@ -12,6 +12,13 @@ export interface EntitlementLimitsDto {
   aiAnalysesPerProjectDaily: number
   aiAnalysesPerUserDaily: number
   memoryItemsPerProject: number
+  sourcesPerProject: number
+  sourceFileMaxBytes: number
+  sourceStorageBytes: number
+  sourceEmbeddedTokensMonthly: number
+  sourceIngestionsDaily: number
+  sourceBackedRecallDaily: number
+  sourceOcrPagesMonthly: number
 }
 
 export interface UserEntitlementsDto {
@@ -56,5 +63,8 @@ export interface BillingStatusDto {
     handoffsThisMonth: number
     activeProjects: number
     aiAnalysesToday: number
+    sourceIngestionsToday: number
+    sourceEmbeddedTokensThisMonth: number
+    sourceBackedRecallsToday: number
   }
 }

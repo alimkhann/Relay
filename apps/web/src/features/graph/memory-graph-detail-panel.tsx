@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Pin, X } from "lucide-react";
+import { ExternalLink, FileText, Pin, X } from "lucide-react";
 
 import {
   formatMemoryDate,
@@ -33,6 +33,8 @@ export function MemoryGraphDetailPanel({
     return graphEndpointId(link.source) === node.id || graphEndpointId(link.target) === node.id;
   });
   const nodesById = new Map(allNodes.map((item) => [item.id, item]));
+  const sourceFile = node.kind === "source-file" ? node.source : undefined;
+  const isSourceFile = Boolean(sourceFile);
 
   return (
     <aside className="absolute right-3 top-3 bottom-3 z-20 flex w-[min(360px,calc(100%-24px))] flex-col overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]/92 shadow-[var(--relay-shadow-lg)] backdrop-blur-xl">
@@ -43,7 +45,7 @@ export function MemoryGraphDetailPanel({
               className="h-2 w-2 rounded-full"
               style={{ backgroundColor: TYPE_COLORS[node.type] }}
             />
-            {TYPE_LABELS[node.type]}
+            {isSourceFile ? "Source file" : TYPE_LABELS[node.type]}
             {node.pinned && <Pin className="h-3 w-3 fill-current" />}
           </div>
           <h2 className="truncate text-sm font-semibold text-[var(--relay-ink)]">
@@ -62,24 +64,54 @@ export function MemoryGraphDetailPanel({
 
       <div className="flex-1 space-y-4 overflow-auto px-4 py-4">
         <div className="grid grid-cols-2 gap-2 text-[12px]">
+          {isSourceFile ? (
+            <div className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-soft)] px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-[var(--relay-muted)]">Status</p>
+              <p className="mt-1 font-medium capitalize text-[var(--relay-ink)]">{sourceFile?.status}</p>
+            </div>
+          ) : (
+            <div className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-soft)] px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-[var(--relay-muted)]">Decay</p>
+              <p className="mt-1 font-medium text-[var(--relay-ink)]">{Math.round(node.decayScore * 100)}%</p>
+            </div>
+          )}
           <div className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-soft)] px-3 py-2">
-            <p className="text-[10px] uppercase tracking-wide text-[var(--relay-muted)]">Decay</p>
-            <p className="mt-1 font-medium text-[var(--relay-ink)]">{Math.round(node.decayScore * 100)}%</p>
-          </div>
-          <div className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-soft)] px-3 py-2">
-            <p className="text-[10px] uppercase tracking-wide text-[var(--relay-muted)]">Captured</p>
-            <p className="mt-1 font-medium text-[var(--relay-ink)]">{formatMemoryDate(node.capturedAt)}</p>
+            <p className="text-[10px] uppercase tracking-wide text-[var(--relay-muted)]">{isSourceFile ? "Chunks" : "Captured"}</p>
+            <p className="mt-1 font-medium text-[var(--relay-ink)]">
+              {isSourceFile ? sourceFile?.chunkCount.toLocaleString("en-US") : formatMemoryDate(node.capturedAt)}
+            </p>
           </div>
         </div>
 
         <div>
-          <p className="mb-1 text-[11px] font-medium text-[var(--relay-muted)]">Content</p>
-          <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--relay-ink-secondary)]">
+          <p className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[var(--relay-muted)]">
+            {isSourceFile && <FileText className="h-3.5 w-3.5" />}
+            {isSourceFile ? "Preview" : "Content"}
+          </p>
+          <p className={isSourceFile
+            ? "max-h-64 overflow-auto whitespace-pre-wrap rounded-[18px] border border-[var(--relay-line)] bg-[var(--relay-soft)] px-3 py-3 text-[12px] leading-relaxed text-[var(--relay-ink-secondary)]"
+            : "whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--relay-ink-secondary)]"
+          }>
             {node.content}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--relay-muted)]">
+          {isSourceFile && (
+            <>
+              <span className="rounded-full border border-[var(--relay-line)] px-2 py-1">
+                {(((sourceFile?.byteSize ?? 0) / 1024)).toFixed(1)} KB
+              </span>
+              <span className="rounded-full border border-[var(--relay-line)] px-2 py-1">
+                {(sourceFile?.tokenEstimate ?? 0).toLocaleString("en-US")} tokens
+              </span>
+              {sourceFile?.mimeType && (
+                <span className="rounded-full border border-[var(--relay-line)] px-2 py-1">
+                  {sourceFile.mimeType}
+                </span>
+              )}
+            </>
+          )}
           {node.sourceSurface && (
             <span className="rounded-full border border-[var(--relay-line)] px-2 py-1">
               {node.sourceSurface}

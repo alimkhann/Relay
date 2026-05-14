@@ -98,6 +98,89 @@ function drawLabelText(
   ctx.restore();
 }
 
+function drawSourceFileNode(
+  ctx: CanvasRenderingContext2D,
+  node: GraphNode & { x: number; y: number },
+  globalScale: number,
+  active: boolean,
+) {
+  const scale = 1 / Math.max(globalScale, 0.01);
+  const width = 148 * scale;
+  const height = 92 * scale;
+  const left = node.x - width / 2;
+  const top = node.y - height / 2;
+  const radius = 16 * scale;
+  const surface = cssVar("--relay-surface", "#ffffff");
+  const soft = cssVar("--relay-soft", "#f4f4f5");
+  const border = cssVar("--relay-line", "rgba(0,0,0,0.12)");
+  const ink = cssVar("--relay-ink", "#111827");
+  const muted = cssVar("--relay-muted", "#71717a");
+  const accent = "#0ea5e9";
+
+  ctx.save();
+  ctx.shadowColor = "rgba(14,165,233,0.20)";
+  ctx.shadowBlur = active ? 24 * scale : 13 * scale;
+  ctx.fillStyle = surface;
+  ctx.strokeStyle = active ? accent : border;
+  ctx.lineWidth = (active ? 2 : 1) / globalScale;
+  ctx.beginPath();
+  ctx.roundRect(left, top, width, height, radius);
+  ctx.fill();
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = soft;
+  ctx.beginPath();
+  ctx.roundRect(left + 8 * scale, top + 8 * scale, width - 16 * scale, 22 * scale, 9 * scale);
+  ctx.fill();
+
+  ctx.fillStyle = accent;
+  ctx.beginPath();
+  ctx.roundRect(left + 14 * scale, top + 14 * scale, 12 * scale, 11 * scale, 3 * scale);
+  ctx.fill();
+
+  ctx.font = `700 ${10 * scale}px Outfit, sans-serif`;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = ink;
+  ctx.fillText(node.source?.displayName ?? node.label, left + 31 * scale, top + 19 * scale, width - 42 * scale);
+
+  ctx.font = `500 ${7.5 * scale}px Outfit, sans-serif`;
+  ctx.fillStyle = muted;
+  ctx.fillText(
+    `${node.source?.chunkCount ?? 0} chunks · ${node.source?.tokenEstimate ?? 0} tokens`,
+    left + 13 * scale,
+    top + 41 * scale,
+    width - 26 * scale,
+  );
+
+  const preview = (node.source?.previewText || node.content).replace(/\s+/g, " ").trim();
+  ctx.font = `400 ${7.5 * scale}px Outfit, sans-serif`;
+  ctx.fillStyle = muted;
+  const maxPreviewWidth = width - 26 * scale;
+  const words = preview.split(" ");
+  let previewLine = "";
+  let y = top + 57 * scale;
+  let lines = 0;
+  for (const word of words) {
+    const next = previewLine ? `${previewLine} ${word}` : word;
+    if (ctx.measureText(next).width > maxPreviewWidth && previewLine) {
+      ctx.fillText(previewLine, left + 13 * scale, y, maxPreviewWidth);
+      previewLine = word;
+      y += 11 * scale;
+      lines += 1;
+      if (lines >= 2) break;
+    } else {
+      previewLine = next;
+    }
+  }
+  if (previewLine && lines < 3) {
+    ctx.fillText(previewLine, left + 13 * scale, y, maxPreviewWidth);
+  }
+
+  ctx.restore();
+}
+
 function compactNumber(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
@@ -181,6 +264,11 @@ export function MemoryGraph({
     const isHub = isHubNode(node);
     const color = node.hub === "root" ? "#94a3b8" : TYPE_COLORS[node.type];
     const isActive = activeNodeId === node.id;
+
+    if (node.kind === "source-file") {
+      drawSourceFileNode(ctx, node, globalScale, isActive || hoveredNodeId === node.id);
+      return;
+    }
 
     if (isHub) {
       const hubRadius = node.hub === "root" ? 12 * settings.nodeScale : 8 * settings.nodeScale;
@@ -375,6 +463,14 @@ export function MemoryGraph({
       }}
       nodePointerAreaPaint={(node, color, ctx) => {
         if (!hasPosition(node)) return;
+        if (node.kind === "source-file") {
+          const scale = 1 / Math.max(zoom, 0.01);
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.roundRect(node.x - 78 * scale, node.y - 49 * scale, 156 * scale, 98 * scale, 18 * scale);
+          ctx.fill();
+          return;
+        }
         ctx.fillStyle = color;
         ctx.beginPath();
         ctx.arc(node.x, node.y, nodeRadius(node.decayScore, settings.nodeScale) + 6 / zoom, 0, Math.PI * 2);

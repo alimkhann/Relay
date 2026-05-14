@@ -26,6 +26,16 @@ export default function ApiDocsPage() {
       ],
     },
     {
+      group: "Sources",
+      routes: [
+        { method: "GET", path: "/api/projects/:id/sources", desc: "List imported source files for a project" },
+        { method: "POST", path: "/api/projects/:id/sources", desc: "Upload and ingest a source file" },
+        { method: "GET", path: "/api/projects/:id/sources/:sourceId", desc: "Get source metadata, preview chunks, and fact candidates" },
+        { method: "DELETE", path: "/api/projects/:id/sources/:sourceId", desc: "Archive an imported source" },
+        { method: "PATCH", path: "/api/projects/:id/sources/:sourceId/candidates/:candidateId", desc: "Promote or reject an extracted fact candidate" },
+      ],
+    },
+    {
       group: "Context & Briefs",
       routes: [
         { method: "POST", path: "/api/projects/:id/context/compose", desc: "Generate a context brief for a target profile" },

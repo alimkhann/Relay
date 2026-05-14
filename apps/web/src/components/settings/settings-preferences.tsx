@@ -397,6 +397,25 @@ export function SettingsPreferences({
                   }
                 />
               </div>
+              <div className="flex items-center justify-between gap-4 px-5 py-3.5">
+                <div>
+                  <p className="text-[15px] font-medium text-[var(--relay-ink)]">Auto-import chat sources</p>
+                  <p className="mt-0.5 text-sm text-[var(--relay-muted)]">Let future extension flows import confirmed chat documents without asking every time.</p>
+                </div>
+                <Toggle
+                  checked={settings.sourceImports?.autoImportFromExtension ?? false}
+                  disabled={pending}
+                  onChange={(on) =>
+                    update(
+                      {
+                        ...settings,
+                        sourceImports: { autoImportFromExtension: on },
+                      },
+                      `Auto-import chat sources ${on ? "on" : "off"}`,
+                    )
+                  }
+                />
+              </div>
             </div>
           </SettingsSection>
           </FadeIn>

@@ -31,6 +31,7 @@ import { ProjectStateRepository } from "../repositories/project-state-repository
 import { ProjectStateOverrideRepository } from "../repositories/project-state-override-repository"
 import { SessionRepository } from "../repositories/session-repository"
 import { SessionDigestRepository } from "../repositories/session-digest-repository"
+import { SourceRepository } from "../repositories/source-repository"
 import { SettingsRepository } from "../repositories/settings-repository"
 import { SubscriptionRepository } from "../repositories/subscription-repository"
 import { SyncMarkRepository } from "../repositories/sync-mark-repository"
@@ -65,6 +66,7 @@ export interface RepositoryBundle {
   mcpTokens: McpTokenRepository
   contextPackets: ContextPacketRepository
   sessionDigests: SessionDigestRepository
+  sources: SourceRepository
   projectState: ProjectStateRepository
   projectSettings: ProjectSettingsRepository
   projectStateOverrides: ProjectStateOverrideRepository
@@ -118,6 +120,7 @@ export function createRepositoryBundle(
     mcpTokens: new McpTokenRepository(provider),
     contextPackets: new ContextPacketRepository(provider),
     sessionDigests: new SessionDigestRepository(provider),
+    sources: new SourceRepository(provider),
     projectState: new ProjectStateRepository(provider),
     projectSettings: new ProjectSettingsRepository(provider),
     projectStateOverrides: new ProjectStateOverrideRepository(provider),

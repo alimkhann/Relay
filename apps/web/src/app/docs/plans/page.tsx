@@ -34,6 +34,45 @@ const PLAN_TABLE_ROWS = PLAN_LIMIT_ROWS.map((row) => {
   }
 })
 
+const SOURCE_LIMIT_ROWS = [
+  {
+    label: "Source file size",
+    free: "10 MB",
+    starter: "50 MB",
+    pro: "100 MB",
+  },
+  {
+    label: "Total source storage",
+    free: "50 MB",
+    starter: "1 GB",
+    pro: "5 GB",
+  },
+  {
+    label: "Embedded source tokens / month",
+    free: FREE_LIMITS.sourceEmbeddedTokensMonthly.toLocaleString("en-US"),
+    starter: STARTER_LIMITS.sourceEmbeddedTokensMonthly.toLocaleString("en-US"),
+    pro: PRO_LIMITS.sourceEmbeddedTokensMonthly.toLocaleString("en-US"),
+  },
+  {
+    label: "Source ingestions / day",
+    free: FREE_LIMITS.sourceIngestionsDaily.toLocaleString("en-US"),
+    starter: STARTER_LIMITS.sourceIngestionsDaily.toLocaleString("en-US"),
+    pro: PRO_LIMITS.sourceIngestionsDaily.toLocaleString("en-US"),
+  },
+  {
+    label: "Source-backed recall / day",
+    free: FREE_LIMITS.sourceBackedRecallDaily.toLocaleString("en-US"),
+    starter: STARTER_LIMITS.sourceBackedRecallDaily.toLocaleString("en-US"),
+    pro: PRO_LIMITS.sourceBackedRecallDaily.toLocaleString("en-US"),
+  },
+  {
+    label: "OCR pages / month",
+    free: "Not included",
+    starter: "Not included",
+    pro: "Not included",
+  },
+]
+
 export default function PlansDocsPage() {
   return (
     <div className="max-w-2xl space-y-8">
@@ -71,6 +110,7 @@ export default function PlansDocsPage() {
             <tbody className="divide-y divide-[var(--relay-line)]">
               {[
                 ...PLAN_TABLE_ROWS,
+                ...SOURCE_LIMIT_ROWS,
                 { label: "Autonomous context", free: "—", starter: "Yes", pro: "Yes" },
                 { label: "High-quality model", free: "—", starter: "—", pro: "Yes" },
               ].map((row) => (

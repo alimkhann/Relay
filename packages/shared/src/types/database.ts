@@ -37,6 +37,7 @@ export type McpTokenScope = "project:read" | "project:write" | "memory:read" | "
 export type WorkSessionSurface = SyncSurface | "web" | "api"
 export type WorkSessionStatus = "active" | "closed" | "stale"
 
+
 export interface ProfileRow {
   id: string
   email: string | null
@@ -460,6 +461,9 @@ export interface UserSettingsRow {
       eligible: boolean
       dismissedAt: string | null
       activatedAt: string | null
+    }
+    sourceImports?: {
+      autoImportFromExtension: boolean
     }
     walkthrough?: {
       dismissedAt: string | null

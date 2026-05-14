@@ -2,9 +2,7 @@
 
 import type { ProjectDashboardDto } from "@relay/shared";
 
-import { EmptyState } from "@/components/ui/empty-state";
 import { FadeIn } from "@/components/ui/fade-in";
-import { MIN_GRAPH_ITEMS } from "./memory-graph-utils";
 import { MemoryGraphContainer } from "./memory-graph-container";
 
 interface GraphPageContentProps {
@@ -28,24 +26,16 @@ export function GraphPageContent({ project, dashboard }: GraphPageContentProps) 
         </div>
       </FadeIn>
 
-      {memoryItems.length >= MIN_GRAPH_ITEMS ? (
-        <FadeIn delay={0.04}>
-          <MemoryGraphContainer
-            projectId={project.id}
-            projectName={project.name}
-            memoryItems={memoryItems}
-            mode="fullscreen"
-            title={`${project.name} Graph`}
-            className="min-h-[calc(100vh-9rem)]"
-          />
-        </FadeIn>
-      ) : (
-        <EmptyState
-          title="Not enough memory yet"
-          description="The graph appears after Relay has at least 8 memory items for this project."
-          className="py-16"
+      <FadeIn delay={0.04}>
+        <MemoryGraphContainer
+          projectId={project.id}
+          projectName={project.name}
+          memoryItems={memoryItems}
+          mode="fullscreen"
+          title={`${project.name} Graph`}
+          className="min-h-[calc(100vh-9rem)]"
         />
-      )}
+      </FadeIn>
     </div>
   );
 }

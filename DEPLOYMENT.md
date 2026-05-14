@@ -16,6 +16,12 @@ pnpm test
 pnpm build
 ```
 
+For Project Sources, apply the latest Neon migrations to a dev branch first and smoke test an upload before production:
+
+```bash
+MIGRATION_DATABASE_URL="<neon-dev-unpooled-url>" node scripts/db-admin.js migrate
+```
+
 ## Deploy to Vercel
 
 ```bash
@@ -34,6 +40,14 @@ If the repo is not linked locally, log in with `vercel whoami` first and confirm
 - `POLAR_WEBHOOK_SECRET`
 - `POLAR_PRODUCT_ID_PRO_MONTHLY`
 - `POLAR_PRODUCT_ID_PRO_ANNUAL`
+- `RELAY_SOURCE_ENCRYPTION_KEY`
+- `R2_ENDPOINT`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+- `R2_BUCKET`
+- `R2_REGION`
+
+Project Sources stores encrypted raw files in Cloudflare R2. `RELAY_SOURCE_STORAGE_MODE=memory` is only for local parser/UI tests and must not be used in production. If `RELAY_SOURCE_ENCRYPTION_KEY` is unset, source blob encryption falls back to `RELAY_CONTENT_ENCRYPTION_KEY`.
 
 Neon auth mode also requires:
 

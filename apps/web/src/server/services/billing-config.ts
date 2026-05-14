@@ -10,6 +10,13 @@ export const FREE_LIMITS: EntitlementLimitsDto = {
   aiAnalysesPerProjectDaily: 2,
   aiAnalysesPerUserDaily: 2,
   memoryItemsPerProject: 100,
+  sourcesPerProject: 3,
+  sourceFileMaxBytes: 10 * 1024 * 1024,
+  sourceStorageBytes: 50 * 1024 * 1024,
+  sourceEmbeddedTokensMonthly: 25_000,
+  sourceIngestionsDaily: 3,
+  sourceBackedRecallDaily: 3,
+  sourceOcrPagesMonthly: 0,
 }
 
 export const STARTER_LIMITS: EntitlementLimitsDto = {
@@ -22,6 +29,13 @@ export const STARTER_LIMITS: EntitlementLimitsDto = {
   aiAnalysesPerProjectDaily: 25,
   aiAnalysesPerUserDaily: 25,
   memoryItemsPerProject: 1000,
+  sourcesPerProject: 25,
+  sourceFileMaxBytes: 50 * 1024 * 1024,
+  sourceStorageBytes: 1024 * 1024 * 1024,
+  sourceEmbeddedTokensMonthly: 500_000,
+  sourceIngestionsDaily: 25,
+  sourceBackedRecallDaily: 50,
+  sourceOcrPagesMonthly: 0,
 }
 
 export const PRO_LIMITS: EntitlementLimitsDto = {
@@ -34,6 +48,13 @@ export const PRO_LIMITS: EntitlementLimitsDto = {
   aiAnalysesPerProjectDaily: 60,
   aiAnalysesPerUserDaily: 60,
   memoryItemsPerProject: 5000,
+  sourcesPerProject: 100,
+  sourceFileMaxBytes: 100 * 1024 * 1024,
+  sourceStorageBytes: 5 * 1024 * 1024 * 1024,
+  sourceEmbeddedTokensMonthly: 2_000_000,
+  sourceIngestionsDaily: 100,
+  sourceBackedRecallDaily: 200,
+  sourceOcrPagesMonthly: 0,
 }
 
 export const PLAN_PRODUCT_IDS = {
@@ -60,6 +81,7 @@ export const PLAN_LIMIT_ROWS = [
   { label: "MCP writes / day", key: "mcpWriteDaily" },
   { label: "AI analyses / day", key: "aiAnalysesPerUserDaily" },
   { label: "Memory items / project", key: "memoryItemsPerProject" },
+  { label: "Sources / project", key: "sourcesPerProject" },
 ] as const
 
 export const PLAN_MARKETING_COPY = {
@@ -69,6 +91,7 @@ export const PLAN_MARKETING_COPY = {
       `${formatNumber(FREE_LIMITS.mcpReadDaily)} MCP reads + ${formatNumber(FREE_LIMITS.mcpDeepReadDaily)} deep reads / day`,
       `${FREE_LIMITS.historyRetentionDays}-day source retention, ${formatNumber(FREE_LIMITS.captureMonthly)} captures / month`,
       "Browser capture across supported AI tools",
+      `${FREE_LIMITS.sourcesPerProject} source imports / project`,
       "Basic context briefs",
     ],
   },
@@ -78,6 +101,7 @@ export const PLAN_MARKETING_COPY = {
       `${formatNumber(STARTER_LIMITS.mcpReadDaily)} MCP reads + ${formatNumber(STARTER_LIMITS.mcpDeepReadDaily)} deep reads / day`,
       `${formatNumber(STARTER_LIMITS.captureMonthly)} captures / month across all projects`,
       "Autonomous context updates",
+      `${STARTER_LIMITS.sourcesPerProject} source imports / project`,
       "Full + continuity briefs",
     ],
   },
@@ -87,6 +111,7 @@ export const PLAN_MARKETING_COPY = {
       `${formatNumber(PRO_LIMITS.mcpReadDaily)} MCP reads + ${formatNumber(PRO_LIMITS.mcpDeepReadDaily)} deep reads / day`,
       `${formatNumber(PRO_LIMITS.captureMonthly)} captures / month across all projects`,
       "High-quality model for reflections",
+      `${PRO_LIMITS.sourcesPerProject} source imports / project`,
       "Aggressive autonomy + conflict resolution",
       "Priority support",
     ],

@@ -57,19 +57,11 @@ export function useGraphData(projectId: string, memoryItems: MemoryItemDto[], pr
     similarityEdges: [],
   });
   const [archivedItems, setArchivedItems] = useState<MemoryItemDto[]>([]);
-  const [loading, setLoading] = useState(memoryItems.length > 0);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-
-    if (memoryItems.length === 0) {
-      setRelationsData({ relations: [], similarityEdges: [] });
-      setArchivedItems([]);
-      setLoading(false);
-      setError(null);
-      return;
-    }
 
     setLoading(true);
     setError(null);
@@ -106,6 +98,8 @@ export function useGraphData(projectId: string, memoryItems: MemoryItemDto[], pr
           setRelationsData({
             relations: Array.isArray(relationsPayload.relations) ? relationsPayload.relations : [],
             similarityEdges: Array.isArray(relationsPayload.similarityEdges) ? relationsPayload.similarityEdges : [],
+            sources: Array.isArray(relationsPayload.sources) ? relationsPayload.sources : [],
+            sourceMemoryLinks: Array.isArray(relationsPayload.sourceMemoryLinks) ? relationsPayload.sourceMemoryLinks : [],
           });
           setArchivedItems(
             Array.isArray(archivedPayload.memory)
@@ -134,10 +128,15 @@ export function useGraphData(projectId: string, memoryItems: MemoryItemDto[], pr
     const deduped = archivedItems.filter((i) => !activeIds.has(i.id));
     const archivedIds = new Set(deduped.map((i) => i.id));
     const allItems = [...memoryItems, ...deduped];
-    const nodes = buildGraphNodes(allItems, archivedIds, projectName);
+    const nodes = buildGraphNodes(allItems, archivedIds, projectName, relationsData.sources ?? []);
     return {
       nodes,
-      links: buildGraphLinks(nodes, relationsData.relations, relationsData.similarityEdges),
+      links: buildGraphLinks(
+        nodes,
+        relationsData.relations,
+        relationsData.similarityEdges,
+        relationsData.sourceMemoryLinks ?? [],
+      ),
     };
   }, [memoryItems, archivedItems, relationsData, projectName]);
 

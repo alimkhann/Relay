@@ -1,4 +1,4 @@
-import type { MemoryItemDto, MemoryItemType, SourceSurface } from "@relay/shared";
+import type { MemoryItemDto, MemoryItemType, ProjectSourceKind, ProjectSourceStatus, SourceSurface } from "@relay/shared";
 
 export const MIN_GRAPH_ITEMS = 8;
 
@@ -29,12 +29,14 @@ export const RELATION_COLORS = {
 
 export type GraphRelationType = keyof typeof RELATION_COLORS;
 
-export type HubRole = "root" | "type-hub";
+export type HubRole = "root" | "relay-branch" | "sources-branch" | "type-hub";
+export type GraphNodeKind = "hub" | "memory" | "source-file";
 
 export interface GraphNode {
   id: string;
   label: string;
   type: MemoryItemType;
+  kind: GraphNodeKind;
   decayScore: number;
   pinned: boolean;
   archived: boolean;
@@ -47,6 +49,18 @@ export interface GraphNode {
   capturedAt: string | null;
   lastReaffirmedAt: string | null;
   metadata?: Record<string, unknown>;
+  source?: {
+    id: string;
+    kind: ProjectSourceKind;
+    status: ProjectSourceStatus;
+    displayName: string;
+    originalFileName: string | null;
+    mimeType: string | null;
+    byteSize: number;
+    chunkCount: number;
+    tokenEstimate: number;
+    previewText: string;
+  };
   x?: number;
   y?: number;
   fx?: number;
@@ -60,6 +74,7 @@ export interface GraphLink {
   confidence: number;
   fallback?: boolean;
   hubLink?: "root-to-hub" | "hub-to-item";
+  sourceLink?: boolean;
 }
 
 export interface GraphData {
@@ -111,6 +126,29 @@ export interface SimilarityEdgeDto {
 export interface RelationsResponse {
   relations: RelationDto[];
   similarityEdges: SimilarityEdgeDto[];
+  sources?: SourceGraphDto[];
+  sourceMemoryLinks?: SourceMemoryLinkDto[];
+}
+
+export interface SourceGraphDto {
+  id: string;
+  kind: ProjectSourceKind;
+  status: ProjectSourceStatus;
+  displayName: string;
+  originalFileName: string | null;
+  mimeType: string | null;
+  byteSize: number;
+  updatedAt: string;
+  sourceUri: string | null;
+  chunkCount: number;
+  tokenEstimate: number;
+  previewText: string;
+}
+
+export interface SourceMemoryLinkDto {
+  sourceId: string;
+  memoryItemId: string;
+  confidence: number;
 }
 
 function truncateLabel(value: string, maxLength = 44) {
@@ -121,9 +159,12 @@ function truncateLabel(value: string, maxLength = 44) {
 
 const HUB_NODE_PREFIX = "__hub__";
 const ROOT_NODE_ID = "__root__";
+const RELAY_BRANCH_NODE_ID = "__branch__relay";
+const SOURCES_BRANCH_NODE_ID = "__branch__sources";
+const SOURCE_NODE_PREFIX = "__source__";
 
 export function isHubNode(node: GraphNode) {
-  return node.id === ROOT_NODE_ID || node.id.startsWith(HUB_NODE_PREFIX);
+  return Boolean(node.hub) || node.id === ROOT_NODE_ID || node.id.startsWith(HUB_NODE_PREFIX);
 }
 
 function makeHubNode(type: MemoryItemType): GraphNode {
@@ -131,6 +172,7 @@ function makeHubNode(type: MemoryItemType): GraphNode {
     id: `${HUB_NODE_PREFIX}${type}`,
     label: TYPE_LABELS[type],
     type,
+    kind: "hub",
     decayScore: 1,
     pinned: false,
     archived: false,
@@ -145,11 +187,32 @@ function makeHubNode(type: MemoryItemType): GraphNode {
   };
 }
 
+function makeBranchNode(id: string, label: string, content: string): GraphNode {
+  return {
+    id,
+    label,
+    type: "artifact" as MemoryItemType,
+    kind: "hub",
+    decayScore: 1,
+    pinned: false,
+    archived: false,
+    hub: id === RELAY_BRANCH_NODE_ID ? "relay-branch" : "sources-branch",
+    sourceSurface: null,
+    sourceUrl: null,
+    content,
+    title: label,
+    updatedAt: new Date().toISOString(),
+    capturedAt: null,
+    lastReaffirmedAt: null,
+  };
+}
+
 function makeRootNode(projectName: string): GraphNode {
   return {
     id: ROOT_NODE_ID,
     label: projectName,
     type: "note" as MemoryItemType,
+    kind: "hub",
     decayScore: 1,
     pinned: false,
     archived: false,
@@ -164,15 +227,41 @@ function makeRootNode(projectName: string): GraphNode {
   };
 }
 
+function makeSourceNode(source: SourceGraphDto): GraphNode {
+  return {
+    id: sourceNodeId(source.id),
+    label: truncateLabel(source.displayName, 30),
+    type: "artifact" as MemoryItemType,
+    kind: "source-file",
+    decayScore: source.status === "ready" ? 0.9 : 0.55,
+    pinned: false,
+    archived: source.status === "archived",
+    sourceSurface: "web",
+    sourceUrl: source.sourceUri,
+    content: source.previewText || "No preview text extracted yet.",
+    title: source.displayName,
+    updatedAt: source.updatedAt,
+    capturedAt: null,
+    lastReaffirmedAt: null,
+    source,
+  };
+}
+
+function sourceNodeId(sourceId: string) {
+  return `${SOURCE_NODE_PREFIX}${sourceId}`;
+}
+
 export function buildGraphNodes(
   items: MemoryItemDto[],
   archivedIds?: Set<string>,
   projectName?: string,
+  sources: SourceGraphDto[] = [],
 ): GraphNode[] {
   const itemNodes = items.map((item) => ({
     id: item.id,
     label: truncateLabel(item.title ?? item.content),
     type: item.type,
+    kind: "memory" as const,
     decayScore: Number.isFinite(item.decayScore) ? item.decayScore : 0.5,
     pinned: item.pinned,
     archived: archivedIds?.has(item.id) ?? false,
@@ -189,8 +278,10 @@ export function buildGraphNodes(
   const presentTypes = new Set(items.map((i) => i.type));
   const hubNodes = Array.from(presentTypes).map(makeHubNode);
   const rootNode = makeRootNode(projectName ?? "Project");
+  const relayBranch = makeBranchNode(RELAY_BRANCH_NODE_ID, "Relay", "Memory created directly from Relay captures and saves.");
+  const sourcesBranch = makeBranchNode(SOURCES_BRANCH_NODE_ID, "Sources", "Imported files and documents linked to durable memory.");
 
-  return [rootNode, ...hubNodes, ...itemNodes];
+  return [rootNode, relayBranch, sourcesBranch, ...hubNodes, ...sources.map(makeSourceNode), ...itemNodes];
 }
 
 function endpointId(endpoint: string | GraphNode) {
@@ -205,18 +296,33 @@ export function buildGraphLinks(
   nodes: GraphNode[],
   relations: RelationDto[],
   similarityEdges: SimilarityEdgeDto[],
+  sourceMemoryLinks: SourceMemoryLinkDto[] = [],
 ): GraphLink[] {
   const nodeIds = new Set(nodes.map((node) => node.id));
   const links: GraphLink[] = [];
   const seen = new Set<string>();
+  const sourceLinkedMemoryIds = new Set(sourceMemoryLinks.map((link) => link.memoryItemId));
 
-  // Hub topology: root → type hubs → items
-  const itemNodes = nodes.filter((n) => !n.hub);
+  // Hub topology: root → Relay/Sources branches → type hubs/source files → items
+  const itemNodes = nodes.filter((n) => n.kind === "memory");
   const hubNodes = nodes.filter((n) => n.hub === "type-hub");
+  const sourceNodes = nodes.filter((n) => n.kind === "source-file");
+
+  for (const branchId of [RELAY_BRANCH_NODE_ID, SOURCES_BRANCH_NODE_ID]) {
+    links.push({
+      source: ROOT_NODE_ID,
+      target: branchId,
+      relationType: "extends",
+      confidence: 1,
+      fallback: true,
+      hubLink: "root-to-hub",
+    });
+    seen.add(linkKey(ROOT_NODE_ID, branchId, "extends"));
+  }
 
   for (const hub of hubNodes) {
     links.push({
-      source: ROOT_NODE_ID,
+      source: RELAY_BRANCH_NODE_ID,
       target: hub.id,
       relationType: "extends",
       confidence: 1,
@@ -226,7 +332,7 @@ export function buildGraphLinks(
     seen.add(linkKey(ROOT_NODE_ID, hub.id, "extends"));
 
     for (const item of itemNodes) {
-      if (item.type === hub.type) {
+      if (item.type === hub.type && !sourceLinkedMemoryIds.has(item.id)) {
         const key = linkKey(hub.id, item.id, "extends");
         links.push({
           source: hub.id,
@@ -239,6 +345,33 @@ export function buildGraphLinks(
         seen.add(key);
       }
     }
+  }
+
+  for (const source of sourceNodes) {
+    links.push({
+      source: SOURCES_BRANCH_NODE_ID,
+      target: source.id,
+      relationType: "extends",
+      confidence: 1,
+      fallback: true,
+      hubLink: "root-to-hub",
+      sourceLink: true,
+    });
+  }
+
+  for (const sourceLink of sourceMemoryLinks) {
+    const sourceId = sourceNodeId(sourceLink.sourceId);
+    if (!nodeIds.has(sourceId) || !nodeIds.has(sourceLink.memoryItemId)) continue;
+    const key = linkKey(sourceId, sourceLink.memoryItemId, "derives");
+    if (seen.has(key)) continue;
+    links.push({
+      source: sourceId,
+      target: sourceLink.memoryItemId,
+      relationType: "derives",
+      confidence: sourceLink.confidence,
+      sourceLink: true,
+    });
+    seen.add(key);
   }
 
   // Explicit relations between items

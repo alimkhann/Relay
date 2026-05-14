@@ -104,6 +104,11 @@ export async function getBillingStatusForUser(userId: string): Promise<BillingSt
     getUsageCount(userId, "handoff_monthly", "month"),
     repositories.aiJobs.countRecentAiDigestRunsByUser(userId, 24),
   ])
+  const [sourceIngestionsToday, sourceEmbeddedTokensThisMonth, sourceBackedRecallsToday] = await Promise.all([
+    getUsageCount(userId, "source_ingestion_daily", "day"),
+    getUsageCount(userId, "source_embedded_tokens_monthly", "month"),
+    getUsageCount(userId, "source_backed_recall_daily", "day"),
+  ])
 
   return {
     entitlements,
@@ -129,6 +134,9 @@ export async function getBillingStatusForUser(userId: string): Promise<BillingSt
       handoffsThisMonth,
       activeProjects: activeProjects.filter((project) => !project.isArchived).length,
       aiAnalysesToday,
+      sourceIngestionsToday,
+      sourceEmbeddedTokensThisMonth,
+      sourceBackedRecallsToday,
     },
   }
 }

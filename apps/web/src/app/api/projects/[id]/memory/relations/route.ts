@@ -10,10 +10,33 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
   requireViewerProject(viewer, id, "memory:read");
 
   const repositories = createRepositoryBundle(viewer.userId);
-  const [relations, similarityEdges] = await Promise.all([
+  const [relations, similarityEdges, sources, sourceMemoryLinks] = await Promise.all([
     repositories.memory.getRelationsForProject(id),
     repositories.memory.getSimilarityEdgesForProject(id),
+    repositories.sources.listByProject(id),
+    repositories.sources.listMemoryLinksByProject(id),
   ]);
+
+  const sourceDetails = await Promise.all(sources.map(async (source) => {
+    const [latestVersion, chunks] = await Promise.all([
+      repositories.sources.getLatestVersion(source.id),
+      repositories.sources.listChunks(source.id, { limit: 1 }),
+    ]);
+    return {
+      id: source.id,
+      kind: source.kind,
+      status: source.status,
+      displayName: source.displayName,
+      originalFileName: source.originalFileName,
+      mimeType: source.mimeType,
+      byteSize: source.byteSize,
+      updatedAt: source.updatedAt,
+      sourceUri: source.sourceUri,
+      chunkCount: latestVersion?.chunkCount ?? 0,
+      tokenEstimate: latestVersion?.tokenEstimate ?? 0,
+      previewText: chunks[0]?.content.slice(0, 1200) ?? "",
+    };
+  }));
 
   return NextResponse.json({
     relations: relations.map((relation) => ({
@@ -23,5 +46,7 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
       confidence: relation.confidence,
     })),
     similarityEdges,
+    sources: sourceDetails,
+    sourceMemoryLinks,
   });
 });

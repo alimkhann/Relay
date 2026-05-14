@@ -11,7 +11,6 @@ import { relayClientFetch } from "@/lib/telemetry/fetch";
 import { MemoryGraphDetailPanel } from "./memory-graph-detail-panel";
 import {
   DEFAULT_GRAPH_SETTINGS,
-  MIN_GRAPH_ITEMS,
   TYPE_COLORS,
   TYPE_LABELS,
   type MemoryGraphSettings,
@@ -276,10 +275,6 @@ export function MemoryGraphContainer({
       } catch {}
     })();
   }, [activeProjectId, projectId]);
-
-  if (memoryItems.length < MIN_GRAPH_ITEMS) {
-    return null;
-  }
 
   function selectNode(node: GraphNode | null) {
     setSelectedNode(node);

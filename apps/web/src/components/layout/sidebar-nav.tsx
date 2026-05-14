@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Activity, Brain, FileDown, BookOpen, Network } from "lucide-react";
+import { LayoutDashboard, Activity, Brain, FileDown, BookOpen, Network, Files } from "lucide-react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { cn } from "@/lib/cn";
 
@@ -32,6 +32,9 @@ export function SidebarNav({
   const graphHref = currentProjectId
     ? `/graph?project=${currentProjectId}`
     : "/graph";
+  const sourcesHref = currentProjectId
+    ? `/sources?project=${currentProjectId}`
+    : "/sources";
   const briefHref = currentProjectId
     ? `/brief?project=${currentProjectId}`
     : "/brief";
@@ -52,6 +55,12 @@ export function SidebarNav({
       href: memoryHref,
       label: "Memory",
       icon: <Brain className="h-4 w-4" />,
+      requiresProject: true,
+    },
+    {
+      href: sourcesHref,
+      label: "Sources",
+      icon: <Files className="h-4 w-4" />,
       requiresProject: true,
     },
     {

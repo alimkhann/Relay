@@ -10,6 +10,9 @@ const defaultSettings = {
     eligible: false,
     dismissedAt: null,
     activatedAt: null
+  },
+  sourceImports: {
+    autoImportFromExtension: false
   }
 }
 
@@ -37,6 +40,10 @@ function normalizeSettings(input: Partial<UserSettingsRow["settings"]> | null | 
       eligible: input?.autoCapturePrompt?.eligible ?? defaultSettings.autoCapturePrompt.eligible,
       dismissedAt: input?.autoCapturePrompt?.dismissedAt ?? defaultSettings.autoCapturePrompt.dismissedAt,
       activatedAt: input?.autoCapturePrompt?.activatedAt ?? defaultSettings.autoCapturePrompt.activatedAt,
+    },
+    sourceImports: {
+      autoImportFromExtension:
+        input?.sourceImports?.autoImportFromExtension ?? defaultSettings.sourceImports.autoImportFromExtension,
     },
     ...(input?.walkthrough !== undefined
       ? { walkthrough: input.walkthrough }

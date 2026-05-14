@@ -14,16 +14,21 @@ describe("billing plan limits", () => {
     expect(FREE_LIMITS.historyRetentionDays).toBe(14)
     expect(FREE_LIMITS.mcpDeepReadDaily).toBe(1)
     expect(FREE_LIMITS.mcpWriteDaily).toBe(1)
+    expect(FREE_LIMITS.sourcesPerProject).toBe(3)
+    expect(FREE_LIMITS.sourceFileMaxBytes).toBe(10 * 1024 * 1024)
+    expect(FREE_LIMITS.sourceOcrPagesMonthly).toBe(0)
 
     expect(STARTER_LIMITS.captureMonthly).toBe(500)
     expect(STARTER_LIMITS.mcpDeepReadDaily).toBe(8)
     expect(STARTER_LIMITS.aiAnalysesPerProjectDaily).toBe(STARTER_LIMITS.aiAnalysesPerUserDaily)
     expect(STARTER_LIMITS.aiAnalysesPerUserDaily).toBe(25)
+    expect(STARTER_LIMITS.sourcesPerProject).toBeGreaterThan(FREE_LIMITS.sourcesPerProject)
 
     expect(PRO_LIMITS.captureMonthly).toBe(1000)
     expect(PRO_LIMITS.mcpDeepReadDaily).toBe(20)
     expect(PRO_LIMITS.aiAnalysesPerProjectDaily).toBe(PRO_LIMITS.aiAnalysesPerUserDaily)
     expect(PRO_LIMITS.aiAnalysesPerUserDaily).toBe(60)
+    expect(PRO_LIMITS.sourceStorageBytes).toBeGreaterThan(STARTER_LIMITS.sourceStorageBytes)
   })
 
   it("derives plan marketing copy from the runtime limits", () => {

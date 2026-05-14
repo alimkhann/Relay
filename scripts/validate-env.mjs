@@ -13,6 +13,14 @@ if (authProvider === "neon") {
   required.push("LOCAL_AUTH_SESSION_SECRET")
 }
 
+const sourceStorageMode = process.env.RELAY_SOURCE_STORAGE_MODE?.trim() || "r2"
+if (sourceStorageMode !== "memory") {
+  required.push("R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET")
+  if (!process.env.RELAY_SOURCE_ENCRYPTION_KEY?.trim() && !process.env.RELAY_CONTENT_ENCRYPTION_KEY?.trim()) {
+    required.push("RELAY_SOURCE_ENCRYPTION_KEY")
+  }
+}
+
 const missing = required.filter((key) => !process.env[key]?.trim())
 
 if (process.env.NEXT_PUBLIC_APP_URL && process.env.NEXT_PUBLIC_RELAY_APP_URL) {

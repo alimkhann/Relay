@@ -52,7 +52,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `(function(){try{
   var path=location.pathname;
-  var isDashboardPath=path==="/"||path==="/dashboard"||path.startsWith("/dashboard/")||path.startsWith("/activity")||path.startsWith("/memory")||path.startsWith("/graph")||path.startsWith("/settings")||path.startsWith("/projects")||path.startsWith("/brief");
+  var isDashboardPath=path==="/"||path==="/dashboard"||path.startsWith("/dashboard/")||path.startsWith("/activity")||path.startsWith("/memory")||path.startsWith("/sources")||path.startsWith("/graph")||path.startsWith("/settings")||path.startsWith("/projects")||path.startsWith("/brief");
   if(!isDashboardPath)return;
   var p=new URLSearchParams(location.search);
   var isAuth=p.get("auth_callback")==="1";
@@ -70,7 +70,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `(function(){try{
   var p=location.pathname;
-  var isDash=p==="/dashboard"||p.startsWith("/dashboard/")||p.startsWith("/activity")||p.startsWith("/memory")||p.startsWith("/graph")||p.startsWith("/settings")||p.startsWith("/projects")||p.startsWith("/brief");
+  var isDash=p==="/dashboard"||p.startsWith("/dashboard/")||p.startsWith("/activity")||p.startsWith("/memory")||p.startsWith("/sources")||p.startsWith("/graph")||p.startsWith("/settings")||p.startsWith("/projects")||p.startsWith("/brief");
   if(!isDash)return;
   var isLight=document.documentElement.classList.contains("light");
   if(!isLight&&!matchMedia("(prefers-color-scheme:light)").matches)return;
