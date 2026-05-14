@@ -356,4 +356,61 @@ export class SourceRepository {
     )
     return Number(rows[0]?.bytes ?? 0)
   }
+
+  async getLatestVersionsBySourceIds(sourceIds: string[]): Promise<Map<string, SourceVersionRow>> {
+    if (sourceIds.length === 0) return new Map()
+    const rows = await this.provider.query(
+      `select distinct on (source_id) ${VERSION_COLS}
+       from source_versions
+       where source_id = ANY($1::uuid[])
+       order by source_id, created_at desc`,
+      [sourceIds],
+    )
+    const map = new Map<string, SourceVersionRow>()
+    for (const row of rows) {
+      const mapped = toSourceVersionRow(row as Record<string, unknown>)
+      map.set(mapped.sourceId, mapped)
+    }
+    return map
+  }
+
+  async countFactCandidatesBySourceIds(sourceIds: string[]): Promise<Map<string, { pending: number; promoted: number }>> {
+    if (sourceIds.length === 0) return new Map()
+    const rows = await this.provider.query<{ source_id: string; status: string; count: number }>(
+      `select source_id, status, count(*)::int as count
+       from source_fact_candidates
+       where source_id = ANY($1::uuid[])
+       group by source_id, status`,
+      [sourceIds],
+    )
+    const map = new Map<string, { pending: number; promoted: number }>()
+    for (const row of rows) {
+      const r = row as Record<string, unknown>
+      const sid = String(r.source_id)
+      const status = String(r.status)
+      const count = Number(r.count)
+      const entry = map.get(sid) ?? { pending: 0, promoted: 0 }
+      if (status === "pending") entry.pending = count
+      if (status === "promoted") entry.promoted = count
+      map.set(sid, entry)
+    }
+    return map
+  }
+
+  async getFirstChunksBySourceIds(sourceIds: string[]): Promise<Map<string, SourceChunkRow>> {
+    if (sourceIds.length === 0) return new Map()
+    const rows = await this.provider.query(
+      `select distinct on (source_id) ${CHUNK_COLS}
+       from source_chunks
+       where source_id = ANY($1::uuid[])
+       order by source_id, chunk_index asc`,
+      [sourceIds],
+    )
+    const map = new Map<string, SourceChunkRow>()
+    for (const row of rows) {
+      const mapped = toSourceChunkRow(row as Record<string, unknown>)
+      map.set(mapped.sourceId, mapped)
+    }
+    return map
+  }
 }

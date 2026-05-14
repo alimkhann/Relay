@@ -43,18 +43,20 @@ export async function assertSourceUploadAllowed(userId: string, projectId: strin
 export async function listProjectSources(userId: string, projectId: string): Promise<ProjectSourceDto[]> {
   const repos = createRepositoryBundle(userId)
   const sources = await repos.sources.listByProject(projectId)
-  return Promise.all(sources.map(async (source) => {
-    const [latestVersion, candidates] = await Promise.all([
-      repos.sources.getLatestVersion(source.id),
-      repos.sources.listFactCandidates(source.id),
-    ])
+  const sourceIds = sources.map((s) => s.id)
+  const [versionsBySourceId, candidateCountsBySourceId] = await Promise.all([
+    repos.sources.getLatestVersionsBySourceIds(sourceIds),
+    repos.sources.countFactCandidatesBySourceIds(sourceIds),
+  ])
+  return sources.map((source) => {
+    const counts = candidateCountsBySourceId.get(source.id) ?? { pending: 0, promoted: 0 }
     return {
       ...source,
-      latestVersion,
-      pendingCandidates: candidates.filter((candidate) => candidate.status === "pending").length,
-      promotedCandidates: candidates.filter((candidate) => candidate.status === "promoted").length,
+      latestVersion: versionsBySourceId.get(source.id) ?? null,
+      pendingCandidates: counts.pending,
+      promotedCandidates: counts.promoted,
     }
-  }))
+  })
 }
 
 export async function getProjectSourceDetail(userId: string, projectId: string, sourceId: string) {

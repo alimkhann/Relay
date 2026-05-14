@@ -329,7 +329,7 @@ export function buildGraphLinks(
       fallback: true,
       hubLink: "root-to-hub",
     });
-    seen.add(linkKey(ROOT_NODE_ID, hub.id, "extends"));
+    seen.add(linkKey(RELAY_BRANCH_NODE_ID, hub.id, "extends"));
 
     for (const item of itemNodes) {
       if (item.type === hub.type && !sourceLinkedMemoryIds.has(item.id)) {

@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation"
 
-import { EmptyState } from "@/components/ui/empty-state"
 import { PageTelemetry } from "@/components/telemetry/page-telemetry"
 import { SourcesPageContent } from "@/features/sources/sources-page-content"
 import { requirePageViewer } from "@/server/policies/viewer"
@@ -39,22 +38,14 @@ export default async function SourcesPage({
         message="Rendered the sources page."
         context={{ projectId: currentProject.id }}
       />
-      {currentProject ? (
-        <SourcesPageContent
-          project={{
-            id: currentProject.id,
-            name: currentProject.name,
-            description: currentProject.description,
-          }}
-          initialSources={sources}
-        />
-      ) : (
-        <EmptyState
-          title="No project selected"
-          description="Choose a project before importing sources."
-          className="py-12"
-        />
-      )}
+      <SourcesPageContent
+        project={{
+          id: currentProject.id,
+          name: currentProject.name,
+          description: currentProject.description,
+        }}
+        initialSources={sources}
+      />
     </>
   )
 }

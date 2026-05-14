@@ -23,6 +23,24 @@ describe("source-ingestion-service", () => {
     })).toThrow(/not supported/i)
   })
 
+  it("rejects empty-string MIME type instead of bypassing validation", () => {
+    expect(() => validateSourceFile({
+      fileName: "notes.md",
+      mimeType: "",
+      byteSize: 1024,
+      maxBytes: 10_000,
+    })).toThrow(/not supported/i)
+  })
+
+  it("allows null mimeType falling back to extension-only validation", () => {
+    expect(validateSourceFile({
+      fileName: "notes.md",
+      mimeType: null,
+      byteSize: 1024,
+      maxBytes: 10_000,
+    }).extension).toBe("md")
+  })
+
   it("extracts text from plain text-like files", async () => {
     const text = await extractTextFromSourceBuffer({
       buffer: Buffer.from("# Plan\n\nShip sources."),

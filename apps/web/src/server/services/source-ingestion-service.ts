@@ -43,7 +43,7 @@ export function getSourceFileExtension(fileName: string) {
 
 export function validateSourceFile(input: {
   fileName: string
-  mimeType: string
+  mimeType?: string | null
   byteSize: number
   maxBytes: number
 }): ValidatedSourceFile {
@@ -54,12 +54,12 @@ export function validateSourceFile(input: {
   if (!support) {
     throw new BadRequestError("This source file type is not supported in v1.")
   }
-  if (input.mimeType && !support.mimeTypes.includes(input.mimeType)) {
+  if (input.mimeType != null && !support.mimeTypes.includes(input.mimeType)) {
     throw new BadRequestError("This source file MIME type is not supported.")
   }
   return {
     fileName: input.fileName,
-    mimeType: input.mimeType,
+    mimeType: input.mimeType ?? support.mimeTypes[0]!,
     byteSize: input.byteSize,
     extension,
     format: support.format,

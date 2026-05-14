@@ -17,11 +17,15 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
     repositories.sources.listMemoryLinksByProject(id),
   ]);
 
-  const sourceDetails = await Promise.all(sources.map(async (source) => {
-    const [latestVersion, chunks] = await Promise.all([
-      repositories.sources.getLatestVersion(source.id),
-      repositories.sources.listChunks(source.id, { limit: 1 }),
-    ]);
+  const sourceIds = sources.map((s) => s.id);
+  const [versionsBySourceId, firstChunksBySourceId] = await Promise.all([
+    repositories.sources.getLatestVersionsBySourceIds(sourceIds),
+    repositories.sources.getFirstChunksBySourceIds(sourceIds),
+  ]);
+
+  const sourceDetails = sources.map((source) => {
+    const latestVersion = versionsBySourceId.get(source.id) ?? null;
+    const firstChunk = firstChunksBySourceId.get(source.id) ?? null;
     return {
       id: source.id,
       kind: source.kind,
@@ -34,9 +38,9 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
       sourceUri: source.sourceUri,
       chunkCount: latestVersion?.chunkCount ?? 0,
       tokenEstimate: latestVersion?.tokenEstimate ?? 0,
-      previewText: chunks[0]?.content.slice(0, 1200) ?? "",
+      previewText: firstChunk?.content.slice(0, 1200) ?? "",
     };
-  }));
+  });
 
   return NextResponse.json({
     relations: relations.map((relation) => ({
