@@ -117,7 +117,6 @@ export async function createMemoryItem(userId: string, input: unknown) {
 export async function createMemoryItemBatch(userId: string, projectId: string, items: CreateMemoryItemInput[]) {
   const repositories = createRepositoryBundle(userId)
   const created = await repositories.memory.createBatch(userId, items)
-  await repositories.bootstrapPackets.clearProject(projectId)
 
   for (const item of created) {
     void emitMemoryEvent(repositories, {

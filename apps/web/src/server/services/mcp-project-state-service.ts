@@ -83,7 +83,5 @@ export async function upsertProjectStateFromMcp(userId: string, projectId: strin
     lastBootstrapAt: normalizeTimestampInput(currentState?.lastBootstrapAt),
   })
 
-  await repositories.bootstrapPackets.clearProject(projectId)
-
   return nextState
 }

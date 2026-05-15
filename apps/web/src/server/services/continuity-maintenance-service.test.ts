@@ -155,4 +155,31 @@ describe("runContinuityMaintenanceForProjectWithRepositories", () => {
 
     expect(updates.some((update) => update.patch.isArchived === true)).toBe(true)
   })
+
+  it("keeps cached briefs visible while maintenance updates context", async () => {
+    const { repositories, bootstrapClear } = makeRepositories({
+      memoryItems: [makeMemory({ type: "task", content: "Done: ship the benchmark harness update." })],
+      summaries: [makeSummary()],
+      state: {
+        projectId: "proj-1",
+        projectOverview: null,
+        currentObjective: null,
+        stackDomain: null,
+        recentProgress: null,
+        decisions: [],
+        constraints: [],
+        openTasks: [],
+        relevantTools: [],
+        objectiveHistory: [],
+        lastBootstrapAt: null,
+        dirty: false,
+        createdAt: "2026-04-01T00:00:00.000Z",
+        updatedAt: "2026-04-01T00:00:00.000Z",
+      },
+    })
+
+    await runContinuityMaintenanceForProjectWithRepositories(repositories, "proj-1")
+
+    expect(bootstrapClear).not.toHaveBeenCalled()
+  })
 })

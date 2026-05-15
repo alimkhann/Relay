@@ -264,8 +264,6 @@ export async function flushWorkSession(
       endedAt: new Date().toISOString(),
     })
 
-    await tx.bootstrapPackets.clearProject(projectId)
-
     return {
       session: closed,
       flushed: true,

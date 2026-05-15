@@ -264,8 +264,6 @@ async function runContinuityMaintenanceForProjectWithRepositories(
     })
   }
 
-  await repositories.bootstrapPackets.clearProject(projectId)
-
   return {
     projectId,
     archivedTaskCount,

@@ -80,7 +80,6 @@ export async function rebuildProjectState(userId: string, projectId: string) {
     })
   }
 
-  await repositories.bootstrapPackets.clearProject(projectId)
 }
 
 export async function updateProjectStateOverrides(userId: string, projectId: string, input: unknown) {
@@ -99,8 +98,6 @@ export async function updateProjectStateOverrides(userId: string, projectId: str
     hiddenConstraints: parsed.hiddenConstraints,
     hiddenOpenTasks: parsed.hiddenOpenTasks
   })
-
-  await repositories.bootstrapPackets.clearProject(projectId)
 
   await logServerEvent({
     level: "info",
@@ -137,7 +134,6 @@ export async function archiveProjectSession(
     await repositories.memory.archiveByConversationId(projectId, session.sourceConversationId)
   }
 
-  await repositories.bootstrapPackets.clearProject(projectId)
   await rebuildProjectState(userId, projectId)
 
   await logServerEvent({
