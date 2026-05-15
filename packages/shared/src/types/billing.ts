@@ -19,6 +19,12 @@ export interface EntitlementLimitsDto {
   sourceIngestionsDaily: number
   sourceBackedRecallDaily: number
   sourceOcrPagesMonthly: number
+  externalSourcesPerProject: number
+  externalSourcePagesPerSource: number
+  externalSourceIndexesDaily: number
+  externalSourceSearchesDaily: number
+  externalSourceRefreshesDaily: number
+  externalSourceMcpActionsPerMinute: number
 }
 
 export interface UserEntitlementsDto {
@@ -66,5 +72,8 @@ export interface BillingStatusDto {
     sourceIngestionsToday: number
     sourceEmbeddedTokensThisMonth: number
     sourceBackedRecallsToday: number
+    externalSourceIndexesToday: number
+    externalSourceSearchesToday: number
+    externalSourceRefreshesToday: number
   }
 }

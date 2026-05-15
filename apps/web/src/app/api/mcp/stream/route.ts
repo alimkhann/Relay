@@ -28,6 +28,22 @@ const SWEEP_IDLE_MS = 10 * 60 * 1000
 const SWEEP_MAX_SESSIONS = 1
 const MCP_READ_TELEMETRY_SAMPLE_RATE = 0.1
 const lastSweepAt = new Map<string, number>()
+const SOURCES_TOOL_NAME = "sources"
+const sourcesToolShape = {
+  action: z.enum(["list", "discover", "index", "status", "search", "read", "refresh", "promote"]),
+  projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
+  sourceId: z.string().optional().describe("Source ID for status, read, refresh, or promote."),
+  chunkId: z.string().optional().describe("Source chunk ID for promote."),
+  url: z.string().optional().describe("Public https URL to index."),
+  query: z.string().optional().describe("Search or discovery query."),
+  sourceType: z.enum(["website", "llms_txt", "pdf", "arxiv", "openapi", "package_docs"]).optional(),
+  provider: z.enum(["relay", "context7", "nia"]).optional(),
+  displayName: z.string().optional(),
+  limit: z.number().optional(),
+  type: z.enum(["note", "decision", "constraint", "requirement", "task", "artifact"]).optional(),
+  title: z.string().optional(),
+  content: z.string().optional(),
+}
 
 export const maxDuration = 60
 
@@ -157,12 +173,25 @@ function registerHttpTools(
             : getCurrentProjectId()
               ? "cached"
               : null
-      const readOrWrite = writeTools.has(name) ? "write" : "read"
+      const readOrWrite =
+        name === SOURCES_TOOL_NAME && ["index", "refresh", "promote"].includes(String(args?.action ?? ""))
+          ? "write"
+          : writeTools.has(name) ? "write" : "read"
 
       const entitlements = await resolveViewerEntitlements(viewer.userId)
       const quotaKey = readOrWrite === "write" ? "mcp_write_daily" : "mcp_read_daily"
       const quotaLimit = readOrWrite === "write" ? entitlements.limits.mcpWriteDaily : entitlements.limits.mcpReadDaily
       await consumeQuota(viewer.userId, quotaKey, "day", quotaLimit, 1, entitlements.plan)
+      if (name === SOURCES_TOOL_NAME) {
+        await consumeQuota(
+          viewer.userId,
+          "external_source_mcp_action_minute",
+          "minute",
+          entitlements.limits.externalSourceMcpActionsPerMinute,
+          1,
+          entitlements.plan,
+        )
+      }
 
       const captureToolTelemetry = shouldCaptureMcpToolTelemetry(readOrWrite)
 
@@ -704,6 +733,54 @@ function registerHttpTools(
       const result = await client.recallContext(pid, args.query)
       return {
         content: [{ type: "text" as const, text: result }]
+      }
+    }
+  )
+
+  server.tool(
+    SOURCES_TOOL_NAME,
+    "External source tool for Relay docs and research sources. Use search explicitly when the user asks to consult external docs or indexed sources; use promote only when the user wants a citation saved into memory.",
+    sourcesToolShape,
+    { readOnlyHint: false, destructiveHint: false },
+    async (args) => {
+      const pid = await resolveProjectId(args.projectId)
+      if (args.action === "list") {
+        return { content: [{ type: "text" as const, text: JSON.stringify(await client.listSources(pid), null, 2) }] }
+      }
+      if (args.action === "index") {
+        if (!args.url) throw new Error("url is required for sources action:index.")
+        const result = await client.createExternalSource(pid, args)
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
+      }
+      if (args.action === "search") {
+        if (!args.query) throw new Error("query is required for sources action:search.")
+        const result = await client.searchSources(pid, args)
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
+      }
+      if (args.action === "status" || args.action === "read") {
+        if (!args.sourceId) throw new Error("sourceId is required for this sources action.")
+        const result = await client.getSourceDetail(pid, args.sourceId)
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
+      }
+      if (args.action === "refresh") {
+        if (!args.sourceId) throw new Error("sourceId is required for sources action:refresh.")
+        const result = await client.refreshSource(pid, args.sourceId)
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
+      }
+      if (args.action === "promote") {
+        if (!args.sourceId || !args.chunkId || !args.content) throw new Error("sourceId, chunkId, and content are required for sources action:promote.")
+        const result = await client.promoteSourceCitation(pid, args.sourceId, args)
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
+      }
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({
+            candidates: [],
+            note: "Relay-native v1 indexes public docs/research URLs directly. Provide a public https URL with action:index to add it.",
+            query: args.query ?? null,
+          }, null, 2),
+        }],
       }
     }
   )

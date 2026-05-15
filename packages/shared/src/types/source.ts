@@ -4,6 +4,7 @@ export type ProjectSourceKind = "uploaded_file" | "repo_file" | "external_docs" 
 export type ProjectSourceStatus = "pending_upload" | "processing" | "ready" | "failed" | "archived" | "stale"
 export type SourceVersionStatus = "pending_upload" | "processing" | "ready" | "failed"
 export type SourceFactCandidateStatus = "pending" | "promoted" | "rejected"
+export type ExternalSourceType = "website" | "llms_txt" | "pdf" | "arxiv" | "openapi" | "package_docs"
 
 export interface ProjectSourceRow {
   id: string
@@ -94,4 +95,18 @@ export interface ProjectSourceDto {
   latestVersion?: SourceVersionRow | null
   pendingCandidates?: number
   promotedCandidates?: number
+}
+
+export interface SourceSearchResultDto {
+  sourceId: string
+  sourceKind: ProjectSourceKind
+  sourceTitle: string
+  sourceUrl: string | null
+  chunkId: string
+  versionId: string
+  content: string
+  locator: Record<string, unknown>
+  provider: string | null
+  score: number
+  indexedAt: string | null
 }

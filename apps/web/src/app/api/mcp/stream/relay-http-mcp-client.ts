@@ -1,5 +1,12 @@
 import { createRepositoryBundle, getProjectDashboard } from "@relay/db"
-import { resolveDefaultTargetProfileKey, type MemoryItemRow, type WorkSessionStructuredState } from "@relay/shared"
+import {
+  createExternalSourceSchema,
+  promoteSourceCitationSchema,
+  resolveDefaultTargetProfileKey,
+  searchProjectSourcesSchema,
+  type MemoryItemRow,
+  type WorkSessionStructuredState,
+} from "@relay/shared"
 import type { ProjectSummaryDto } from "@relay/shared"
 
 import type { Viewer } from "@/server/policies/viewer"
@@ -15,6 +22,14 @@ import { archiveProjectSession, deleteProjectBrief } from "@/server/services/pro
 import { generateBootstrapForProject, getLatestBootstrapForProject } from "@/server/services/bootstrap-service"
 import { upsertProjectStateFromMcp } from "@/server/services/mcp-project-state-service"
 import { listProjectsForUser } from "@/server/services/project-service"
+import {
+  createExternalSource,
+  getProjectSourceDetail,
+  listProjectSources,
+  promoteSourceCitation,
+  refreshExternalSource,
+  searchProjectSources,
+} from "@/server/services/source-service"
 import { getSyncMarkForUser, recordSyncMarkForUser } from "@/server/services/sync-mark-service"
 import { flushWorkSession } from "@/server/services/work-session-flush-service"
 
@@ -468,5 +483,50 @@ export class RelayHttpMcpClient {
     }
 
     return sections.join("\n\n")
+  }
+
+  async listSources(projectId: string) {
+    return { sources: await listProjectSources(this.viewer.userId, projectId) }
+  }
+
+  async createExternalSource(projectId: string, args: Record<string, unknown>) {
+    const parsed = createExternalSourceSchema.parse({
+      url: args.url,
+      displayName: args.displayName,
+      sourceType: args.sourceType,
+      provider: args.provider,
+    })
+    return createExternalSource(this.viewer.userId, {
+      projectId,
+      ...parsed,
+    })
+  }
+
+  async searchSources(projectId: string, args: Record<string, unknown>) {
+    const parsed = searchProjectSourcesSchema.parse({
+      query: args.query,
+      sourceId: args.sourceId,
+      kinds: args.kinds,
+      limit: args.limit,
+    })
+    return searchProjectSources(this.viewer.userId, projectId, parsed)
+  }
+
+  async getSourceDetail(projectId: string, sourceId: string) {
+    return getProjectSourceDetail(this.viewer.userId, projectId, sourceId)
+  }
+
+  async refreshSource(projectId: string, sourceId: string) {
+    return refreshExternalSource(this.viewer.userId, projectId, sourceId)
+  }
+
+  async promoteSourceCitation(projectId: string, sourceId: string, args: Record<string, unknown>) {
+    const parsed = promoteSourceCitationSchema.parse({
+      chunkId: args.chunkId,
+      type: args.type,
+      title: args.title,
+      content: args.content,
+    })
+    return promoteSourceCitation(this.viewer.userId, projectId, sourceId, parsed)
   }
 }

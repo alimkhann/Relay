@@ -1,6 +1,14 @@
 import { createHash } from "node:crypto"
 
 import { BadRequestError } from "@/server/http/errors"
+import {
+  assertPublicHttpsUrl,
+  normalizePublicHttpsUrl,
+  readCappedBody,
+  type DnsLookup,
+} from "@/server/lib/safe-url"
+
+const EXTERNAL_FETCH_TIMEOUT_MS = 30_000
 
 const SUPPORTED_BY_EXTENSION = new Map<string, { mimeTypes: string[]; format: string }>([
   ["md", { mimeTypes: ["text/markdown", "text/plain"], format: "markdown" }],
@@ -25,6 +33,13 @@ export interface ExtractedSourceText {
   metadata: Record<string, unknown>
 }
 
+export interface ExternalSourceText extends ExtractedSourceText {
+  canonicalUrl: string
+  displayName: string
+  mimeType: string
+  byteSize: number
+}
+
 export interface SourceChunkDraft {
   sourceId: string
   versionId: string
@@ -39,6 +54,22 @@ export function getSourceFileExtension(fileName: string) {
   const clean = fileName.toLowerCase().split(/[?#]/)[0] ?? fileName.toLowerCase()
   const part = clean.split(".").pop()
   return part && part !== clean ? part.replace(/[^a-z0-9]/g, "") : ""
+}
+
+// Synchronous structural normalize (no DNS). The authoritative SSRF guard is
+// the async assertPublicHttpsUrl resolution applied in fetchExternalSourceText.
+export function normalizeExternalSourceUrl(value: string) {
+  return normalizePublicHttpsUrl(value).toString()
+}
+
+export function classifyExternalSourceUrl(value: string) {
+  const url = new URL(normalizeExternalSourceUrl(value))
+  const path = url.pathname.toLowerCase()
+  if (url.hostname === "arxiv.org" && /^\/(abs|pdf)\//.test(path)) return "arxiv" as const
+  if (path.endsWith(".pdf")) return "pdf" as const
+  if (path.endsWith("/llms.txt") || path.endsWith("llms.txt")) return "llms_txt" as const
+  if (/openapi\.(json|ya?ml)$/.test(path) || /swagger\.(json|ya?ml)$/.test(path)) return "openapi" as const
+  return "website" as const
 }
 
 export function validateSourceFile(input: {
@@ -90,12 +121,16 @@ async function extractXlsx(buffer: Buffer) {
 }
 
 async function extractPdf(buffer: Buffer) {
-  const imported = await import("pdf-parse")
-  const parse = imported as unknown as (input: Buffer) => Promise<{ text: string; numpages?: number }>
-  const result = await parse(buffer)
-  return {
-    text: result.text,
-    pages: result.numpages ?? null,
+  const { PDFParse } = await import("pdf-parse")
+  const parser = new PDFParse({ data: new Uint8Array(buffer) })
+  try {
+    const result = await parser.getText()
+    return {
+      text: result.text,
+      pages: result.total ?? null,
+    }
+  } finally {
+    await parser.destroy().catch(() => undefined)
   }
 }
 
@@ -132,6 +167,110 @@ export async function extractTextFromSourceBuffer(input: {
   }
 
   throw new BadRequestError("This source file type is not supported in v1.")
+}
+
+function stripHtmlToText(html: string) {
+  return normalizeExtractedText(
+    html
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&#39;/g, "'")
+      .replace(/&quot;/g, "\"")
+      .replace(/[ \t]{2,}/g, " ")
+      .replace(/\n{3,}/g, "\n\n"),
+  )
+}
+
+function displayNameFromUrl(value: string) {
+  const url = new URL(value)
+  const last = url.pathname.split("/").filter(Boolean).pop()
+  return decodeURIComponent(last || url.hostname).slice(0, 255)
+}
+
+// arXiv abstract pages are HTML; the PDF text lives at /pdf/<id>. Fetch the
+// PDF variant while keeping the /abs/ URL user-facing as the canonical URL.
+function arxivFetchTarget(url: string): string {
+  const parsed = new URL(url)
+  if (parsed.hostname === "arxiv.org" && parsed.pathname.startsWith("/abs/")) {
+    parsed.pathname = parsed.pathname.replace(/^\/abs\//, "/pdf/")
+    return parsed.toString()
+  }
+  return url
+}
+
+export async function fetchExternalSourceText(inputUrl: string, options: {
+  fetcher?: typeof fetch
+  maxBytes?: number
+  maxRedirects?: number
+  lookup?: DnsLookup
+} = {}): Promise<ExternalSourceText> {
+  let url = (await assertPublicHttpsUrl(inputUrl, { lookup: options.lookup })).toString()
+  const fetcher = options.fetcher ?? fetch
+  const maxBytes = options.maxBytes ?? 5 * 1024 * 1024
+  const maxRedirects = options.maxRedirects ?? 3
+
+  let response: Response | null = null
+  for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount += 1) {
+    try {
+      response = await fetcher(arxivFetchTarget(url), {
+        headers: { accept: "text/html,text/plain,text/markdown,application/pdf,application/json,application/yaml,text/yaml,*/*;q=0.2" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(EXTERNAL_FETCH_TIMEOUT_MS),
+      })
+    } catch {
+      throw new BadRequestError("External source fetch failed or timed out.")
+    }
+    if (![301, 302, 303, 307, 308].includes(response.status)) break
+    const location = response.headers.get("location")
+    if (!location) throw new BadRequestError("External source redirected without a location.")
+    url = (await assertPublicHttpsUrl(new URL(location, url).toString(), { lookup: options.lookup })).toString()
+  }
+
+  if (!response) throw new BadRequestError("External source could not be fetched.")
+  if (!response.ok) throw new BadRequestError(`External source returned HTTP ${response.status}.`)
+
+  const contentLength = Number(response.headers.get("content-length") ?? 0)
+  if (contentLength > maxBytes) throw new BadRequestError("External source exceeds the current fetch size limit.")
+
+  const mimeType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() || "text/plain"
+  const buffer = await readCappedBody(response, maxBytes)
+
+  const sourceType = classifyExternalSourceUrl(url)
+  let text = ""
+  const metadata: Record<string, unknown> = { sourceType, fetcher: "relay-native-v1" }
+  // Pick the extractor from the actual bytes, not the URL classification: a
+  // .pdf/arxiv URL can serve an HTML error page, and a real PDF always starts
+  // with the %PDF- magic header.
+  const looksLikePdf = mimeType === "application/pdf" || buffer.subarray(0, 5).toString("latin1") === "%PDF-"
+  if (looksLikePdf) {
+    const extracted = await extractTextFromSourceBuffer({
+      buffer,
+      fileName: sourceType === "arxiv" ? "arxiv.pdf" : displayNameFromUrl(url),
+      mimeType: "application/pdf",
+    })
+    text = extracted.text
+    Object.assign(metadata, extracted.metadata)
+  } else if (mimeType.includes("html")) {
+    text = stripHtmlToText(buffer.toString("utf8"))
+  } else {
+    text = normalizeExtractedText(buffer.toString("utf8"))
+  }
+
+  if (!text) throw new BadRequestError("Relay could not extract text from this external source.")
+
+  return {
+    text,
+    canonicalUrl: url,
+    displayName: displayNameFromUrl(url),
+    mimeType,
+    byteSize: buffer.byteLength,
+    metadata,
+  }
 }
 
 export function estimateTokens(text: string) {

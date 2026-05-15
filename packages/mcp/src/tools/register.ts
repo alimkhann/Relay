@@ -4,6 +4,7 @@ import { listProjectsSchema, listProjects } from "./list-projects.js"
 import { getBriefSchema, getBrief } from "./get-brief.js"
 import { recallSchema, recall } from "./recall.js"
 import { saveSchema, save } from "./save.js"
+import { sourcesSchema, sources } from "./sources.js"
 import { z } from "zod"
 import type { RelayProjectResolutionResult } from "@relay/shared"
 
@@ -44,7 +45,10 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
           : getCachedProjectId()
             ? "cached"
             : null
-      const readOrWrite = writeTools.has(name) ? "write" : "read"
+      const readOrWrite =
+        name === "sources" && ["index", "refresh", "promote"].includes(String(args?.action ?? ""))
+          ? "write"
+          : writeTools.has(name) ? "write" : "read"
 
       client.captureAnalytics("mcp_tool_called", {
         tool_name: name,
@@ -189,6 +193,23 @@ If returned context is stale, completed, contradicted, or superseded, clean it u
         }).catch(() => {})
       }
       return result
+    }
+  )
+
+  server.tool(
+    "sources",
+    `External source tool for Relay docs and research sources. Actions:
+- list: list indexed project sources
+- discover: return source discovery guidance for a query
+- index: index a public docs/research URL
+- status/read: inspect a source and its chunks
+- search: explicitly search indexed sources with citations
+- refresh: re-fetch and re-index an external source
+- promote: save a selected citation into Relay memory`,
+    sourcesSchema.shape,
+    async (args) => {
+      const projectId = await resolveProjectId(args.projectId)
+      return sources(client, args, projectId)
     }
   )
 

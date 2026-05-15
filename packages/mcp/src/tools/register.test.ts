@@ -64,8 +64,32 @@ describe("registerTools analytics wrapper", () => {
       "set_current_project",
       "get_brief",
       "recall",
+      "sources",
       "save",
     ])
+  })
+
+  it("registers sources as one action-based external source tool", () => {
+    const harness = createServerHarness()
+    const client = {
+      captureAnalytics: vi.fn(),
+      getAgentName: vi.fn().mockReturnValue("codex"),
+      getClientName: vi.fn().mockReturnValue("relay-mcp:codex"),
+    }
+
+    registerTools(harness.server as never, {
+      client: client as never,
+      resolveProjectId: vi.fn(async (projectId?: string) => projectId ?? "proj-1"),
+      resolveProjectSelection: undefined,
+      getCachedProjectId: () => "proj-1",
+      setCachedProjectId: vi.fn(),
+    })
+
+    const sources = harness.registrations.find((tool) => tool.name === "sources")
+    expect(sources?.description).toContain("External source")
+    expect(sources?.description).toContain("index")
+    expect(sources?.description).toContain("search")
+    expect(sources?.description).toContain("promote")
   })
 
   it("emits MCP tool lifecycle events once for a read tool", async () => {

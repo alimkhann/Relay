@@ -2,7 +2,7 @@ import type { MemoryItemType, ProjectSourceKind, ProjectSourceRow, ProjectSource
 
 import { toProjectSourceRow, toSourceChunkRow, toSourceFactCandidateRow, toSourceVersionRow } from "../mappers/source-mapper"
 import type { DatabaseProvider } from "../store/provider"
-import { encryptTextIfConfigured } from "../utils/encrypted-text"
+import { decryptTextIfNeeded, encryptTextIfConfigured } from "../utils/encrypted-text"
 
 const SOURCE_COLS = `id, project_id, kind, status, display_name, original_file_name, mime_type, byte_size, storage_object_key, content_hash, source_uri, last_seen_hash, stale_reason, metadata, created_by, created_at, updated_at, archived_at`
 const VERSION_COLS = `id, source_id, project_id, status, storage_object_key, content_hash, byte_size, extracted_text_hash, extracted_text_bytes, chunk_count, token_estimate, metadata, error_message, created_by, created_at`
@@ -60,6 +60,34 @@ export interface SourceMemoryLinkRow {
   chunkId: string | null
   memoryItemId: string
   confidence: number
+}
+
+export interface SourceChunkSearchOptions {
+  query: string
+  sourceId?: string
+  kinds?: ProjectSourceKind[]
+  limit?: number
+}
+
+export interface SourceChunkSearchResult {
+  sourceId: string
+  sourceKind: ProjectSourceKind
+  sourceTitle: string
+  sourceUrl: string | null
+  chunkId: string
+  versionId: string
+  content: string
+  locator: Record<string, unknown>
+  metadata: Record<string, unknown>
+  provider: string | null
+  score: number
+  indexedAt: string | null
+}
+
+function jsonRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
 }
 
 export class SourceRepository {
@@ -121,6 +149,20 @@ export class SourceRepository {
     const rows = await this.provider.query(
       `select ${SOURCE_COLS} from project_sources where id = $1 limit 1`,
       [id],
+    )
+    return rows[0] ? toProjectSourceRow(rows[0] as Record<string, unknown>) : null
+  }
+
+  async findBySourceUri(projectId: string, sourceUri: string): Promise<ProjectSourceRow | null> {
+    const rows = await this.provider.query(
+      `select ${SOURCE_COLS}
+       from project_sources
+       where project_id = $1
+         and source_uri = $2
+         and status <> 'archived'
+       order by updated_at desc
+       limit 1`,
+      [projectId, sourceUri],
     )
     return rows[0] ? toProjectSourceRow(rows[0] as Record<string, unknown>) : null
   }
@@ -237,6 +279,77 @@ export class SourceRepository {
     return rows.map((row) => toSourceChunkRow(row as Record<string, unknown>))
   }
 
+  async getChunkById(chunkId: string): Promise<SourceChunkRow | null> {
+    const rows = await this.provider.query(
+      `select ${CHUNK_COLS}
+       from source_chunks
+       where id = $1
+       limit 1`,
+      [chunkId],
+    )
+    return rows[0] ? toSourceChunkRow(rows[0] as Record<string, unknown>) : null
+  }
+
+  async searchChunks(projectId: string, options: SourceChunkSearchOptions): Promise<SourceChunkSearchResult[]> {
+    const params: unknown[] = [projectId, options.query]
+    const filters = [
+      "s.project_id = $1",
+      "s.status = 'ready'",
+      "c.search_vector @@ websearch_to_tsquery('english', $2)",
+    ]
+    if (options.sourceId) {
+      params.push(options.sourceId)
+      filters.push(`s.id = $${params.length}`)
+    }
+    if (options.kinds?.length) {
+      params.push(options.kinds)
+      filters.push(`s.kind = ANY($${params.length}::text[])`)
+    }
+    params.push(options.limit ?? 10)
+    const limitParam = params.length
+    const rows = await this.provider.query(
+      `select
+         s.id as source_id,
+         s.kind as source_kind,
+         s.display_name as source_title,
+         s.source_uri as source_url,
+         s.metadata as source_metadata,
+         c.id as chunk_id,
+         c.version_id,
+         c.content,
+         c.locator,
+         c.metadata,
+         ts_rank_cd(c.search_vector, websearch_to_tsquery('english', $2)) as score,
+         v.created_at as indexed_at
+       from source_chunks c
+       join project_sources s on s.id = c.source_id
+       left join source_versions v on v.id = c.version_id
+       where ${filters.join("\n         and ")}
+       order by score desc, c.chunk_index asc
+       limit $${limitParam}`,
+      params,
+    )
+    return rows.map((row) => {
+      const r = row as Record<string, unknown>
+      const sourceMetadata = jsonRecord(r.source_metadata)
+      const external = jsonRecord(sourceMetadata.external)
+      return {
+        sourceId: String(r.source_id),
+        sourceKind: r.source_kind as ProjectSourceKind,
+        sourceTitle: String(r.source_title),
+        sourceUrl: r.source_url ? String(r.source_url) : null,
+        chunkId: String(r.chunk_id),
+        versionId: String(r.version_id),
+        content: decryptTextIfNeeded(String(r.content)),
+        locator: jsonRecord(r.locator),
+        metadata: jsonRecord(r.metadata),
+        provider: typeof external.provider === "string" ? external.provider : null,
+        score: Number(r.score ?? 0),
+        indexedAt: r.indexed_at ? String(r.indexed_at) : null,
+      }
+    })
+  }
+
   async createFactCandidates(candidates: CreateFactCandidateInput[]): Promise<SourceFactCandidateRow[]> {
     if (candidates.length === 0) return []
     const placeholders: string[] = []
@@ -342,6 +455,18 @@ export class SourceRepository {
   async countByProject(projectId: string): Promise<number> {
     const rows = await this.provider.query<{ count: number }>(
       `select count(*)::int as count from project_sources where project_id = $1 and status <> 'archived'`,
+      [projectId],
+    )
+    return Number(rows[0]?.count ?? 0)
+  }
+
+  async countExternalByProject(projectId: string): Promise<number> {
+    const rows = await this.provider.query<{ count: number }>(
+      `select count(*)::int as count
+       from project_sources
+       where project_id = $1
+         and kind in ('external_docs', 'package_docs')
+         and status <> 'archived'`,
       [projectId],
     )
     return Number(rows[0]?.count ?? 0)

@@ -27,6 +27,7 @@ export const RELAY_MCP_TOOL_NAMES = [
   "set_project_state",
   "update_project",
   "recall_context",
+  "sources",
 ] as const
 
 export const RELAY_MCP_PROMPT_NAMES = [
