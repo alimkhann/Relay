@@ -8,7 +8,7 @@ import {
   type DnsLookup,
 } from "@/server/lib/safe-url"
 
-const EXTERNAL_FETCH_TIMEOUT_MS = 10_000
+const EXTERNAL_FETCH_TIMEOUT_MS = 30_000
 
 const SUPPORTED_BY_EXTENSION = new Map<string, { mimeTypes: string[]; format: string }>([
   ["md", { mimeTypes: ["text/markdown", "text/plain"], format: "markdown" }],
@@ -121,12 +121,16 @@ async function extractXlsx(buffer: Buffer) {
 }
 
 async function extractPdf(buffer: Buffer) {
-  const imported = await import("pdf-parse")
-  const parse = imported as unknown as (input: Buffer) => Promise<{ text: string; numpages?: number }>
-  const result = await parse(buffer)
-  return {
-    text: result.text,
-    pages: result.numpages ?? null,
+  const { PDFParse } = await import("pdf-parse")
+  const parser = new PDFParse({ data: new Uint8Array(buffer) })
+  try {
+    const result = await parser.getText()
+    return {
+      text: result.text,
+      pages: result.total ?? null,
+    }
+  } finally {
+    await parser.destroy().catch(() => undefined)
   }
 }
 

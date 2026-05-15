@@ -71,10 +71,11 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
     })
       .then(async (response) => {
         if (!response.ok) return null
-        return await response.json() as BillingStatusDto
+        const payload = await response.json() as { billing?: BillingStatusDto }
+        return payload.billing ?? null
       })
       .then((payload) => {
-        if (!cancelled && payload) setBillingStatus(payload)
+        if (!cancelled && payload?.entitlements?.limits && payload.usage) setBillingStatus(payload)
       })
       .catch(() => {
         if (!cancelled) setBillingStatus(null)

@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
   outputFileTracingRoot: path.join(import.meta.dirname, "../../"),
   transpilePackages: ["@relay/shared", "@relay/db", "@relay/formatters", "@relay/adapters"],
+  // pdf-parse pulls in pdfjs-dist which loads a worker file at runtime; bundling
+  // it breaks worker resolution. Keep it external so Node resolves it from
+  // node_modules in both dev and prod.
+  serverExternalPackages: ["pdf-parse"],
   images: {
     formats: ["image/avif", "image/webp"]
   },
