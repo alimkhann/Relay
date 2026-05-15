@@ -98,18 +98,25 @@ function drawLabelText(
   ctx.restore();
 }
 
+// World-space card dimensions. Sized in graph coordinates (like circular nodes
+// via nodeRadius) so the card zooms naturally with the view and participates in
+// the force layout instead of ballooning at low zoom and overlapping neighbours.
+export function sourceFileNodeSize(nodeScale = 1) {
+  const u = Math.max(0.45, nodeScale);
+  return { width: 30 * u, height: 19 * u, radius: 3.4 * u };
+}
+
 function drawSourceFileNode(
   ctx: CanvasRenderingContext2D,
   node: GraphNode & { x: number; y: number },
   globalScale: number,
   active: boolean,
+  nodeScale: number,
 ) {
-  const scale = 1 / Math.max(globalScale, 0.01);
-  const width = 148 * scale;
-  const height = 92 * scale;
+  const u = Math.max(0.45, nodeScale);
+  const { width, height, radius } = sourceFileNodeSize(nodeScale);
   const left = node.x - width / 2;
   const top = node.y - height / 2;
-  const radius = 16 * scale;
   const surface = cssVar("--relay-surface", "#ffffff");
   const soft = cssVar("--relay-soft", "#f4f4f5");
   const border = cssVar("--relay-line", "rgba(0,0,0,0.12)");
@@ -119,7 +126,7 @@ function drawSourceFileNode(
 
   ctx.save();
   ctx.shadowColor = "rgba(14,165,233,0.20)";
-  ctx.shadowBlur = active ? 24 * scale : 13 * scale;
+  ctx.shadowBlur = active ? 2 * u : 1 * u;
   ctx.fillStyle = surface;
   ctx.strokeStyle = active ? accent : border;
   ctx.lineWidth = (active ? 2 : 1) / globalScale;
@@ -131,43 +138,43 @@ function drawSourceFileNode(
 
   ctx.fillStyle = soft;
   ctx.beginPath();
-  ctx.roundRect(left + 8 * scale, top + 8 * scale, width - 16 * scale, 22 * scale, 9 * scale);
+  ctx.roundRect(left + 1.6 * u, top + 1.6 * u, width - 3.2 * u, 4.6 * u, 1.9 * u);
   ctx.fill();
 
   ctx.fillStyle = accent;
   ctx.beginPath();
-  ctx.roundRect(left + 14 * scale, top + 14 * scale, 12 * scale, 11 * scale, 3 * scale);
+  ctx.roundRect(left + 2.9 * u, top + 2.9 * u, 2.5 * u, 2.3 * u, 0.7 * u);
   ctx.fill();
 
-  ctx.font = `700 ${10 * scale}px Outfit, sans-serif`;
+  ctx.font = `700 ${2.1 * u}px Outfit, sans-serif`;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.fillStyle = ink;
-  ctx.fillText(node.source?.displayName ?? node.label, left + 31 * scale, top + 19 * scale, width - 42 * scale);
+  ctx.fillText(node.source?.displayName ?? node.label, left + 6.4 * u, top + 3.9 * u, width - 8.6 * u);
 
-  ctx.font = `500 ${7.5 * scale}px Outfit, sans-serif`;
+  ctx.font = `500 ${1.55 * u}px Outfit, sans-serif`;
   ctx.fillStyle = muted;
   ctx.fillText(
     `${node.source?.chunkCount ?? 0} chunks · ${node.source?.tokenEstimate ?? 0} tokens`,
-    left + 13 * scale,
-    top + 41 * scale,
-    width - 26 * scale,
+    left + 2.7 * u,
+    top + 8.4 * u,
+    width - 5.4 * u,
   );
 
   const preview = (node.source?.previewText || node.content).replace(/\s+/g, " ").trim();
-  ctx.font = `400 ${7.5 * scale}px Outfit, sans-serif`;
+  ctx.font = `400 ${1.55 * u}px Outfit, sans-serif`;
   ctx.fillStyle = muted;
-  const maxPreviewWidth = width - 26 * scale;
+  const maxPreviewWidth = width - 5.4 * u;
   const words = preview.split(" ");
   let previewLine = "";
-  let y = top + 57 * scale;
+  let y = top + 11.7 * u;
   let lines = 0;
   for (const word of words) {
     const next = previewLine ? `${previewLine} ${word}` : word;
     if (ctx.measureText(next).width > maxPreviewWidth && previewLine) {
-      ctx.fillText(previewLine, left + 13 * scale, y, maxPreviewWidth);
+      ctx.fillText(previewLine, left + 2.7 * u, y, maxPreviewWidth);
       previewLine = word;
-      y += 11 * scale;
+      y += 2.3 * u;
       lines += 1;
       if (lines >= 2) break;
     } else {
@@ -175,7 +182,7 @@ function drawSourceFileNode(
     }
   }
   if (previewLine && lines < 3) {
-    ctx.fillText(previewLine, left + 13 * scale, y, maxPreviewWidth);
+    ctx.fillText(previewLine, left + 2.7 * u, y, maxPreviewWidth);
   }
 
   ctx.restore();
@@ -195,8 +202,26 @@ export function MemoryGraph({
 }: MemoryGraphProps) {
   const graphRef = useRef<ForceGraphMethods<GraphNode, GraphLink> | undefined>(undefined);
   const didFitRef = useRef(false);
+  const prevDimsRef = useRef({ w: 0, h: 0 });
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
+
+  // When mounted inside a hidden/animated container (Overview minimap, Memory
+  // tab) the element first measures 0x0, so the canvas renders at 1x1 and the
+  // one-shot zoomToFit fits to nothing — the graph looks blank. Re-fit whenever
+  // dimensions become valid after being unmeasured.
+  useEffect(() => {
+    if (width <= 1 || height <= 1) return;
+    const prev = prevDimsRef.current;
+    prevDimsRef.current = { w: width, h: height };
+    if (prev.w > 1 && prev.h > 1) return;
+    didFitRef.current = false;
+    const frame = requestAnimationFrame(() => {
+      graphRef.current?.zoomToFit(300, 40);
+      didFitRef.current = true;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [width, height]);
 
   const activeNodeId = selectedNodeId ?? hoveredNodeId;
 
@@ -266,7 +291,7 @@ export function MemoryGraph({
     const isActive = activeNodeId === node.id;
 
     if (node.kind === "source-file") {
-      drawSourceFileNode(ctx, node, globalScale, isActive || hoveredNodeId === node.id);
+      drawSourceFileNode(ctx, node, globalScale, isActive || hoveredNodeId === node.id, settings.nodeScale);
       return;
     }
 
@@ -450,8 +475,11 @@ export function MemoryGraph({
       onNodeHover={(node) => setHoveredNodeId(node?.id ?? null)}
       onNodeClick={(node) => onSelectNode?.(node)}
       onNodeDragEnd={(node) => {
-        node.fx = node.x;
-        node.fy = node.y;
+        // Release the node instead of pinning it: keeping fx/fy set freezes the
+        // node permanently and the simulation stops applying forces to it.
+        node.fx = undefined;
+        node.fy = undefined;
+        (graphRef.current as { d3ReheatSimulation?: () => void } | undefined)?.d3ReheatSimulation?.();
       }}
       onBackgroundClick={() => onSelectNode?.(null)}
       onZoom={({ k }) => setZoom(k)}
@@ -464,10 +492,10 @@ export function MemoryGraph({
       nodePointerAreaPaint={(node, color, ctx) => {
         if (!hasPosition(node)) return;
         if (node.kind === "source-file") {
-          const scale = 1 / Math.max(zoom, 0.01);
+          const { width, height, radius } = sourceFileNodeSize(settings.nodeScale);
           ctx.fillStyle = color;
           ctx.beginPath();
-          ctx.roundRect(node.x - 78 * scale, node.y - 49 * scale, 156 * scale, 98 * scale, 18 * scale);
+          ctx.roundRect(node.x - width / 2, node.y - height / 2, width, height, radius);
           ctx.fill();
           return;
         }
