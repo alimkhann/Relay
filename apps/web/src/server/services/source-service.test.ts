@@ -154,6 +154,7 @@ describe("source-service", () => {
       kind: "external_docs",
       refreshPolicy: "manual",
       fetcher: async () => new Response("External research source content.", { headers: { "content-type": "text/plain" } }),
+      lookup: async () => [{ address: "93.184.216.34", family: 4 }],
     })
 
     expect(detail.source.id).toBe("source-1")
@@ -172,11 +173,11 @@ describe("source-service", () => {
     const searchChunks = vi.fn().mockResolvedValue([{ sourceId: "source-1", chunkId: "chunk-1", content: "Matched research", score: 0.88 }])
     createRepositoryBundleMock.mockReturnValue({ sources: { searchChunks } })
 
-    const result = await searchProjectSources("user-1", "project-1", { query: "research", mode: "hybrid", limit: 5 })
+    const result = await searchProjectSources("user-1", "project-1", { query: "research", limit: 5 })
 
     expect(result.results).toHaveLength(1)
     expect(searchChunks).toHaveBeenCalledWith("project-1", expect.objectContaining({ query: "research", limit: 5 }))
-    expect(consumeQuotaMock).toHaveBeenCalledWith("user-1", "source_backed_recall_daily", "day", 50, 1, "starter")
+    expect(consumeQuotaMock).toHaveBeenCalledWith("user-1", "external_source_search_daily", "day", 50, 1, "starter")
   })
 
   it("promotes a selected citation into memory only on explicit action", async () => {

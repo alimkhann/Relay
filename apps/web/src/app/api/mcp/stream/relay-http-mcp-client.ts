@@ -507,7 +507,6 @@ export class RelayHttpMcpClient {
       query: args.query,
       sourceId: args.sourceId,
       kinds: args.kinds,
-      mode: args.mode,
       limit: args.limit,
     })
     return searchProjectSources(this.viewer.userId, projectId, parsed)

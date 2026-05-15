@@ -5,7 +5,6 @@ export const sourceStatusSchema = z.enum(["pending_upload", "processing", "ready
 export const sourceVersionStatusSchema = z.enum(["pending_upload", "processing", "ready", "failed"])
 export const sourceFactCandidateStatusSchema = z.enum(["pending", "promoted", "rejected"])
 export const externalSourceTypeSchema = z.enum(["website", "llms_txt", "pdf", "arxiv", "openapi", "package_docs"])
-export const sourceSearchModeSchema = z.enum(["hybrid", "keyword", "semantic"])
 export const sourceMemoryTypeSchema = z.enum(["note", "decision", "constraint", "requirement", "task", "artifact"])
 
 export const supportedSourceMimeTypes = [
@@ -25,22 +24,34 @@ export const createSourceUploadSchema = z.object({
   kind: sourceKindSchema.default("uploaded_file"),
 })
 
+// Cheap synchronous structural pre-filter for UX only. The authoritative
+// SSRF guard (DNS resolution + private-IP rejection) lives server-side in
+// apps/web/src/server/lib/safe-url.ts; this just rejects the obvious cases
+// before a request is made.
 const privateHostPatterns = [
   /^localhost$/i,
-  /^127\./,
-  /^10\./,
-  /^192\.168\./,
-  /^172\.(1[6-9]|2\d|3[0-1])\./,
+  /\.localhost$/i,
+  /\.local$/i,
   /^0\./,
+  /^10\./,
+  /^127\./,
   /^169\.254\./,
-  /^::1$/i,
+  /^172\.(1[6-9]|2\d|3[0-1])\./,
+  /^192\.168\./,
+  /^100\.(6[4-9]|[7-9]\d|1[0-1]\d|12[0-7])\./, // CGNAT 100.64.0.0/10
+  /^::1?$/i,
+  /^::ffff:/i, // IPv4-mapped IPv6
+  /^f[cd]/i, // unique local fc00::/7
+  /^fe[89ab]/i, // link-local fe80::/10
+  /^ff/i, // multicast
 ]
 
 function isPublicHttpUrl(value: string) {
   try {
     const url = new URL(value)
     if (url.protocol !== "https:") return false
-    const host = url.hostname.replace(/^\[|\]$/g, "")
+    if (url.username || url.password) return false
+    const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase()
     return !privateHostPatterns.some((pattern) => pattern.test(host))
   } catch {
     return false
@@ -63,7 +74,6 @@ export const searchProjectSourcesSchema = z.object({
   query: z.string().trim().min(1).max(500),
   sourceId: z.string().uuid().optional(),
   kinds: z.array(sourceKindSchema).max(4).optional(),
-  mode: sourceSearchModeSchema.default("hybrid"),
   limit: z.number().int().positive().max(50).default(10),
 })
 
@@ -86,7 +96,6 @@ export const sourcesToolShape = {
   sourceType: externalSourceTypeSchema.optional(),
   provider: z.enum(["relay", "context7", "nia"]).optional(),
   displayName: z.string().trim().min(1).max(255).optional(),
-  mode: sourceSearchModeSchema.optional(),
   limit: z.number().int().positive().max(50).optional(),
   type: sourceMemoryTypeSchema.optional(),
   title: z.string().trim().min(1).max(120).optional(),

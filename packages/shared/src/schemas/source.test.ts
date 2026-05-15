@@ -57,9 +57,8 @@ describe("source schemas", () => {
   })
 
   it("validates source search and promotion payloads", () => {
-    expect(searchProjectSourcesSchema.parse({ query: "attention mechanisms", mode: "hybrid", limit: 20 })).toMatchObject({
+    expect(searchProjectSourcesSchema.parse({ query: "attention mechanisms", limit: 20 })).toMatchObject({
       query: "attention mechanisms",
-      mode: "hybrid",
       limit: 20,
     })
     expect(promoteSourceCitationSchema.parse({

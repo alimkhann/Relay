@@ -39,7 +39,6 @@ const sourcesToolShape = {
   sourceType: z.enum(["website", "llms_txt", "pdf", "arxiv", "openapi", "package_docs"]).optional(),
   provider: z.enum(["relay", "context7", "nia"]).optional(),
   displayName: z.string().optional(),
-  mode: z.enum(["hybrid", "keyword", "semantic"]).optional(),
   limit: z.number().optional(),
   type: z.enum(["note", "decision", "constraint", "requirement", "task", "artifact"]).optional(),
   title: z.string().optional(),

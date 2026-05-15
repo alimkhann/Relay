@@ -5,7 +5,6 @@ export type ProjectSourceStatus = "pending_upload" | "processing" | "ready" | "f
 export type SourceVersionStatus = "pending_upload" | "processing" | "ready" | "failed"
 export type SourceFactCandidateStatus = "pending" | "promoted" | "rejected"
 export type ExternalSourceType = "website" | "llms_txt" | "pdf" | "arxiv" | "openapi" | "package_docs"
-export type SourceSearchMode = "hybrid" | "keyword" | "semantic"
 
 export interface ProjectSourceRow {
   id: string

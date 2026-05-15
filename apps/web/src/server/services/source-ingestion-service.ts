@@ -1,6 +1,14 @@
 import { createHash } from "node:crypto"
 
 import { BadRequestError } from "@/server/http/errors"
+import {
+  assertPublicHttpsUrl,
+  normalizePublicHttpsUrl,
+  readCappedBody,
+  type DnsLookup,
+} from "@/server/lib/safe-url"
+
+const EXTERNAL_FETCH_TIMEOUT_MS = 10_000
 
 const SUPPORTED_BY_EXTENSION = new Map<string, { mimeTypes: string[]; format: string }>([
   ["md", { mimeTypes: ["text/markdown", "text/plain"], format: "markdown" }],
@@ -48,41 +56,10 @@ export function getSourceFileExtension(fileName: string) {
   return part && part !== clean ? part.replace(/[^a-z0-9]/g, "") : ""
 }
 
-const PRIVATE_HOST_PATTERNS = [
-  /^localhost$/i,
-  /^127\./,
-  /^10\./,
-  /^192\.168\./,
-  /^172\.(1[6-9]|2\d|3[0-1])\./,
-  /^0\./,
-  /^169\.254\./,
-  /^::1$/i,
-]
-
-function isBlockedExternalHost(hostname: string) {
-  const host = hostname.replace(/^\[|\]$/g, "")
-  return PRIVATE_HOST_PATTERNS.some((pattern) => pattern.test(host))
-}
-
+// Synchronous structural normalize (no DNS). The authoritative SSRF guard is
+// the async assertPublicHttpsUrl resolution applied in fetchExternalSourceText.
 export function normalizeExternalSourceUrl(value: string) {
-  let url: URL
-  try {
-    url = new URL(value)
-  } catch {
-    throw new BadRequestError("External sources require a valid public URL.")
-  }
-  if (isBlockedExternalHost(url.hostname)) {
-    throw new BadRequestError("External sources require a public URL.")
-  }
-  if (url.protocol !== "https:") {
-    throw new BadRequestError("External sources require a public https URL.")
-  }
-  url.hash = ""
-  url.hostname = url.hostname.toLowerCase()
-  if (url.pathname !== "/" && url.pathname.endsWith("/")) {
-    url.pathname = url.pathname.slice(0, -1)
-  }
-  return url.toString()
+  return normalizePublicHttpsUrl(value).toString()
 }
 
 export function classifyExternalSourceUrl(value: string) {
@@ -211,26 +188,43 @@ function displayNameFromUrl(value: string) {
   return decodeURIComponent(last || url.hostname).slice(0, 255)
 }
 
+// arXiv abstract pages are HTML; the PDF text lives at /pdf/<id>. Fetch the
+// PDF variant while keeping the /abs/ URL user-facing as the canonical URL.
+function arxivFetchTarget(url: string): string {
+  const parsed = new URL(url)
+  if (parsed.hostname === "arxiv.org" && parsed.pathname.startsWith("/abs/")) {
+    parsed.pathname = parsed.pathname.replace(/^\/abs\//, "/pdf/")
+    return parsed.toString()
+  }
+  return url
+}
+
 export async function fetchExternalSourceText(inputUrl: string, options: {
   fetcher?: typeof fetch
   maxBytes?: number
   maxRedirects?: number
+  lookup?: DnsLookup
 } = {}): Promise<ExternalSourceText> {
-  let url = normalizeExternalSourceUrl(inputUrl)
+  let url = (await assertPublicHttpsUrl(inputUrl, { lookup: options.lookup })).toString()
   const fetcher = options.fetcher ?? fetch
   const maxBytes = options.maxBytes ?? 5 * 1024 * 1024
   const maxRedirects = options.maxRedirects ?? 3
 
   let response: Response | null = null
   for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount += 1) {
-    response = await fetcher(url, {
-      headers: { accept: "text/html,text/plain,text/markdown,application/pdf,application/json,application/yaml,text/yaml,*/*;q=0.2" },
-      redirect: "manual",
-    })
+    try {
+      response = await fetcher(arxivFetchTarget(url), {
+        headers: { accept: "text/html,text/plain,text/markdown,application/pdf,application/json,application/yaml,text/yaml,*/*;q=0.2" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(EXTERNAL_FETCH_TIMEOUT_MS),
+      })
+    } catch {
+      throw new BadRequestError("External source fetch failed or timed out.")
+    }
     if (![301, 302, 303, 307, 308].includes(response.status)) break
     const location = response.headers.get("location")
     if (!location) throw new BadRequestError("External source redirected without a location.")
-    url = normalizeExternalSourceUrl(new URL(location, url).toString())
+    url = (await assertPublicHttpsUrl(new URL(location, url).toString(), { lookup: options.lookup })).toString()
   }
 
   if (!response) throw new BadRequestError("External source could not be fetched.")
@@ -240,14 +234,16 @@ export async function fetchExternalSourceText(inputUrl: string, options: {
   if (contentLength > maxBytes) throw new BadRequestError("External source exceeds the current fetch size limit.")
 
   const mimeType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() || "text/plain"
-  const arrayBuffer = await response.arrayBuffer()
-  const buffer = Buffer.from(arrayBuffer)
-  if (buffer.byteLength > maxBytes) throw new BadRequestError("External source exceeds the current fetch size limit.")
+  const buffer = await readCappedBody(response, maxBytes)
 
   const sourceType = classifyExternalSourceUrl(url)
   let text = ""
   const metadata: Record<string, unknown> = { sourceType, fetcher: "relay-native-v1" }
-  if (mimeType === "application/pdf" || sourceType === "pdf" || sourceType === "arxiv") {
+  // Pick the extractor from the actual bytes, not the URL classification: a
+  // .pdf/arxiv URL can serve an HTML error page, and a real PDF always starts
+  // with the %PDF- magic header.
+  const looksLikePdf = mimeType === "application/pdf" || buffer.subarray(0, 5).toString("latin1") === "%PDF-"
+  if (looksLikePdf) {
     const extracted = await extractTextFromSourceBuffer({
       buffer,
       fileName: sourceType === "arxiv" ? "arxiv.pdf" : displayNameFromUrl(url),

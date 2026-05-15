@@ -9,6 +9,7 @@ import type {
 } from "@relay/shared"
 
 import { BadRequestError, ForbiddenError, NotFoundError } from "@/server/http/errors"
+import type { DnsLookup } from "@/server/lib/safe-url"
 import { createMemoryItem } from "./memory-service"
 import { generateEmbeddings, EMBEDDING_MODEL } from "./embedding-service"
 import { resolveViewerEntitlements, consumeQuota } from "./entitlement-service"
@@ -68,32 +69,39 @@ export async function listProjectSources(userId: string, projectId: string): Pro
   })
 }
 
-function getExternalLimit(entitlements: Awaited<ReturnType<typeof resolveViewerEntitlements>>, key: "externalSourcesPerProject" | "externalSourceIndexesDaily" | "externalSourceSearchesDaily" | "externalSourceRefreshesDaily" | "externalSourceMcpActionsPerMinute") {
-  const value = entitlements.limits[key]
-  if (typeof value === "number") return value
-  if (key === "externalSourcesPerProject") return entitlements.limits.sourcesPerProject
-  if (key === "externalSourceIndexesDaily") return entitlements.limits.sourceIngestionsDaily
-  if (key === "externalSourceSearchesDaily") return entitlements.limits.sourceBackedRecallDaily
-  if (key === "externalSourceRefreshesDaily") return Math.max(0, Math.floor(entitlements.limits.sourceIngestionsDaily / 2))
-  return 10
+type ViewerEntitlements = Awaited<ReturnType<typeof resolveViewerEntitlements>>
+
+// Count + daily-quota gate, run BEFORE the outbound fetch so the rate limit
+// actually protects the fetch surface.
+async function assertExternalSourceIndexQuota(
+  userId: string,
+  projectId: string,
+  entitlements: ViewerEntitlements,
+  refresh: boolean,
+) {
+  if (!refresh) {
+    const sourceCount = await createRepositoryBundle(userId).sources.countExternalByProject(projectId)
+    if (sourceCount >= entitlements.limits.externalSourcesPerProject) {
+      throw new ForbiddenError("External source limit reached for this project.")
+    }
+  }
+  const dailyKey = refresh ? "external_source_refresh_daily" : "external_source_index_daily"
+  const dailyLimit = refresh
+    ? entitlements.limits.externalSourceRefreshesDaily
+    : entitlements.limits.externalSourceIndexesDaily
+  await consumeQuota(userId, dailyKey, "day", dailyLimit, 1, entitlements.plan)
 }
 
-async function assertExternalSourceIndexAllowed(userId: string, projectId: string, byteSize: number, refresh = false) {
-  const repos = createRepositoryBundle(userId)
-  const entitlements = await resolveViewerEntitlements(userId)
-  const [sourceCount, storageBytes] = await Promise.all([
-    repos.sources.countExternalByProject(projectId),
-    repos.sources.sumStorageBytesByUser(userId),
-  ])
-  if (sourceCount >= getExternalLimit(entitlements, "externalSourcesPerProject") && !refresh) {
-    throw new ForbiddenError("External source limit reached for this project.")
-  }
+// Storage gate, run AFTER the fetch since it needs the fetched byte size.
+async function assertExternalSourceStorage(
+  userId: string,
+  entitlements: ViewerEntitlements,
+  byteSize: number,
+) {
+  const storageBytes = await createRepositoryBundle(userId).sources.sumStorageBytesByUser(userId)
   if (storageBytes + byteSize > entitlements.limits.sourceStorageBytes) {
     throw new ForbiddenError("Source storage limit reached for your current plan.")
   }
-  const dailyKey = refresh ? "external_source_refresh_daily" : "external_source_index_daily"
-  const limitKey = refresh ? "externalSourceRefreshesDaily" : "externalSourceIndexesDaily"
-  await consumeQuota(userId, dailyKey, "day", getExternalLimit(entitlements, limitKey), 1, entitlements.plan)
 }
 
 async function ingestExternalSourceText(userId: string, input: {
@@ -104,11 +112,14 @@ async function ingestExternalSourceText(userId: string, input: {
   provider?: string
   refreshPolicy?: string
   fetcher?: typeof fetch
+  lookup?: DnsLookup
   existingSourceId?: string
   refresh?: boolean
 }) {
-  const fetched = await fetchExternalSourceText(input.url, { fetcher: input.fetcher })
-  await assertExternalSourceIndexAllowed(userId, input.projectId, fetched.byteSize, input.refresh === true)
+  const entitlements = await resolveViewerEntitlements(userId)
+  await assertExternalSourceIndexQuota(userId, input.projectId, entitlements, input.refresh === true)
+  const fetched = await fetchExternalSourceText(input.url, { fetcher: input.fetcher, lookup: input.lookup })
+  await assertExternalSourceStorage(userId, entitlements, fetched.byteSize)
 
   const repos = createRepositoryBundle(userId)
   const canonicalUrl = normalizeExternalSourceUrl(fetched.canonicalUrl)
@@ -175,9 +186,9 @@ async function ingestExternalSourceText(userId: string, input: {
     userId,
     "source_embedded_tokens_monthly",
     "month",
-    (await resolveViewerEntitlements(userId)).limits.sourceEmbeddedTokensMonthly,
+    entitlements.limits.sourceEmbeddedTokensMonthly,
     tokenEstimate,
-    (await resolveViewerEntitlements(userId)).plan,
+    entitlements.plan,
   )
   await repos.sources.markVersionReady(version.id, {
     extractedTextHash: sha256Hex(fetched.text),
@@ -194,11 +205,12 @@ async function ingestExternalSourceText(userId: string, input: {
 export async function createExternalSource(userId: string, input: CreateExternalSourceInput & {
   projectId: string
   fetcher?: typeof fetch
+  lookup?: DnsLookup
 }) {
   return ingestExternalSourceText(userId, input)
 }
 
-export async function refreshExternalSource(userId: string, projectId: string, sourceId: string, options: { fetcher?: typeof fetch } = {}) {
+export async function refreshExternalSource(userId: string, projectId: string, sourceId: string, options: { fetcher?: typeof fetch; lookup?: DnsLookup } = {}) {
   const repos = createRepositoryBundle(userId)
   const source = await repos.sources.getById(sourceId)
   if (!source || source.projectId !== projectId) throw new NotFoundError("Source not found.")
@@ -210,13 +222,13 @@ export async function refreshExternalSource(userId: string, projectId: string, s
     existingSourceId: source.id,
     refresh: true,
     fetcher: options.fetcher,
+    lookup: options.lookup,
   })
 }
 
 export async function searchProjectSources(userId: string, projectId: string, input: SearchProjectSourcesInput): Promise<{ results: SourceSearchResultDto[] }> {
   const entitlements = await resolveViewerEntitlements(userId)
-  await consumeQuota(userId, "external_source_search_daily", "day", getExternalLimit(entitlements, "externalSourceSearchesDaily"), 1, entitlements.plan)
-  await consumeQuota(userId, "source_backed_recall_daily", "day", entitlements.limits.sourceBackedRecallDaily, 1, entitlements.plan)
+  await consumeQuota(userId, "external_source_search_daily", "day", entitlements.limits.externalSourceSearchesDaily, 1, entitlements.plan)
   const repos = createRepositoryBundle(userId)
   const results = await repos.sources.searchChunks(projectId, {
     query: input.query,
