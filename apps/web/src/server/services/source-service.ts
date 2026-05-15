@@ -1,5 +1,12 @@
 import { createRepositoryBundle } from "@relay/db"
-import type { ProjectSourceDto, SourceFactCandidateRow } from "@relay/shared"
+import type {
+  CreateExternalSourceInput,
+  PromoteSourceCitationInput,
+  ProjectSourceDto,
+  SearchProjectSourcesInput,
+  SourceFactCandidateRow,
+  SourceSearchResultDto,
+} from "@relay/shared"
 
 import { BadRequestError, ForbiddenError, NotFoundError } from "@/server/http/errors"
 import { createMemoryItem } from "./memory-service"
@@ -14,7 +21,9 @@ import {
   estimateTokens,
   extractFactCandidatesFromChunks,
   extractTextFromSourceBuffer,
+  fetchExternalSourceText,
   getSourceFileExtension,
+  normalizeExternalSourceUrl,
   sha256Hex,
   validateSourceFile,
 } from "./source-ingestion-service"
@@ -57,6 +66,179 @@ export async function listProjectSources(userId: string, projectId: string): Pro
       promotedCandidates: counts.promoted,
     }
   })
+}
+
+function getExternalLimit(entitlements: Awaited<ReturnType<typeof resolveViewerEntitlements>>, key: "externalSourcesPerProject" | "externalSourceIndexesDaily" | "externalSourceSearchesDaily" | "externalSourceRefreshesDaily" | "externalSourceMcpActionsPerMinute") {
+  const value = entitlements.limits[key]
+  if (typeof value === "number") return value
+  if (key === "externalSourcesPerProject") return entitlements.limits.sourcesPerProject
+  if (key === "externalSourceIndexesDaily") return entitlements.limits.sourceIngestionsDaily
+  if (key === "externalSourceSearchesDaily") return entitlements.limits.sourceBackedRecallDaily
+  if (key === "externalSourceRefreshesDaily") return Math.max(0, Math.floor(entitlements.limits.sourceIngestionsDaily / 2))
+  return 10
+}
+
+async function assertExternalSourceIndexAllowed(userId: string, projectId: string, byteSize: number, refresh = false) {
+  const repos = createRepositoryBundle(userId)
+  const entitlements = await resolveViewerEntitlements(userId)
+  const [sourceCount, storageBytes] = await Promise.all([
+    repos.sources.countExternalByProject(projectId),
+    repos.sources.sumStorageBytesByUser(userId),
+  ])
+  if (sourceCount >= getExternalLimit(entitlements, "externalSourcesPerProject") && !refresh) {
+    throw new ForbiddenError("External source limit reached for this project.")
+  }
+  if (storageBytes + byteSize > entitlements.limits.sourceStorageBytes) {
+    throw new ForbiddenError("Source storage limit reached for your current plan.")
+  }
+  const dailyKey = refresh ? "external_source_refresh_daily" : "external_source_index_daily"
+  const limitKey = refresh ? "externalSourceRefreshesDaily" : "externalSourceIndexesDaily"
+  await consumeQuota(userId, dailyKey, "day", getExternalLimit(entitlements, limitKey), 1, entitlements.plan)
+}
+
+async function ingestExternalSourceText(userId: string, input: {
+  projectId: string
+  url: string
+  displayName?: string
+  sourceType?: CreateExternalSourceInput["sourceType"]
+  provider?: string
+  refreshPolicy?: string
+  fetcher?: typeof fetch
+  existingSourceId?: string
+  refresh?: boolean
+}) {
+  const fetched = await fetchExternalSourceText(input.url, { fetcher: input.fetcher })
+  await assertExternalSourceIndexAllowed(userId, input.projectId, fetched.byteSize, input.refresh === true)
+
+  const repos = createRepositoryBundle(userId)
+  const canonicalUrl = normalizeExternalSourceUrl(fetched.canonicalUrl)
+  const existing = input.existingSourceId
+    ? await repos.sources.getById(input.existingSourceId)
+    : await repos.sources.findBySourceUri(input.projectId, canonicalUrl)
+  if (existing && existing.projectId !== input.projectId) throw new NotFoundError("Source not found.")
+  if (existing && !input.refresh) {
+    return getProjectSourceDetail(userId, input.projectId, existing.id)
+  }
+
+  const contentHash = sha256Hex(fetched.text)
+  const metadata = {
+    external: {
+      kind: "external_docs",
+      provider: input.provider ?? "relay",
+      canonicalUrl,
+      sourceType: input.sourceType ?? fetched.metadata.sourceType ?? "website",
+      refreshPolicy: input.refreshPolicy ?? "manual",
+      crawlStats: {
+        pages: 1,
+        byteSize: fetched.byteSize,
+        tokenEstimate: estimateTokens(fetched.text),
+      },
+    },
+    extraction: fetched.metadata,
+  }
+  const source = existing ?? await repos.sources.create(userId, {
+    projectId: input.projectId,
+    kind: "external_docs",
+    displayName: input.displayName ?? fetched.displayName,
+    mimeType: fetched.mimeType,
+    byteSize: fetched.byteSize,
+    contentHash,
+    sourceUri: canonicalUrl,
+    metadata,
+  })
+  if (existing) {
+    await repos.sources.updateSourceStatus(existing.id, "processing", { metadata })
+  }
+  const version = await repos.sources.createVersion(userId, {
+    sourceId: source.id,
+    projectId: input.projectId,
+    contentHash,
+    byteSize: fetched.byteSize,
+    metadata,
+  })
+  const chunkDrafts = chunkExtractedText(fetched.text, { sourceId: source.id, versionId: version.id })
+  const chunks = await repos.sources.createChunks(chunkDrafts.map((chunk) => ({
+    ...chunk,
+    projectId: input.projectId,
+    locator: {
+      ...chunk.locator,
+      url: canonicalUrl,
+    },
+    metadata: {
+      ...chunk.metadata,
+      provider: input.provider ?? "relay",
+      sourceType: metadata.external.sourceType,
+    },
+  })))
+  const tokenEstimate = estimateTokens(fetched.text)
+  await consumeQuota(
+    userId,
+    "source_embedded_tokens_monthly",
+    "month",
+    (await resolveViewerEntitlements(userId)).limits.sourceEmbeddedTokensMonthly,
+    tokenEstimate,
+    (await resolveViewerEntitlements(userId)).plan,
+  )
+  await repos.sources.markVersionReady(version.id, {
+    extractedTextHash: sha256Hex(fetched.text),
+    extractedTextBytes: Buffer.byteLength(fetched.text, "utf8"),
+    chunkCount: chunks.length,
+    tokenEstimate,
+    metadata: fetched.metadata,
+  })
+  await repos.sources.updateSourceStatus(source.id, "ready", { metadata })
+  await embedSourceChunksIfConfigured(userId, chunks)
+  return getProjectSourceDetail(userId, input.projectId, source.id)
+}
+
+export async function createExternalSource(userId: string, input: CreateExternalSourceInput & {
+  projectId: string
+  fetcher?: typeof fetch
+}) {
+  return ingestExternalSourceText(userId, input)
+}
+
+export async function refreshExternalSource(userId: string, projectId: string, sourceId: string, options: { fetcher?: typeof fetch } = {}) {
+  const repos = createRepositoryBundle(userId)
+  const source = await repos.sources.getById(sourceId)
+  if (!source || source.projectId !== projectId) throw new NotFoundError("Source not found.")
+  if (!source.sourceUri) throw new BadRequestError("Only external URL sources can be refreshed.")
+  return ingestExternalSourceText(userId, {
+    projectId,
+    url: source.sourceUri,
+    displayName: source.displayName,
+    existingSourceId: source.id,
+    refresh: true,
+    fetcher: options.fetcher,
+  })
+}
+
+export async function searchProjectSources(userId: string, projectId: string, input: SearchProjectSourcesInput): Promise<{ results: SourceSearchResultDto[] }> {
+  const entitlements = await resolveViewerEntitlements(userId)
+  await consumeQuota(userId, "external_source_search_daily", "day", getExternalLimit(entitlements, "externalSourceSearchesDaily"), 1, entitlements.plan)
+  await consumeQuota(userId, "source_backed_recall_daily", "day", entitlements.limits.sourceBackedRecallDaily, 1, entitlements.plan)
+  const repos = createRepositoryBundle(userId)
+  const results = await repos.sources.searchChunks(projectId, {
+    query: input.query,
+    sourceId: input.sourceId,
+    kinds: input.kinds,
+    limit: input.limit,
+  })
+  return {
+    results: results.map((item) => ({
+      sourceId: item.sourceId,
+      sourceKind: item.sourceKind,
+      sourceTitle: item.sourceTitle,
+      sourceUrl: item.sourceUrl,
+      chunkId: item.chunkId,
+      versionId: item.versionId,
+      content: item.content,
+      locator: item.locator,
+      provider: item.provider,
+      score: item.score,
+      indexedAt: item.indexedAt,
+    })),
+  }
 }
 
 export async function getProjectSourceDetail(userId: string, projectId: string, sourceId: string) {
@@ -220,6 +402,40 @@ export async function promoteHighConfidenceSourceFacts(userId: string, sourceId:
   }
 
   return { promoted, reviewed: candidates.length }
+}
+
+export async function promoteSourceCitation(userId: string, projectId: string, sourceId: string, input: PromoteSourceCitationInput) {
+  const repos = createRepositoryBundle(userId)
+  const source = await repos.sources.getById(sourceId)
+  if (!source || source.projectId !== projectId) throw new NotFoundError("Source not found.")
+  const chunk = await repos.sources.getChunkById(input.chunkId)
+  if (!chunk || chunk.sourceId !== sourceId || chunk.projectId !== projectId) throw new NotFoundError("Source citation not found.")
+
+  const memory = await createMemoryItem(userId, {
+    projectId,
+    type: input.type,
+    title: input.title ?? source.displayName,
+    content: input.content,
+    tags: ["source", "external-source"],
+    sourceSurface: "web",
+    sourceUrl: source.sourceUri,
+    capturedAt: new Date().toISOString(),
+    metadata: {
+      sourceId,
+      sourceVersionId: chunk.versionId,
+      sourceChunkId: chunk.id,
+      sourceLocator: chunk.locator,
+      promotedFromExternalSource: true,
+    },
+  })
+  await repos.sources.linkMemory({
+    sourceId,
+    versionId: chunk.versionId,
+    chunkId: chunk.id,
+    memoryItemId: memory.id,
+    confidence: 1,
+  })
+  return { memoryItemId: memory.id }
 }
 
 export async function reviewSourceFactCandidate(userId: string, projectId: string, sourceId: string, candidateId: string, action: "promote" | "reject") {

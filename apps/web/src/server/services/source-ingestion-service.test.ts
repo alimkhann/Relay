@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest"
 
 import {
   chunkExtractedText,
+  classifyExternalSourceUrl,
   extractTextFromSourceBuffer,
+  fetchExternalSourceText,
+  normalizeExternalSourceUrl,
   validateSourceFile,
 } from "./source-ingestion-service"
 
@@ -66,5 +69,32 @@ describe("source-ingestion-service", () => {
       chunkIndex: 0,
     })
     expect(chunks[0]!.tokenEstimate).toBeGreaterThan(0)
+  })
+
+  it("classifies public docs and research URLs without being developer-only", () => {
+    expect(classifyExternalSourceUrl("https://arxiv.org/abs/2401.00001")).toBe("arxiv")
+    expect(classifyExternalSourceUrl("https://example.edu/paper.pdf")).toBe("pdf")
+    expect(classifyExternalSourceUrl("https://example.com/openapi.json")).toBe("openapi")
+    expect(classifyExternalSourceUrl("https://example.com/llms.txt")).toBe("llms_txt")
+    expect(classifyExternalSourceUrl("https://example.com/research/notes")).toBe("website")
+  })
+
+  it("normalizes external URLs and blocks unsupported or private targets", () => {
+    expect(normalizeExternalSourceUrl("https://Example.com/docs#intro")).toBe("https://example.com/docs")
+    expect(() => normalizeExternalSourceUrl("http://localhost/docs")).toThrow(/public URL/i)
+    expect(() => normalizeExternalSourceUrl("https://127.0.0.1/docs")).toThrow(/public URL/i)
+    expect(() => normalizeExternalSourceUrl("file:///tmp/source.md")).toThrow(/https/i)
+  })
+
+  it("fetches public external source text with content and size guards", async () => {
+    const fetcher = async () => new Response("<main><h1>Paper</h1><p>Research notes.</p></main>", {
+      headers: { "content-type": "text/html" },
+    })
+
+    const result = await fetchExternalSourceText("https://example.com/paper", { fetcher })
+
+    expect(result.text).toContain("Research notes.")
+    expect(result.metadata.sourceType).toBe("website")
+    expect(result.mimeType).toBe("text/html")
   })
 })

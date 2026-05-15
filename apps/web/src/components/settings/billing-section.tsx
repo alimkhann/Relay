@@ -199,6 +199,27 @@ export function BillingSection({ billing, checkoutSuccess, referralProgram }: Bi
         periodLabel: "/ day",
         upgradeCopy: `unlock more AI analyses per day`,
       },
+      {
+        label: "External indexes",
+        used: usage.externalSourceIndexesToday,
+        limit: entitlements.limits.externalSourceIndexesDaily,
+        periodLabel: "/ day",
+        upgradeCopy: `unlock more external source indexes per day`,
+      },
+      {
+        label: "External searches",
+        used: usage.externalSourceSearchesToday,
+        limit: entitlements.limits.externalSourceSearchesDaily,
+        periodLabel: "/ day",
+        upgradeCopy: `unlock more external source searches per day`,
+      },
+      {
+        label: "External refreshes",
+        used: usage.externalSourceRefreshesToday,
+        limit: entitlements.limits.externalSourceRefreshesDaily,
+        periodLabel: "/ day",
+        upgradeCopy: `unlock more external source refreshes per day`,
+      },
     ],
     [entitlements.limits, usage],
   )

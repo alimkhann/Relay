@@ -15,6 +15,9 @@ describe("billing plan limits", () => {
     expect(FREE_LIMITS.mcpDeepReadDaily).toBe(1)
     expect(FREE_LIMITS.mcpWriteDaily).toBe(1)
     expect(FREE_LIMITS.sourcesPerProject).toBe(3)
+    expect(FREE_LIMITS.externalSourcesPerProject).toBe(1)
+    expect(FREE_LIMITS.externalSourceIndexesDaily).toBe(1)
+    expect(FREE_LIMITS.externalSourceSearchesDaily).toBe(3)
     expect(FREE_LIMITS.sourceFileMaxBytes).toBe(10 * 1024 * 1024)
     expect(FREE_LIMITS.sourceOcrPagesMonthly).toBe(0)
 
@@ -23,11 +26,15 @@ describe("billing plan limits", () => {
     expect(STARTER_LIMITS.aiAnalysesPerProjectDaily).toBe(STARTER_LIMITS.aiAnalysesPerUserDaily)
     expect(STARTER_LIMITS.aiAnalysesPerUserDaily).toBe(25)
     expect(STARTER_LIMITS.sourcesPerProject).toBeGreaterThan(FREE_LIMITS.sourcesPerProject)
+    expect(STARTER_LIMITS.externalSourcesPerProject).toBe(10)
+    expect(STARTER_LIMITS.externalSourcePagesPerSource).toBe(250)
 
     expect(PRO_LIMITS.captureMonthly).toBe(1000)
     expect(PRO_LIMITS.mcpDeepReadDaily).toBe(20)
     expect(PRO_LIMITS.aiAnalysesPerProjectDaily).toBe(PRO_LIMITS.aiAnalysesPerUserDaily)
     expect(PRO_LIMITS.aiAnalysesPerUserDaily).toBe(60)
+    expect(PRO_LIMITS.externalSourcesPerProject).toBe(50)
+    expect(PRO_LIMITS.externalSourcePagesPerSource).toBe(1000)
     expect(PRO_LIMITS.sourceStorageBytes).toBeGreaterThan(STARTER_LIMITS.sourceStorageBytes)
   })
 

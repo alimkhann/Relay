@@ -109,6 +109,11 @@ export async function getBillingStatusForUser(userId: string): Promise<BillingSt
     getUsageCount(userId, "source_embedded_tokens_monthly", "month"),
     getUsageCount(userId, "source_backed_recall_daily", "day"),
   ])
+  const [externalSourceIndexesToday, externalSourceSearchesToday, externalSourceRefreshesToday] = await Promise.all([
+    getUsageCount(userId, "external_source_index_daily", "day"),
+    getUsageCount(userId, "external_source_search_daily", "day"),
+    getUsageCount(userId, "external_source_refresh_daily", "day"),
+  ])
 
   return {
     entitlements,
@@ -137,6 +142,9 @@ export async function getBillingStatusForUser(userId: string): Promise<BillingSt
       sourceIngestionsToday,
       sourceEmbeddedTokensThisMonth,
       sourceBackedRecallsToday,
+      externalSourceIndexesToday,
+      externalSourceSearchesToday,
+      externalSourceRefreshesToday,
     },
   }
 }
@@ -227,6 +235,18 @@ export async function consumeMcpReadQuota(userId: string, mode: "basic" | "deep"
 export async function consumeMcpWriteQuota(userId: string, amount = 1) {
   const entitlements = await resolveViewerEntitlements(userId)
   return consumeQuota(userId, "mcp_write_daily", "day", entitlements.limits.mcpWriteDaily, amount, entitlements.plan)
+}
+
+export async function consumeExternalSourceMcpActionQuota(userId: string) {
+  const entitlements = await resolveViewerEntitlements(userId)
+  return consumeQuota(
+    userId,
+    "external_source_mcp_action_minute",
+    "minute",
+    entitlements.limits.externalSourceMcpActionsPerMinute,
+    1,
+    entitlements.plan,
+  )
 }
 
 // Rate limit for explicit user-triggered memory writes from the extension

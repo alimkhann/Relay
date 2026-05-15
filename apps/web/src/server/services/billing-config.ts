@@ -17,6 +17,12 @@ export const FREE_LIMITS: EntitlementLimitsDto = {
   sourceIngestionsDaily: 3,
   sourceBackedRecallDaily: 3,
   sourceOcrPagesMonthly: 0,
+  externalSourcesPerProject: 1,
+  externalSourcePagesPerSource: 25,
+  externalSourceIndexesDaily: 1,
+  externalSourceSearchesDaily: 3,
+  externalSourceRefreshesDaily: 0,
+  externalSourceMcpActionsPerMinute: 5,
 }
 
 export const STARTER_LIMITS: EntitlementLimitsDto = {
@@ -36,6 +42,12 @@ export const STARTER_LIMITS: EntitlementLimitsDto = {
   sourceIngestionsDaily: 25,
   sourceBackedRecallDaily: 50,
   sourceOcrPagesMonthly: 0,
+  externalSourcesPerProject: 10,
+  externalSourcePagesPerSource: 250,
+  externalSourceIndexesDaily: 10,
+  externalSourceSearchesDaily: 50,
+  externalSourceRefreshesDaily: 5,
+  externalSourceMcpActionsPerMinute: 20,
 }
 
 export const PRO_LIMITS: EntitlementLimitsDto = {
@@ -55,6 +67,12 @@ export const PRO_LIMITS: EntitlementLimitsDto = {
   sourceIngestionsDaily: 100,
   sourceBackedRecallDaily: 200,
   sourceOcrPagesMonthly: 0,
+  externalSourcesPerProject: 50,
+  externalSourcePagesPerSource: 1000,
+  externalSourceIndexesDaily: 40,
+  externalSourceSearchesDaily: 200,
+  externalSourceRefreshesDaily: 25,
+  externalSourceMcpActionsPerMinute: 60,
 }
 
 export const PLAN_PRODUCT_IDS = {
@@ -82,6 +100,8 @@ export const PLAN_LIMIT_ROWS = [
   { label: "AI analyses / day", key: "aiAnalysesPerUserDaily" },
   { label: "Memory items / project", key: "memoryItemsPerProject" },
   { label: "Sources / project", key: "sourcesPerProject" },
+  { label: "External sources / project", key: "externalSourcesPerProject" },
+  { label: "External source searches / day", key: "externalSourceSearchesDaily" },
 ] as const
 
 export const PLAN_MARKETING_COPY = {
@@ -92,6 +112,7 @@ export const PLAN_MARKETING_COPY = {
       `${FREE_LIMITS.historyRetentionDays}-day source retention, ${formatNumber(FREE_LIMITS.captureMonthly)} captures / month`,
       "Browser capture across supported AI tools",
       `${FREE_LIMITS.sourcesPerProject} source imports / project`,
+      `${FREE_LIMITS.externalSourcesPerProject} external source / project`,
       "Basic context briefs",
     ],
   },
@@ -102,6 +123,7 @@ export const PLAN_MARKETING_COPY = {
       `${formatNumber(STARTER_LIMITS.captureMonthly)} captures / month across all projects`,
       "Autonomous context updates",
       `${STARTER_LIMITS.sourcesPerProject} source imports / project`,
+      `${STARTER_LIMITS.externalSourcesPerProject} external sources / project`,
       "Full + continuity briefs",
     ],
   },
@@ -112,6 +134,7 @@ export const PLAN_MARKETING_COPY = {
       `${formatNumber(PRO_LIMITS.captureMonthly)} captures / month across all projects`,
       "High-quality model for reflections",
       `${PRO_LIMITS.sourcesPerProject} source imports / project`,
+      `${PRO_LIMITS.externalSourcesPerProject} external sources / project`,
       "Aggressive autonomy + conflict resolution",
       "Priority support",
     ],
