@@ -7,6 +7,7 @@ import { createRepositoryBundle } from "@relay/db"
 import { runContinuityMaintenanceForUser } from "@/server/services/continuity-maintenance-service"
 import { emitDailyCostSnapshots } from "@/server/services/cost-snapshot-service"
 import { drainDigestJobs } from "@/server/services/digest-service"
+import { sweepStaleProcessingSources } from "@/server/services/source-service"
 
 const MAX_USERS_PER_INVOCATION = 1
 const MAX_DIGEST_JOBS_PER_USER = 1
@@ -69,5 +70,13 @@ export async function GET(request: Request) {
     error: error instanceof Error ? error.message : "Unknown error",
   }))
 
-  return NextResponse.json({ processed: results.length, results, costSnapshots })
+  // Recover sources orphaned in `processing` (out-of-band ingest died). Bounded
+  // and only if there's work budget left this invocation.
+  const staleSources = Date.now() - startedAt < MAX_WORK_MS
+    ? await sweepStaleProcessingSources({ limit: 5 }).catch((error) => ({
+        error: error instanceof Error ? error.message : "Unknown error",
+      }))
+    : { skipped: "work budget exhausted" }
+
+  return NextResponse.json({ processed: results.length, results, costSnapshots, staleSources })
 }

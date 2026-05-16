@@ -48,9 +48,18 @@ function useElementSize<T extends HTMLElement>() {
     const element = ref.current;
     if (!element) return;
 
+    // Seed synchronously from layout so a container that is already laid out
+    // (Overview/Memory tab, behind a FadeIn) reports real dimensions before
+    // the first ResizeObserver callback — otherwise the graph mounts at 0x0
+    // and the one-shot zoomToFit fits nothing.
+    const rect = element.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      setSize({ width: rect.width, height: rect.height });
+    }
+
     const observer = new ResizeObserver(([entry]) => {
       const box = entry?.contentRect;
-      if (box) {
+      if (box && box.width > 0 && box.height > 0) {
         setSize({ width: box.width, height: box.height });
       }
     });
@@ -306,14 +315,20 @@ export function MemoryGraphContainer({
           Loading graph...
         </div>
       )}
-      <MemoryGraph
-        data={data}
-        width={size.width}
-        height={size.height}
-        selectedNodeId={selectedNode?.id ?? null}
-        settings={settings}
-        onSelectNode={selectNode}
-      />
+      {size.width > 1 && size.height > 1 ? (
+        <MemoryGraph
+          data={data}
+          width={size.width}
+          height={size.height}
+          selectedNodeId={selectedNode?.id ?? null}
+          settings={settings}
+          onSelectNode={selectNode}
+        />
+      ) : (
+        <div className="flex h-full items-center justify-center text-[12px] text-[var(--relay-muted)]">
+          Loading graph…
+        </div>
+      )}
       {!isFullscreen && (
         <button
           type="button"

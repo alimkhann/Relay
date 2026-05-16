@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import {
+  Archive,
   CheckCircle2,
   ExternalLink,
   FileText,
@@ -10,6 +11,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Trash2,
   Upload,
   XCircle,
 } from "lucide-react"
@@ -288,23 +290,72 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
   }
 
   function refreshExternalSource(sourceId: string) {
+    const isExternalSrc = sources.find((s) => s.id === sourceId) ? isExternal(sources.find((s) => s.id === sourceId)!) : true
+    const noun = isExternalSrc ? "external source" : "file"
     startTransition(() => {
       void (async () => {
-        setStatus("Refreshing external source…")
+        setStatus(isExternalSrc ? "Refreshing external source…" : "Reprocessing file…")
         const response = await relayClientFetch(`/api/projects/${project.id}/sources/${sourceId}/reprocess`, {
           method: "POST",
-          telemetry: { area: "sources", event: "sources.external.refresh", context: { projectId: project.id, sourceId } },
+          telemetry: { area: "sources", event: "sources.reprocess", context: { projectId: project.id, sourceId } },
         })
         if (!response.ok) {
           const payload = await response.json().catch(() => ({})) as { error?: string }
-          throw new Error(payload.error ?? "External source refresh failed.")
+          throw new Error(payload.error ?? `Could not reprocess ${noun}.`)
         }
         const payload = await response.json() as SourceDetail
         setDetail(payload)
         await refreshSources(sourceId)
-        setStatus("External source refreshed.")
+        setStatus(isExternalSrc ? "External source refreshed." : "File reprocessed.")
       })().catch((cause) => {
-        setStatus(cause instanceof Error ? cause.message : "External source refresh failed.")
+        setStatus(cause instanceof Error ? cause.message : `Could not reprocess ${noun}.`)
+      })
+    })
+  }
+
+  function archiveSource(sourceId: string) {
+    startTransition(() => {
+      void (async () => {
+        setStatus("Archiving source…")
+        const response = await relayClientFetch(`/api/projects/${project.id}/sources/${sourceId}`, {
+          method: "DELETE",
+          telemetry: { area: "sources", event: "sources.archive", context: { projectId: project.id, sourceId } },
+        })
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({})) as { error?: string }
+          throw new Error(payload.error ?? "Archive failed.")
+        }
+        setSelectedId(null)
+        setDetail(null)
+        await refreshSources(null)
+        setStatus("Source archived.")
+      })().catch((cause) => {
+        setStatus(cause instanceof Error ? cause.message : "Archive failed.")
+      })
+    })
+  }
+
+  function purgeSource(sourceId: string) {
+    if (typeof window !== "undefined" && !window.confirm("Permanently delete this source and its stored file? This cannot be undone.")) {
+      return
+    }
+    startTransition(() => {
+      void (async () => {
+        setStatus("Deleting source permanently…")
+        const response = await relayClientFetch(`/api/projects/${project.id}/sources/${sourceId}?purge=1`, {
+          method: "DELETE",
+          telemetry: { area: "sources", event: "sources.purge", context: { projectId: project.id, sourceId } },
+        })
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({})) as { error?: string }
+          throw new Error(payload.error ?? "Delete failed.")
+        }
+        setSelectedId(null)
+        setDetail(null)
+        await refreshSources(null)
+        setStatus("Source deleted.")
+      })().catch((cause) => {
+        setStatus(cause instanceof Error ? cause.message : "Delete failed.")
       })
     })
   }
@@ -557,7 +608,41 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
                         <Globe2 className="h-3.5 w-3.5" />
                         Refresh
                       </Button>
-                    ) : null}
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={pending}
+                        onClick={() => refreshExternalSource(selectedSource.id)}
+                        className="h-8 gap-2"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        Reprocess
+                      </Button>
+                    )}
+                    {selectedSource.status === "archived" ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={pending}
+                        onClick={() => purgeSource(selectedSource.id)}
+                        className="h-8 gap-2 text-[var(--relay-danger,#dc2626)] hover:text-[var(--relay-danger,#dc2626)]"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete permanently
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={pending}
+                        onClick={() => archiveSource(selectedSource.id)}
+                        className="h-8 gap-2"
+                      >
+                        <Archive className="h-3.5 w-3.5" />
+                        Archive
+                      </Button>
+                    )}
                   </div>
                 </div>
 
