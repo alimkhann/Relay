@@ -1,8 +1,26 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react"
-import { CheckCircle2, ExternalLink, FileText, Globe2, RefreshCw, Search, Upload, XCircle } from "lucide-react"
-import type { BillingStatusDto, ProjectSourceDto, SourceChunkRow, SourceFactCandidateRow, SourceSearchResultDto, SourceVersionRow } from "@relay/shared"
+import {
+  CheckCircle2,
+  ExternalLink,
+  FileText,
+  Globe2,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Search,
+  Upload,
+  XCircle,
+} from "lucide-react"
+import type {
+  BillingStatusDto,
+  ProjectSourceDto,
+  SourceChunkRow,
+  SourceFactCandidateRow,
+  SourceSearchResultDto,
+  SourceVersionRow,
+} from "@relay/shared"
 
 import { Button } from "@/components/ui/button"
 import { FadeIn } from "@/components/ui/fade-in"
@@ -21,26 +39,70 @@ interface SourcesPageContentProps {
   initialSources: ProjectSourceDto[]
 }
 
+type DetailTab = "overview" | "chunks" | "candidates" | "search"
+
 function formatBytes(value: number) {
   if (value < 1024) return `${value} B`
   if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`
   return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function statusTone(status: ProjectSourceDto["status"]) {
-  if (status === "ready") return "text-emerald-600 bg-emerald-500/10 border-emerald-500/20"
-  if (status === "failed") return "text-red-600 bg-red-500/10 border-red-500/20"
-  if (status === "processing") return "text-amber-600 bg-amber-500/10 border-amber-500/20"
-  if (status === "stale") return "text-orange-600 bg-orange-500/10 border-orange-500/20"
-  return "text-[var(--relay-muted)] bg-[var(--relay-soft)] border-[var(--relay-line)]"
+function isExternal(source: Pick<ProjectSourceDto, "kind">) {
+  return source.kind === "external_docs" || source.kind === "package_docs"
+}
+
+function StatusDot({ status }: { status: ProjectSourceDto["status"] }) {
+  const map: Record<string, string> = {
+    ready: "bg-emerald-500",
+    failed: "bg-red-500",
+    processing: "bg-amber-500",
+    stale: "bg-orange-500",
+  }
+  const color = map[status] ?? "bg-[var(--relay-muted)]"
+  return (
+    <span className="relative flex h-2 w-2 shrink-0" title={status} aria-label={status}>
+      {status === "processing" && (
+        <span className={cn("absolute inline-flex h-full w-full animate-ping rounded-full opacity-60", color)} />
+      )}
+      <span className={cn("relative inline-flex h-2 w-2 rounded-full", color)} />
+    </span>
+  )
+}
+
+function RailSkeleton() {
+  return (
+    <div className="space-y-1 px-2 py-2">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="flex items-center gap-2.5 px-2 py-2">
+          <div className="h-2 w-2 rounded-full bg-[var(--relay-soft)]" />
+          <div className="h-3 flex-1 rounded bg-[var(--relay-soft)]" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function DetailSkeleton() {
+  return (
+    <div className="animate-pulse space-y-4 p-6">
+      <div className="h-5 w-1/3 rounded bg-[var(--relay-soft)]" />
+      <div className="h-3 w-1/2 rounded bg-[var(--relay-soft)]" />
+      <div className="mt-6 space-y-2">
+        <div className="h-3 w-full rounded bg-[var(--relay-soft)]" />
+        <div className="h-3 w-11/12 rounded bg-[var(--relay-soft)]" />
+        <div className="h-3 w-4/5 rounded bg-[var(--relay-soft)]" />
+      </div>
+    </div>
+  )
 }
 
 export function SourcesPageContent({ project, initialSources }: SourcesPageContentProps) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [sources, setSources] = useState(initialSources)
-  const [section, setSection] = useState<"files" | "external">("files")
-  const [selectedId, setSelectedId] = useState(initialSources[0]?.id ?? null)
+  const [selectedId, setSelectedId] = useState<string | null>(initialSources[0]?.id ?? null)
   const [detail, setDetail] = useState<SourceDetail | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [tab, setTab] = useState<DetailTab>("overview")
   const [status, setStatus] = useState("")
   const [externalUrl, setExternalUrl] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
@@ -49,25 +111,27 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
   const [pending, startTransition] = useTransition()
 
   const fileSources = useMemo(
-    () => sources.filter((source) => source.kind === "uploaded_file" || source.kind === "repo_file"),
+    () => sources.filter((source) => !isExternal(source)),
     [sources],
   )
   const externalSources = useMemo(
-    () => sources.filter((source) => source.kind === "external_docs" || source.kind === "package_docs"),
+    () => sources.filter((source) => isExternal(source)),
     [sources],
   )
-  const visibleSources = section === "files" ? fileSources : externalSources
-
   const selectedSource = useMemo(
-    () => visibleSources.find((source) => source.id === selectedId) ?? visibleSources[0] ?? null,
-    [selectedId, visibleSources],
+    () => sources.find((source) => source.id === selectedId) ?? null,
+    [selectedId, sources],
+  )
+  const hasProcessing = useMemo(
+    () => sources.some((source) => source.status === "processing"),
+    [sources],
   )
 
   useEffect(() => {
-    if (section !== "external" || billingStatus) return
+    if (billingStatus) return
     let cancelled = false
     void relayClientFetch("/api/billing/status", {
-      telemetry: { area: "sources", event: "sources.external.billing_status", context: { projectId: project.id } },
+      telemetry: { area: "sources", event: "sources.billing_status", context: { projectId: project.id } },
     })
       .then(async (response) => {
         if (!response.ok) return null
@@ -83,7 +147,40 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
     return () => {
       cancelled = true
     }
-  }, [billingStatus, project.id, section])
+  }, [billingStatus, project.id])
+
+  // Poll while anything is processing so status reflects in real time
+  // (processing -> ready/failed) with no spurious error or manual refresh.
+  useEffect(() => {
+    if (!hasProcessing) return
+    let cancelled = false
+    const interval = setInterval(() => {
+      void (async () => {
+        try {
+          const response = await relayClientFetch(`/api/projects/${project.id}/sources`, {
+            telemetry: { area: "sources", event: "sources.poll", context: { projectId: project.id } },
+          })
+          if (!response.ok || cancelled) return
+          const payload = await response.json() as { sources: ProjectSourceDto[] }
+          if (cancelled) return
+          setSources(payload.sources)
+          const current = selectedId ? payload.sources.find((s) => s.id === selectedId) : null
+          if (current && current.status !== "processing" && detail?.source.id === current.id) {
+            const detailResponse = await relayClientFetch(`/api/projects/${project.id}/sources/${current.id}`, {
+              telemetry: { area: "sources", event: "sources.detail", context: { projectId: project.id, sourceId: current.id } },
+            })
+            if (!cancelled && detailResponse.ok) setDetail(await detailResponse.json() as SourceDetail)
+          }
+        } catch {
+          // transient; next tick retries
+        }
+      })()
+    }, 2500)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [hasProcessing, project.id, selectedId, detail?.source.id])
 
   async function refreshSources(nextSelectedId = selectedId) {
     const response = await relayClientFetch(`/api/projects/${project.id}/sources`, {
@@ -97,18 +194,24 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
 
   async function loadDetail(sourceId: string) {
     setSelectedId(sourceId)
-    const response = await relayClientFetch(`/api/projects/${project.id}/sources/${sourceId}`, {
-      telemetry: { area: "sources", event: "sources.detail", context: { projectId: project.id, sourceId } },
-    })
-    if (!response.ok) throw new Error("Unable to load source details.")
-    setDetail(await response.json() as SourceDetail)
+    setTab("overview")
+    setDetailLoading(true)
+    try {
+      const response = await relayClientFetch(`/api/projects/${project.id}/sources/${sourceId}`, {
+        telemetry: { area: "sources", event: "sources.detail", context: { projectId: project.id, sourceId } },
+      })
+      if (!response.ok) throw new Error("Unable to load source details.")
+      setDetail(await response.json() as SourceDetail)
+    } finally {
+      setDetailLoading(false)
+    }
   }
 
   function upload(file: File | null) {
     if (!file) return
     startTransition(() => {
       void (async () => {
-        setStatus("Uploading source...")
+        setStatus("Uploading source…")
         const form = new FormData()
         form.set("file", file)
         const response = await relayClientFetch(`/api/projects/${project.id}/sources`, {
@@ -123,7 +226,7 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
         const payload = await response.json() as SourceDetail
         setDetail(payload)
         await refreshSources(payload.source.id)
-        setStatus("Source imported.")
+        setStatus(payload.source.status === "processing" ? "Processing source…" : "Source ready.")
       })().catch((cause) => {
         setStatus(cause instanceof Error ? cause.message : "Upload failed.")
       }).finally(() => {
@@ -137,7 +240,7 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
     if (!url) return
     startTransition(() => {
       void (async () => {
-        setStatus("Indexing external source...")
+        setStatus("Indexing external source…")
         const response = await relayClientFetch(`/api/projects/${project.id}/sources/external`, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -151,9 +254,8 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
         const payload = await response.json() as SourceDetail
         setExternalUrl("")
         setDetail(payload)
-        setSection("external")
         await refreshSources(payload.source.id)
-        setStatus("External source indexed.")
+        setStatus(payload.source.status === "processing" ? "Indexing…" : "External source indexed.")
       })().catch((cause) => {
         setStatus(cause instanceof Error ? cause.message : "External source indexing failed.")
       })
@@ -165,7 +267,7 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
     if (!query) return
     startTransition(() => {
       void (async () => {
-        setStatus("Searching external sources...")
+        setStatus("Searching external sources…")
         const response = await relayClientFetch(`/api/projects/${project.id}/sources/search`, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -178,7 +280,7 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
         }
         const payload = await response.json() as { results: SourceSearchResultDto[] }
         setSearchResults(payload.results)
-        setStatus(payload.results.length > 0 ? "Search complete." : "No matching source citations found.")
+        setStatus(payload.results.length > 0 ? "Search complete." : "No matching citations found.")
       })().catch((cause) => {
         setStatus(cause instanceof Error ? cause.message : "External source search failed.")
       })
@@ -188,7 +290,7 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
   function refreshExternalSource(sourceId: string) {
     startTransition(() => {
       void (async () => {
-        setStatus("Refreshing external source...")
+        setStatus("Refreshing external source…")
         const response = await relayClientFetch(`/api/projects/${project.id}/sources/${sourceId}/reprocess`, {
           method: "POST",
           telemetry: { area: "sources", event: "sources.external.refresh", context: { projectId: project.id, sourceId } },
@@ -210,7 +312,7 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
   function promoteCitation(result: SourceSearchResultDto) {
     startTransition(() => {
       void (async () => {
-        setStatus("Promoting citation to memory...")
+        setStatus("Promoting citation to memory…")
         const response = await relayClientFetch(`/api/projects/${project.id}/sources/${result.sourceId}/promote`, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -237,7 +339,7 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
     if (!selectedSource) return
     startTransition(() => {
       void (async () => {
-        setStatus(action === "promote" ? "Promoting candidate..." : "Rejecting candidate...")
+        setStatus(action === "promote" ? "Promoting candidate…" : "Rejecting candidate…")
         const response = await relayClientFetch(`/api/projects/${project.id}/sources/${selectedSource.id}/candidates/${candidateId}`, {
           method: "PATCH",
           headers: { "content-type": "application/json" },
@@ -258,190 +360,200 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
   const selectedExternalMeta = selectedSource?.metadata?.external && typeof selectedSource.metadata.external === "object"
     ? selectedSource.metadata.external as Record<string, unknown>
     : null
+  const selectedIsExternal = selectedSource ? isExternal(selectedSource) : false
 
-  return (
-    <div className="space-y-6 pt-6">
-      <FadeIn>
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight text-[var(--relay-ink)]">Sources</h1>
-            <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
-              Project files and external docs that Relay can search, cite, and promote into memory.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              ref={inputRef}
-              type="file"
-              accept=".md,.txt,.csv,.tsv,.docx,.xlsx,.pdf"
-              className="hidden"
-              onChange={(event) => upload(event.currentTarget.files?.[0] ?? null)}
-            />
-            <Button size="sm" disabled={pending} onClick={() => inputRef.current?.click()} className="h-8 gap-2">
-              <Upload className="h-3.5 w-3.5" />
-              Upload
-            </Button>
-          </div>
+  function selectSource(id: string) {
+    void loadDetail(id).catch((cause) =>
+      setStatus(cause instanceof Error ? cause.message : "Unable to load source."),
+    )
+  }
+
+  function renderRailGroup(label: string, list: ProjectSourceDto[], emptyHint: string) {
+    return (
+      <div>
+        <div className="sticky top-0 z-10 flex items-center justify-between bg-[var(--relay-surface)] px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--relay-faint)]">
+          <span>{label}</span>
+          <span className="tabular-nums">{list.length}</span>
         </div>
-      </FadeIn>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant={section === "files" ? "default" : "ghost"}
-          onClick={() => {
-            setSection("files")
-            setSelectedId(fileSources[0]?.id ?? null)
-          }}
-          className="h-8 gap-2"
-        >
-          <FileText className="h-3.5 w-3.5" />
-          Files
-          <span className="text-[11px] opacity-70">{fileSources.length}</span>
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={section === "external" ? "default" : "ghost"}
-          onClick={() => {
-            setSection("external")
-            setSelectedId(externalSources[0]?.id ?? null)
-          }}
-          className="h-8 gap-2"
-        >
-          <Globe2 className="h-3.5 w-3.5" />
-          External
-          <span className="text-[11px] opacity-70">{externalSources.length}</span>
-        </Button>
-      </div>
-
-      {status && (
-        <p className="text-[12px] text-[var(--relay-muted)]" role="status">{status}</p>
-      )}
-
-      {section === "external" ? (
-        <FadeIn delay={0.02}>
-          <div className="space-y-3 rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-4">
-            <div className="grid gap-3 lg:grid-cols-2">
-              <div>
-                <p className="text-sm font-medium text-[var(--relay-ink)]">Add external source</p>
-                <div className="mt-3 flex gap-2">
-                  <input
-                    value={externalUrl}
-                    onChange={(event) => setExternalUrl(event.currentTarget.value)}
-                    placeholder="https://arxiv.org/abs/... or https://example.com/docs"
-                    className="h-9 min-w-0 flex-1 rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-transparent px-3 text-[13px] text-[var(--relay-ink)] outline-none"
-                  />
-                  <Button size="sm" disabled={pending || !externalUrl.trim()} onClick={indexExternalSource} className="h-9 gap-2">
-                    <Globe2 className="h-3.5 w-3.5" />
-                    Index
-                  </Button>
-                </div>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-[var(--relay-ink)]">Search citations</p>
-                <div className="mt-3 flex gap-2">
-                  <input
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.currentTarget.value)}
-                    placeholder="Find a cited answer across external sources"
-                    className="h-9 min-w-0 flex-1 rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-transparent px-3 text-[13px] text-[var(--relay-ink)] outline-none"
-                  />
-                  <Button size="sm" disabled={pending || !searchQuery.trim()} onClick={searchExternalSources} className="h-9 gap-2">
-                    <Search className="h-3.5 w-3.5" />
-                    Search
-                  </Button>
-                </div>
-              </div>
-            </div>
-            {billingStatus ? (
-              <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-[var(--relay-line)] pt-3 text-[11px] text-[var(--relay-muted)]">
-                <span>External sources {externalSources.length}/{billingStatus.entitlements.limits.externalSourcesPerProject}</span>
-                <span>Indexes {billingStatus.usage.externalSourceIndexesToday}/{billingStatus.entitlements.limits.externalSourceIndexesDaily} today</span>
-                <span>Searches {billingStatus.usage.externalSourceSearchesToday}/{billingStatus.entitlements.limits.externalSourceSearchesDaily} today</span>
-                <span>Refreshes {billingStatus.usage.externalSourceRefreshesToday}/{billingStatus.entitlements.limits.externalSourceRefreshesDaily} today</span>
-              </div>
-            ) : null}
-          </div>
-        </FadeIn>
-      ) : null}
-
-      <div className="grid gap-4 lg:grid-cols-[minmax(260px,360px)_1fr]">
-        <FadeIn delay={0.04}>
-          <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
-            <div className="border-b border-[var(--relay-line)] px-4 py-3">
-              <p className="text-sm font-medium text-[var(--relay-ink)]">{section === "files" ? "Files" : "External sources"}</p>
-            </div>
-            <div className="divide-y divide-[var(--relay-line)]">
-              {visibleSources.length === 0 ? (
-                <div className="px-4 py-8 text-center text-[13px] text-[var(--relay-muted)]">
-                  {section === "files"
-                    ? "Upload files to build project knowledge from documents."
-                    : "Index a public docs or research URL to make it searchable."}
-                </div>
-              ) : visibleSources.map((source) => (
+        {list.length === 0 ? (
+          <p className="px-3 pb-3 text-[12px] leading-relaxed text-[var(--relay-muted)]">{emptyHint}</p>
+        ) : (
+          <ul className="pb-1">
+            {list.map((source) => (
+              <li key={source.id}>
                 <button
-                  key={source.id}
                   type="button"
-                  onClick={() => void loadDetail(source.id).catch((cause) => setStatus(cause instanceof Error ? cause.message : "Unable to load source."))}
+                  onClick={() => selectSource(source.id)}
                   className={cn(
-                    "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--relay-soft)]",
-                    selectedSource?.id === source.id && "bg-[var(--relay-soft)]",
+                    "group flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors",
+                    selectedId === source.id
+                      ? "bg-[var(--relay-soft)]"
+                      : "hover:bg-[var(--relay-soft)]/50",
                   )}
                 >
-                  {source.kind === "external_docs" || source.kind === "package_docs"
-                    ? <Globe2 className="mt-0.5 h-4 w-4 shrink-0 text-[var(--relay-muted)]" />
-                    : <FileText className="mt-0.5 h-4 w-4 shrink-0 text-[var(--relay-muted)]" />}
+                  <StatusDot status={source.status} />
+                  {isExternal(source)
+                    ? <Globe2 className="h-3.5 w-3.5 shrink-0 text-[var(--relay-muted)]" />
+                    : <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--relay-muted)]" />}
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] font-medium text-[var(--relay-ink)]">{source.displayName}</span>
-                    <span className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[var(--relay-muted)]">
-                      <span>{formatBytes(source.byteSize)}</span>
-                      <span>{source.kind.replace("_", " ")}</span>
-                      <span className={cn("rounded-full border px-2 py-0.5", statusTone(source.status))}>{source.status}</span>
+                    <span className="block truncate text-[13px] font-medium text-[var(--relay-ink)]">
+                      {source.displayName}
+                    </span>
+                    <span className="block truncate text-[11px] text-[var(--relay-muted)]">
+                      {formatBytes(source.byteSize)} · {source.status}
                     </span>
                   </span>
                 </button>
-              ))}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4 pt-6">
+      <FadeIn>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight text-[var(--relay-ink)]">Sources</h1>
+            <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
+              Files and external docs Relay can search, cite, and promote into memory.
+            </p>
+          </div>
+          {status && (
+            <p
+              className="inline-flex items-center gap-1.5 text-[12px] text-[var(--relay-muted)]"
+              role="status"
+            >
+              {(pending || hasProcessing) && <Loader2 className="h-3 w-3 animate-spin" />}
+              {status}
+            </p>
+          )}
+        </div>
+      </FadeIn>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(260px,340px)_1fr]">
+        {/* ── Left rail ── */}
+        <FadeIn delay={0.04}>
+          <div className="flex max-h-[calc(100vh-180px)] flex-col overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
+            <div className="space-y-2 border-b border-[var(--relay-line)] p-2.5">
+              <input
+                ref={inputRef}
+                type="file"
+                accept=".md,.txt,.csv,.tsv,.docx,.xlsx,.pdf"
+                className="hidden"
+                onChange={(event) => upload(event.currentTarget.files?.[0] ?? null)}
+              />
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={pending}
+                onClick={() => inputRef.current?.click()}
+                className="h-8 w-full justify-start gap-2"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Upload file
+              </Button>
+              <div className="flex gap-1.5">
+                <input
+                  value={externalUrl}
+                  onChange={(event) => setExternalUrl(event.currentTarget.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") indexExternalSource()
+                  }}
+                  placeholder="Add URL to index…"
+                  className="h-8 min-w-0 flex-1 rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-transparent px-2.5 text-[12px] text-[var(--relay-ink)] outline-none focus:border-[var(--relay-accent)]"
+                />
+                <Button
+                  size="sm"
+                  disabled={pending || !externalUrl.trim()}
+                  onClick={indexExternalSource}
+                  className="h-8 px-2"
+                  aria-label="Index external source"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {sources.length === 0 && pending ? (
+                <RailSkeleton />
+              ) : (
+                <>
+                  {renderRailGroup("Files", fileSources, "Upload a file to build project knowledge from documents.")}
+                  <div className="border-t border-[var(--relay-line)]" />
+                  {renderRailGroup("External", externalSources, "Index a public docs or research URL to make it searchable.")}
+                </>
+              )}
             </div>
           </div>
         </FadeIn>
 
+        {/* ── Right detail pane ── */}
         <FadeIn delay={0.08}>
-          <div className="min-h-[420px] rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
+          <div className="flex min-h-[460px] flex-col overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]">
             {!selectedSource ? (
-              <div className="flex min-h-[420px] items-center justify-center px-6 text-center text-[13px] text-[var(--relay-muted)]">
-                Sources are stored separately from briefs so project context stays compact.
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+                <FileText className="h-8 w-8 text-[var(--relay-faint)]" />
+                <p className="text-[13px] text-[var(--relay-muted)]">
+                  Select a source to inspect its extraction, chunks, and candidate memory.
+                </p>
               </div>
             ) : (
-              <div>
+              <>
+                {/* Header */}
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--relay-line)] px-5 py-4">
-                  <div>
-                    <p className="text-sm font-semibold text-[var(--relay-ink)]">{selectedSource.displayName}</p>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <StatusDot status={selectedSource.status} />
+                      <p className="truncate text-sm font-semibold text-[var(--relay-ink)]">
+                        {selectedSource.displayName}
+                      </p>
+                    </div>
                     <p className="mt-1 text-[12px] text-[var(--relay-muted)]">
-                      {selectedSource.mimeType ?? "source"} · {formatBytes(selectedSource.byteSize)}
+                      {selectedSource.mimeType ?? "source"} · {formatBytes(selectedSource.byteSize)} · {selectedSource.status}
                       {selectedSource.sourceUri ? (
                         <>
                           {" · "}
-                          <a className="inline-flex items-center gap-1 hover:text-[var(--relay-ink)]" href={selectedSource.sourceUri} target="_blank" rel="noreferrer">
+                          <a
+                            className="inline-flex items-center gap-1 hover:text-[var(--relay-ink)]"
+                            href={selectedSource.sourceUri}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
                             Open <ExternalLink className="h-3 w-3" />
                           </a>
                         </>
                       ) : null}
                     </p>
                     {selectedExternalMeta ? (
-                      <p className="mt-1 text-[11px] text-[var(--relay-muted)]">
-                        Provider {String(selectedExternalMeta.provider ?? "relay")} · {String(selectedExternalMeta.sourceType ?? "website")} · refresh {String(selectedExternalMeta.refreshPolicy ?? "manual")}
+                      <p className="mt-1 text-[11px] text-[var(--relay-faint)]">
+                        {String(selectedExternalMeta.provider ?? "relay")} · {String(selectedExternalMeta.sourceType ?? "website")} · refresh {String(selectedExternalMeta.refreshPolicy ?? "manual")}
                       </p>
                     ) : null}
                   </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="ghost" disabled={pending} onClick={() => void loadDetail(selectedSource.id)} className="h-8 gap-2">
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      Details
+                  <div className="flex gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={pending || detailLoading}
+                      onClick={() => selectSource(selectedSource.id)}
+                      className="h-8 gap-2"
+                    >
+                      <RefreshCw className={cn("h-3.5 w-3.5", detailLoading && "animate-spin")} />
+                      Reload
                     </Button>
-                    {section === "external" ? (
-                      <Button size="sm" variant="ghost" disabled={pending} onClick={() => refreshExternalSource(selectedSource.id)} className="h-8 gap-2">
+                    {selectedIsExternal ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={pending}
+                        onClick={() => refreshExternalSource(selectedSource.id)}
+                        className="h-8 gap-2"
+                      >
                         <Globe2 className="h-3.5 w-3.5" />
                         Refresh
                       </Button>
@@ -449,67 +561,112 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
                   </div>
                 </div>
 
-                <div className="grid gap-4 p-5 xl:grid-cols-2">
-                  <section>
-                    <p className="mb-2 text-[12px] font-medium text-[var(--relay-muted)]">Extraction</p>
-                    <div className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-3 py-3 text-[13px] text-[var(--relay-ink-secondary)]">
+                {/* Tabs */}
+                <div className="flex items-center gap-1 border-b border-[var(--relay-line)] px-3">
+                  {([
+                    ["overview", "Overview"],
+                    ["chunks", "Chunks"],
+                    ["candidates", "Candidates"],
+                    ...(selectedIsExternal ? [["search", "Search"] as const] : []),
+                  ] as Array<[DetailTab, string]>).map(([key, labelText]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setTab(key)}
+                      className={cn(
+                        "relative px-3 py-2.5 text-[12px] font-medium transition-colors",
+                        tab === key
+                          ? "text-[var(--relay-ink)]"
+                          : "text-[var(--relay-muted)] hover:text-[var(--relay-ink)]",
+                      )}
+                    >
+                      {labelText}
+                      {tab === key && (
+                        <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-[var(--relay-accent)]" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Body */}
+                <div className="min-h-0 flex-1 overflow-y-auto p-5">
+                  {detailLoading ? (
+                    <DetailSkeleton />
+                  ) : tab === "overview" ? (
+                    <div className="space-y-3 text-[13px] text-[var(--relay-ink-secondary)]">
+                      {selectedSource.status === "processing" ? (
+                        <div className="flex items-center gap-2 rounded-[var(--relay-radius-sm)] border border-amber-500/20 bg-amber-500/10 px-3 py-2.5 text-[12px] text-amber-600">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Processing this source — chunks and candidates appear when ready.
+                        </div>
+                      ) : null}
                       {activeDetail?.latestVersion ? (
-                        <div className="space-y-2">
-                          <p>{activeDetail.latestVersion.chunkCount} chunks · {activeDetail.latestVersion.tokenEstimate.toLocaleString("en-US")} estimated tokens</p>
-                          {activeDetail.latestVersion.errorMessage ? (
-                            <p className="text-red-600">{activeDetail.latestVersion.errorMessage}</p>
-                          ) : null}
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                          <Stat label="Chunks" value={activeDetail.latestVersion.chunkCount.toLocaleString("en-US")} />
+                          <Stat label="Est. tokens" value={activeDetail.latestVersion.tokenEstimate.toLocaleString("en-US")} />
+                          <Stat label="Candidates" value={String(activeDetail.candidates.length)} />
                         </div>
                       ) : (
-                        <p>Open details to inspect chunks and candidate memory.</p>
+                        <p className="text-[var(--relay-muted)]">No extracted version yet.</p>
                       )}
+                      {activeDetail?.latestVersion?.errorMessage ? (
+                        <p className="rounded-[var(--relay-radius-sm)] border border-red-500/20 bg-red-500/10 px-3 py-2 text-[12px] text-red-600">
+                          {activeDetail.latestVersion.errorMessage}
+                        </p>
+                      ) : null}
                     </div>
-                  </section>
-
-                  {section === "external" ? (
-                    <section>
-                      <p className="mb-2 text-[12px] font-medium text-[var(--relay-muted)]">Cited search results</p>
-                      <div className="space-y-2">
-                        {searchResults.length === 0 ? (
-                          <div className="rounded-[var(--relay-radius-sm)] border border-dashed border-[var(--relay-line)] px-3 py-6 text-center text-[12px] text-[var(--relay-muted)]">
-                            Search external sources to inspect citations.
-                          </div>
-                        ) : searchResults.map((result) => (
-                          <div key={`${result.sourceId}:${result.chunkId}`} className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-3 py-3">
-                            <div className="mb-2 flex items-center justify-between gap-2">
-                              <span className="truncate text-[11px] font-medium uppercase text-[var(--relay-muted)]">{result.sourceTitle} · {Math.round(result.score * 100)}%</span>
-                              <Button size="sm" variant="ghost" disabled={pending} onClick={() => promoteCitation(result)} className="h-7 gap-1.5 text-[11px]">
-                                <CheckCircle2 className="h-3.5 w-3.5" />
-                                Promote
-                              </Button>
-                            </div>
-                            <p className="line-clamp-4 text-[13px] leading-relaxed text-[var(--relay-ink-secondary)]">{result.content}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </section>
-                  ) : (
-                  <section>
-                    <p className="mb-2 text-[12px] font-medium text-[var(--relay-muted)]">Candidate memory</p>
+                  ) : tab === "chunks" ? (
+                    <div className="space-y-2">
+                      {(activeDetail?.chunks ?? []).length === 0 ? (
+                        <Empty hint="No chunks extracted yet." />
+                      ) : activeDetail!.chunks.map((chunk) => (
+                        <div
+                          key={chunk.id}
+                          className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-3 py-2.5"
+                        >
+                          <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-[var(--relay-ink-secondary)]">
+                            {chunk.content}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : tab === "candidates" ? (
                     <div className="space-y-2">
                       {(activeDetail?.candidates ?? []).length === 0 ? (
-                        <div className="rounded-[var(--relay-radius-sm)] border border-dashed border-[var(--relay-line)] px-3 py-6 text-center text-[12px] text-[var(--relay-muted)]">
-                          No candidates loaded yet.
-                        </div>
+                        <Empty hint="No candidate memory extracted yet." />
                       ) : activeDetail!.candidates.map((candidate) => (
-                        <div key={candidate.id} className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-3 py-3">
+                        <div
+                          key={candidate.id}
+                          className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-3 py-3"
+                        >
                           <div className="mb-2 flex items-center justify-between gap-2">
-                            <span className="text-[11px] font-medium uppercase text-[var(--relay-muted)]">{candidate.type} · {Math.round(candidate.confidence * 100)}%</span>
+                            <span className="text-[11px] font-medium uppercase text-[var(--relay-muted)]">
+                              {candidate.type} · {Math.round(candidate.confidence * 100)}%
+                            </span>
                             <span className="text-[11px] text-[var(--relay-muted)]">{candidate.status}</span>
                           </div>
-                          <p className="text-[13px] leading-relaxed text-[var(--relay-ink-secondary)]">{candidate.content}</p>
+                          <p className="text-[13px] leading-relaxed text-[var(--relay-ink-secondary)]">
+                            {candidate.content}
+                          </p>
                           {candidate.status === "pending" ? (
                             <div className="mt-3 flex gap-2">
-                              <Button size="sm" variant="ghost" disabled={pending} onClick={() => reviewCandidate(candidate.id, "promote")} className="h-7 gap-1.5 text-[11px]">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={pending}
+                                onClick={() => reviewCandidate(candidate.id, "promote")}
+                                className="h-7 gap-1.5 text-[11px]"
+                              >
                                 <CheckCircle2 className="h-3.5 w-3.5" />
                                 Promote
                               </Button>
-                              <Button size="sm" variant="ghost" disabled={pending} onClick={() => reviewCandidate(candidate.id, "reject")} className="h-7 gap-1.5 text-[11px]">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={pending}
+                                onClick={() => reviewCandidate(candidate.id, "reject")}
+                                className="h-7 gap-1.5 text-[11px]"
+                              >
                                 <XCircle className="h-3.5 w-3.5" />
                                 Reject
                               </Button>
@@ -518,14 +675,89 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
                         </div>
                       ))}
                     </div>
-                  </section>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex gap-1.5">
+                        <input
+                          value={searchQuery}
+                          onChange={(event) => setSearchQuery(event.currentTarget.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") searchExternalSources()
+                          }}
+                          placeholder="Search citations across external sources"
+                          className="h-9 min-w-0 flex-1 rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-transparent px-3 text-[13px] text-[var(--relay-ink)] outline-none focus:border-[var(--relay-accent)]"
+                        />
+                        <Button
+                          size="sm"
+                          disabled={pending || !searchQuery.trim()}
+                          onClick={searchExternalSources}
+                          className="h-9 gap-2"
+                        >
+                          <Search className="h-3.5 w-3.5" />
+                          Search
+                        </Button>
+                      </div>
+                      {searchResults.length === 0 ? (
+                        <Empty hint="Search to inspect cited passages, then promote the useful ones." />
+                      ) : searchResults.map((result) => (
+                        <div
+                          key={`${result.sourceId}:${result.chunkId}`}
+                          className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-3 py-3"
+                        >
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <span className="truncate text-[11px] font-medium uppercase text-[var(--relay-muted)]">
+                              {result.sourceTitle} · {Math.round(result.score * 100)}%
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={pending}
+                              onClick={() => promoteCitation(result)}
+                              className="h-7 gap-1.5 text-[11px]"
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              Promote
+                            </Button>
+                          </div>
+                          <p className="line-clamp-4 text-[13px] leading-relaxed text-[var(--relay-ink-secondary)]">
+                            {result.content}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
-              </div>
+
+                {billingStatus && selectedIsExternal ? (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-[var(--relay-line)] px-5 py-2.5 text-[11px] text-[var(--relay-faint)]">
+                    <span>Sources {externalSources.length}/{billingStatus.entitlements.limits.externalSourcesPerProject}</span>
+                    <span>Indexes {billingStatus.usage.externalSourceIndexesToday}/{billingStatus.entitlements.limits.externalSourceIndexesDaily}</span>
+                    <span>Searches {billingStatus.usage.externalSourceSearchesToday}/{billingStatus.entitlements.limits.externalSourceSearchesDaily}</span>
+                    <span>Refreshes {billingStatus.usage.externalSourceRefreshesToday}/{billingStatus.entitlements.limits.externalSourceRefreshesDaily}</span>
+                  </div>
+                ) : null}
+              </>
             )}
           </div>
         </FadeIn>
       </div>
+    </div>
+  )
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-3 py-2.5">
+      <p className="text-[11px] uppercase tracking-wide text-[var(--relay-faint)]">{label}</p>
+      <p className="mt-0.5 text-[15px] font-semibold tabular-nums text-[var(--relay-ink)]">{value}</p>
+    </div>
+  )
+}
+
+function Empty({ hint }: { hint: string }) {
+  return (
+    <div className="rounded-[var(--relay-radius-sm)] border border-dashed border-[var(--relay-line)] px-3 py-8 text-center text-[12px] text-[var(--relay-muted)]">
+      {hint}
     </div>
   )
 }
