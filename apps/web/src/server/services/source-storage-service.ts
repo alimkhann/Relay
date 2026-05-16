@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto"
 
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3"
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3"
 
 export interface EncryptedSourcePayload {
   algorithm: "aes-256-gcm"
@@ -114,6 +114,19 @@ export async function putEncryptedSourceObject(input: {
     },
   }))
   return encrypted
+}
+
+// Best-effort: storage may be unconfigured (memory mode) or the object may
+// already be gone. Never block a hard delete on blob removal.
+export async function deleteSourceObject(input: { key: string }) {
+  const client = getR2Client()
+  const bucket = getBucket()
+  if (!client || !bucket) return
+  try {
+    await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: input.key }))
+  } catch {
+    // Object missing or storage transient error — DB row removal still proceeds.
+  }
 }
 
 async function streamToBuffer(body: unknown): Promise<Buffer> {

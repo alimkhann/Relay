@@ -204,8 +204,10 @@ If returned context is stale, completed, contradicted, or superseded, clean it u
 - index: index a public docs/research URL
 - status/read: inspect a source and its chunks
 - search: explicitly search indexed sources with citations
-- refresh: re-fetch and re-index an external source
-- promote: save a selected citation into Relay memory`,
+- refresh: re-fetch and re-index a source (external URL or uploaded file)
+- promote: save a selected citation into Relay memory
+- delete: archive a source (soft, recoverable; hides it from list)
+- purge: permanently delete an archived source and its stored file`,
     sourcesSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)

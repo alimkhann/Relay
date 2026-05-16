@@ -2,7 +2,7 @@ import { z } from "zod"
 import type { RelayClient } from "../client.js"
 
 const sourcesToolShape = {
-  action: z.enum(["list", "discover", "index", "status", "search", "read", "refresh", "promote"]),
+  action: z.enum(["list", "discover", "index", "status", "search", "read", "refresh", "promote", "delete", "purge"]),
   projectId: z.string().uuid().optional(),
   sourceId: z.string().uuid().optional(),
   chunkId: z.string().uuid().optional(),
@@ -24,7 +24,7 @@ const sourcesToolSchema = z.object(sourcesToolShape).superRefine((value, ctx) =>
   if (value.action === "index" && !value.url) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "url is required for index.", path: ["url"] })
   }
-  if (["status", "read", "refresh"].includes(value.action) && !value.sourceId) {
+  if (["status", "read", "refresh", "delete", "purge"].includes(value.action) && !value.sourceId) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "sourceId is required for this source action.", path: ["sourceId"] })
   }
   if (value.action === "promote") {
@@ -71,6 +71,14 @@ export async function sources(client: RelayClient, rawArgs: SourcesArgs, project
   }
   if (args.action === "promote") {
     return toolResult(await client.post(`/api/projects/${projectId}/sources/${args.sourceId}/promote`, args))
+  }
+  if (args.action === "delete") {
+    await client.delete(`/api/projects/${projectId}/sources/${args.sourceId}`)
+    return toolResult({ ok: true, sourceId: args.sourceId, archived: true })
+  }
+  if (args.action === "purge") {
+    await client.delete(`/api/projects/${projectId}/sources/${args.sourceId}?purge=1`)
+    return toolResult({ ok: true, sourceId: args.sourceId, purged: true })
   }
   if (args.action === "discover") {
     return toolResult({

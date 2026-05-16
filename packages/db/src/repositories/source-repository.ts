@@ -210,6 +210,28 @@ export class SourceRepository {
     )
   }
 
+  // Permanently removes the source. source_versions, source_chunks,
+  // source_fact_candidates and source_memory_links all FK
+  // project_sources(id) ON DELETE CASCADE (migration 0037), so one delete
+  // tears down the whole tree.
+  async hardDelete(sourceId: string): Promise<void> {
+    await this.provider.query(
+      `delete from project_sources where id = $1`,
+      [sourceId],
+    )
+  }
+
+  // Drop chunks + pending candidates for a version so a reprocess can re-chunk
+  // without colliding on unique(version_id, chunk_index). Promoted candidates
+  // (already memory items) are left intact.
+  async clearVersionArtifacts(versionId: string): Promise<void> {
+    await this.provider.query(`delete from source_chunks where version_id = $1`, [versionId])
+    await this.provider.query(
+      `delete from source_fact_candidates where version_id = $1 and status = 'pending'`,
+      [versionId],
+    )
+  }
+
   async markVersionReady(versionId: string, input: { extractedTextHash: string; extractedTextBytes: number; chunkCount: number; tokenEstimate: number; metadata?: Record<string, unknown> }): Promise<SourceVersionRow> {
     const rows = await this.provider.query(
       `update source_versions

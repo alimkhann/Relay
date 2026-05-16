@@ -15,6 +15,8 @@ import { generateEmbeddings, EMBEDDING_MODEL } from "./embedding-service"
 import { resolveViewerEntitlements, consumeQuota } from "./entitlement-service"
 import {
   buildSourceObjectKey,
+  deleteSourceObject,
+  getDecryptedSourceObject,
   putEncryptedSourceObject,
 } from "./source-storage-service"
 import {
@@ -278,6 +280,23 @@ export async function archiveProjectSource(userId: string, projectId: string, so
   return repos.sources.updateSourceStatus(sourceId, "archived")
 }
 
+// Permanent, irreversible. Requires the source to already be archived so a
+// stray DELETE can never wipe a live source — purge is the deliberate
+// "empty trash" step. Drops the encrypted blob then the DB tree (cascade).
+export async function hardDeleteProjectSource(userId: string, projectId: string, sourceId: string) {
+  const repos = createRepositoryBundle(userId)
+  const source = await repos.sources.getById(sourceId)
+  if (!source || source.projectId !== projectId) throw new NotFoundError("Source not found.")
+  if (source.status !== "archived") {
+    throw new BadRequestError("Archive the source before deleting it permanently.")
+  }
+  if (source.storageObjectKey) {
+    await deleteSourceObject({ key: source.storageObjectKey })
+  }
+  await repos.sources.hardDelete(sourceId)
+  return { ok: true }
+}
+
 async function embedSourceChunksIfConfigured(userId: string, chunks: Array<{ id: string; content: string }>) {
   if (chunks.length === 0) return 0
   try {
@@ -353,15 +372,25 @@ export async function createSourceFromUpload(userId: string, input: {
     extension: getSourceFileExtension(input.fileName),
   })
 
-  if (process.env.RELAY_SOURCE_STORAGE_MODE !== "memory") {
-    await putEncryptedSourceObject({
-      key: objectKey,
-      buffer: input.buffer,
-      contentType: input.mimeType,
-      crypto: { projectId: input.projectId, sourceId: source.id, versionId: version.id },
-    })
+  // If the blob write fails, the source/version rows already exist. Mark them
+  // failed here instead of leaving an orphan stuck in `processing` forever
+  // (the heavy pass runs out-of-band and would never get a usable buffer).
+  try {
+    if (process.env.RELAY_SOURCE_STORAGE_MODE !== "memory") {
+      await putEncryptedSourceObject({
+        key: objectKey,
+        buffer: input.buffer,
+        contentType: input.mimeType,
+        crypto: { projectId: input.projectId, sourceId: source.id, versionId: version.id },
+      })
+    }
+    await repos.sources.updateSourceObjectKey(source.id, objectKey)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Source file storage failed."
+    await repos.sources.markVersionFailed(version.id, message)
+    await repos.sources.updateSourceStatus(source.id, "failed", { metadata: { ...source.metadata, error: message } })
+    throw new BadRequestError(`Relay could not store this file: ${message}`)
   }
-  await repos.sources.updateSourceObjectKey(source.id, objectKey)
 
   return {
     detail: await getProjectSourceDetail(userId, input.projectId, source.id),
@@ -415,6 +444,105 @@ export async function processUploadedSource(userId: string, handle: UploadProces
     await repos.sources.markVersionFailed(handle.versionId, message)
     await repos.sources.updateSourceStatus(handle.sourceId, "failed", { metadata: { ...handle.sourceMetadata, error: message } })
   }
+}
+
+// Retry ingestion for an uploaded file whose first pass never completed
+// (orphaned `processing`) or failed. Rebuilds the buffer from the stored
+// encrypted blob and re-runs the same heavy pipeline as the upload path.
+export async function reprocessUploadedSource(userId: string, projectId: string, sourceId: string) {
+  const repos = createRepositoryBundle(userId)
+  const source = await repos.sources.getById(sourceId)
+  if (!source || source.projectId !== projectId) throw new NotFoundError("Source not found.")
+  if (source.kind !== "uploaded_file") {
+    throw new BadRequestError("Only uploaded files can be reprocessed this way.")
+  }
+  if (!source.storageObjectKey) {
+    throw new BadRequestError("This source has no stored file to reprocess.")
+  }
+  const version = await repos.sources.getLatestVersion(sourceId)
+  if (!version) throw new BadRequestError("This source has no version to reprocess.")
+
+  const buffer = await getDecryptedSourceObject({
+    key: source.storageObjectKey,
+    crypto: { projectId, sourceId, versionId: version.id },
+  })
+
+  await repos.sources.clearVersionArtifacts(version.id)
+  await repos.sources.updateSourceStatus(sourceId, "processing")
+
+  await processUploadedSource(userId, {
+    projectId,
+    sourceId,
+    versionId: version.id,
+    objectKey: source.storageObjectKey,
+    fileName: source.originalFileName ?? source.displayName,
+    mimeType: source.mimeType ?? "application/octet-stream",
+    buffer,
+    sourceMetadata: source.metadata,
+  })
+
+  return getProjectSourceDetail(userId, projectId, sourceId)
+}
+
+// Cron-driven recovery for sources orphaned in `processing` (the out-of-band
+// `after()` ingest died — deploy/serverless lifecycle). Runs RLS-free. Each
+// stale uploaded file gets a bounded number of reprocess attempts; anything
+// else (or attempts exhausted) is marked `failed` so it never sticks forever.
+export async function sweepStaleProcessingSources(
+  options: { olderThanMinutes?: number; limit?: number; maxAttempts?: number } = {},
+) {
+  const olderThanMinutes = options.olderThanMinutes ?? 15
+  const limit = options.limit ?? 5
+  const maxAttempts = options.maxAttempts ?? 2
+  const repos = createRepositoryBundle()
+
+  const rows = await repos.provider.query(
+    `select id, project_id, created_by, kind, storage_object_key, metadata
+     from project_sources
+     where status = 'processing'
+       and updated_at < now() - make_interval(mins => $1::int)
+     order by updated_at asc
+     limit $2`,
+    [olderThanMinutes, limit],
+  )
+
+  const results: Array<{ sourceId: string; action: "reprocessed" | "failed"; error?: string }> = []
+
+  for (const row of rows) {
+    const r = row as Record<string, unknown>
+    const sourceId = r["id"] as string
+    const projectId = r["project_id"] as string
+    const userId = r["created_by"] as string
+    const kind = r["kind"] as string
+    const storageKey = r["storage_object_key"] as string | null
+    const metadata = (r["metadata"] as Record<string, unknown> | null) ?? {}
+    const attempts = typeof metadata["reprocessAttempts"] === "number" ? metadata["reprocessAttempts"] : 0
+
+    try {
+      if (kind === "uploaded_file" && storageKey && attempts < maxAttempts) {
+        // Bump the attempt counter (and updated_at) before retrying so a crash
+        // mid-reprocess can't put us in a tight retry loop.
+        await repos.sources.updateSourceStatus(sourceId, "processing", {
+          metadata: { ...metadata, reprocessAttempts: attempts + 1 },
+        })
+        await reprocessUploadedSource(userId, projectId, sourceId)
+        results.push({ sourceId, action: "reprocessed" })
+      } else {
+        await repos.sources.updateSourceStatus(sourceId, "failed", {
+          metadata: { ...metadata, error: "Ingestion did not complete; marked failed by sweep." },
+        })
+        results.push({ sourceId, action: "failed" })
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Sweep reprocess failed."
+      await repos.sources.updateSourceStatus(sourceId, "failed", {
+        metadata: { ...metadata, reprocessAttempts: attempts + 1, error: message },
+      })
+      results.push({ sourceId, action: "failed", error: message })
+    }
+  }
+
+  return { swept: rows.length, results }
 }
 
 export async function promoteHighConfidenceSourceFacts(userId: string, sourceId: string) {

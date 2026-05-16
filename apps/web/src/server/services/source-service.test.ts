@@ -27,6 +27,7 @@ vi.mock("./entitlement-service", () => ({
 
 import {
   createExternalSource,
+  hardDeleteProjectSource,
   promoteSourceCitation,
   promoteHighConfidenceSourceFacts,
   searchProjectSources,
@@ -178,6 +179,36 @@ describe("source-service", () => {
     expect(result.results).toHaveLength(1)
     expect(searchChunks).toHaveBeenCalledWith("project-1", expect.objectContaining({ query: "research", limit: 5 }))
     expect(consumeQuotaMock).toHaveBeenCalledWith("user-1", "external_source_search_daily", "day", 50, 1, "starter")
+  })
+
+  it("refuses to hard-delete a source that is not archived", async () => {
+    const hardDelete = vi.fn()
+    createRepositoryBundleMock.mockReturnValue({
+      sources: {
+        getById: vi.fn().mockResolvedValue({ id: "source-1", projectId: "project-1", status: "ready", storageObjectKey: "k" }),
+        hardDelete,
+      },
+    })
+
+    await expect(hardDeleteProjectSource("user-1", "project-1", "source-1")).rejects.toThrow(
+      /Archive the source before deleting it permanently/,
+    )
+    expect(hardDelete).not.toHaveBeenCalled()
+  })
+
+  it("hard-deletes an archived source (cascade row removal)", async () => {
+    const hardDelete = vi.fn()
+    createRepositoryBundleMock.mockReturnValue({
+      sources: {
+        getById: vi.fn().mockResolvedValue({ id: "source-1", projectId: "project-1", status: "archived", storageObjectKey: null }),
+        hardDelete,
+      },
+    })
+
+    const result = await hardDeleteProjectSource("user-1", "project-1", "source-1")
+
+    expect(result).toEqual({ ok: true })
+    expect(hardDelete).toHaveBeenCalledWith("source-1")
   })
 
   it("promotes a selected citation into memory only on explicit action", async () => {
