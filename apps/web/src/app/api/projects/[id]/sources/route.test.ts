@@ -7,6 +7,8 @@ const {
   consumeMcpReadQuotaMock,
   listProjectSourcesMock,
   createSourceFromUploadMock,
+  processUploadedSourceMock,
+  runAfterResponseMock,
 } = vi.hoisted(() => ({
   withApiAuthMock: vi.fn((handler: any) => handler),
   resolveViewerMock: vi.fn(),
@@ -14,14 +16,18 @@ const {
   consumeMcpReadQuotaMock: vi.fn(),
   listProjectSourcesMock: vi.fn(),
   createSourceFromUploadMock: vi.fn(),
+  processUploadedSourceMock: vi.fn(),
+  runAfterResponseMock: vi.fn((task: () => unknown) => { void task() }),
 }))
 
 vi.mock("@/server/http/api-route", () => ({ withApiAuth: withApiAuthMock }))
+vi.mock("@/server/http/after", () => ({ runAfterResponse: runAfterResponseMock }))
 vi.mock("@/server/policies/viewer", () => ({ resolveViewer: resolveViewerMock, requireViewerProject: requireViewerProjectMock }))
 vi.mock("@/server/services/entitlement-service", () => ({ consumeMcpReadQuota: consumeMcpReadQuotaMock }))
 vi.mock("@/server/services/source-service", () => ({
   listProjectSources: listProjectSourcesMock,
   createSourceFromUpload: createSourceFromUploadMock,
+  processUploadedSource: processUploadedSourceMock,
 }))
 
 import { GET, POST } from "./route"
@@ -33,6 +39,8 @@ describe("/api/projects/[id]/sources", () => {
     consumeMcpReadQuotaMock.mockReset()
     listProjectSourcesMock.mockReset()
     createSourceFromUploadMock.mockReset()
+    processUploadedSourceMock.mockReset()
+    runAfterResponseMock.mockClear()
     resolveViewerMock.mockResolvedValue({ userId: "user-1", mode: "web" })
   })
 
@@ -47,8 +55,11 @@ describe("/api/projects/[id]/sources", () => {
     expect(await response.json()).toEqual({ sources: [{ id: "source-1", displayName: "Spec.md" }] })
   })
 
-  it("accepts multipart source uploads", async () => {
-    createSourceFromUploadMock.mockResolvedValue({ source: { id: "source-1" } })
+  it("accepts multipart uploads and processes in the background", async () => {
+    createSourceFromUploadMock.mockResolvedValue({
+      detail: { source: { id: "source-1", status: "processing" } },
+      processing: { projectId: "project-1", sourceId: "source-1", versionId: "version-1" },
+    })
     const formData = {
       get: (key: string) => key === "file"
         ? {
@@ -73,6 +84,12 @@ describe("/api/projects/[id]/sources", () => {
       fileName: "source.md",
       mimeType: "text/markdown",
     }))
-    expect(response.status).toBe(201)
+    expect(response.status).toBe(202)
+    expect(await response.json()).toEqual({ source: { id: "source-1", status: "processing" } })
+    expect(runAfterResponseMock).toHaveBeenCalledTimes(1)
+    expect(processUploadedSourceMock).toHaveBeenCalledWith("user-1", expect.objectContaining({
+      sourceId: "source-1",
+      versionId: "version-1",
+    }))
   })
 })

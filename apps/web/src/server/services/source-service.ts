@@ -167,38 +167,44 @@ async function ingestExternalSourceText(userId: string, input: {
     byteSize: fetched.byteSize,
     metadata,
   })
-  const chunkDrafts = chunkExtractedText(fetched.text, { sourceId: source.id, versionId: version.id })
-  const chunks = await repos.sources.createChunks(chunkDrafts.map((chunk) => ({
-    ...chunk,
-    projectId: input.projectId,
-    locator: {
-      ...chunk.locator,
-      url: canonicalUrl,
-    },
-    metadata: {
-      ...chunk.metadata,
-      provider: input.provider ?? "relay",
-      sourceType: metadata.external.sourceType,
-    },
-  })))
-  const tokenEstimate = estimateTokens(fetched.text)
-  await consumeQuota(
-    userId,
-    "source_embedded_tokens_monthly",
-    "month",
-    entitlements.limits.sourceEmbeddedTokensMonthly,
-    tokenEstimate,
-    entitlements.plan,
-  )
-  await repos.sources.markVersionReady(version.id, {
-    extractedTextHash: sha256Hex(fetched.text),
-    extractedTextBytes: Buffer.byteLength(fetched.text, "utf8"),
-    chunkCount: chunks.length,
-    tokenEstimate,
-    metadata: fetched.metadata,
-  })
-  await repos.sources.updateSourceStatus(source.id, "ready", { metadata })
-  await embedSourceChunksIfConfigured(userId, chunks)
+  try {
+    const chunkDrafts = chunkExtractedText(fetched.text, { sourceId: source.id, versionId: version.id })
+    const chunks = await repos.sources.createChunks(chunkDrafts.map((chunk) => ({
+      ...chunk,
+      projectId: input.projectId,
+      locator: {
+        ...chunk.locator,
+        url: canonicalUrl,
+      },
+      metadata: {
+        ...chunk.metadata,
+        provider: input.provider ?? "relay",
+        sourceType: metadata.external.sourceType,
+      },
+    })))
+    const tokenEstimate = estimateTokens(fetched.text)
+    await consumeQuota(
+      userId,
+      "source_embedded_tokens_monthly",
+      "month",
+      entitlements.limits.sourceEmbeddedTokensMonthly,
+      tokenEstimate,
+      entitlements.plan,
+    )
+    await repos.sources.markVersionReady(version.id, {
+      extractedTextHash: sha256Hex(fetched.text),
+      extractedTextBytes: Buffer.byteLength(fetched.text, "utf8"),
+      chunkCount: chunks.length,
+      tokenEstimate,
+      metadata: fetched.metadata,
+    })
+    await repos.sources.updateSourceStatus(source.id, "ready", { metadata })
+    await embedSourceChunksIfConfigured(userId, chunks)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "External source ingestion failed."
+    await repos.sources.markVersionFailed(version.id, message)
+    await repos.sources.updateSourceStatus(source.id, "failed", { metadata: { ...metadata, error: message } })
+  }
   return getProjectSourceDetail(userId, input.projectId, source.id)
 }
 
@@ -292,12 +298,27 @@ async function embedSourceChunksIfConfigured(userId: string, chunks: Array<{ id:
   }
 }
 
+export interface UploadProcessingHandle {
+  projectId: string
+  sourceId: string
+  versionId: string
+  objectKey: string
+  fileName: string
+  mimeType: string
+  buffer: Buffer
+  sourceMetadata: Record<string, unknown>
+}
+
+// Fast path only: validate, enforce quota, persist the source row + file, and
+// return the detail in `processing` state immediately. The heavy text
+// extraction / chunking / embedding runs out of band via processUploadedSource
+// so the request never blocks long enough to time out into a spurious 500.
 export async function createSourceFromUpload(userId: string, input: {
   projectId: string
   fileName: string
   mimeType: string
   buffer: Buffer
-}) {
+}): Promise<{ detail: Awaited<ReturnType<typeof getProjectSourceDetail>>; processing: UploadProcessingHandle }> {
   const validated = validateSourceFile({
     fileName: input.fileName,
     mimeType: input.mimeType,
@@ -342,41 +363,58 @@ export async function createSourceFromUpload(userId: string, input: {
   }
   await repos.sources.updateSourceObjectKey(source.id, objectKey)
 
-  try {
-    const extracted = await extractTextFromSourceBuffer({
-      buffer: input.buffer,
+  return {
+    detail: await getProjectSourceDetail(userId, input.projectId, source.id),
+    processing: {
+      projectId: input.projectId,
+      sourceId: source.id,
+      versionId: version.id,
+      objectKey,
       fileName: input.fileName,
       mimeType: input.mimeType,
+      buffer: input.buffer,
+      sourceMetadata: source.metadata,
+    },
+  }
+}
+
+// Heavy ingestion, run after the response. Any failure is recorded as a failed
+// source/version status; it never throws to the caller.
+export async function processUploadedSource(userId: string, handle: UploadProcessingHandle) {
+  const repos = createRepositoryBundle(userId)
+  try {
+    const extracted = await extractTextFromSourceBuffer({
+      buffer: handle.buffer,
+      fileName: handle.fileName,
+      mimeType: handle.mimeType,
     })
     if (!extracted.text) {
       throw new BadRequestError("Relay could not extract text from this source.")
     }
-    const chunkDrafts = chunkExtractedText(extracted.text, { sourceId: source.id, versionId: version.id })
+    const chunkDrafts = chunkExtractedText(extracted.text, { sourceId: handle.sourceId, versionId: handle.versionId })
     const chunks = await repos.sources.createChunks(chunkDrafts.map((chunk) => ({
       ...chunk,
-      projectId: input.projectId,
+      projectId: handle.projectId,
     })))
-    const candidates = extractFactCandidatesFromChunks(chunks, input.projectId)
+    const candidates = extractFactCandidatesFromChunks(chunks, handle.projectId)
     await repos.sources.createFactCandidates(candidates)
-    await repos.sources.markVersionReady(version.id, {
+    await repos.sources.markVersionReady(handle.versionId, {
       extractedTextHash: sha256Hex(extracted.text),
       extractedTextBytes: Buffer.byteLength(extracted.text, "utf8"),
       chunkCount: chunks.length,
       tokenEstimate: estimateTokens(extracted.text),
       metadata: extracted.metadata,
     })
-    await repos.sources.updateSourceStatus(source.id, "ready", {
-      metadata: { ...source.metadata, storageObjectKey: objectKey, extraction: extracted.metadata },
+    await repos.sources.updateSourceStatus(handle.sourceId, "ready", {
+      metadata: { ...handle.sourceMetadata, storageObjectKey: handle.objectKey, extraction: extracted.metadata },
     })
     await embedSourceChunksIfConfigured(userId, chunks)
-    await promoteHighConfidenceSourceFacts(userId, source.id)
+    await promoteHighConfidenceSourceFacts(userId, handle.sourceId)
   } catch (error) {
     const message = error instanceof Error ? error.message : "Source ingestion failed."
-    await repos.sources.markVersionFailed(version.id, message)
-    await repos.sources.updateSourceStatus(source.id, "failed", { metadata: { ...source.metadata, error: message } })
+    await repos.sources.markVersionFailed(handle.versionId, message)
+    await repos.sources.updateSourceStatus(handle.sourceId, "failed", { metadata: { ...handle.sourceMetadata, error: message } })
   }
-
-  return getProjectSourceDetail(userId, input.projectId, source.id)
 }
 
 export async function promoteHighConfidenceSourceFacts(userId: string, sourceId: string) {
