@@ -21,7 +21,7 @@ export default function PrivacyPage() {
           Privacy Policy
         </h1>
         <p className="mt-2 text-sm text-gray-400">
-          Last updated: May 9, 2026
+          Last updated: May 16, 2026
         </p>
 
         <div className="mt-10 space-y-8 text-[15px] leading-relaxed text-gray-600">
@@ -126,6 +126,65 @@ export default function PrivacyPage() {
                 </a>
                 .
               </p>
+              <p>
+                <strong className="text-gray-900">
+                  Chrome Extension Permissions:
+                </strong>{" "}
+                The Relay Chrome extension requests only the permissions it
+                needs, each tied directly to the single purpose of syncing your
+                project context across AI chats. We prominently disclose this
+                data collection here and in the Chrome Web Store listing, and
+                capture only begins after you explicitly enable it:
+              </p>
+              <ul className="list-disc space-y-1.5 pl-5">
+                <li>
+                  <strong className="text-gray-900">storage:</strong> stores
+                  your device connection token, connection status, capture
+                  on/off state, and extension preferences locally in your
+                  browser. No chat content is kept in extension storage.
+                </li>
+                <li>
+                  <strong className="text-gray-900">tabs:</strong> identifies
+                  which supported AI chat tab is active so capture targets the
+                  correct conversation.
+                </li>
+                <li>
+                  <strong className="text-gray-900">activeTab:</strong> reads
+                  the current tab&apos;s URL, title, and visible chat content —
+                  only on supported AI chat sites and only when you have enabled
+                  capture.
+                </li>
+                <li>
+                  <strong className="text-gray-900">sidePanel:</strong> renders
+                  the Relay side panel interface.
+                </li>
+                <li>
+                  <strong className="text-gray-900">identity:</strong> signs you
+                  in and links the extension to your Relay account via Google
+                  OAuth.
+                </li>
+                <li>
+                  <strong className="text-gray-900">scripting:</strong> injects
+                  the content script that extracts chat turns on supported AI
+                  chat sites.
+                </li>
+                <li>
+                  <strong className="text-gray-900">contextMenus:</strong>{" "}
+                  provides the right-click &quot;Save to Relay&quot; action for
+                  text you select.
+                </li>
+                <li>
+                  <strong className="text-gray-900">
+                    Host access to AI chat sites
+                  </strong>{" "}
+                  (ChatGPT, Claude, Gemini, Grok, Codex, Perplexity, DeepSeek):
+                  reads conversation content on those sites only while capture
+                  is enabled. Host access to onrelay.app domains is used solely
+                  to communicate with the Relay backend, and the analytics host
+                  is used only to send privacy-respecting usage events (never
+                  chat content).
+                </li>
+              </ul>
             </div>
           </section>
 
@@ -186,7 +245,7 @@ export default function PrivacyPage() {
 
           <section>
             <h2 className="mb-3 text-lg font-semibold text-gray-900">
-              4. Data Storage &amp; Security
+              4. Data Storage
             </h2>
             <div className="space-y-3">
               <p>

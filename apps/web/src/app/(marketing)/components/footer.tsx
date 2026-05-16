@@ -83,6 +83,12 @@ export function Footer() {
             >
               Privacy
             </Link>
+            <Link
+              href="/refund"
+              className="text-sm text-white/25 hover:text-white/50 transition-colors"
+            >
+              Refund
+            </Link>
           </div>
         </div>
 
