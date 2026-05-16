@@ -35,9 +35,18 @@ function cssVar(name: string, fallback: string) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
+// Clip by characters, not by a canvas maxWidth. Passing maxWidth to
+// fillText horizontally *condenses* the glyphs (the "squished" look that
+// gets worse the more the label has to shrink); truncating the string keeps
+// every glyph at its natural aspect ratio at any zoom.
+function truncateLabel(text: string, maxChars: number) {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, Math.max(1, maxChars - 1)).trimEnd()}…`;
+}
+
 function drawLabelPill(
   ctx: CanvasRenderingContext2D,
-  text: string,
+  rawText: string,
   x: number,
   y: number,
   globalScale: number,
@@ -46,10 +55,10 @@ function drawLabelPill(
   const fontSize = compactNumber(11 * scale, 9 * scale, 12 * scale);
   const paddingX = 7 * scale;
   const paddingY = 4 * scale;
-  const maxWidth = 136 * scale;
+  const text = truncateLabel(rawText, 28);
   ctx.font = `500 ${fontSize}px Outfit, sans-serif`;
   const metrics = ctx.measureText(text);
-  const width = Math.min(metrics.width, maxWidth) + paddingX * 2;
+  const width = metrics.width + paddingX * 2;
   const height = fontSize + paddingY * 2;
   const left = x - width / 2;
   const top = y;
@@ -69,20 +78,20 @@ function drawLabelPill(
   ctx.fillStyle = ink;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(text, x, top + height / 2, maxWidth);
+  ctx.fillText(text, x, top + height / 2);
   ctx.restore();
 }
 
 function drawLabelText(
   ctx: CanvasRenderingContext2D,
-  text: string,
+  rawText: string,
   x: number,
   y: number,
   globalScale: number,
 ) {
   const scale = 1 / Math.max(globalScale, 0.01);
   const fontSize = compactNumber(10.5 * scale, 7.5 * scale, 11 * scale);
-  const maxWidth = 128 * scale;
+  const text = truncateLabel(rawText, 30);
   const ink = cssVar("--relay-ink", "#0f0f0f");
   const halo = cssVar("--relay-surface", "#ffffff");
 
@@ -92,9 +101,9 @@ function drawLabelText(
   ctx.textBaseline = "top";
   ctx.lineWidth = 3 * scale;
   ctx.strokeStyle = halo;
-  ctx.strokeText(text, x, y, maxWidth);
+  ctx.strokeText(text, x, y);
   ctx.fillStyle = ink;
-  ctx.fillText(text, x, y, maxWidth);
+  ctx.fillText(text, x, y);
   ctx.restore();
 }
 
@@ -203,6 +212,7 @@ export function MemoryGraph({
   const graphRef = useRef<ForceGraphMethods<GraphNode, GraphLink> | undefined>(undefined);
   const didFitRef = useRef(false);
   const prevDimsRef = useRef({ w: 0, h: 0 });
+  const prevNodeCountRef = useRef(0);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
 
@@ -233,6 +243,22 @@ export function MemoryGraph({
     nodes: data.nodes,
     links: visibleLinks,
   }), [data.nodes, visibleLinks]);
+
+  // Data can arrive after the canvas has already mounted + fit on an empty
+  // graph. Re-fit on the 0 -> N transition so nodes are framed, not blank.
+  useEffect(() => {
+    const count = graphData.nodes.length;
+    const prev = prevNodeCountRef.current;
+    prevNodeCountRef.current = count;
+    if (prev === 0 && count > 0 && width > 1 && height > 1) {
+      didFitRef.current = false;
+      const frame = requestAnimationFrame(() => {
+        graphRef.current?.zoomToFit(300, 40);
+        didFitRef.current = true;
+      });
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [graphData.nodes.length, width, height]);
 
   useEffect(() => {
     const graph = graphRef.current as
@@ -471,14 +497,16 @@ export function MemoryGraph({
       enablePanInteraction
       enableZoomInteraction
       minZoom={0.32}
-      maxZoom={2.4}
+      maxZoom={8}
       onNodeHover={(node) => setHoveredNodeId(node?.id ?? null)}
       onNodeClick={(node) => onSelectNode?.(node)}
       onNodeDragEnd={(node) => {
-        // Release the node instead of pinning it: keeping fx/fy set freezes the
-        // node permanently and the simulation stops applying forces to it.
-        node.fx = undefined;
-        node.fy = undefined;
+        // Sticky drag: the lib pins fx/fy to the cursor during the drag; keep
+        // them pinned at the drop point (instead of clearing them) so the
+        // user-set position actually persists. Reheat so every *other* node
+        // relaxes around it with full force behavior.
+        node.fx = node.x;
+        node.fy = node.y;
         (graphRef.current as { d3ReheatSimulation?: () => void } | undefined)?.d3ReheatSimulation?.();
       }}
       onBackgroundClick={() => onSelectNode?.(null)}
