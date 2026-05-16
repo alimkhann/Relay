@@ -93,7 +93,7 @@ export function SidebarReferralWidget({ code, link, qualifiedCount, collapsed }:
   return (
     <Tooltip.Root open={showNudge} onOpenChange={(v) => { if (!v) dismissNudge() }}>
     <Tooltip.Trigger asChild>
-    <div className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-soft)]/50 px-3 py-2.5" onClick={dismissNudge}>
+    <div className="px-2 py-1.5" onClick={dismissNudge}>
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--relay-faint)]">
           <Gift className="h-3 w-3" />
@@ -135,21 +135,6 @@ export function SidebarReferralWidget({ code, link, qualifiedCount, collapsed }:
         <span className="text-[11px] font-semibold text-[var(--relay-ink)] tabular-nums">
           {discountLabel}
         </span>
-      </div>
-
-      {/* Tier labels */}
-      <div className="mt-1.5 flex justify-between text-[10px] text-[var(--relay-faint)]">
-        {TIERS.map((tier) => (
-          <span
-            key={tier.count}
-            className={cn(
-              "tabular-nums",
-              qualifiedCount >= tier.count && "text-[var(--relay-accent)] font-medium",
-            )}
-          >
-            {tier.count}→{tier.label}
-          </span>
-        ))}
       </div>
 
       {/* Status line */}
