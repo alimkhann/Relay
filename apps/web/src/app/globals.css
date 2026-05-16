@@ -30,15 +30,16 @@
   --relay-section-constraint: #f59e0b;
   --relay-section-task: #10b981;
 
-  --relay-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --relay-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 4px 12px rgba(0, 0, 0, 0.04);
-  --relay-shadow-lg: 0 2px 8px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.08);
+  /* Flat by default — structure comes from borders, not shadows */
+  --relay-shadow-sm: 0 1px 1px rgba(0, 0, 0, 0.03);
+  --relay-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --relay-shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.06);
 
-  /* Tighter radii — not bubbly */
-  --relay-radius-xs: 4px;
-  --relay-radius-sm: 6px;
-  --relay-radius: 8px;
-  --relay-radius-lg: 10px;
+  /* Sharp, editorial radii — minimal rounding */
+  --relay-radius-xs: 2px;
+  --relay-radius-sm: 3px;
+  --relay-radius: 4px;
+  --relay-radius-lg: 6px;
 
   /* Layout */
   --relay-sidebar-width: 240px;
@@ -77,9 +78,9 @@
   --relay-section-constraint: #fbbf24;
   --relay-section-task: #34d399;
 
-  --relay-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --relay-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.2);
-  --relay-shadow-lg: 0 2px 8px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.3);
+  --relay-shadow-sm: 0 1px 1px rgba(0, 0, 0, 0.25);
+  --relay-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --relay-shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.45);
 }
 
 /* ─── System preference auto-apply ─── */
@@ -200,4 +201,76 @@ button {
 
 .relay-hover-lift:hover {
   transform: translateY(-1px);
+}
+
+/* ─── Consistent focus ring ─── */
+:focus-visible {
+  outline: 2px solid var(--relay-accent);
+  outline-offset: 2px;
+  border-radius: var(--relay-radius-xs);
+}
+
+/* ─── Headings: tighter optical tracking ─── */
+h1, h2, h3 {
+  letter-spacing: -0.011em;
+}
+
+/* ─── 404 wireframe globe (CSS-only, no deps) ─── */
+.relay-globe {
+  position: relative;
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  border: 1px solid var(--relay-line-strong);
+  transform-style: preserve-3d;
+}
+.relay-globe::before,
+.relay-globe::after,
+.relay-globe span {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid var(--relay-line-strong);
+}
+/* Longitude rings — rotate the sphere */
+.relay-globe::before {
+  transform: rotateY(60deg);
+}
+.relay-globe::after {
+  transform: rotateY(120deg);
+}
+.relay-globe span {
+  transform: rotateY(0deg);
+}
+/* Latitude bands */
+.relay-globe i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px solid var(--relay-line);
+}
+.relay-globe i:nth-child(1) { top: 28%; }
+.relay-globe i:nth-child(2) { top: 50%; border-color: var(--relay-line-strong); }
+.relay-globe i:nth-child(3) { top: 72%; }
+.relay-globe-spin {
+  animation: relay-globe-rotate 14s linear infinite;
+  transform-style: preserve-3d;
+}
+@keyframes relay-globe-rotate {
+  from { transform: rotateY(0deg) rotateX(8deg); }
+  to { transform: rotateY(360deg) rotateX(8deg); }
+}
+
+/* ─── Respect reduced motion ─── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

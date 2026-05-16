@@ -4,7 +4,6 @@ import { PageTelemetry } from "@/components/telemetry/page-telemetry"
 import { SourcesPageContent } from "@/features/sources/sources-page-content"
 import { requirePageViewer } from "@/server/policies/viewer"
 import { listProjectsForUser } from "@/server/services/project-service"
-import { listProjectSources } from "@/server/services/source-service"
 
 export const dynamic = "force-dynamic"
 
@@ -26,13 +25,6 @@ export default async function SourcesPage({
       ? projects.find((project) => project.id === selectedProjectId)
       : projects[0]) ?? projects[0]!
 
-  let sources: Awaited<ReturnType<typeof listProjectSources>> = []
-  try {
-    sources = await listProjectSources(viewer.userId, currentProject.id)
-  } catch {
-    // Sources tables may not exist yet (migration 0037)
-  }
-
   return (
     <>
       <PageTelemetry
@@ -49,7 +41,6 @@ export default async function SourcesPage({
           name: currentProject.name,
           description: currentProject.description,
         }}
-        initialSources={sources}
       />
     </>
   )

@@ -1,4 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import type { ReactElement } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const refresh = vi.fn()
@@ -97,15 +99,39 @@ const dashboard = {
   projectState: null,
 } as any
 
+function renderWithClient(ui: ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  })
+  // Seed the shared project dashboard query so useProjectDashboard resolves
+  // synchronously without hitting the network.
+  queryClient.setQueryData(["dashboard", project.id], dashboard)
+  const result = render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+  )
+  return {
+    ...result,
+    rerender: (next: ReactElement) =>
+      result.rerender(
+        <QueryClientProvider client={queryClient}>{next}</QueryClientProvider>,
+      ),
+  }
+}
+
 describe("DashboardContent", () => {
   beforeEach(() => {
     refresh.mockClear()
     push.mockClear()
     relayClientFetch.mockReset()
+    // Default response for background refetches triggered by invalidation.
+    relayClientFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ project, dashboard }),
+    })
   })
 
   it("shows the project description under the header title", () => {
-    render(<DashboardContent project={project} dashboard={dashboard} />)
+    renderWithClient(<DashboardContent project={project} />)
 
     expect(
       screen.getAllByText("Browser-first project memory sidecar.").length,
@@ -124,7 +150,7 @@ describe("DashboardContent", () => {
       }),
     })
 
-    render(<DashboardContent project={project} dashboard={dashboard} />)
+    renderWithClient(<DashboardContent project={project} />)
 
     fireEvent.click(screen.getByRole("button", { name: "Edit project" }))
     fireEvent.change(screen.getByDisplayValue("Relay MVP"), {
@@ -153,12 +179,11 @@ describe("DashboardContent", () => {
         }),
       )
     })
-    expect(refresh).toHaveBeenCalled()
   })
 
   it("preserves unsaved project drafts across equivalent rerenders", () => {
-    const { rerender } = render(
-      <DashboardContent project={project} dashboard={dashboard} />,
+    const { rerender } = renderWithClient(
+      <DashboardContent project={project} />,
     )
 
     fireEvent.click(screen.getByRole("button", { name: "Edit project" }))
@@ -171,15 +196,7 @@ describe("DashboardContent", () => {
     })
 
     rerender(
-      <DashboardContent
-        project={{ ...project }}
-        dashboard={{
-          ...dashboard,
-          stateStatus: { ...dashboard.stateStatus },
-          stateOverrides: { ...dashboard.stateOverrides },
-          derivedProjectState: { ...dashboard.derivedProjectState },
-        }}
-      />,
+      <DashboardContent project={{ ...project }} />,
     )
 
     expect(

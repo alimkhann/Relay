@@ -4,6 +4,8 @@ import { cookies } from "next/headers"
 import { createRepositoryBundle } from "@relay/db"
 
 import { AutoCaptureOnboardingBanner } from "@/components/onboarding/auto-capture-onboarding-banner"
+import { QueryProvider } from "@/components/providers/query-provider"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { SidebarProvider } from "@/components/layout/sidebar-context"
 import { SidebarMainArea } from "@/components/layout/sidebar-main-area"
 import { SessionKeepalive } from "@/components/auth/session-keepalive"
@@ -62,6 +64,8 @@ export default async function WorkspaceLayout({
   }
 
   return (
+    <QueryProvider userId={viewer.userId}>
+    <TooltipProvider>
     <SidebarProvider>
       <SessionKeepalive />
       <PostHogIdentity
@@ -88,5 +92,7 @@ export default async function WorkspaceLayout({
         </SidebarMainArea>
       </div>
     </SidebarProvider>
+    </TooltipProvider>
+    </QueryProvider>
   )
 }

@@ -8,8 +8,15 @@ import { Pencil, Trash2, MoreHorizontal, HelpCircle } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 
+import { useQueryClient } from "@tanstack/react-query";
+
 import { Button } from "@/components/ui/button";
 import { FadeIn } from "@/components/ui/fade-in";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip } from "@/components/ui/tooltip";
+import { useProjectDashboard } from "@/features/projects/use-project-dashboard";
+import { queryKeys } from "@/lib/query/keys";
 import { DashboardStats } from "@/features/projects/dashboard-stats";
 import { DashboardAnalyticsBar } from "@/features/projects/dashboard-analytics-bar";
 import { DashboardMemoryCard } from "@/features/projects/dashboard-memory-card";
@@ -37,7 +44,7 @@ interface GroupedSession {
 }
 
 function groupSessionsByConversation(
-  sessions: DashboardContentProps["dashboard"]["sessionHistory"],
+  sessions: ProjectDashboardDto["sessionHistory"],
 ): GroupedSession[] {
   const groups = new Map<string, GroupedSession>();
 
@@ -79,13 +86,14 @@ function groupSessionsByConversation(
 
 interface DashboardContentProps {
   project: { id: string; name: string; description?: string | null; projectUrl?: string | null };
-  dashboard: ProjectDashboardDto;
   walkthroughInitiallyOpen?: boolean;
   walkthroughInitialStep?: number;
 }
 
-export function DashboardContent({ project, dashboard, walkthroughInitiallyOpen = false, walkthroughInitialStep = 0 }: DashboardContentProps) {
+export function DashboardContent({ project, walkthroughInitiallyOpen = false, walkthroughInitialStep = 0 }: DashboardContentProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const { data: dashboard, isPending } = useProjectDashboard(project.id);
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -119,17 +127,19 @@ export function DashboardContent({ project, dashboard, walkthroughInitiallyOpen 
     project.projectUrl,
   ]);
 
-  const totalContextItems = getProjectContextCounts(dashboard).all;
+  const totalContextItems = dashboard ? getProjectContextCounts(dashboard).all : 0;
 
-  const totalChats = dashboard.distinctConversationCount;
-  const latestPacket = dashboard.packets[0];
+  const totalChats = dashboard?.distinctConversationCount ?? 0;
+  const latestPacket = dashboard?.packets[0];
 
   const briefStatus = latestPacket ? "ready" as const : "none" as const;
   const briefGeneratedAt = latestPacket
-    ? (dashboard.packets[0]?.createdAt ?? null)
+    ? (dashboard?.packets[0]?.createdAt ?? null)
     : null;
 
-  const groupedSessions = groupSessionsByConversation(dashboard.sessionHistory);
+  const groupedSessions = dashboard
+    ? groupSessionsByConversation(dashboard.sessionHistory)
+    : [];
 
   useEffect(() => {
     logClientEvent({
@@ -141,6 +151,40 @@ export function DashboardContent({ project, dashboard, walkthroughInitiallyOpen 
       projectId: project.id,
     });
   }, [project.id]);
+
+  if (!dashboard) {
+    if (isPending) {
+      return (
+        <div className="space-y-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-2">
+              <Skeleton className="h-7 w-56" />
+              <Skeleton className="h-4 w-80" />
+            </div>
+            <Skeleton className="h-7 w-20" />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Skeleton className="h-24 w-full rounded-[var(--relay-radius)]" />
+            <Skeleton className="h-24 w-full rounded-[var(--relay-radius)]" />
+            <Skeleton className="h-24 w-full rounded-[var(--relay-radius)]" />
+          </div>
+          <Skeleton className="h-12 w-full rounded-[var(--relay-radius)]" />
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <Skeleton className="h-40 w-full rounded-[var(--relay-radius)]" />
+            <Skeleton className="h-40 w-full rounded-[var(--relay-radius)]" />
+          </div>
+          <Skeleton className="h-48 w-full rounded-[var(--relay-radius)]" />
+        </div>
+      );
+    }
+    return (
+      <EmptyState
+        title="No data yet"
+        description="Your dashboard fills in after your first chat capture."
+        className="py-12"
+      />
+    );
+  }
 
   /* ─── Mutations ─── */
 
@@ -155,7 +199,7 @@ export function DashboardContent({ project, dashboard, walkthroughInitiallyOpen 
         try {
           await action();
           setStatus(doneMsg);
-          router.refresh();
+          await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(project.id) });
         } catch (cause) {
           setStatus(
             cause instanceof Error ? cause.message : "Request failed.",
@@ -305,25 +349,28 @@ export function DashboardContent({ project, dashboard, walkthroughInitiallyOpen 
             ) : null}
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label="Open guide"
-              title="Guide"
-              className="h-7 w-7 p-0 text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
-              onClick={() => setWalkthroughOpen(true)}
-            >
-              <HelpCircle className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label="Edit project"
-              className="h-7 w-7 p-0 text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
-              onClick={() => setEditDialogOpen(true)}
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
+            <Tooltip content="Guide">
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Open guide"
+                className="h-7 w-7 p-0 text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
+                onClick={() => setWalkthroughOpen(true)}
+              >
+                <HelpCircle className="h-4 w-4" />
+              </Button>
+            </Tooltip>
+            <Tooltip content="Edit project">
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Edit project"
+                className="h-7 w-7 p-0 text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
+                onClick={() => setEditDialogOpen(true)}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            </Tooltip>
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
                 <Button

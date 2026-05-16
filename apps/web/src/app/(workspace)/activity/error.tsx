@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 
+import { ErrorView } from "@/components/ui/error-view";
 import { logClientEvent } from "@/lib/telemetry/client";
 import { reportClientError } from "@/lib/telemetry/client-error-reporting";
 
@@ -27,25 +28,11 @@ export default function ActivityError({
   }, [error]);
 
   return (
-    <div className="flex flex-1 items-center justify-center px-6">
-      <div className="w-full max-w-md rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-6 shadow-[var(--relay-shadow-lg)]">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--relay-muted)]">
-          Activity
-        </p>
-        <h2 className="mt-3 text-xl font-semibold tracking-tight text-[var(--relay-ink)]">
-          Failed to load activity
-        </h2>
-        <p className="mt-2 text-sm leading-relaxed text-[var(--relay-muted)]">
-          Something went wrong loading this page. Try again, or refresh if the problem persists.
-        </p>
-        <button
-          type="button"
-          onClick={reset}
-          className="mt-5 inline-flex h-10 items-center justify-center rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-4 text-sm font-medium text-[var(--relay-bg)] transition hover:opacity-90"
-        >
-          Try again
-        </button>
-      </div>
-    </div>
+    <ErrorView
+      kicker="Activity"
+      title="Couldn't load activity"
+      description="Something went wrong fetching recent activity. Try again, or reload if it persists."
+      onRetry={reset}
+    />
   );
 }

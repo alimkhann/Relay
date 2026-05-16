@@ -9,10 +9,7 @@ import { DashboardContent } from "@/features/projects/dashboard-content"
 import { logServerEvent } from "@/server/logging/logger"
 import { requirePageViewer } from "@/server/policies/viewer"
 import { getResolvedOnboardingStateForUser } from "@/server/services/onboarding-service"
-import {
-  getProjectDashboardForUser,
-  listProjectsForUser,
-} from "@/server/services/project-service"
+import { listProjectsForUser } from "@/server/services/project-service"
 import { resolveViewerEntitlements } from "@/server/services/entitlement-service"
 import { getUserSettings } from "@/server/services/settings-service"
 
@@ -95,10 +92,7 @@ export default async function DashboardPage({
     redirect(`/dashboard?project=${currentProject.id}`)
   }
 
-  const [dashboard, entitlements] = await Promise.all([
-    currentProject ? getProjectDashboardForUser(viewer.userId, currentProject.id) : null,
-    resolveViewerEntitlements(viewer.userId),
-  ])
+  const entitlements = await resolveViewerEntitlements(viewer.userId)
 
   return (
     <>
@@ -114,7 +108,7 @@ export default async function DashboardPage({
           projectId: currentProject?.id ?? null,
         }}
       />
-      {dashboard && currentProject ? (
+      {currentProject ? (
         <div className="pt-6">
           {wasReferred && !entitlements.isPaid ? <ReferralWelcomeBanner /> : null}
           <DashboardContent
@@ -125,7 +119,6 @@ export default async function DashboardPage({
               description: currentProject.description,
               projectUrl: currentProject.projectUrl,
             }}
-            dashboard={dashboard}
             walkthroughInitiallyOpen={
               walkthroughParam === "extension" ||
               (!settings.settings.walkthrough?.dismissedAt &&

@@ -2,14 +2,17 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import type { ProjectDashboardDto } from "@relay/shared";
 import { FileDown, RefreshCw, Copy, CheckCheck, Pencil, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { FadeIn } from "@/components/ui/fade-in";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/markdown";
+import { useProjectDashboard } from "@/features/projects/use-project-dashboard";
+import { queryKeys } from "@/lib/query/keys";
 import { createClientFlowId } from "@/lib/telemetry/client";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
 
@@ -53,7 +56,6 @@ function CopyButton({ text }: { text: string }) {
 
 interface BriefPageContentProps {
   project: { id: string; name: string };
-  dashboard: ProjectDashboardDto;
 }
 
 function parseErrorMessage(payload: unknown, fallback: string) {
@@ -65,9 +67,9 @@ function parseErrorMessage(payload: unknown, fallback: string) {
 
 export function BriefPageContent({
   project,
-  dashboard,
 }: BriefPageContentProps) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
+  const { data: dashboard, isPending } = useProjectDashboard(project.id);
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
   const [editingPacketId, setEditingPacketId] = useState<string | null>(null);
@@ -107,7 +109,7 @@ export function BriefPageContent({
 
           cancelEdit();
           setStatus("Brief updated.");
-          router.refresh();
+          await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(project.id) });
         } catch (cause) {
           setStatus(cause instanceof Error ? cause.message : "Request failed.");
         }
@@ -116,6 +118,18 @@ export function BriefPageContent({
   }
 
   function deleteBrief(packetId: string) {
+    const dashboardKey = queryKeys.dashboard(project.id);
+    // Optimistically drop the packet so the card disappears instantly.
+    const previous = queryClient.getQueryData<ProjectDashboardDto>(dashboardKey);
+    if (previous) {
+      queryClient.setQueryData<ProjectDashboardDto>(dashboardKey, {
+        ...previous,
+        packets: previous.packets.filter((p) => p.id !== packetId),
+      });
+    }
+    if (editingPacketId === packetId) {
+      cancelEdit();
+    }
     startTransition(() => {
       void (async () => {
         setStatus("Deleting brief…");
@@ -130,13 +144,11 @@ export function BriefPageContent({
             throw new Error(parseErrorMessage(payload, "Failed to delete brief."));
           }
 
-          if (editingPacketId === packetId) {
-            cancelEdit();
-          }
-
           setStatus("Brief deleted.");
-          router.refresh();
+          await queryClient.invalidateQueries({ queryKey: dashboardKey });
         } catch (cause) {
+          // Roll back the optimistic removal.
+          if (previous) queryClient.setQueryData(dashboardKey, previous);
           setStatus(cause instanceof Error ? cause.message : "Request failed.");
         }
       })();
@@ -173,7 +185,7 @@ export function BriefPageContent({
             throw new Error(parseErrorMessage(payload, "Regeneration failed."));
           }
           setStatus("Brief regenerated.");
-          router.refresh();
+          await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(project.id) });
         } catch (cause) {
           setStatus(
             cause instanceof Error ? cause.message : "Request failed.",
@@ -181,6 +193,30 @@ export function BriefPageContent({
         }
       })();
     });
+  }
+
+  if (!dashboard) {
+    if (isPending) {
+      return (
+        <div className="space-y-6 pt-6">
+          <div className="space-y-2">
+            <Skeleton className="h-6 w-28" />
+            <Skeleton className="h-4 w-96" />
+          </div>
+          <div className="space-y-3">
+            <Skeleton className="h-48 w-full rounded-[var(--relay-radius)]" />
+            <Skeleton className="h-48 w-full rounded-[var(--relay-radius)]" />
+          </div>
+        </div>
+      );
+    }
+    return (
+      <EmptyState
+        title="No data yet"
+        description="Briefs will appear after your first chat capture."
+        className="py-12"
+      />
+    );
   }
 
   const packets = dashboard.packets;

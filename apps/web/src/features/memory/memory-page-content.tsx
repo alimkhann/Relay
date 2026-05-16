@@ -2,12 +2,16 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import type { ProjectDashboardDto } from "@relay/shared";
+import { useQueryClient } from "@tanstack/react-query";
 import { getProjectContextCounts } from "@relay/shared/utils/project-context";
 import { Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { FadeIn } from "@/components/ui/fade-in";
+import { useMemory } from "@/features/memory/use-memory";
+import { queryKeys } from "@/lib/query/keys";
 import { MemoryGraphContainer } from "@/features/graph/memory-graph-container";
 import { MIN_GRAPH_ITEMS } from "@/features/graph/memory-graph-utils";
 import { GovernanceSection } from "@/features/projects/governance-section";
@@ -25,15 +29,15 @@ type MemoryTab = "all" | "decisions" | "tasks" | "constraints" | "notes" | "requ
 
 interface MemoryPageContentProps {
   project: { id: string; name: string; description?: string | null };
-  dashboard: ProjectDashboardDto;
 }
 
 export function MemoryPageContent({
   project,
-  dashboard,
 }: MemoryPageContentProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
+  const { data: dashboard, isPending } = useMemory(project.id);
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
   const [editingMemory, setEditingMemory] = useState(false);
@@ -52,15 +56,17 @@ export function MemoryPageContent({
   const activeTab = localTab;
 
   const tabCounts = useMemo(() => {
-    return getProjectContextCounts(dashboard);
+    return dashboard
+      ? getProjectContextCounts(dashboard)
+      : { all: 0, decisions: 0, tasks: 0, constraints: 0, notes: 0, requirements: 0, artifacts: 0 };
   }, [dashboard]);
 
   const memoryHealth = useMemo(() => {
-    const items = dashboard.memory;
+    const items = dashboard?.memory ?? [];
     const active = items.filter((i) => i.decayScore >= 0.3).length;
     const fading = items.filter((i) => i.decayScore >= 0.1 && i.decayScore < 0.3).length;
     return { active, fading, total: items.length };
-  }, [dashboard.memory]);
+  }, [dashboard?.memory]);
 
   const visibleSections = useMemo(() => {
     if (activeTab === "decisions") return ["decision"] as const;
@@ -71,21 +77,21 @@ export function MemoryPageContent({
   }, [activeTab]);
 
   const memoryItemsByType = useMemo(() => ({
-    notes: dashboard.memory.filter((i) => i.type === "note"),
-    requirements: dashboard.memory.filter((i) => i.type === "requirement"),
-    artifacts: dashboard.memory.filter((i) => i.type === "artifact"),
-  }), [dashboard.memory]);
+    notes: (dashboard?.memory ?? []).filter((i) => i.type === "note"),
+    requirements: (dashboard?.memory ?? []).filter((i) => i.type === "requirement"),
+    artifacts: (dashboard?.memory ?? []).filter((i) => i.type === "artifact"),
+  }), [dashboard?.memory]);
 
-  const initialDrafts = deriveProjectMemoryDrafts({
-    dashboard,
-    fallbackOverview: project.description,
-  });
+  const initialDrafts = dashboard
+    ? deriveProjectMemoryDrafts({ dashboard, fallbackOverview: project.description })
+    : { overview: "", objective: "", progress: "" };
   const memoryDraftResetKey = JSON.stringify(initialDrafts);
   const [overview, setOverview] = useState(initialDrafts.overview);
   const [objective, setObjective] = useState(initialDrafts.objective);
   const [progress, setProgress] = useState(initialDrafts.progress);
 
   useEffect(() => {
+    if (!dashboard) return;
     const nextDrafts = deriveProjectMemoryDrafts({
       dashboard,
       fallbackOverview: project.description,
@@ -123,7 +129,7 @@ export function MemoryPageContent({
           if (!res.ok) throw new Error("Save failed.");
           setEditingMemory(false);
           setStatus("Saved.");
-          router.refresh();
+          await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(project.id) });
         } catch (cause) {
           setStatus(
             cause instanceof Error ? cause.message : "Request failed.",
@@ -131,6 +137,34 @@ export function MemoryPageContent({
         }
       })();
     });
+  }
+
+  if (!dashboard) {
+    if (isPending) {
+      return (
+        <div className="space-y-6 pt-6">
+          <div className="space-y-2">
+            <Skeleton className="h-6 w-32" />
+            <Skeleton className="h-4 w-80" />
+          </div>
+          <Skeleton className="h-4 w-48" />
+          <Skeleton className="h-44 w-full rounded-[var(--relay-radius)]" />
+          <div className="flex gap-2">
+            <Skeleton className="h-7 w-16 rounded-full" />
+            <Skeleton className="h-7 w-24 rounded-full" />
+            <Skeleton className="h-7 w-20 rounded-full" />
+          </div>
+          <Skeleton className="h-64 w-full rounded-[var(--relay-radius)]" />
+        </div>
+      );
+    }
+    return (
+      <EmptyState
+        title="No data yet"
+        description="Memory will appear after your first chat capture."
+        className="py-12"
+      />
+    );
   }
 
   return (

@@ -1,17 +1,17 @@
 "use client";
 
-import type { ProjectDashboardDto } from "@relay/shared";
-
 import { FadeIn } from "@/components/ui/fade-in";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useProjectDashboard } from "@/features/projects/use-project-dashboard";
 import { MemoryGraphContainer } from "./memory-graph-container";
 
 interface GraphPageContentProps {
   project: { id: string; name: string; description?: string | null };
-  dashboard: ProjectDashboardDto;
 }
 
-export function GraphPageContent({ project, dashboard }: GraphPageContentProps) {
-  const memoryItems = dashboard.memory;
+export function GraphPageContent({ project }: GraphPageContentProps) {
+  const { data: dashboard, isPending } = useProjectDashboard(project.id);
 
   return (
     <div className="min-h-[calc(100vh-4rem)] pt-6">
@@ -26,16 +26,28 @@ export function GraphPageContent({ project, dashboard }: GraphPageContentProps) 
         </div>
       </FadeIn>
 
-      <FadeIn delay={0.04}>
-        <MemoryGraphContainer
-          projectId={project.id}
-          projectName={project.name}
-          memoryItems={memoryItems}
-          mode="fullscreen"
-          title={`${project.name} Graph`}
-          className="min-h-[calc(100vh-9rem)]"
-        />
-      </FadeIn>
+      {!dashboard ? (
+        isPending ? (
+          <Skeleton className="min-h-[calc(100vh-9rem)] w-full rounded-[var(--relay-radius)]" />
+        ) : (
+          <EmptyState
+            title="No data yet"
+            description="The graph appears after your first chat capture."
+            className="py-12"
+          />
+        )
+      ) : (
+        <FadeIn delay={0.04}>
+          <MemoryGraphContainer
+            projectId={project.id}
+            projectName={project.name}
+            memoryItems={dashboard.memory}
+            mode="fullscreen"
+            title={`${project.name} Graph`}
+            className="min-h-[calc(100vh-9rem)]"
+          />
+        </FadeIn>
+      )}
     </div>
   );
 }

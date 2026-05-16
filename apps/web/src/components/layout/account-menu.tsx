@@ -8,6 +8,7 @@ import { Settings, LogOut, CreditCard } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 import { cn } from "@/lib/cn";
+import { clearRelayQueryCache } from "@/lib/query/clear-cache";
 
 interface AccountMenuProps {
   name: string;
@@ -121,7 +122,15 @@ export function AccountMenu({ name, email, collapsed = false }: AccountMenuProps
                   Billing
                 </Link>
                 <div className="mx-2.5 my-1 border-t border-[var(--relay-line)]" />
-                <form action="/auth/sign-out" method="POST">
+                <form
+                  action="/auth/sign-out"
+                  method="POST"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const form = event.currentTarget;
+                    void clearRelayQueryCache().finally(() => form.submit());
+                  }}
+                >
                   <button
                     type="submit"
                     className="flex w-full items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-2.5 py-2 text-[13px] font-medium text-[var(--relay-danger)] transition-colors hover:bg-[var(--relay-soft)]"

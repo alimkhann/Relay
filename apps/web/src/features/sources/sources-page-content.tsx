@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import {
   Archive,
   CheckCircle2,
@@ -26,6 +27,9 @@ import type {
 
 import { Button } from "@/components/ui/button"
 import { FadeIn } from "@/components/ui/fade-in"
+import { Tooltip } from "@/components/ui/tooltip"
+import { useSources } from "@/features/sources/use-sources"
+import { queryKeys } from "@/lib/query/keys"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
 import { cn } from "@/lib/cn"
 
@@ -38,7 +42,6 @@ interface SourceDetail {
 
 interface SourcesPageContentProps {
   project: { id: string; name: string; description?: string | null }
-  initialSources: ProjectSourceDto[]
 }
 
 type DetailTab = "overview" | "chunks" | "candidates" | "search"
@@ -98,10 +101,11 @@ function DetailSkeleton() {
   )
 }
 
-export function SourcesPageContent({ project, initialSources }: SourcesPageContentProps) {
+export function SourcesPageContent({ project }: SourcesPageContentProps) {
   const inputRef = useRef<HTMLInputElement | null>(null)
-  const [sources, setSources] = useState(initialSources)
-  const [selectedId, setSelectedId] = useState<string | null>(initialSources[0]?.id ?? null)
+  const queryClient = useQueryClient()
+  const { data: sources = [], isPending } = useSources(project.id)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detail, setDetail] = useState<SourceDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [tab, setTab] = useState<DetailTab>("overview")
@@ -151,47 +155,30 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
     }
   }, [billingStatus, project.id])
 
-  // Poll while anything is processing so status reflects in real time
-  // (processing -> ready/failed) with no spurious error or manual refresh.
+  // Default-select the first source once the list loads.
   useEffect(() => {
-    if (!hasProcessing) return
-    let cancelled = false
-    const interval = setInterval(() => {
-      void (async () => {
-        try {
-          const response = await relayClientFetch(`/api/projects/${project.id}/sources`, {
-            telemetry: { area: "sources", event: "sources.poll", context: { projectId: project.id } },
-          })
-          if (!response.ok || cancelled) return
-          const payload = await response.json() as { sources: ProjectSourceDto[] }
-          if (cancelled) return
-          setSources(payload.sources)
-          const current = selectedId ? payload.sources.find((s) => s.id === selectedId) : null
-          if (current && current.status !== "processing" && detail?.source.id === current.id) {
-            const detailResponse = await relayClientFetch(`/api/projects/${project.id}/sources/${current.id}`, {
-              telemetry: { area: "sources", event: "sources.detail", context: { projectId: project.id, sourceId: current.id } },
-            })
-            if (!cancelled && detailResponse.ok) setDetail(await detailResponse.json() as SourceDetail)
-          }
-        } catch {
-          // transient; next tick retries
-        }
-      })()
-    }, 2500)
-    return () => {
-      cancelled = true
-      clearInterval(interval)
+    if (!selectedId && sources.length > 0) {
+      setSelectedId(sources[0]!.id)
     }
-  }, [hasProcessing, project.id, selectedId, detail?.source.id])
+  }, [selectedId, sources])
 
-  async function refreshSources(nextSelectedId = selectedId) {
-    const response = await relayClientFetch(`/api/projects/${project.id}/sources`, {
-      telemetry: { area: "sources", event: "sources.list", context: { projectId: project.id } },
-    })
-    if (!response.ok) throw new Error("Unable to refresh sources.")
-    const payload = await response.json() as { sources: ProjectSourceDto[] }
-    setSources(payload.sources)
-    if (nextSelectedId) setSelectedId(nextSelectedId)
+  // When the selected source finishes processing (refetchInterval picked up
+  // the status flip), reload its detail so chunks/candidates appear.
+  useEffect(() => {
+    const current = selectedId ? sources.find((s) => s.id === selectedId) : null
+    if (
+      current &&
+      current.status !== "processing" &&
+      detail?.source.id === current.id &&
+      detail.source.status === "processing"
+    ) {
+      void loadDetail(current.id).catch(() => {})
+    }
+  }, [sources, selectedId, detail?.source.id, detail?.source.status])
+
+  async function refreshSources(nextSelectedId: string | null = selectedId) {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.sources(project.id) })
+    setSelectedId(nextSelectedId)
   }
 
   async function loadDetail(sourceId: string) {
@@ -530,7 +517,7 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
-              {sources.length === 0 && pending ? (
+              {sources.length === 0 && (isPending || pending) ? (
                 <RailSkeleton />
               ) : (
                 <>
@@ -621,16 +608,18 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
                       </Button>
                     )}
                     {selectedSource.status === "archived" ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={pending}
-                        onClick={() => purgeSource(selectedSource.id)}
-                        className="h-8 gap-2 text-[var(--relay-danger,#dc2626)] hover:text-[var(--relay-danger,#dc2626)]"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Delete permanently
-                      </Button>
+                      <Tooltip content="Permanently deletes the file and its extracted data. Cannot be undone.">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={pending}
+                          onClick={() => purgeSource(selectedSource.id)}
+                          className="h-8 gap-2 text-[var(--relay-danger,#dc2626)] hover:text-[var(--relay-danger,#dc2626)]"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete permanently
+                        </Button>
+                      </Tooltip>
                     ) : (
                       <Button
                         size="sm"
