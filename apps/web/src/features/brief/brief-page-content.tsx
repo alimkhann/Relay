@@ -9,6 +9,7 @@ import { FileDown, RefreshCw, Copy, CheckCheck, Pencil, Trash2 } from "lucide-re
 import { Button } from "@/components/ui/button";
 import { FadeIn } from "@/components/ui/fade-in";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Markdown } from "@/components/markdown";
 import { createClientFlowId } from "@/lib/telemetry/client";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
 
@@ -291,9 +292,10 @@ export function BriefPageContent({
                       autoFocus
                     />
                   ) : (
-                    <p className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-[var(--relay-ink-secondary)]">
-                      {packet.content}
-                    </p>
+                    <Markdown
+                      content={packet.content}
+                      className="text-xs leading-relaxed text-[var(--relay-ink-secondary)]"
+                    />
                   )}
                 </div>
               </div>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 
 import { cn } from "@/lib/cn";
+import { Markdown } from "@/components/markdown";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
 import { formatRelativeTime } from "@/features/activity/activity-feed";
 import type { MemoryItemDto } from "@relay/shared";
@@ -58,9 +59,10 @@ export function MemoryItemsList({ items, label, projectId }: MemoryItemsListProp
               pending && removingId === item.id && "opacity-50",
             )}
           >
-            <p className="text-[12px] leading-relaxed text-[var(--relay-ink-secondary)] whitespace-pre-wrap pr-6">
-              {item.content}
-            </p>
+            <Markdown
+              content={item.content}
+              className="pr-6 text-[12px] leading-relaxed text-[var(--relay-ink-secondary)]"
+            />
             <div className="mt-1.5 flex items-center gap-2 text-[11px] text-[var(--relay-faint)]">
               <span className="capitalize">{item.type}</span>
               <span>·</span>

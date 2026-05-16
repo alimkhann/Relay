@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FileDown } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Markdown } from "@/components/markdown";
 import type { ProjectDashboardDto } from "@relay/shared";
 
 interface DashboardBriefCardProps {
@@ -35,10 +36,11 @@ export function DashboardBriefCard({
       {/* Body */}
       <div className="px-3.5 py-3">
         {latest?.content ? (
-          <Link href={briefUrl} className="block group cursor-pointer">
-            <p className="text-[12px] leading-relaxed text-[var(--relay-ink-secondary)] line-clamp-[8] group-hover:text-[var(--relay-ink)] transition-colors">
-              {latest.content}
-            </p>
+          <Link href={briefUrl} className="group block cursor-pointer">
+            <Markdown
+              content={latest.content}
+              className="max-h-44 overflow-hidden text-[12px] leading-relaxed text-[var(--relay-ink-secondary)] transition-colors group-hover:text-[var(--relay-ink)]"
+            />
           </Link>
         ) : (
           <EmptyState

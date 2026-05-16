@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ExternalLink, PinIcon, Trash2 } from "lucide-react";
 
 import { cn } from "@/lib/cn";
+import { Markdown } from "@/components/markdown";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
 import { formatRelativeTime } from "@/features/activity/activity-feed";
 
@@ -146,9 +147,10 @@ function NoteCard({ note, onDelete, isRemoving }: NoteCardProps) {
         isRemoving && "opacity-50",
       )}
     >
-      <p className="text-[12px] leading-relaxed text-[var(--relay-ink-secondary)] line-clamp-3 whitespace-pre-wrap">
-        {note.content}
-      </p>
+      <Markdown
+        content={note.content}
+        className="max-h-44 overflow-hidden pr-6 text-[12px] leading-relaxed text-[var(--relay-ink-secondary)]"
+      />
       <footer className="mt-2 flex items-center gap-2 text-[11px] text-[var(--relay-faint)]">
         {note.sourceUrl && note.hostname ? (
           <SourceChip url={note.sourceUrl} hostname={note.hostname} />
