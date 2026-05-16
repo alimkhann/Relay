@@ -216,21 +216,32 @@ export function MemoryGraph({
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
 
-  // When mounted inside a hidden/animated container (Overview minimap, Memory
-  // tab) the element first measures 0x0, so the canvas renders at 1x1 and the
-  // one-shot zoomToFit fits to nothing — the graph looks blank. Re-fit whenever
-  // dimensions become valid after being unmeasured.
+  // Re-fit whenever the canvas dimensions change materially — not only on the
+  // first 0x0 -> valid transition. Mounting behind a FadeIn / inside a tab, a
+  // window resize, or a laptop DPI/zoom change all shift the viewport; without
+  // a re-fit the graph stays anchored to the old origin and looks like it is
+  // stuck in the top-left corner.
   useEffect(() => {
     if (width <= 1 || height <= 1) return;
     const prev = prevDimsRef.current;
+    const changed =
+      Math.abs(prev.w - width) > 2 || Math.abs(prev.h - height) > 2;
     prevDimsRef.current = { w: width, h: height };
-    if (prev.w > 1 && prev.h > 1) return;
+    if (!changed) return;
+    // Leave didFitRef false so onEngineStop does the authoritative fit once
+    // the simulation has actually placed nodes; this rAF pass is just an
+    // early best-effort framing.
     didFitRef.current = false;
-    const frame = requestAnimationFrame(() => {
-      graphRef.current?.zoomToFit(300, 40);
-      didFitRef.current = true;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        graphRef.current?.zoomToFit(300, 40);
+      });
     });
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
   }, [width, height]);
 
   const activeNodeId = selectedNodeId ?? hoveredNodeId;
@@ -251,10 +262,10 @@ export function MemoryGraph({
     const prev = prevNodeCountRef.current;
     prevNodeCountRef.current = count;
     if (prev === 0 && count > 0 && width > 1 && height > 1) {
+      // Re-arm; onEngineStop performs the final fit once nodes are placed.
       didFitRef.current = false;
       const frame = requestAnimationFrame(() => {
         graphRef.current?.zoomToFit(300, 40);
-        didFitRef.current = true;
       });
       return () => cancelAnimationFrame(frame);
     }
@@ -491,6 +502,7 @@ export function MemoryGraph({
       linkDirectionalParticleWidth={1.8}
       linkDirectionalParticleSpeed={0.004}
       cooldownTicks={settings.animate ? 220 : 110}
+      cooldownTime={4000}
       d3AlphaDecay={0.018}
       d3VelocityDecay={0.45}
       enableNodeDrag
@@ -501,12 +513,11 @@ export function MemoryGraph({
       onNodeHover={(node) => setHoveredNodeId(node?.id ?? null)}
       onNodeClick={(node) => onSelectNode?.(node)}
       onNodeDragEnd={(node) => {
-        // Sticky drag: the lib pins fx/fy to the cursor during the drag; keep
-        // them pinned at the drop point (instead of clearing them) so the
-        // user-set position actually persists. Reheat so every *other* node
-        // relaxes around it with full force behavior.
-        node.fx = node.x;
-        node.fy = node.y;
+        // Release the node back into the simulation on drop so it relaxes
+        // with the layout instead of freezing where it was dropped. Reheat
+        // so forces resume immediately.
+        node.fx = undefined;
+        node.fy = undefined;
         (graphRef.current as { d3ReheatSimulation?: () => void } | undefined)?.d3ReheatSimulation?.();
       }}
       onBackgroundClick={() => onSelectNode?.(null)}

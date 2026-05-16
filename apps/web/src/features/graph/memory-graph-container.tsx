@@ -306,12 +306,12 @@ export function MemoryGraphContainer({
       )}
     >
       {error && (
-        <div className="absolute left-3 top-3 z-10 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px] text-amber-500">
+        <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px] text-amber-500">
           {error}
         </div>
       )}
       {loading && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--relay-bg)]/35 text-[12px] text-[var(--relay-muted)] backdrop-blur-sm">
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-[var(--relay-bg)]/35 text-[12px] text-[var(--relay-muted)] backdrop-blur-sm">
           Loading graph...
         </div>
       )}

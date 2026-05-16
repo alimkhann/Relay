@@ -79,6 +79,12 @@ function OtpCells({ value, onChange, disabled }: OtpCellsProps) {
 import { slugify } from "@relay/shared/utils/text";
 import { supportedPlatforms } from "@relay/shared/constants/platforms";
 import type { SupportedPlatform, UserSettingsRow } from "@relay/shared/types/database";
+import type { BillingStatusDto } from "@relay/shared/types/billing";
+import {
+  buildCoreUsageMetrics,
+  pickRollingPool,
+  type UsageMetric,
+} from "@relay/shared/utils/usage-metrics";
 
 import type { RelayActiveProjectState, RelayProjectOption } from "../messaging/contracts";
 import { getActiveTab } from "../utils/browser";
@@ -339,6 +345,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [panelMode, setPanelMode] = useState<"main" | "settings">("main");
   const [signOutBusy, setSignOutBusy] = useState(false);
   const [userSettings, setUserSettings] = useState<UserSettingsRow["settings"] | null>(null);
+  const [billing, setBilling] = useState<BillingStatusDto | null>(null);
   const [userSettingsBusy, setUserSettingsBusy] = useState(false);
   const [showWalkthrough, setShowWalkthrough] = useState(false);
   const walkthroughChecked = useRef(false);
@@ -402,6 +409,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     if (session?.connected && !walkthroughChecked.current) {
       void loadUserSettings();
     }
+  }, [session?.connected]);
+
+  useEffect(() => {
+    if (session?.connected) void loadBilling();
   }, [session?.connected]);
 
   useEffect(() => {
@@ -644,6 +655,17 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       }
     } catch {
       // Best-effort; settings view falls back to defaults.
+    }
+  }
+
+  async function loadBilling() {
+    try {
+      const response = await relayFetch("/api/billing/status");
+      if (!response.ok) return;
+      const data = (await response.json()) as { billing?: BillingStatusDto };
+      if (data.billing) setBilling(data.billing);
+    } catch {
+      // Best-effort; widget falls back to the daily budget line.
     }
   }
 
@@ -2113,6 +2135,13 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             </div>
           </div>
 
+          {billing ? (
+            <div className={styles.settingsGroup}>
+              <span className={styles.settingsLabel}>Usage</span>
+              <UsageTable billing={billing} />
+            </div>
+          ) : null}
+
           <div className={styles.settingsGroup}>
             <span className={styles.settingsLabel}>Account</span>
             <button
@@ -2651,7 +2680,13 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               ) : null}
               {activeState.capturePending ? <span> · updating…</span> : null}
             </div>
-            {activeState.lastBudgetStatus ? (
+            {billing ? (
+              <RollingUsageWidget
+                billing={billing}
+                showUpgrade={shouldShowUpgrade}
+                onUpgrade={() => void openUpgradePage()}
+              />
+            ) : activeState.lastBudgetStatus ? (
               <div
                 className={styles.budgetLine}
                 data-warning={activeState.lastBudgetStatus.aiRemaining === 0 ? "" : undefined}
@@ -3176,5 +3211,129 @@ function SidepanelNoteItem({ note, busy, onDelete }: SidepanelNoteItemProps) {
         </button>
       </footer>
     </article>
+  );
+}
+
+const USAGE_ROLL_MS = 10_000;
+const USAGE_PAUSE_MS = 30_000;
+
+function usageLevel(used: number, limit: number): "ok" | "warn" | "danger" {
+  const ratio = limit > 0 ? used / limit : 0;
+  return ratio >= 0.95 ? "danger" : ratio >= 0.8 ? "warn" : "ok";
+}
+
+function RollingUsageWidget({
+  billing,
+  showUpgrade,
+  onUpgrade,
+}: {
+  billing: BillingStatusDto;
+  showUpgrade: boolean;
+  onUpgrade: () => void;
+}) {
+  const metrics = buildCoreUsageMetrics(billing);
+  const pool = pickRollingPool(metrics);
+  const [index, setIndex] = useState(0);
+  const lastManualRef = useRef(0);
+  const canRoll = pool.length > 1;
+  const active: UsageMetric = pool[index % pool.length] ?? metrics[0]!;
+  const ratio = active.limit > 0 ? Math.min(active.used / active.limit, 1) : 0;
+
+  useEffect(() => {
+    if (!canRoll) return;
+    const reduced = window.matchMedia?.(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    if (reduced) return;
+    const id = window.setInterval(() => {
+      if (Date.now() - lastManualRef.current < USAGE_PAUSE_MS) return;
+      setIndex((i) => (i + 1) % pool.length);
+    }, USAGE_ROLL_MS);
+    return () => window.clearInterval(id);
+  }, [canRoll, pool.length]);
+
+  function step(delta: number) {
+    lastManualRef.current = Date.now();
+    setIndex((i) => (i + delta + pool.length) % pool.length);
+  }
+
+  return (
+    <div className={styles.usageWidget}>
+      <div className={styles.usageHead}>
+        <span className={styles.usageLabel}>
+          {canRoll ? (
+            <button
+              type="button"
+              className={styles.usageNav}
+              aria-label="Previous usage metric"
+              onClick={() => step(-1)}
+            >
+              ‹
+            </button>
+          ) : null}
+          {active.label}
+          {canRoll ? (
+            <button
+              type="button"
+              className={styles.usageNav}
+              aria-label="Next usage metric"
+              onClick={() => step(1)}
+            >
+              ›
+            </button>
+          ) : null}
+        </span>
+        <span className={styles.usageValue}>
+          {active.used}/{active.limit} <span>/{active.period}</span>
+          {showUpgrade ? (
+            <button
+              type="button"
+              className={styles.upgradeLink}
+              onClick={onUpgrade}
+            >
+              Upgrade
+            </button>
+          ) : null}
+        </span>
+      </div>
+      <div className={styles.usageBar}>
+        <div
+          className={styles.usageBarFill}
+          data-level={usageLevel(active.used, active.limit)}
+          style={{ width: `${ratio * 100}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function UsageTable({ billing }: { billing: BillingStatusDto }) {
+  const u = billing.usage;
+  const l = billing.entitlements.limits;
+  const rows: Array<{ label: string; used: number; limit: number; period: string }> = [
+    { label: "Captures", used: u.capturesThisMonth, limit: l.captureMonthly, period: "mo" },
+    { label: "MCP reads", used: u.mcpReadsToday, limit: l.mcpReadDaily, period: "day" },
+    { label: "MCP writes", used: u.mcpWritesToday, limit: l.mcpWriteDaily, period: "day" },
+    { label: "AI analyses", used: u.aiAnalysesToday, limit: l.aiAnalysesPerUserDaily, period: "day" },
+    { label: "Active projects", used: u.activeProjects, limit: l.activeProjects, period: "" },
+    { label: "External indexes", used: u.externalSourceIndexesToday, limit: l.externalSourceIndexesDaily, period: "day" },
+    { label: "External searches", used: u.externalSourceSearchesToday, limit: l.externalSourceSearchesDaily, period: "day" },
+    { label: "External refreshes", used: u.externalSourceRefreshesToday, limit: l.externalSourceRefreshesDaily, period: "day" },
+  ];
+  return (
+    <div className={styles.usageTable}>
+      {rows.map((r) => (
+        <div key={r.label} className={styles.usageTableRow}>
+          <span className={styles.usageTableLabel}>{r.label}</span>
+          <span
+            className={styles.usageTableValue}
+            data-level={usageLevel(r.used, r.limit)}
+          >
+            {r.used}/{r.limit}
+            {r.period ? <span> /{r.period}</span> : null}
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }

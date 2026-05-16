@@ -1410,10 +1410,10 @@
 
 @keyframes shimmer {
   0% {
-    background-position: 250% center;
+    background-position: 200% center;
   }
   100% {
-    background-position: -250% center;
+    background-position: -200% center;
   }
 }
 
@@ -1421,16 +1421,16 @@
   background: linear-gradient(
     90deg,
     var(--accent-text) 0%,
-    var(--accent-text) 30%,
-    rgba(255, 255, 255, 0.7) 50%,
-    var(--accent-text) 70%,
+    var(--accent-text) 42%,
+    rgba(255, 255, 255, 0.85) 50%,
+    var(--accent-text) 58%,
     var(--accent-text) 100%
   );
-  background-size: 400% auto;
+  background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: shimmer 2.4s ease-in-out infinite;
+  animation: shimmer 2s linear infinite;
 }
 
 /* ── Header actions / settings ── */
@@ -1768,4 +1768,117 @@
 .strengthLabel {
   font-size: 11px;
   color: var(--relay-muted, #6b7280);
+}
+
+/* ── Rolling usage widget ── */
+.usageWidget {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.usageHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.usageLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.usageNav {
+  border: none;
+  background: none;
+  padding: 0 2px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--faint);
+}
+
+.usageNav:hover {
+  color: var(--ink);
+}
+
+.usageValue {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.usageValue span {
+  color: var(--faint);
+}
+
+.usageBar {
+  height: 5px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--line);
+}
+
+.usageBarFill {
+  height: 100%;
+  border-radius: 3px;
+  background: #10b981;
+  transition: width 0.4s ease;
+}
+
+.usageBarFill[data-level="warn"] {
+  background: #f59e0b;
+}
+
+.usageBarFill[data-level="danger"] {
+  background: #ef4444;
+}
+
+/* ── Usage table (settings) ── */
+.usageTable {
+  display: flex;
+  flex-direction: column;
+}
+
+.usageTableRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 0;
+  font-size: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.usageTableRow:last-child {
+  border-bottom: none;
+}
+
+.usageTableLabel {
+  color: var(--muted);
+}
+
+.usageTableValue {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.usageTableValue span {
+  color: var(--faint);
+}
+
+.usageTableValue[data-level="warn"] {
+  color: #d97706;
+}
+
+.usageTableValue[data-level="danger"] {
+  color: #dc2626;
 }

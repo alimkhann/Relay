@@ -1,7 +1,6 @@
 import { PageTelemetry } from "@/components/telemetry/page-telemetry"
-import { ActivityFeed, GroupedActivityFeed } from "@/features/activity/activity-feed"
+import { ActivityPageContent } from "@/features/activity/activity-feed"
 import { requirePageViewer } from "@/server/policies/viewer"
-import { listActivityFeedForUser, listGroupedActivityForProject } from "@/server/services/activity-service"
 
 export const dynamic = "force-dynamic"
 
@@ -10,7 +9,7 @@ export default async function ActivityPage({
 }: {
   searchParams: Promise<{ project?: string }>
 }) {
-  const viewer = await requirePageViewer("/activity")
+  await requirePageViewer("/activity")
   const { project: projectId } = await searchParams
 
   return (
@@ -31,22 +30,8 @@ export default async function ActivityPage({
             Recent captures and digest runs.
           </p>
         </div>
-        {projectId ? (
-          <ProjectActivityFeed userId={viewer.userId} projectId={projectId} />
-        ) : (
-          <AllActivityFeed userId={viewer.userId} />
-        )}
+        <ActivityPageContent projectId={projectId} />
       </div>
     </>
   )
-}
-
-async function AllActivityFeed({ userId }: { userId: string }) {
-  const feed = await listActivityFeedForUser(userId)
-  return <ActivityFeed feed={feed} />
-}
-
-async function ProjectActivityFeed({ userId, projectId }: { userId: string; projectId: string }) {
-  const feed = await listGroupedActivityForProject(userId, projectId)
-  return <GroupedActivityFeed feed={feed} />
 }

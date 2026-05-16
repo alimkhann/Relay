@@ -1282,12 +1282,12 @@
       }
 
       .relay-inline-chip__shimmer {
-        background: linear-gradient(90deg, #09090b 0%, #09090b 30%, rgba(255,255,255,0.6) 50%, #09090b 70%, #09090b 100%);
-        background-size: 200% auto;
+        background: linear-gradient(90deg, #09090b 0%, #09090b 42%, rgba(255,255,255,0.75) 50%, #09090b 58%, #09090b 100%);
+        background-size: 200% 100%;
         -webkit-background-clip: text;
         background-clip: text;
         -webkit-text-fill-color: transparent;
-        animation: relay-shimmer 2s ease-in-out infinite;
+        animation: relay-shimmer 2s linear infinite;
       }
 
       .relay-association-toast {

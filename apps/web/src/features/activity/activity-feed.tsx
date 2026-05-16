@@ -1,12 +1,14 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { RotateCcw, Trash2 } from "lucide-react";
 
 import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
+import { useActivityAll, useActivityProject } from "@/features/activity/use-activity";
 import type { ActivityEntry, GroupedActivityEntry } from "@/server/services/activity-service";
 
 export function formatRelativeTime(iso: string) {
@@ -55,7 +57,7 @@ function groupByProject<T extends { projectName: string }>(items: T[]): Array<{ 
 }
 
 export function ActivityFeed({ feed }: { feed: ActivityEntry[] }) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
   const [filter, setFilter] = useState<FilterTab>("all");
@@ -87,7 +89,7 @@ export function ActivityFeed({ feed }: { feed: ActivityEntry[] }) {
           );
           if (!res.ok) throw new Error("Session update failed.");
           setStatus(archived ? "Detached." : "Restored.");
-          router.refresh();
+          await queryClient.invalidateQueries({ queryKey: ["activity"] });
         } catch (cause) {
           setStatus(
             cause instanceof Error ? cause.message : "Request failed.",
@@ -224,7 +226,7 @@ export function ActivityFeed({ feed }: { feed: ActivityEntry[] }) {
  * Used for project-specific activity views.
  */
 export function GroupedActivityFeed({ feed }: { feed: GroupedActivityEntry[] }) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
 
@@ -247,7 +249,7 @@ export function GroupedActivityFeed({ feed }: { feed: GroupedActivityEntry[] }) 
           );
           if (!res.ok) throw new Error("Session update failed.");
           setStatus(archived ? "Detached." : "Restored.");
-          router.refresh();
+          await queryClient.invalidateQueries({ queryKey: ["activity"] });
         } catch (cause) {
           setStatus(
             cause instanceof Error ? cause.message : "Request failed.",
@@ -349,4 +351,50 @@ export function GroupedActivityFeed({ feed }: { feed: GroupedActivityEntry[] }) 
       )}
     </>
   );
+}
+
+function ActivitySkeleton() {
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <Skeleton className="h-7 w-14 rounded-full" />
+        <Skeleton className="h-7 w-20 rounded-full" />
+        <Skeleton className="h-7 w-16 rounded-full" />
+      </div>
+      <div className="overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-line)]">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="flex items-center gap-3 px-4 py-3">
+            <Skeleton className="h-2 w-2 rounded-full" />
+            <div className="flex-1 space-y-1.5">
+              <Skeleton className="h-3 w-2/3" />
+              <Skeleton className="h-2.5 w-1/3" />
+            </div>
+            <Skeleton className="h-3 w-10" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Client wrapper: self-fetches via React Query so revisiting the Activity tab
+ * is instant from the persisted cache (same pattern as the other tabs).
+ */
+export function ActivityPageContent({ projectId }: { projectId?: string }) {
+  if (projectId) return <ProjectActivity projectId={projectId} />;
+  return <AllActivity />;
+}
+
+function AllActivity() {
+  const { data: feed, isPending } = useActivityAll();
+  if (!feed) return isPending ? <ActivitySkeleton /> : <ActivityFeed feed={[]} />;
+  return <ActivityFeed feed={feed} />;
+}
+
+function ProjectActivity({ projectId }: { projectId: string }) {
+  const { data: feed, isPending } = useActivityProject(projectId);
+  if (!feed)
+    return isPending ? <ActivitySkeleton /> : <GroupedActivityFeed feed={[]} />;
+  return <GroupedActivityFeed feed={feed} />;
 }
