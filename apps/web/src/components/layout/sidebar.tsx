@@ -139,56 +139,56 @@ function SidebarContent({
       {/* Navigation */}
       <SidebarNav currentProjectId={currentProjectId} collapsed={collapsed} onNavigate={onNavigate} />
 
-      {/* Referral widget */}
-      <div className={cn("mt-4", collapsed ? "px-1" : "px-2")}>
-        {referral && (
-          <SidebarReferralWidget
-            code={referral.code}
-            link={referral.link}
-            qualifiedCount={referral.qualifiedCount}
-            collapsed={collapsed}
-          />
+      {/* Feedback — sits directly below Docs in the nav */}
+      <div className={cn("mt-1", collapsed ? "px-1" : "")}>
+        {collapsed ? (
+          <Tooltip.Root>
+            <Tooltip.Trigger asChild>
+              <a
+                href="https://relay.featurebase.app"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center rounded-[var(--relay-radius-sm)] p-2 text-[var(--relay-muted)] transition-colors hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
+              >
+                <MessageSquareText className="h-4 w-4 shrink-0" />
+              </a>
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Content
+                side="right"
+                sideOffset={8}
+                className="z-50 rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--relay-bg)] shadow-[var(--relay-shadow)]"
+              >
+                Feedback
+                <Tooltip.Arrow className="fill-[var(--relay-ink)]" />
+              </Tooltip.Content>
+            </Tooltip.Portal>
+          </Tooltip.Root>
+        ) : (
+          <a
+            href="https://relay.featurebase.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-2.5 py-1.5 text-[13px] font-medium text-[var(--relay-muted)] transition-colors hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
+          >
+            <MessageSquareText className="h-4 w-4 shrink-0" />
+            <span>Feedback</span>
+          </a>
         )}
       </div>
 
-      {/* Feedback + usage + account */}
+      {/* Referrals → Usage → account */}
       <div className="mt-auto">
-        <div className="px-2 pb-2">
-          {collapsed ? (
-            <Tooltip.Root>
-              <Tooltip.Trigger asChild>
-                <a
-                  href="https://relay.featurebase.app"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center rounded-[var(--relay-radius-sm)] p-2 text-[var(--relay-muted)] transition-colors hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
-                >
-                  <MessageSquareText className="h-4 w-4 shrink-0" />
-                </a>
-              </Tooltip.Trigger>
-              <Tooltip.Portal>
-                <Tooltip.Content
-                  side="right"
-                  sideOffset={8}
-                  className="z-50 rounded-[var(--relay-radius-sm)] bg-[var(--relay-ink)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--relay-bg)] shadow-[var(--relay-shadow)]"
-                >
-                  Feedback
-                  <Tooltip.Arrow className="fill-[var(--relay-ink)]" />
-                </Tooltip.Content>
-              </Tooltip.Portal>
-            </Tooltip.Root>
-          ) : (
-            <a
-              href="https://relay.featurebase.app"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-2.5 py-1.5 text-[13px] font-medium text-[var(--relay-muted)] transition-colors hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
-            >
-              <MessageSquareText className="h-4 w-4 shrink-0" />
-              <span>Feedback</span>
-            </a>
-          )}
-        </div>
+        {referral && (
+          <div className={cn("pb-2", collapsed ? "px-1" : "px-2")}>
+            <SidebarReferralWidget
+              code={referral.code}
+              link={referral.link}
+              qualifiedCount={referral.qualifiedCount}
+              collapsed={collapsed}
+            />
+          </div>
+        )}
 
         {plan && (
           <div className={cn("pb-2", collapsed ? "px-1" : "px-2")}>

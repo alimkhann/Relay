@@ -49,7 +49,7 @@ export function SidebarPlanWidget({ plan, isPaid, capturesUsed, capturesLimit, c
   }
 
   return (
-    <div className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-[var(--relay-soft)]/50 px-3 py-2.5">
+    <div className="px-2 py-1.5">
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--relay-faint)]">
           <Zap className="h-3 w-3" />
