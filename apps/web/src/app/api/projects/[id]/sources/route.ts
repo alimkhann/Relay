@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server"
 
 import { withApiAuth } from "@/server/http/api-route"
+import { runAfterResponse } from "@/server/http/after"
 import { BadRequestError } from "@/server/http/errors"
 import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
 import { consumeMcpReadQuota } from "@/server/services/entitlement-service"
-import { createSourceFromUpload, listProjectSources } from "@/server/services/source-service"
+import { createSourceFromUpload, listProjectSources, processUploadedSource } from "@/server/services/source-service"
 
 export const GET = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   const viewer = await resolveViewer(request.headers.get("authorization"))
@@ -25,11 +26,12 @@ export const POST = withApiAuth(async (request: Request, { params }: { params: P
     throw new BadRequestError("A source file is required.")
   }
   const upload = file as File
-  const detail = await createSourceFromUpload(viewer.userId, {
+  const { detail, processing } = await createSourceFromUpload(viewer.userId, {
     projectId: id,
     fileName: upload.name,
     mimeType: upload.type || "text/plain",
     buffer: Buffer.from(await upload.arrayBuffer()),
   })
-  return NextResponse.json(detail, { status: 201 })
+  runAfterResponse(() => processUploadedSource(viewer.userId, processing))
+  return NextResponse.json(detail, { status: 202 })
 })

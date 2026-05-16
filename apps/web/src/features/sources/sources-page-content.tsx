@@ -63,6 +63,52 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
     [selectedId, visibleSources],
   )
 
+  const hasProcessing = useMemo(
+    () => sources.some((source) => source.status === "processing"),
+    [sources],
+  )
+
+  // Poll while any source is still processing so the UI reflects real-time
+  // status (processing -> ready/failed) without a spurious error or a manual
+  // tab switch. The effect re-subscribes only when the processing flag flips.
+  useEffect(() => {
+    if (!hasProcessing) return
+    let cancelled = false
+    const interval = setInterval(() => {
+      void (async () => {
+        try {
+          const response = await relayClientFetch(`/api/projects/${project.id}/sources`, {
+            telemetry: { area: "sources", event: "sources.poll", context: { projectId: project.id } },
+          })
+          if (!response.ok || cancelled) return
+          const payload = await response.json() as { sources: ProjectSourceDto[] }
+          if (cancelled) return
+          setSources(payload.sources)
+          const current = selectedId
+            ? payload.sources.find((source) => source.id === selectedId)
+            : null
+          if (current && current.status !== "processing") {
+            const detailResponse = await relayClientFetch(`/api/projects/${project.id}/sources/${current.id}`, {
+              telemetry: { area: "sources", event: "sources.detail", context: { projectId: project.id, sourceId: current.id } },
+            })
+            if (!cancelled && detailResponse.ok) {
+              setDetail(await detailResponse.json() as SourceDetail)
+            }
+            if (!cancelled) {
+              setStatus(current.status === "failed" ? "Source processing failed." : "Source ready.")
+            }
+          }
+        } catch {
+          // Transient poll failure; next tick retries.
+        }
+      })()
+    }, 2500)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [hasProcessing, project.id, selectedId])
+
   useEffect(() => {
     if (section !== "external" || billingStatus) return
     let cancelled = false
@@ -123,7 +169,7 @@ export function SourcesPageContent({ project, initialSources }: SourcesPageConte
         const payload = await response.json() as SourceDetail
         setDetail(payload)
         await refreshSources(payload.source.id)
-        setStatus("Source imported.")
+        setStatus(payload.source.status === "processing" ? "Processing source..." : "Source ready.")
       })().catch((cause) => {
         setStatus(cause instanceof Error ? cause.message : "Upload failed.")
       }).finally(() => {
