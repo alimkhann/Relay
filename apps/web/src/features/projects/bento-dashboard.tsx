@@ -293,7 +293,7 @@ export function BentoDashboard({ project, dashboard, statusReady, statusText }: 
 
       {/* ─── Stats strip ─── */}
       <FadeIn delay={0.05}>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[
             { label: "Chats", value: totalChats, icon: <MessageSquare className="h-3.5 w-3.5" /> },
             { label: "Context", value: totalContextItems, icon: <Database className="h-3.5 w-3.5" /> },
