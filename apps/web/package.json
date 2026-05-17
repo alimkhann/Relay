@@ -42,6 +42,7 @@
     "next": "^16.1.6",
     "pdf-parse": "^2.4.5",
     "posthog-js": "^1.363.0",
+    "radix-ui": "^1.4.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-force-graph-2d": "^1.29.1",
