@@ -43,8 +43,10 @@
   --line: rgba(255, 255, 255, 0.07);
   --accent: #e4e4e7;
   --accent-text: #09090b;
-  --radius: 8px;
-  --radius-sm: 4px;
+  /* Match web --relay-radius / --relay-radius-sm so the extension reads as
+     the same product (web is sharp 4px editorial, not 8px rounded). */
+  --radius: 4px;
+  --radius-sm: 3px;
   --surface-soft: rgba(255, 255, 255, 0.02);
   --hover: rgba(255, 255, 255, 0.04);
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
