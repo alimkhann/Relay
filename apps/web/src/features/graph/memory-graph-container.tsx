@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import type { MemoryItemDto } from "@relay/shared";
 import { ChevronDown, Expand, Minimize2, Network, RotateCcw, Settings2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -232,6 +233,14 @@ export function MemoryGraphContainer({
   const [switchedItems, setSwitchedItems] = useState<MemoryItemDto[] | null>(null);
   const compactSize = useElementSize<HTMLDivElement>();
   const fullscreenSize = useElementSize<HTMLDivElement>();
+  const router = useRouter();
+
+  // From a compact/minimap graph (overview, memory), opening "fullscreen"
+  // means navigating to the dedicated graph tab. The graph tab's Exit uses
+  // history.back(), so it returns to whichever tab opened it.
+  function openGraphTab() {
+    router.push(`/graph?project=${projectId}`);
+  }
 
   const effectiveItems = activeProjectId === projectId ? memoryItems : (switchedItems ?? []);
   const activeProjectName = activeProjectId === projectId
@@ -332,7 +341,7 @@ export function MemoryGraphContainer({
       {!isFullscreen && (
         <button
           type="button"
-          onClick={() => setExpanded(true)}
+          onClick={openGraphTab}
           className="absolute right-2 top-2 z-10 inline-flex items-center gap-1.5 rounded-full border border-[var(--relay-line)] bg-[var(--relay-surface)]/90 p-1.5 font-medium text-[var(--relay-ink)] shadow-[var(--relay-shadow-sm)] backdrop-blur opacity-0 hover:opacity-100 transition-opacity"
           aria-label="Open memory graph fullscreen"
         >
@@ -382,7 +391,7 @@ export function MemoryGraphContainer({
                 variant="ghost"
                 size="sm"
                 className="h-8 px-2"
-                onClick={() => setExpanded(true)}
+                onClick={openGraphTab}
               >
                 <Expand className="h-3.5 w-3.5" />
                 <span className="sr-only">Open graph</span>

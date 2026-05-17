@@ -86,7 +86,7 @@ export default async function WorkspaceLayout({
 
         <SidebarMainArea>
           {onboarding.status === "completed" ? <AutoCaptureOnboardingBanner settings={settings.settings} /> : null}
-          <div className="mx-auto max-w-6xl p-4 sm:p-8 lg:p-12">
+          <div className="mx-auto max-w-7xl 2xl:max-w-[1440px] p-4 sm:p-8 lg:p-12">
             {children}
           </div>
         </SidebarMainArea>

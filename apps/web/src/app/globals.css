@@ -274,3 +274,88 @@ h1, h2, h3 {
     scroll-behavior: auto !important;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   shadcn token bridge
+   shadcn/ui primitives reference semantic tokens (--background,
+   --border, --primary, …). Instead of adopting shadcn's default
+   palette, alias every one to the existing --relay-* system so the
+   primitives inherit the Relay skin automatically. --relay-* already
+   flips for dark / system, so a single :root mapping is theme-aware;
+   no .dark block needed here. This is the B2.2 "theme to tokens"
+   layer — keep primitives stock, theme them centrally.
+   ───────────────────────────────────────────────────────────── */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--relay-radius) - 1px);
+  --radius-md: var(--relay-radius);
+  --radius-lg: var(--relay-radius-lg);
+  --radius-xl: calc(var(--relay-radius-lg) + 4px);
+}
+
+:root {
+  --radius: var(--relay-radius);
+  --background: var(--relay-bg);
+  --foreground: var(--relay-ink);
+  --card: var(--relay-surface);
+  --card-foreground: var(--relay-ink);
+  --popover: var(--relay-surface);
+  --popover-foreground: var(--relay-ink);
+  --primary: var(--relay-accent);
+  --primary-foreground: var(--relay-accent-text);
+  --secondary: var(--relay-soft);
+  --secondary-foreground: var(--relay-ink);
+  --muted: var(--relay-soft);
+  --muted-foreground: var(--relay-muted);
+  --accent: var(--relay-soft);
+  --accent-foreground: var(--relay-ink);
+  --destructive: var(--relay-danger);
+  --destructive-foreground: var(--relay-accent-text);
+  --border: var(--relay-line);
+  --input: var(--relay-line-strong);
+  --ring: var(--relay-accent);
+  --chart-1: var(--relay-section-decision);
+  --chart-2: var(--relay-section-task);
+  --chart-3: var(--relay-section-constraint);
+  --chart-4: var(--relay-info);
+  --chart-5: var(--relay-warning);
+  --sidebar: var(--relay-surface);
+  --sidebar-foreground: var(--relay-ink);
+  --sidebar-primary: var(--relay-accent);
+  --sidebar-primary-foreground: var(--relay-accent-text);
+  --sidebar-accent: var(--relay-soft);
+  --sidebar-accent-foreground: var(--relay-ink);
+  --sidebar-border: var(--relay-line);
+  --sidebar-ring: var(--relay-accent);
+}

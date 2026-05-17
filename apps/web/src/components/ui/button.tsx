@@ -15,11 +15,17 @@ const buttonVariants = cva(
           "bg-[var(--relay-surface)] px-5 py-2.5 text-[var(--relay-ink)] border border-[var(--relay-line-strong)] hover:bg-[var(--relay-soft)]",
         ghost:
           "px-4 py-2 text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]",
+        outline:
+          "bg-[var(--relay-surface)] px-5 py-2.5 text-[var(--relay-ink)] border border-[var(--relay-line-strong)] hover:bg-[var(--relay-soft)]",
+        destructive:
+          "bg-[var(--relay-danger)] px-5 py-2.5 text-[var(--relay-accent-text)] hover:opacity-90",
+        link: "px-1 py-1 text-[var(--relay-accent)] underline-offset-4 hover:underline",
       },
       size: {
         default: "",
         sm: "text-xs px-3.5 py-2 rounded-[var(--relay-radius-sm)]",
         lg: "text-base px-6 py-3",
+        icon: "h-9 w-9 p-0",
       },
     },
     defaultVariants: {

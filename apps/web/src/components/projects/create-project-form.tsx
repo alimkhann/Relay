@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation"
 import { slugify } from "@relay/shared/utils/text"
 
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
 
@@ -159,8 +161,7 @@ export function CreateProjectForm({
             <span className="text-xs text-[var(--relay-muted)] font-normal">Optional</span>
           </span>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <input
-              className="w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-transparent px-3 py-2 text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)]"
+            <Input
               placeholder="https://example.com"
               value={projectUrl}
               onChange={(event) => setProjectUrl(event.target.value)}
@@ -180,8 +181,7 @@ export function CreateProjectForm({
 
         <label className="block space-y-2">
           <span className="text-sm font-medium text-[var(--relay-ink)]">Name</span>
-          <input
-            className="w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-transparent px-3 py-2 text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)]"
+          <Input
             placeholder="E.g., Acapella or Internal Tools"
             value={name}
             onChange={(event) => setName(event.target.value)}
@@ -195,8 +195,8 @@ export function CreateProjectForm({
             <span className="text-[var(--relay-ink)]">Description</span>
             <span className="text-xs text-[var(--relay-muted)] font-normal">Optional</span>
           </span>
-          <textarea
-            className="min-h-24 w-full rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] bg-transparent px-3 py-2 text-[var(--relay-ink)] outline-none transition focus:border-[var(--relay-accent)] resize-y"
+          <Textarea
+            className="min-h-24 resize-y"
             placeholder="A short description of the project so Relay can route related chats correctly."
             value={description}
             onChange={(event) => setDescription(event.target.value)}

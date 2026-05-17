@@ -19,9 +19,9 @@ export function DashboardBriefCard({
   const latest = packets[0];
 
   return (
-    <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">
+    <div className="flex h-full flex-col rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-[var(--relay-line)]">
+      <div className="flex shrink-0 items-center justify-between px-3.5 py-2.5 border-b border-[var(--relay-line)]">
         <span className="text-xs font-medium text-[var(--relay-ink)]">
           Project Brief
         </span>
@@ -33,13 +33,13 @@ export function DashboardBriefCard({
         </Link>
       </div>
 
-      {/* Body */}
-      <div className="px-3.5 py-3">
+      {/* Body — fills the card, scrolls instead of clipping */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3">
         {latest?.content ? (
           <Link href={briefUrl} className="group block cursor-pointer">
             <Markdown
               content={latest.content}
-              className="max-h-44 overflow-hidden text-[12px] leading-relaxed text-[var(--relay-ink-secondary)] transition-colors group-hover:text-[var(--relay-ink)]"
+              className="text-[12px] leading-relaxed text-[var(--relay-ink-secondary)] transition-colors group-hover:text-[var(--relay-ink)]"
             />
           </Link>
         ) : (
