@@ -494,6 +494,21 @@
   color: var(--ink);
 }
 
+/* Auth footer links: stacked + horizontally centered (account toggle
+   first, then the full setup guide below) for both sign-in/sign-up. */
+.authLinks {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.authLinks .linkButton {
+  margin-top: 0;
+  text-align: center;
+}
+
 .primaryButton:disabled,
 .secondaryButton:disabled,
 .linkButton:disabled {

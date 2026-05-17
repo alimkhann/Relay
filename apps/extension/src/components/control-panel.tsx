@@ -2178,12 +2178,14 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             </div>
           </div>
 
-          {billing ? (
-            <div className={styles.settingsGroup}>
-              <span className={styles.settingsLabel}>Usage</span>
+          <div className={styles.settingsGroup}>
+            <span className={styles.settingsLabel}>Usage</span>
+            {billing ? (
               <UsageTable billing={billing} />
-            </div>
-          ) : null}
+            ) : (
+              <ContextSkeleton lines={6} />
+            )}
+          </div>
 
           <div className={styles.settingsGroup}>
             <span className={styles.settingsLabel}>Account</span>
@@ -2381,26 +2383,28 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   : emailAuthMode === "sign-up" ? "Create account" : "Sign in with email"}
               </button>
 
-              <button
-                className={styles.linkButton}
-                onClick={() => {
-                  setEmailAuthMode(emailAuthMode === "sign-in" ? "sign-up" : "sign-in");
-                  setEmailAuthAwaitingOtp(false);
-                  setEmailAuthOtp("");
-                  setStatus("");
-                }}
-              >
-                {emailAuthMode === "sign-in"
-                  ? "Don't have an account? Sign up"
-                  : "Already have an account? Sign in"}
-              </button>
-              <button
-                className={styles.linkButton}
-                disabled={busy}
-                onClick={() => void continueGuidedSetup(2)}
-              >
-                Open full setup guide
-              </button>
+              <div className={styles.authLinks}>
+                <button
+                  className={styles.linkButton}
+                  onClick={() => {
+                    setEmailAuthMode(emailAuthMode === "sign-in" ? "sign-up" : "sign-in");
+                    setEmailAuthAwaitingOtp(false);
+                    setEmailAuthOtp("");
+                    setStatus("");
+                  }}
+                >
+                  {emailAuthMode === "sign-in"
+                    ? "Don't have an account? Sign up"
+                    : "Already have an account? Sign in"}
+                </button>
+                <button
+                  className={styles.linkButton}
+                  disabled={busy}
+                  onClick={() => void continueGuidedSetup(2)}
+                >
+                  Open full setup guide
+                </button>
+              </div>
             </>
           )}
         </section>
@@ -2769,7 +2773,9 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   </span>
                 )}
               </div>
-            ) : null}
+            ) : (
+              <ContextSkeleton lines={1} />
+            )}
           </section>
 
           {shouldRenderAssociationCard ? (
