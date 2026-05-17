@@ -1935,10 +1935,13 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       activeState.remoteStatus === "stale" ||
       activeState.remoteStatus === "unavailable");
   const insertButtonState = deriveInsertButtonState(activeState);
-  // Per-section: while the remote state is loading, any empty section/notes
-  // shimmer instead of showing "Nothing saved yet". Sections that already
-  // have items keep rendering them.
-  const contextLoading = activeState.remoteStatus === "loading";
+  // Per-section: until the remote state is confirmed "ready", an empty
+  // section/notes shimmers instead of showing "Nothing saved yet" (loading
+  // and stale/revalidating both count as not-yet-known). Sections that
+  // already have items keep rendering them.
+  const contextLoading =
+    activeState.remoteStatus === "loading" ||
+    activeState.remoteStatus === "stale";
   const displayedPlan = resolveDisplayedPlan(activeState);
   const shouldShowUpgrade = displayedPlan === "free" || displayedPlan === "starter";
   const shouldRenderAssociationCard = shouldShowAssociationCard({
