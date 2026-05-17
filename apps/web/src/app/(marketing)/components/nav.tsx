@@ -5,7 +5,14 @@ import Image from "next/image"
 import Link from "next/link"
 import { cn } from "@/lib/cn"
 import { trackMarketingEvent } from "./analytics"
-import { motion, AnimatePresence } from "motion/react"
+import {
+  motion,
+  AnimatePresence,
+  useMotionTemplate,
+  useScroll,
+  useSpring,
+  useTransform,
+} from "motion/react"
 import { ArrowRight, Menu, X } from "lucide-react"
 import { ChromeWebstoreBadge } from "@/components/chrome-webstore-badge"
 
@@ -19,6 +26,43 @@ const NAV_LINKS = [
 export function Nav({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
   const [shaped, setShaped] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [isDesktop, setIsDesktop] = useState(false)
+  const { scrollY } = useScroll()
+  const morph = useSpring(useTransform(scrollY, [0, 80], [0, 1]), {
+    stiffness: 180,
+    damping: 26,
+    mass: 0.7,
+  })
+
+  const maxWidth = useTransform(morph, [0, 1], [1152, 768])
+  const marginTop = useTransform(morph, [0, 1], [0, 12])
+  const paddingX = useTransform(morph, [0, 1], [24, 16])
+  const paddingY = useTransform(morph, [0, 1], [20, 8])
+  const radius = useTransform(morph, [0, 1], [0, 20])
+  const borderAlpha = useTransform(morph, [0, 1], [0, 0.08])
+  const backgroundAlpha = useTransform(morph, [0, 1], [0, 0.04])
+  const shadowAlpha = useTransform(morph, [0, 1], [0, 0.3])
+  const blur = useTransform(morph, [0, 1], [0, 40])
+  const borderColor = useMotionTemplate`rgba(255, 255, 255, ${borderAlpha})`
+  const backgroundColor = useMotionTemplate`rgba(255, 255, 255, ${backgroundAlpha})`
+  const boxShadow = useMotionTemplate`0 2px 24px rgba(0, 0, 0, ${shadowAlpha})`
+  const backdropFilter = useMotionTemplate`blur(${blur}px)`
+
+  const desktopNavStyle = isDesktop
+    ? {
+        maxWidth,
+        marginTop,
+        paddingLeft: paddingX,
+        paddingRight: paddingX,
+        paddingTop: paddingY,
+        paddingBottom: paddingY,
+        borderRadius: radius,
+        borderColor,
+        backgroundColor,
+        boxShadow,
+        backdropFilter,
+      }
+    : undefined
 
   useEffect(() => {
     const onScroll = () => setShaped(window.scrollY > 20)
@@ -27,16 +71,23 @@ export function Nav({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
     return () => window.removeEventListener("scroll", onScroll)
   }, [])
 
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1024px)")
+    const onChange = () => setIsDesktop(media.matches)
+    onChange()
+    media.addEventListener("change", onChange)
+    return () => media.removeEventListener("change", onChange)
+  }, [])
+
   return (
     <>
       <header className="fixed top-0 left-0 right-0 z-50">
-        <nav
+        <motion.nav
+          style={desktopNavStyle}
           className={cn(
-            "relative mx-auto flex items-center justify-between transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] px-6 py-3 md:py-5 max-w-6xl border border-transparent bg-transparent",
+            "relative mx-auto flex max-w-6xl items-center justify-between border border-transparent bg-transparent px-6 py-3 md:py-5",
             mobileOpen &&
-              "max-md:bg-[#0a0a0a] max-md:border-b max-md:border-white/[0.06]",
-            shaped &&
-              "lg:mt-3 lg:max-w-3xl lg:rounded-[20px] lg:border-white/[0.08] lg:bg-white/[0.04] lg:px-4 lg:py-2 lg:backdrop-blur-2xl lg:shadow-[0_2px_24px_rgba(0,0,0,0.3)]"
+              "max-md:bg-[#0a0a0a] max-md:border-b max-md:border-white/[0.06]"
           )}
         >
           {/* Logo — R mark only */}
@@ -114,7 +165,7 @@ export function Nav({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
           >
             {mobileOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
-        </nav>
+        </motion.nav>
       </header>
 
       {/* Mobile drawer */}
