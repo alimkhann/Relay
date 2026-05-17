@@ -8,7 +8,6 @@ import { trackMarketingEvent } from "./analytics"
 import {
   motion,
   AnimatePresence,
-  useMotionTemplate,
   useScroll,
   useSpring,
   useTransform,
@@ -43,10 +42,10 @@ export function Nav({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
   const backgroundAlpha = useTransform(morph, [0, 1], [0, 0.04])
   const shadowAlpha = useTransform(morph, [0, 1], [0, 0.3])
   const blur = useTransform(morph, [0, 1], [0, 40])
-  const borderColor = useMotionTemplate`rgba(255, 255, 255, ${borderAlpha})`
-  const backgroundColor = useMotionTemplate`rgba(255, 255, 255, ${backgroundAlpha})`
-  const boxShadow = useMotionTemplate`0 2px 24px rgba(0, 0, 0, ${shadowAlpha})`
-  const backdropFilter = useMotionTemplate`blur(${blur}px)`
+  const borderColor = useTransform(borderAlpha, (value) => `rgba(255, 255, 255, ${value})`)
+  const backgroundColor = useTransform(backgroundAlpha, (value) => `rgba(255, 255, 255, ${value})`)
+  const boxShadow = useTransform(shadowAlpha, (value) => `0 2px 24px rgba(0, 0, 0, ${value})`)
+  const backdropFilter = useTransform(blur, (value) => `blur(${value}px)`)
 
   const desktopNavStyle = isDesktop
     ? {
