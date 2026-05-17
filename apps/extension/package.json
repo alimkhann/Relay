@@ -7,6 +7,7 @@
     "dev": "plasmo dev",
     "build": "plasmo build",
     "build:prod": "plasmo build --tag prod",
+    "zip": "plasmo build --tag prod && plasmo package --tag prod && mkdir -p releases && rm -f releases/*.zip && mv build/chrome-mv3-prod.zip releases/relay-$npm_package_version.zip",
     "lint": "eslint . --ext .ts,.tsx",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

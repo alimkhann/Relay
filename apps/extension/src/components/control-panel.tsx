@@ -79,7 +79,7 @@ function OtpCells({ value, onChange, disabled }: OtpCellsProps) {
 import { slugify } from "@relay/shared/utils/text";
 import { supportedPlatforms } from "@relay/shared/constants/platforms";
 import type { SupportedPlatform, UserSettingsRow } from "@relay/shared/types/database";
-import type { BillingStatusDto } from "@relay/shared/types/billing";
+import type { BillingStatusDto, EntitlementLimitsDto } from "@relay/shared/types/billing";
 import {
   buildCoreUsageMetrics,
   pickRollingPool,
@@ -1935,14 +1935,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       activeState.remoteStatus === "stale" ||
       activeState.remoteStatus === "unavailable");
   const insertButtonState = deriveInsertButtonState(activeState);
-  // True only on a genuine cold load (no snapshot hydrated, nothing cached) —
-  // show skeletons instead of "Nothing saved yet" so empty ≠ still-loading.
-  const contextLoading =
-    activeState.remoteStatus === "loading" &&
-    contextSections.every(
-      (section) => activeState.contextPreview[section].length === 0,
-    ) &&
-    activeState.contextPreview.notes.length === 0;
+  // Per-section: while the remote state is loading, any empty section/notes
+  // shimmer instead of showing "Nothing saved yet". Sections that already
+  // have items keep rendering them.
+  const contextLoading = activeState.remoteStatus === "loading";
   const displayedPlan = resolveDisplayedPlan(activeState);
   const shouldShowUpgrade = displayedPlan === "free" || displayedPlan === "starter";
   const shouldRenderAssociationCard = shouldShowAssociationCard({
@@ -2180,11 +2176,14 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
           <div className={styles.settingsGroup}>
             <span className={styles.settingsLabel}>Usage</span>
-            {billing ? (
-              <UsageTable billing={billing} />
-            ) : (
-              <ContextSkeleton lines={6} />
-            )}
+            {(() => {
+              const limits =
+                billing?.entitlements.limits ??
+                activeState.entitlements?.limits ??
+                null;
+              if (!limits) return <ContextSkeleton lines={6} />;
+              return <UsageTable limits={limits} usage={billing?.usage} />;
+            })()}
           </div>
 
           <div className={styles.settingsGroup}>
@@ -2773,9 +2772,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   </span>
                 )}
               </div>
-            ) : (
-              <ContextSkeleton lines={1} />
-            )}
+            ) : null}
           </section>
 
           {shouldRenderAssociationCard ? (
@@ -3385,18 +3382,28 @@ function RollingUsageWidget({
   );
 }
 
-function UsageTable({ billing }: { billing: BillingStatusDto }) {
-  const u = billing.usage;
-  const l = billing.entitlements.limits;
+function UsageTable({
+  limits,
+  usage,
+}: {
+  limits: EntitlementLimitsDto;
+  usage?: BillingStatusDto["usage"] | null;
+}) {
+  // Limits render immediately from entitlements; counts fill in to 0 until
+  // the billing snapshot loads (so the table is never an infinite shimmer
+  // and limits show before the first capture).
+  const u = usage ?? null;
+  const n = (v: number | undefined) => v ?? 0;
+  const l = limits;
   const rows: Array<{ label: string; used: number; limit: number; period: string }> = [
-    { label: "Captures", used: u.capturesThisMonth, limit: l.captureMonthly, period: "mo" },
-    { label: "MCP reads", used: u.mcpReadsToday, limit: l.mcpReadDaily, period: "day" },
-    { label: "MCP writes", used: u.mcpWritesToday, limit: l.mcpWriteDaily, period: "day" },
-    { label: "AI analyses", used: u.aiAnalysesToday, limit: l.aiAnalysesPerUserDaily, period: "day" },
-    { label: "Active projects", used: u.activeProjects, limit: l.activeProjects, period: "" },
-    { label: "External indexes", used: u.externalSourceIndexesToday, limit: l.externalSourceIndexesDaily, period: "day" },
-    { label: "External searches", used: u.externalSourceSearchesToday, limit: l.externalSourceSearchesDaily, period: "day" },
-    { label: "External refreshes", used: u.externalSourceRefreshesToday, limit: l.externalSourceRefreshesDaily, period: "day" },
+    { label: "Captures", used: n(u?.capturesThisMonth), limit: l.captureMonthly, period: "mo" },
+    { label: "MCP reads", used: n(u?.mcpReadsToday), limit: l.mcpReadDaily, period: "day" },
+    { label: "MCP writes", used: n(u?.mcpWritesToday), limit: l.mcpWriteDaily, period: "day" },
+    { label: "AI analyses", used: n(u?.aiAnalysesToday), limit: l.aiAnalysesPerUserDaily, period: "day" },
+    { label: "Active projects", used: n(u?.activeProjects), limit: l.activeProjects, period: "" },
+    { label: "External indexes", used: n(u?.externalSourceIndexesToday), limit: l.externalSourceIndexesDaily, period: "day" },
+    { label: "External searches", used: n(u?.externalSourceSearchesToday), limit: l.externalSourceSearchesDaily, period: "day" },
+    { label: "External refreshes", used: n(u?.externalSourceRefreshesToday), limit: l.externalSourceRefreshesDaily, period: "day" },
   ];
   return (
     <div className={styles.usageTable}>
