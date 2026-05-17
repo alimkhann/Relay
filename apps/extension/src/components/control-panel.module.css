@@ -1433,6 +1433,33 @@
   animation: shimmer 2s linear infinite;
 }
 
+/* ── Loading skeletons (reuse the shimmer keyframe) ── */
+
+.skeletonGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeletonLine {
+  height: 12px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--surface-soft) 0%,
+    var(--surface-soft) 40%,
+    var(--hover) 50%,
+    var(--surface-soft) 60%,
+    var(--surface-soft) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+.skeletonLineShort {
+  width: 55%;
+}
+
 /* ── Header actions / settings ── */
 
 .headerIconButton {

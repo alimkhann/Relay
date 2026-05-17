@@ -86,6 +86,13 @@ import {
   getAllPersistedSignatures,
   type TabCaptureSignature,
 } from "../storage/capture-signatures";
+import {
+  readPersistedSessionData,
+  persistSessionData,
+  readPersistedDashboard,
+  persistDashboard,
+  clearPersistedBackgroundCache,
+} from "../storage/background-cache";
 
 interface RemoteSettingsPayload {
   settings: {
@@ -384,6 +391,8 @@ function isAuthFailureMessage(message: string) {
 async function resetStoredSession(reason: string) {
   const session = await getRelaySession();
   sessionDataCache = null;
+  dashboardCache.clear();
+  await clearPersistedBackgroundCache(session.userId || undefined);
   await clearRelaySession();
   await setRelaySession({
     apiBase: resolveRelayApiBase({ storedApiBase: session.apiBase }),
@@ -1099,6 +1108,24 @@ async function loadSessionData() {
     return sessionDataCache.data;
   }
 
+  // Durability: after an MV3 worker wake, in-memory cache is gone. Seed it
+  // from the persisted snapshot so a recent value can be served immediately
+  // (and acts as the failure fallback) while the network refresh runs.
+  if (!sessionDataCache || sessionDataCache.token !== session.token) {
+    const persisted = await readPersistedSessionData(session.userId);
+    if (persisted) {
+      type SessionCacheData = NonNullable<typeof sessionDataCache>["data"];
+      sessionDataCache = {
+        token: session.token,
+        data: persisted.data as unknown as SessionCacheData,
+        fetchedAt: persisted.fetchedAt,
+      };
+      if (Date.now() - persisted.fetchedAt < SESSION_CACHE_TTL_MS) {
+        return sessionDataCache.data;
+      }
+    }
+  }
+
   try {
     // Fetch session + billing in parallel. Billing is a nice-to-have — if it
     // fails the side panel still renders, it just assumes free until the next
@@ -1244,11 +1271,13 @@ async function loadSessionData() {
       entitlements,
     };
 
+    const fetchedAt = Date.now();
     sessionDataCache = {
       token: session.token,
       data,
-      fetchedAt: Date.now(),
+      fetchedAt,
     };
+    void persistSessionData(session.userId, data, fetchedAt);
 
     return data;
   } catch (cause) {
@@ -1273,29 +1302,61 @@ function invalidateProjectCache(projectId: string | null | undefined) {
   dashboardCache.delete(projectId);
 }
 
-async function fetchProjectDashboard(projectId: string) {
-  const cached = dashboardCache.get(projectId);
-  if (cached && Date.now() - cached.fetchedAt < DASHBOARD_CACHE_TTL_MS) {
-    return cached.dashboard;
-  }
-
+async function refreshProjectDashboard(
+  projectId: string,
+  userId: string,
+): Promise<ProjectDashboardPayload | null> {
   try {
     const response = await retryRemote(() =>
       relayFetch(`/api/projects/${projectId}`),
     );
     if (!response.ok) {
-      return cached?.dashboard ?? null;
+      return dashboardCache.get(projectId)?.dashboard ?? null;
     }
 
     const payload = (await response.json()) as {
       dashboard?: ProjectDashboardPayload;
     };
     const dashboard = payload.dashboard ?? null;
-    dashboardCache.set(projectId, { dashboard, fetchedAt: Date.now() });
+    const fetchedAt = Date.now();
+    dashboardCache.set(projectId, { dashboard, fetchedAt });
+    if (userId) void persistDashboard(userId, projectId, dashboard, fetchedAt);
     return dashboard;
   } catch {
-    return cached?.dashboard ?? null;
+    return dashboardCache.get(projectId)?.dashboard ?? null;
   }
+}
+
+async function fetchProjectDashboard(projectId: string) {
+  const cached = dashboardCache.get(projectId);
+  if (cached && Date.now() - cached.fetchedAt < DASHBOARD_CACHE_TTL_MS) {
+    return cached.dashboard;
+  }
+
+  const { userId } = await getRelaySession();
+
+  // Durability + stale-while-revalidate: after an MV3 worker wake the memory
+  // cache is empty. Serve a recent persisted value immediately; if it is
+  // older than the in-memory TTL, still serve it but revalidate in the
+  // background so the next read is fresh.
+  if (!cached && userId) {
+    const persisted = await readPersistedDashboard<
+      ProjectDashboardPayload | null
+    >(userId, projectId);
+    if (persisted) {
+      dashboardCache.set(projectId, {
+        dashboard: persisted.data,
+        fetchedAt: persisted.fetchedAt,
+      });
+      if (Date.now() - persisted.fetchedAt < DASHBOARD_CACHE_TTL_MS) {
+        return persisted.data;
+      }
+      void refreshProjectDashboard(projectId, userId);
+      return persisted.data;
+    }
+  }
+
+  return refreshProjectDashboard(projectId, userId);
 }
 
 async function resolveBoundProject(tabId: number, pageState: RelayPageState) {

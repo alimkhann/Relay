@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
 
 // ── OTP cell component ──────────────────────────────────────────────────────
 
@@ -95,6 +95,11 @@ import {
   type RelaySessionState,
 } from "../storage/session";
 import {
+  getPersistedActiveState,
+  persistActiveState,
+  clearPersistedActiveState,
+} from "../storage/active-state";
+import {
   getRelayThemeMode,
   resolveRelayThemeMode,
   type RelayResolvedTheme,
@@ -112,7 +117,11 @@ import {
 } from "../utils/telemetry";
 import relayIconUrl from "../../assets/icon.png";
 import { PlatformIcon, prettyPlatformName } from "./platform-icon";
-import { WalkthroughModal } from "./walkthrough-modal";
+// Lazy: the walkthrough only renders for first-time users, so it should not
+// sit in the popup/sidepanel critical bundle.
+const WalkthroughModal = lazy(() =>
+  import("./walkthrough-modal").then((m) => ({ default: m.WalkthroughModal })),
+);
 import styles from "./control-panel.module.css";
 
 interface ControlPanelProps {
@@ -295,6 +304,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   useEffect(() => {
     activeStateRef.current = activeState;
   }, [activeState]);
+  const sessionUserIdRef = useRef<string>("");
+  const activeStateHydratedRef = useRef(false);
+  useEffect(() => {
+    sessionUserIdRef.current = session?.userId ?? "";
+  }, [session?.userId]);
   const [status, setStatus] = useState("Relay stays quiet until it is useful.");
   const [busy, setBusy] = useState(false);
   const [authenticating, setAuthenticating] = useState(false);
@@ -394,7 +408,18 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       const nextThemeMode = await getRelayThemeMode();
       setThemeMode(nextThemeMode);
       applyResolvedTheme(resolveRelayThemeMode(nextThemeMode));
-      await refreshLocalSession();
+      const localSession = await refreshLocalSession();
+      // Instant paint: hydrate the last persisted state before the network
+      // refresh so the popup shows last project/context immediately instead
+      // of the blank "Relay stays quiet…" state. Skip if a live state push
+      // already populated activeState.
+      if (!activeStateHydratedRef.current && localSession.userId) {
+        activeStateHydratedRef.current = true;
+        const snapshot = await getPersistedActiveState(localSession.userId);
+        if (snapshot && activeStateRef.current === emptyActiveState) {
+          setActiveState(snapshot);
+        }
+      }
       await refreshActiveProjectState();
     })();
   }, [compact]);
@@ -624,6 +649,12 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           }
         : current,
     );
+    // Write-through: snapshot the last applied state so the next popup/
+    // sidepanel open paints it instantly instead of the blank state.
+    const userId = sessionUserIdRef.current;
+    if (userId && nextState.projectId) {
+      void persistActiveState(userId, nextState);
+    }
   }
 
   async function refreshLocalSession() {
@@ -632,6 +663,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     if (nextSession.lastStatus) {
       setStatus(nextSession.lastStatus);
     }
+    return nextSession;
   }
 
   async function loadUserSettings() {
@@ -735,6 +767,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     if (!confirmed) return;
 
     setSignOutBusy(true);
+    const signedOutUserId = sessionUserIdRef.current;
     try {
       const result = (await chrome.runtime.sendMessage({
         type: "RELAY_SIGN_OUT",
@@ -746,6 +779,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         return;
       }
 
+      await clearPersistedActiveState(signedOutUserId || undefined);
+      setActiveState(emptyActiveState);
       setPanelMode("main");
       await refreshLocalSession();
       await refreshActiveProjectState();
@@ -1900,6 +1935,14 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       activeState.remoteStatus === "stale" ||
       activeState.remoteStatus === "unavailable");
   const insertButtonState = deriveInsertButtonState(activeState);
+  // True only on a genuine cold load (no snapshot hydrated, nothing cached) —
+  // show skeletons instead of "Nothing saved yet" so empty ≠ still-loading.
+  const contextLoading =
+    activeState.remoteStatus === "loading" &&
+    contextSections.every(
+      (section) => activeState.contextPreview[section].length === 0,
+    ) &&
+    activeState.contextPreview.notes.length === 0;
   const displayedPlan = resolveDisplayedPlan(activeState);
   const shouldShowUpgrade = displayedPlan === "free" || displayedPlan === "starter";
   const shouldRenderAssociationCard = shouldShowAssociationCard({
@@ -2890,7 +2933,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                       </div>
 
                       {visibleItems.length === 0 ? (
-                        <p className={styles.emptyHint}>Nothing saved yet.</p>
+                        contextLoading ? (
+                          <ContextSkeleton lines={2} />
+                        ) : (
+                          <p className={styles.emptyHint}>Nothing saved yet.</p>
+                        )
                       ) : (
                         visibleItems.map((item) => (
                           <div key={item.key} className={styles.contextItem}>
@@ -2977,9 +3024,13 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   <span className={styles.contextLabel}>Notes</span>
                 </div>
                 {activeState.contextPreview.notes.length === 0 ? (
-                  <p className={styles.emptyHint}>
-                    Right-click any text on the web → Save to Relay.
-                  </p>
+                  contextLoading ? (
+                    <ContextSkeleton lines={2} />
+                  ) : (
+                    <p className={styles.emptyHint}>
+                      Right-click any text on the web → Save to Relay.
+                    </p>
+                  )
                 ) : (
                   activeState.contextPreview.notes.map((note) => (
                     <SidepanelNoteItem
@@ -3001,9 +3052,13 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 return (
                   <div className={styles.contextItemList}>
                     {items.length === 0 ? (
-                      <p className={styles.emptyHint}>
-                        No {sectionLabels[section].toLowerCase()} yet.
-                      </p>
+                      contextLoading ? (
+                        <ContextSkeleton lines={3} />
+                      ) : (
+                        <p className={styles.emptyHint}>
+                          No {sectionLabels[section].toLowerCase()} yet.
+                        </p>
+                      )
                     ) : (
                       items.map((item) => (
                         <div key={item.key} className={styles.contextItemUnified}>
@@ -3139,6 +3194,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       ) : null}
 
       {showWalkthrough ? (
+        <Suspense fallback={null}>
         <WalkthroughModal
           onDismiss={() => {
             setShowWalkthrough(false);
@@ -3150,6 +3206,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             });
           }}
         />
+        </Suspense>
       ) : null}
     </div>
   );
@@ -3172,6 +3229,21 @@ interface SidepanelNoteItemProps {
   note: RelayActiveProjectState["contextPreview"]["notes"][number];
   busy: boolean;
   onDelete: () => void;
+}
+
+function ContextSkeleton({ lines = 2 }: { lines?: number }) {
+  return (
+    <div className={styles.skeletonGroup} aria-hidden="true">
+      {Array.from({ length: lines }).map((_, index) => (
+        <div
+          key={index}
+          className={`${styles.skeletonLine} ${
+            index === lines - 1 ? styles.skeletonLineShort : ""
+          }`}
+        />
+      ))}
+    </div>
+  );
 }
 
 function SidepanelNoteItem({ note, busy, onDelete }: SidepanelNoteItemProps) {
