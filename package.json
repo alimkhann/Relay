@@ -12,6 +12,7 @@
     "bench:longmemeval": "pnpm --dir benchmarks/longmemeval bench",
     "bench:longmemeval:preflight": "pnpm --dir benchmarks/longmemeval preflight",
     "bench:longmemeval:judge": "./benchmarks/longmemeval/evaluate.sh",
+    "bench:sources": "vitest run apps/web/src/server/services/source-benchmark.test.ts",
     "release:cli:dry-run": "pnpm --filter @onrelay/cli pack --pack-destination ../../.tmp/cli-pack",
     "release:cli": "pnpm --filter @onrelay/cli publish --access public",
     "release:mcp:dry-run": "pnpm --filter @onrelay/mcp pack --pack-destination ../../.tmp/mcp-pack",

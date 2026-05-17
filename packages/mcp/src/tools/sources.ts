@@ -1,7 +1,22 @@
 import { z } from "zod"
 import type { RelayClient } from "../client.js"
 
-const sourceLifecycleActions = ["list", "index", "status", "read", "search", "refresh", "promote", "delete", "purge"] as const
+const sourceLifecycleActions = [
+  "list",
+  "resolve",
+  "index",
+  "status",
+  "read",
+  "search",
+  "context_pack",
+  "explore",
+  "grep",
+  "refresh",
+  "promote",
+  "import",
+  "delete",
+  "purge",
+] as const
 
 const sourcesToolShape = {
   action: z.enum(sourceLifecycleActions),
@@ -10,8 +25,20 @@ const sourcesToolShape = {
   chunkId: z.string().uuid().optional(),
   url: z.string().trim().url().optional(),
   query: z.string().trim().min(1).max(500).optional(),
-  sourceType: z.enum(["website", "llms_txt", "pdf", "arxiv", "openapi", "package_docs"]).optional(),
+  sourceType: z.enum(["website", "llms_txt", "pdf", "arxiv", "openapi", "package_docs", "github_repo"]).optional(),
   refreshPolicy: z.enum(["manual", "daily", "weekly"]).optional(),
+  registry: z.enum(["npm", "py_pi", "crates_io", "go", "ruby_gems"]).optional(),
+  manifestFileName: z.string().trim().min(1).max(255).optional(),
+  manifestContent: z.string().trim().min(1).max(200_000).optional(),
+  tokenBudget: z.number().int().positive().max(20_000).optional(),
+  importProvider: z.enum(["context7", "nia", "external"]).optional(),
+  providerSourceId: z.string().trim().min(1).max(500).optional(),
+  citations: z.array(z.object({
+    title: z.string().trim().min(1).max(255),
+    url: z.string().trim().url(),
+    content: z.string().trim().min(1).max(8_000),
+    locator: z.record(z.string(), z.unknown()).optional(),
+  }).strict()).min(1).max(20).optional(),
   displayName: z.string().trim().min(1).max(255).optional(),
   limit: z.number().int().positive().max(50).optional(),
   type: z.enum(["note", "decision", "constraint", "requirement", "task", "artifact"]).optional(),
@@ -20,7 +47,7 @@ const sourcesToolShape = {
 }
 
 const sourcesToolSchema = z.object(sourcesToolShape).superRefine((value, ctx) => {
-  if (value.action === "search" && !value.query) {
+  if (["resolve", "search", "context_pack", "grep"].includes(value.action) && !value.query) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "query is required for this source action.", path: ["query"] })
   }
   if (value.action === "index" && !value.url) {
@@ -33,6 +60,10 @@ const sourcesToolSchema = z.object(sourcesToolShape).superRefine((value, ctx) =>
     if (!value.sourceId) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "sourceId is required for promote.", path: ["sourceId"] })
     if (!value.chunkId) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "chunkId is required for promote.", path: ["chunkId"] })
     if (!value.content) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "content is required for promote.", path: ["content"] })
+  }
+  if (value.action === "import") {
+    if (!value.importProvider) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "importProvider is required for import.", path: ["importProvider"] })
+    if (!value.citations || value.citations.length === 0) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "citations are required for import.", path: ["citations"] })
   }
 }).strict()
 
@@ -59,6 +90,16 @@ export async function sources(client: RelayClient, rawArgs: SourcesArgs, project
   if (args.action === "list") {
     return toolResult(await client.get(`/api/projects/${projectId}/sources`))
   }
+  if (args.action === "resolve") {
+    return toolResult(await client.post(`/api/projects/${projectId}/sources/resolve`, {
+      query: args.query,
+      url: args.url,
+      manifestFileName: args.manifestFileName,
+      manifestContent: args.manifestContent,
+      registry: args.registry,
+      limit: args.limit,
+    }))
+  }
   if (args.action === "index") {
     return toolResult(await client.post(`/api/projects/${projectId}/sources/external`, {
       url: args.url,
@@ -73,6 +114,28 @@ export async function sources(client: RelayClient, rawArgs: SourcesArgs, project
       sourceId: args.sourceId,
       limit: args.limit,
     }))
+  }
+  if (args.action === "context_pack") {
+    return toolResult(await client.post(`/api/projects/${projectId}/sources/context-pack`, {
+      query: args.query,
+      sourceId: args.sourceId,
+      limit: args.limit,
+      tokenBudget: args.tokenBudget,
+    }))
+  }
+  if (args.action === "grep") {
+    return toolResult(await client.post(`/api/projects/${projectId}/sources/grep`, {
+      query: args.query,
+      sourceId: args.sourceId,
+      limit: args.limit,
+    }))
+  }
+  if (args.action === "explore") {
+    const params = new URLSearchParams()
+    if (args.sourceId) params.set("sourceId", args.sourceId)
+    if (args.limit) params.set("limit", String(args.limit))
+    const suffix = params.size > 0 ? `?${params.toString()}` : ""
+    return toolResult(await client.get(`/api/projects/${projectId}/sources/explore${suffix}`))
   }
   if (args.action === "status" || args.action === "read") {
     const params = new URLSearchParams()
@@ -90,6 +153,14 @@ export async function sources(client: RelayClient, rawArgs: SourcesArgs, project
       type: args.type,
       title: args.title,
       content: args.content,
+    }))
+  }
+  if (args.action === "import") {
+    return toolResult(await client.post(`/api/projects/${projectId}/sources/import`, {
+      provider: args.importProvider,
+      providerSourceId: args.providerSourceId,
+      displayName: args.displayName,
+      citations: args.citations,
     }))
   }
   if (args.action === "delete") {

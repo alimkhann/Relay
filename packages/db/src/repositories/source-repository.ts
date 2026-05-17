@@ -8,6 +8,9 @@ const SOURCE_COLS = `id, project_id, kind, status, display_name, original_file_n
 const VERSION_COLS = `id, source_id, project_id, status, storage_object_key, content_hash, byte_size, extracted_text_hash, extracted_text_bytes, chunk_count, token_estimate, metadata, error_message, created_by, created_at`
 const CHUNK_COLS = `id, source_id, version_id, project_id, chunk_index, content, token_estimate, locator, metadata, embedding, embedding_model, created_at`
 const CANDIDATE_COLS = `id, project_id, source_id, version_id, chunk_id, memory_item_id, type, title, content, confidence, status, metadata, created_at, updated_at`
+const PAGE_COLS = `id, source_id, version_id, project_id, url, canonical_url, title, heading_path, content, content_hash, content_type, etag, last_modified, metadata, created_at, updated_at`
+const INDEX_JOB_COLS = `id, source_id, project_id, status, kind, progress, pages_total, pages_indexed, error_message, metadata, created_by, created_at, updated_at, finished_at`
+const GLOBAL_SOURCE_COLS = `id, source_type, canonical_url, display_name, trust_score, metadata, created_at, updated_at`
 
 export interface CreateSourceInput {
   projectId: string
@@ -40,6 +43,68 @@ export interface CreateChunkInput {
   tokenEstimate: number
   locator?: Record<string, unknown>
   metadata?: Record<string, unknown>
+}
+
+export interface CreateSourcePageInput {
+  sourceId: string
+  versionId: string
+  projectId: string
+  url: string
+  canonicalUrl?: string | null
+  title?: string | null
+  headingPath?: string[]
+  content: string
+  contentHash: string
+  contentType?: string | null
+  etag?: string | null
+  lastModified?: string | null
+  metadata?: Record<string, unknown>
+}
+
+export interface SourcePageRow {
+  id: string
+  sourceId: string
+  versionId: string
+  projectId: string
+  url: string
+  canonicalUrl: string | null
+  title: string | null
+  headingPath: string[]
+  content: string
+  contentHash: string
+  contentType: string | null
+  etag: string | null
+  lastModified: string | null
+  metadata: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SourceIndexJobRow {
+  id: string
+  sourceId: string
+  projectId: string
+  status: "queued" | "running" | "ready" | "failed"
+  kind: "index" | "refresh" | "import"
+  progress: number
+  pagesTotal: number
+  pagesIndexed: number
+  errorMessage: string | null
+  metadata: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+  finishedAt: string | null
+}
+
+export interface GlobalSourceRow {
+  id: string
+  sourceType: string
+  canonicalUrl: string
+  displayName: string
+  trustScore: number
+  metadata: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
 }
 
 export interface CreateFactCandidateInput {
@@ -85,10 +150,95 @@ export interface SourceChunkSearchResult {
   indexedAt: string | null
 }
 
+export interface CreateExternalCitationInput {
+  projectId: string
+  sourceId: string
+  versionId: string
+  chunkId?: string | null
+  provider: "context7" | "nia" | "external"
+  providerSourceId?: string | null
+  title: string
+  url: string
+  contentHash: string
+  locator?: Record<string, unknown>
+  metadata?: Record<string, unknown>
+}
+
 function jsonRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {}
+}
+
+function toSourcePageRow(row: Record<string, unknown>): SourcePageRow {
+  return {
+    id: String(row.id),
+    sourceId: String(row.source_id),
+    versionId: String(row.version_id),
+    projectId: String(row.project_id),
+    url: String(row.url),
+    canonicalUrl: row.canonical_url ? String(row.canonical_url) : null,
+    title: row.title ? String(row.title) : null,
+    headingPath: Array.isArray(row.heading_path) ? row.heading_path.map(String) : [],
+    content: decryptTextIfNeeded(String(row.content ?? "")),
+    contentHash: String(row.content_hash),
+    contentType: row.content_type ? String(row.content_type) : null,
+    etag: row.etag ? String(row.etag) : null,
+    lastModified: row.last_modified ? String(row.last_modified) : null,
+    metadata: jsonRecord(row.metadata),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  }
+}
+
+function toSourceIndexJobRow(row: Record<string, unknown>): SourceIndexJobRow {
+  return {
+    id: String(row.id),
+    sourceId: String(row.source_id),
+    projectId: String(row.project_id),
+    status: row.status as SourceIndexJobRow["status"],
+    kind: row.kind as SourceIndexJobRow["kind"],
+    progress: Number(row.progress ?? 0),
+    pagesTotal: Number(row.pages_total ?? 0),
+    pagesIndexed: Number(row.pages_indexed ?? 0),
+    errorMessage: row.error_message ? String(row.error_message) : null,
+    metadata: jsonRecord(row.metadata),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+    finishedAt: row.finished_at ? String(row.finished_at) : null,
+  }
+}
+
+function toGlobalSourceRow(row: Record<string, unknown>): GlobalSourceRow {
+  return {
+    id: String(row.id),
+    sourceType: String(row.source_type),
+    canonicalUrl: String(row.canonical_url),
+    displayName: String(row.display_name),
+    trustScore: Number(row.trust_score ?? 0),
+    metadata: jsonRecord(row.metadata),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  }
+}
+
+function toSourceChunkSearchResult(row: Record<string, unknown>): SourceChunkSearchResult {
+  const sourceMetadata = jsonRecord(row.source_metadata)
+  const external = jsonRecord(sourceMetadata.external)
+  return {
+    sourceId: String(row.source_id),
+    sourceKind: row.source_kind as ProjectSourceKind,
+    sourceTitle: String(row.source_title),
+    sourceUrl: row.source_url ? String(row.source_url) : null,
+    chunkId: String(row.chunk_id),
+    versionId: String(row.version_id),
+    content: decryptTextIfNeeded(String(row.content)),
+    locator: jsonRecord(row.locator),
+    metadata: jsonRecord(row.metadata),
+    provider: typeof external.provider === "string" ? external.provider : null,
+    score: Number(row.score ?? 0),
+    indexedAt: row.indexed_at ? String(row.indexed_at) : null,
+  }
 }
 
 export class SourceRepository {
@@ -296,6 +446,194 @@ export class SourceRepository {
     return rows.map((row) => toSourceChunkRow(row as Record<string, unknown>))
   }
 
+  async createIndexJob(userId: string, input: {
+    sourceId: string
+    projectId: string
+    kind: SourceIndexJobRow["kind"]
+    pagesTotal?: number
+    pagesIndexed?: number
+    progress?: number
+    metadata?: Record<string, unknown>
+  }): Promise<SourceIndexJobRow> {
+    const rows = await this.provider.query(
+      `insert into source_index_jobs (source_id, project_id, kind, status, progress, pages_total, pages_indexed, metadata, created_by)
+       values ($1,$2,$3,'queued',$4,$5,$6,$7::jsonb,$8)
+       returning ${INDEX_JOB_COLS}`,
+      [
+        input.sourceId,
+        input.projectId,
+        input.kind,
+        input.progress ?? 0,
+        input.pagesTotal ?? 0,
+        input.pagesIndexed ?? 0,
+        JSON.stringify(input.metadata ?? {}),
+        userId,
+      ],
+    )
+    return toSourceIndexJobRow(rows[0] as Record<string, unknown>)
+  }
+
+  async updateIndexJob(jobId: string, patch: {
+    status?: SourceIndexJobRow["status"]
+    progress?: number
+    pagesTotal?: number
+    pagesIndexed?: number
+    errorMessage?: string | null
+    metadata?: Record<string, unknown>
+  }): Promise<SourceIndexJobRow> {
+    const rows = await this.provider.query(
+      `update source_index_jobs
+       set status = coalesce($2, status),
+           progress = coalesce($3, progress),
+           pages_total = coalesce($4, pages_total),
+           pages_indexed = coalesce($5, pages_indexed),
+           error_message = case when $6::boolean then $7 else error_message end,
+           metadata = coalesce($8::jsonb, metadata),
+           finished_at = case when coalesce($2, status) in ('ready', 'failed') then coalesce(finished_at, now()) else finished_at end,
+           updated_at = now()
+       where id = $1
+       returning ${INDEX_JOB_COLS}`,
+      [
+        jobId,
+        patch.status ?? null,
+        patch.progress ?? null,
+        patch.pagesTotal ?? null,
+        patch.pagesIndexed ?? null,
+        Object.prototype.hasOwnProperty.call(patch, "errorMessage"),
+        patch.errorMessage ?? null,
+        patch.metadata ? JSON.stringify(patch.metadata) : null,
+      ],
+    )
+    return toSourceIndexJobRow(rows[0] as Record<string, unknown>)
+  }
+
+  async upsertSourcePages(pages: CreateSourcePageInput[]): Promise<SourcePageRow[]> {
+    if (pages.length === 0) return []
+    const placeholders: string[] = []
+    const params: unknown[] = []
+    let i = 1
+    for (const page of pages) {
+      placeholders.push(`($${i},$${i + 1},$${i + 2},$${i + 3},$${i + 4},$${i + 5},$${i + 6}::text[],$${i + 7},$${i + 8},$${i + 9},$${i + 10},$${i + 11},$${i + 12}::jsonb,to_tsvector('english', $${i + 13}))`)
+      params.push(
+        page.sourceId,
+        page.versionId,
+        page.projectId,
+        page.url,
+        page.canonicalUrl ?? page.url,
+        page.title ?? null,
+        page.headingPath ?? [],
+        encryptTextIfConfigured(page.content),
+        page.contentHash,
+        page.contentType ?? "text/plain",
+        page.etag ?? null,
+        page.lastModified ?? null,
+        JSON.stringify(page.metadata ?? {}),
+        page.content,
+      )
+      i += 14
+    }
+    const rows = await this.provider.query(
+      `insert into source_pages (source_id, version_id, project_id, url, canonical_url, title, heading_path, content, content_hash, content_type, etag, last_modified, metadata, search_vector)
+       values ${placeholders.join(", ")}
+       on conflict (source_id, url) do update set
+         version_id = excluded.version_id,
+         canonical_url = excluded.canonical_url,
+         title = excluded.title,
+         heading_path = excluded.heading_path,
+         content = excluded.content,
+         content_hash = excluded.content_hash,
+         content_type = excluded.content_type,
+         etag = excluded.etag,
+         last_modified = excluded.last_modified,
+         metadata = excluded.metadata,
+         search_vector = excluded.search_vector,
+         updated_at = now()
+       returning ${PAGE_COLS}`,
+      params,
+    )
+    return rows.map((row) => toSourcePageRow(row as Record<string, unknown>))
+  }
+
+  async listSourcePages(projectId: string, options: { sourceId?: string; limit?: number } = {}): Promise<SourcePageRow[]> {
+    const params: unknown[] = [projectId]
+    const filters = ["project_id = $1"]
+    if (options.sourceId) {
+      params.push(options.sourceId)
+      filters.push(`source_id = $${params.length}`)
+    }
+    params.push(options.limit ?? 100)
+    const rows = await this.provider.query(
+      `select ${PAGE_COLS}
+       from source_pages
+       where ${filters.join(" and ")}
+       order by title nulls last, url asc
+       limit $${params.length}`,
+      params,
+    )
+    return rows.map((row) => toSourcePageRow(row as Record<string, unknown>))
+  }
+
+  async upsertGlobalSource(input: {
+    sourceType: string
+    canonicalUrl: string
+    displayName: string
+    trustScore?: number
+    metadata?: Record<string, unknown>
+  }): Promise<GlobalSourceRow> {
+    const rows = await this.provider.query(
+      `insert into global_sources (source_type, canonical_url, display_name, trust_score, metadata)
+       values ($1,$2,$3,$4,$5::jsonb)
+       on conflict (source_type, canonical_url) do update set
+         display_name = excluded.display_name,
+         trust_score = greatest(global_sources.trust_score, excluded.trust_score),
+         metadata = global_sources.metadata || excluded.metadata,
+         updated_at = now()
+       returning ${GLOBAL_SOURCE_COLS}`,
+      [
+        input.sourceType,
+        input.canonicalUrl,
+        input.displayName,
+        input.trustScore ?? 0,
+        JSON.stringify(input.metadata ?? {}),
+      ],
+    )
+    return toGlobalSourceRow(rows[0] as Record<string, unknown>)
+  }
+
+  async linkGlobalSourceToProject(input: {
+    projectId: string
+    globalSourceId: string
+    projectSourceId?: string | null
+    metadata?: Record<string, unknown>
+  }): Promise<void> {
+    await this.provider.query(
+      `insert into project_global_source_links (project_id, global_source_id, project_source_id, metadata)
+       values ($1,$2,$3,$4::jsonb)
+       on conflict (project_id, global_source_id) do update set
+         project_source_id = excluded.project_source_id,
+         metadata = project_global_source_links.metadata || excluded.metadata`,
+      [
+        input.projectId,
+        input.globalSourceId,
+        input.projectSourceId ?? null,
+        JSON.stringify(input.metadata ?? {}),
+      ],
+    )
+  }
+
+  async searchGlobalSources(query: string, limit = 8): Promise<GlobalSourceRow[]> {
+    const rows = await this.provider.query(
+      `select ${GLOBAL_SOURCE_COLS}
+       from global_sources
+       where lower(display_name) like '%' || lower($1) || '%'
+          or lower(canonical_url) like '%' || lower($1) || '%'
+       order by trust_score desc, updated_at desc
+       limit $2`,
+      [query, limit],
+    )
+    return rows.map((row) => toGlobalSourceRow(row as Record<string, unknown>))
+  }
+
   async listChunks(sourceId: string, options: { limit?: number } = {}): Promise<SourceChunkRow[]> {
     const rows = await this.provider.query(
       `select ${CHUNK_COLS}
@@ -322,16 +660,16 @@ export class SourceRepository {
   async searchChunks(projectId: string, options: SourceChunkSearchOptions): Promise<SourceChunkSearchResult[]> {
     const params: unknown[] = [projectId, options.query]
     const filters = [
-      "s.project_id = $1",
-      "s.status = 'ready'",
+      "project_id = $1",
+      "source_status = 'ready'",
     ]
     if (options.sourceId) {
       params.push(options.sourceId)
-      filters.push(`s.id = $${params.length}`)
+      filters.push(`source_id = $${params.length}`)
     }
     if (options.kinds?.length) {
       params.push(options.kinds)
-      filters.push(`s.kind = ANY($${params.length}::text[])`)
+      filters.push(`source_kind = ANY($${params.length}::text[])`)
     }
     let vectorExpr = "0::double precision"
     let matchFilter = "lexical_score > 0"
@@ -348,7 +686,9 @@ export class SourceRepository {
       `with base as (
          select
            s.id as source_id,
+           s.project_id,
            s.kind as source_kind,
+           s.status as source_status,
            s.display_name as source_title,
            s.source_uri as source_url,
            s.metadata as source_metadata,
@@ -384,25 +724,77 @@ export class SourceRepository {
        limit $${limitParam}`,
       params,
     )
-    return rows.map((row) => {
-      const r = row as Record<string, unknown>
-      const sourceMetadata = jsonRecord(r.source_metadata)
-      const external = jsonRecord(sourceMetadata.external)
-      return {
-        sourceId: String(r.source_id),
-        sourceKind: r.source_kind as ProjectSourceKind,
-        sourceTitle: String(r.source_title),
-        sourceUrl: r.source_url ? String(r.source_url) : null,
-        chunkId: String(r.chunk_id),
-        versionId: String(r.version_id),
-        content: decryptTextIfNeeded(String(r.content)),
-        locator: jsonRecord(r.locator),
-        metadata: jsonRecord(r.metadata),
-        provider: typeof external.provider === "string" ? external.provider : null,
-        score: Number(r.score ?? 0),
-        indexedAt: r.indexed_at ? String(r.indexed_at) : null,
-      }
-    })
+    return rows.map((row) => toSourceChunkSearchResult(row as Record<string, unknown>))
+  }
+
+  async grepChunks(projectId: string, options: { query: string; sourceId?: string; limit?: number }): Promise<SourceChunkSearchResult[]> {
+    const params: unknown[] = [projectId, options.query]
+    const filters = [
+      "s.project_id = $1",
+      "s.status = 'ready'",
+      "position(lower($2) in lower(c.content)) > 0",
+    ]
+    if (options.sourceId) {
+      params.push(options.sourceId)
+      filters.push(`s.id = $${params.length}`)
+    }
+    params.push(options.limit ?? 20)
+    const limitParam = params.length
+    const rows = await this.provider.query(
+      `select
+         s.id as source_id,
+         s.kind as source_kind,
+         s.display_name as source_title,
+         s.source_uri as source_url,
+         s.metadata as source_metadata,
+         c.id as chunk_id,
+         c.version_id,
+         c.content,
+         c.locator,
+         c.metadata,
+         (
+           1.0 / greatest(position(lower($2) in lower(c.content)), 1)
+           + case when lower(s.display_name) like '%' || lower($2) || '%' then 0.2 else 0 end
+         ) as score,
+         v.created_at as indexed_at
+       from source_chunks c
+       join project_sources s on s.id = c.source_id
+       left join source_versions v on v.id = c.version_id
+       where ${filters.join("\n         and ")}
+       order by score desc, c.chunk_index asc
+       limit $${limitParam}`,
+      params,
+    )
+    return rows.map((row) => toSourceChunkSearchResult(row as Record<string, unknown>))
+  }
+
+  async createExternalCitations(citations: CreateExternalCitationInput[]): Promise<void> {
+    if (citations.length === 0) return
+    const placeholders: string[] = []
+    const params: unknown[] = []
+    let i = 1
+    for (const citation of citations) {
+      placeholders.push(`($${i},$${i + 1},$${i + 2},$${i + 3},$${i + 4},$${i + 5},$${i + 6},$${i + 7},$${i + 8},$${i + 9}::jsonb,$${i + 10}::jsonb)`)
+      params.push(
+        citation.projectId,
+        citation.sourceId,
+        citation.versionId,
+        citation.chunkId ?? null,
+        citation.provider,
+        citation.providerSourceId ?? null,
+        citation.title,
+        citation.url,
+        citation.contentHash,
+        JSON.stringify(citation.locator ?? {}),
+        JSON.stringify(citation.metadata ?? {}),
+      )
+      i += 11
+    }
+    await this.provider.query(
+      `insert into source_external_citations (project_id, source_id, version_id, chunk_id, provider, provider_source_id, title, url, content_hash, locator, metadata)
+       values ${placeholders.join(", ")}`,
+      params,
+    )
   }
 
   async createFactCandidates(candidates: CreateFactCandidateInput[]): Promise<SourceFactCandidateRow[]> {

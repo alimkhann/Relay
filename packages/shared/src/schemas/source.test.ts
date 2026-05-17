@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest"
 
 import {
   createExternalSourceSchema,
+  importSourceCitationsSchema,
   createSourceUploadSchema,
+  grepProjectSourcesSchema,
   promoteSourceCitationSchema,
+  resolveProjectSourcesSchema,
   searchProjectSourcesSchema,
   sourceLifecycleActions,
   sourcesToolSchema,
@@ -70,8 +73,32 @@ describe("source schemas", () => {
   })
 
   it("keeps the MCP sources tool lifecycle-only", () => {
-    expect(sourceLifecycleActions).toEqual(["list", "index", "status", "read", "search", "refresh", "promote", "delete", "purge"])
+    expect(sourceLifecycleActions).toEqual([
+      "list",
+      "resolve",
+      "index",
+      "status",
+      "read",
+      "search",
+      "context_pack",
+      "explore",
+      "grep",
+      "refresh",
+      "promote",
+      "import",
+      "delete",
+      "purge",
+    ])
+    expect(resolveProjectSourcesSchema.parse({ query: "stripe checkout", limit: 5 }).query).toBe("stripe checkout")
+    expect(grepProjectSourcesSchema.parse({ query: "constructEvent" }).query).toBe("constructEvent")
+    expect(importSourceCitationsSchema.parse({
+      provider: "context7",
+      citations: [{ title: "Stripe Webhooks", url: "https://docs.stripe.com/webhooks", content: "Verify signatures." }],
+    }).provider).toBe("context7")
     expect(sourcesToolSchema.parse({ action: "search", query: "transformer paper", limit: 5 }).action).toBe("search")
+    expect(sourcesToolSchema.parse({ action: "resolve", query: "stripe checkout" }).action).toBe("resolve")
+    expect(sourcesToolSchema.parse({ action: "context_pack", query: "stripe checkout" }).action).toBe("context_pack")
+    expect(sourcesToolSchema.parse({ action: "grep", query: "constructEvent" }).action).toBe("grep")
     expect(sourcesToolSchema.parse({ action: "index", url: "https://example.com/docs" }).action).toBe("index")
     expect(() => sourcesToolSchema.parse({ action: "search" })).toThrow()
     expect(() => sourcesToolSchema.parse({ action: "discover", query: "stripe" })).toThrow()

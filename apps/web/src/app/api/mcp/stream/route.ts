@@ -36,8 +36,20 @@ const sourcesToolShape = {
   chunkId: z.string().optional().describe("Source chunk ID for read or promote."),
   url: z.string().optional().describe("Public https URL to index."),
   query: z.string().optional().describe("Search query."),
-  sourceType: z.enum(["website", "llms_txt", "pdf", "arxiv", "openapi", "package_docs"]).optional(),
+  sourceType: z.enum(["website", "llms_txt", "pdf", "arxiv", "openapi", "package_docs", "github_repo"]).optional(),
   refreshPolicy: z.enum(["manual", "daily", "weekly"]).optional(),
+  registry: z.enum(["npm", "py_pi", "crates_io", "go", "ruby_gems"]).optional(),
+  manifestFileName: z.string().optional(),
+  manifestContent: z.string().optional(),
+  tokenBudget: z.number().optional(),
+  importProvider: z.enum(["context7", "nia", "external"]).optional(),
+  providerSourceId: z.string().optional(),
+  citations: z.array(z.object({
+    title: z.string(),
+    url: z.string(),
+    content: z.string(),
+    locator: z.record(z.string(), z.unknown()).optional(),
+  })).optional(),
   displayName: z.string().optional(),
   limit: z.number().optional(),
   type: z.enum(["note", "decision", "constraint", "requirement", "task", "artifact"]).optional(),
@@ -174,7 +186,7 @@ function registerHttpTools(
               ? "cached"
               : null
       const readOrWrite =
-        name === SOURCES_TOOL_NAME && ["index", "refresh", "promote", "delete", "purge"].includes(String(args?.action ?? ""))
+        name === SOURCES_TOOL_NAME && ["index", "refresh", "promote", "import", "delete", "purge"].includes(String(args?.action ?? ""))
           ? "write"
           : writeTools.has(name) ? "write" : "read"
 
@@ -739,7 +751,7 @@ function registerHttpTools(
 
   server.tool(
     SOURCES_TOOL_NAME,
-    "External source tool for Relay docs and research sources. Use search explicitly when the user asks to consult external docs or indexed sources; use promote only when the user wants a citation saved into memory.",
+    "Project-governed source lifecycle for Relay docs and repository sources. Use resolve to find evidence-backed source candidates, index to add URLs, search/read/explore/grep/context_pack to retrieve citations, import to store external Context7/Nia citations, refresh to update indexed sources, and promote only when the user wants a citation saved into durable memory.",
     sourcesToolShape,
     { readOnlyHint: false, destructiveHint: false },
     async (args) => {
@@ -752,9 +764,28 @@ function registerHttpTools(
         const result = await client.createExternalSource(pid, args)
         return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
       }
+      if (args.action === "resolve") {
+        if (!args.query) throw new Error("query is required for sources action:resolve.")
+        const result = await client.resolveSources(pid, args)
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
+      }
       if (args.action === "search") {
         if (!args.query) throw new Error("query is required for sources action:search.")
         const result = await client.searchSources(pid, args)
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
+      }
+      if (args.action === "context_pack") {
+        if (!args.query) throw new Error("query is required for sources action:context_pack.")
+        const result = await client.buildSourceContextPack(pid, args)
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
+      }
+      if (args.action === "explore") {
+        const result = await client.exploreSources(pid, args)
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
+      }
+      if (args.action === "grep") {
+        if (!args.query) throw new Error("query is required for sources action:grep.")
+        const result = await client.grepSources(pid, args)
         return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
       }
       if (args.action === "status" || args.action === "read") {
@@ -773,6 +804,10 @@ function registerHttpTools(
       if (args.action === "promote") {
         if (!args.sourceId || !args.chunkId || !args.content) throw new Error("sourceId, chunkId, and content are required for sources action:promote.")
         const result = await client.promoteSourceCitation(pid, args.sourceId, args)
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
+      }
+      if (args.action === "import") {
+        const result = await client.importSourceCitations(pid, args)
         return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
       }
       if (args.action === "delete") {
@@ -809,6 +844,12 @@ You have access to Relay, a project memory system that keeps context synchronize
 - Do not save speculative brainstorming, partial ideas, or every conversational turn.
 - If Relay context looks stale or wrong, inspect it before mutating:
   use \`list_memory\`, \`list_sessions\`, \`list_briefs\`, \`trace_context_sources\`, and \`list_recent_activity\`.
+
+### Source Retrieval
+- Use \`sources\` first for project-governed docs and repository sources already indexed in Relay.
+- Use \`sources\` action \`resolve\` to find evidence-backed project/global/package/URL candidates. If Relay cannot resolve a source and Context7 or Nia MCP tools are available in the client, call those external tools directly instead of asking Relay to fake an adapter.
+- After using Context7, Nia, or another external docs tool, call \`sources\` action \`import\` only for citations that are useful to keep in this project. Imported citations are source evidence, not durable memory.
+- Promote a source citation into Relay memory only when the user wants the fact to persist beyond the source itself. Refresh can later mark promoted memories potentially stale when their evidence changes.
 
 ### At Session End
 - Use \`checkpoint_context\` only at meaningful boundaries: before compaction-equivalent actions, before switching tasks, or after finishing a logical milestone.

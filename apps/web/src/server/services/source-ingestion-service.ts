@@ -101,6 +101,7 @@ export function classifyExternalSourceUrl(value: string) {
   const url = new URL(normalizeExternalSourceUrl(value))
   const path = url.pathname.toLowerCase()
   if (url.hostname === "arxiv.org" && /^\/(abs|pdf)\//.test(path)) return "arxiv" as const
+  if (url.hostname === "github.com" && /^\/[^/]+\/[^/]+/.test(path)) return "github_repo" as const
   if (path.endsWith(".pdf")) return "pdf" as const
   if (path.endsWith("/llms.txt") || path.endsWith("llms.txt")) return "llms_txt" as const
   if (/openapi\.(json|ya?ml)$/.test(path) || /swagger\.(json|ya?ml)$/.test(path)) return "openapi" as const

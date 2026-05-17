@@ -86,7 +86,7 @@ describe("registerTools analytics wrapper", () => {
     })
 
     const sources = harness.registrations.find((tool) => tool.name === "sources")
-    expect(sources?.description).toContain("External source")
+    expect(sources?.description).toContain("Project-governed source")
     expect(sources?.description).toContain("index")
     expect(sources?.description).toContain("search")
     expect(sources?.description).toContain("promote")
