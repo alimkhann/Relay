@@ -33,8 +33,10 @@ export function DashboardBriefCard({
         </Link>
       </div>
 
-      {/* Body — fills the card, scrolls instead of clipping */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-3.5 py-3">
+      {/* Body — absolute scroll layer so the brief never drives the row
+          height; the card matches the project-state card and scrolls. */}
+      <div className="relative min-h-0 flex-1">
+        <div className="absolute inset-0 overflow-y-auto px-3.5 py-3">
         {latest?.content ? (
           <Link href={briefUrl} className="group block cursor-pointer">
             <Markdown
@@ -50,6 +52,7 @@ export function DashboardBriefCard({
             className="py-6"
           />
         )}
+        </div>
       </div>
     </div>
   );
