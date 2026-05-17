@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   chunkExtractedText,
   classifyExternalSourceUrl,
+  extractManifestDependencies,
   extractTextFromSourceBuffer,
   fetchExternalSourceText,
   normalizeExternalSourceUrl,
@@ -77,6 +78,20 @@ describe("source-ingestion-service", () => {
     expect(classifyExternalSourceUrl("https://example.com/openapi.json")).toBe("openapi")
     expect(classifyExternalSourceUrl("https://example.com/llms.txt")).toBe("llms_txt")
     expect(classifyExternalSourceUrl("https://example.com/research/notes")).toBe("website")
+  })
+
+  it("extracts manifest dependencies without inventing docs URLs", () => {
+    const result = extractManifestDependencies("package.json", JSON.stringify({
+      dependencies: { stripe: "^19.0.0", next: "15.3.0" },
+      devDependencies: { vitest: "^3.1.0", stripe: "^19.0.0" },
+    }))
+
+    expect(result.dependencies).toEqual([
+      { name: "stripe", versionRange: "^19.0.0", section: "dependencies" },
+      { name: "next", versionRange: "15.3.0", section: "dependencies" },
+      { name: "vitest", versionRange: "^3.1.0", section: "devDependencies" },
+    ])
+    expect(result.unresolved).toEqual(["stripe", "next", "vitest"])
   })
 
   it("normalizes external URLs and blocks unsupported or private targets", () => {

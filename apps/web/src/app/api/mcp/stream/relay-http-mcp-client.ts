@@ -24,7 +24,9 @@ import { upsertProjectStateFromMcp } from "@/server/services/mcp-project-state-s
 import { listProjectsForUser } from "@/server/services/project-service"
 import {
   createExternalSource,
+  archiveProjectSource,
   getProjectSourceDetail,
+  hardDeleteProjectSource,
   listProjectSources,
   promoteSourceCitation,
   refreshExternalSource,
@@ -494,7 +496,7 @@ export class RelayHttpMcpClient {
       url: args.url,
       displayName: args.displayName,
       sourceType: args.sourceType,
-      provider: args.provider,
+      refreshPolicy: args.refreshPolicy,
     })
     return createExternalSource(this.viewer.userId, {
       projectId,
@@ -512,8 +514,11 @@ export class RelayHttpMcpClient {
     return searchProjectSources(this.viewer.userId, projectId, parsed)
   }
 
-  async getSourceDetail(projectId: string, sourceId: string) {
-    return getProjectSourceDetail(this.viewer.userId, projectId, sourceId)
+  async getSourceDetail(projectId: string, sourceId: string, args: { chunkId?: unknown; limit?: unknown } = {}) {
+    return getProjectSourceDetail(this.viewer.userId, projectId, sourceId, {
+      chunkId: typeof args.chunkId === "string" ? args.chunkId : undefined,
+      limit: typeof args.limit === "number" ? args.limit : undefined,
+    })
   }
 
   async refreshSource(projectId: string, sourceId: string) {
@@ -528,5 +533,15 @@ export class RelayHttpMcpClient {
       content: args.content,
     })
     return promoteSourceCitation(this.viewer.userId, projectId, sourceId, parsed)
+  }
+
+  async archiveSource(projectId: string, sourceId: string) {
+    await archiveProjectSource(this.viewer.userId, projectId, sourceId)
+    return { ok: true, sourceId, archived: true }
+  }
+
+  async purgeSource(projectId: string, sourceId: string) {
+    await hardDeleteProjectSource(this.viewer.userId, projectId, sourceId)
+    return { ok: true, sourceId, purged: true }
   }
 }

@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
-import { resolveRelayProjectSelection, type RelayProjectResolutionResult } from "@relay/shared"
+import { resolveRelayProjectSelection, sourceLifecycleActions, type RelayProjectResolutionResult } from "@relay/shared"
 import { z } from "zod"
 
 import { isAuthRequiredError, resolveViewer, type Viewer } from "@/server/policies/viewer"
@@ -30,14 +30,14 @@ const MCP_READ_TELEMETRY_SAMPLE_RATE = 0.1
 const lastSweepAt = new Map<string, number>()
 const SOURCES_TOOL_NAME = "sources"
 const sourcesToolShape = {
-  action: z.enum(["list", "discover", "index", "status", "search", "read", "refresh", "promote"]),
+  action: z.enum(sourceLifecycleActions),
   projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
-  sourceId: z.string().optional().describe("Source ID for status, read, refresh, or promote."),
-  chunkId: z.string().optional().describe("Source chunk ID for promote."),
+  sourceId: z.string().optional().describe("Source ID for status, read, refresh, promote, delete, or purge."),
+  chunkId: z.string().optional().describe("Source chunk ID for read or promote."),
   url: z.string().optional().describe("Public https URL to index."),
-  query: z.string().optional().describe("Search or discovery query."),
+  query: z.string().optional().describe("Search query."),
   sourceType: z.enum(["website", "llms_txt", "pdf", "arxiv", "openapi", "package_docs"]).optional(),
-  provider: z.enum(["relay", "context7", "nia"]).optional(),
+  refreshPolicy: z.enum(["manual", "daily", "weekly"]).optional(),
   displayName: z.string().optional(),
   limit: z.number().optional(),
   type: z.enum(["note", "decision", "constraint", "requirement", "task", "artifact"]).optional(),
@@ -174,7 +174,7 @@ function registerHttpTools(
               ? "cached"
               : null
       const readOrWrite =
-        name === SOURCES_TOOL_NAME && ["index", "refresh", "promote"].includes(String(args?.action ?? ""))
+        name === SOURCES_TOOL_NAME && ["index", "refresh", "promote", "delete", "purge"].includes(String(args?.action ?? ""))
           ? "write"
           : writeTools.has(name) ? "write" : "read"
 
@@ -759,7 +759,10 @@ function registerHttpTools(
       }
       if (args.action === "status" || args.action === "read") {
         if (!args.sourceId) throw new Error("sourceId is required for this sources action.")
-        const result = await client.getSourceDetail(pid, args.sourceId)
+        const result = await client.getSourceDetail(pid, args.sourceId, {
+          chunkId: args.action === "read" ? args.chunkId : undefined,
+          limit: args.action === "read" ? args.limit : undefined,
+        })
         return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
       }
       if (args.action === "refresh") {
@@ -772,16 +775,17 @@ function registerHttpTools(
         const result = await client.promoteSourceCitation(pid, args.sourceId, args)
         return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
       }
-      return {
-        content: [{
-          type: "text" as const,
-          text: JSON.stringify({
-            candidates: [],
-            note: "Relay-native v1 indexes public docs/research URLs directly. Provide a public https URL with action:index to add it.",
-            query: args.query ?? null,
-          }, null, 2),
-        }],
+      if (args.action === "delete") {
+        if (!args.sourceId) throw new Error("sourceId is required for sources action:delete.")
+        const result = await client.archiveSource(pid, args.sourceId)
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result }
       }
+      if (args.action === "purge") {
+        if (!args.sourceId) throw new Error("sourceId is required for sources action:purge.")
+        const result = await client.purgeSource(pid, args.sourceId)
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result }
+      }
+      throw new Error("Unsupported sources action.")
     }
   )
 }

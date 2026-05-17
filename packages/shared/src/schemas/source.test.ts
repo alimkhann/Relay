@@ -5,6 +5,7 @@ import {
   createSourceUploadSchema,
   promoteSourceCitationSchema,
   searchProjectSourcesSchema,
+  sourceLifecycleActions,
   sourcesToolSchema,
   sourceKindSchema,
   sourceStatusSchema,
@@ -68,9 +69,14 @@ describe("source schemas", () => {
     }).type).toBe("note")
   })
 
-  it("keeps the MCP sources tool as one compact action schema", () => {
+  it("keeps the MCP sources tool lifecycle-only", () => {
+    expect(sourceLifecycleActions).toEqual(["list", "index", "status", "read", "search", "refresh", "promote", "delete", "purge"])
     expect(sourcesToolSchema.parse({ action: "search", query: "transformer paper", limit: 5 }).action).toBe("search")
     expect(sourcesToolSchema.parse({ action: "index", url: "https://example.com/docs" }).action).toBe("index")
     expect(() => sourcesToolSchema.parse({ action: "search" })).toThrow()
+    expect(() => sourcesToolSchema.parse({ action: "discover", query: "stripe" })).toThrow()
+    expect(() => sourcesToolSchema.parse({ action: "search", query: "stripe", provider: "context7" })).toThrow()
+    expect(() => searchProjectSourcesSchema.parse({ query: "stripe", provider: "nia" })).toThrow()
+    expect(() => createExternalSourceSchema.parse({ url: "https://docs.stripe.com", provider: "context7" })).toThrow()
   })
 })

@@ -10,7 +10,12 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
   const { id, sourceId } = await params
   requireViewerProject(viewer, id, "memory:read")
   if (viewer.mode === "mcp") await consumeMcpReadQuota(viewer.userId)
-  const detail = await getProjectSourceDetail(viewer.userId, id, sourceId)
+  const searchParams = new URL(request.url).searchParams
+  const limit = Number(searchParams.get("limit"))
+  const detail = await getProjectSourceDetail(viewer.userId, id, sourceId, {
+    chunkId: searchParams.get("chunkId") ?? undefined,
+    limit: Number.isFinite(limit) && limit > 0 ? limit : undefined,
+  })
   return NextResponse.json(detail)
 })
 

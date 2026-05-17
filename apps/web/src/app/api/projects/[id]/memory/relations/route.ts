@@ -33,6 +33,8 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
 
   let sourceDetails: SourceDetail[] = [];
   let sourceMemoryLinks: SourceMemoryLinkRow[] = [];
+  let entityDetails: Array<{ id: string; name: string; kind: string; memoryItemIds: string[] }> = [];
+  let entityMemoryLinks: Array<{ entityId: string; memoryItemId: string; confidence: number }> = [];
 
   try {
     const [sources, links] = await Promise.all([
@@ -69,6 +71,34 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
     // Sources tables may not exist yet (migration 0037)
   }
 
+  try {
+    const mentions = await repositories.entities.listMentionsByProject(id);
+    const entities = new Map<string, { id: string; name: string; kind: string; memoryItemIds: Set<string> }>();
+    entityMemoryLinks = mentions.map((mention) => {
+      const entry = entities.get(mention.entityId) ?? {
+        id: mention.entityId,
+        name: mention.entityName,
+        kind: mention.entityKind,
+        memoryItemIds: new Set<string>(),
+      };
+      entry.memoryItemIds.add(mention.memoryItemId);
+      entities.set(mention.entityId, entry);
+      return {
+        entityId: mention.entityId,
+        memoryItemId: mention.memoryItemId,
+        confidence: 0.84,
+      };
+    });
+    entityDetails = Array.from(entities.values()).map((entity) => ({
+      id: entity.id,
+      name: entity.name,
+      kind: entity.kind,
+      memoryItemIds: Array.from(entity.memoryItemIds),
+    }));
+  } catch {
+    // Entity graph tables may not exist yet during migration rollout.
+  }
+
   return NextResponse.json({
     relations: relations.map((relation) => ({
       sourceId: relation.sourceId,
@@ -79,5 +109,7 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
     similarityEdges,
     sources: sourceDetails,
     sourceMemoryLinks,
+    entities: entityDetails,
+    entityMemoryLinks,
   });
 });

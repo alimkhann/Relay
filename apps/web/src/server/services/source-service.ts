@@ -11,7 +11,7 @@ import type {
 import { BadRequestError, ForbiddenError, NotFoundError } from "@/server/http/errors"
 import type { DnsLookup } from "@/server/lib/safe-url"
 import { createMemoryItem } from "./memory-service"
-import { generateEmbeddings, EMBEDDING_MODEL } from "./embedding-service"
+import { generateEmbedding, generateEmbeddings, EMBEDDING_MODEL } from "./embedding-service"
 import { resolveViewerEntitlements, consumeQuota } from "./entitlement-service"
 import {
   buildSourceObjectKey,
@@ -56,17 +56,32 @@ export async function listProjectSources(userId: string, projectId: string): Pro
   const repos = createRepositoryBundle(userId)
   const sources = await repos.sources.listByProject(projectId)
   const sourceIds = sources.map((s) => s.id)
-  const [versionsBySourceId, candidateCountsBySourceId] = await Promise.all([
+  const [versionsBySourceId, candidateCountsBySourceId, memoryCountsBySourceId] = await Promise.all([
     repos.sources.getLatestVersionsBySourceIds(sourceIds),
     repos.sources.countFactCandidatesBySourceIds(sourceIds),
+    repos.sources.countMemoryLinksBySourceIds(sourceIds),
   ])
   return sources.map((source) => {
     const counts = candidateCountsBySourceId.get(source.id) ?? { pending: 0, promoted: 0 }
+    const latestVersion = versionsBySourceId.get(source.id) ?? null
+    const lifecycleMetadata = {
+      ...source.metadata,
+      lastIndexedAt: latestVersion?.createdAt ?? source.createdAt,
+      lastRefreshedAt: source.metadata.lastRefreshedAt ?? null,
+      refreshPolicy: source.metadata.external && typeof source.metadata.external === "object"
+        ? (source.metadata.external as Record<string, unknown>).refreshPolicy ?? "manual"
+        : "manual",
+      contentHash: source.contentHash,
+      staleReason: source.staleReason,
+      derivedMemoryCount: memoryCountsBySourceId.get(source.id) ?? 0,
+    }
     return {
       ...source,
-      latestVersion: versionsBySourceId.get(source.id) ?? null,
+      metadata: lifecycleMetadata,
+      latestVersion,
       pendingCandidates: counts.pending,
       promotedCandidates: counts.promoted,
+      derivedMemoryCount: memoryCountsBySourceId.get(source.id) ?? 0,
     }
   })
 }
@@ -111,7 +126,6 @@ async function ingestExternalSourceText(userId: string, input: {
   url: string
   displayName?: string
   sourceType?: CreateExternalSourceInput["sourceType"]
-  provider?: string
   refreshPolicy?: string
   fetcher?: typeof fetch
   lookup?: DnsLookup
@@ -134,19 +148,31 @@ async function ingestExternalSourceText(userId: string, input: {
   }
 
   const contentHash = sha256Hex(fetched.text)
+  const previousContentHash = existing?.contentHash ?? null
+  const contentChanged = Boolean(input.refresh && existing && previousContentHash && previousContentHash !== contentHash)
+  const nowIso = new Date().toISOString()
+  const existingExternal = existing?.metadata.external && typeof existing.metadata.external === "object"
+    ? existing.metadata.external as Record<string, unknown>
+    : {}
   const metadata = {
+    ...existing?.metadata,
     external: {
+      ...existingExternal,
       kind: "external_docs",
-      provider: input.provider ?? "relay",
+      provider: "relay",
       canonicalUrl,
       sourceType: input.sourceType ?? fetched.metadata.sourceType ?? "website",
-      refreshPolicy: input.refreshPolicy ?? "manual",
+      refreshPolicy: input.refreshPolicy ?? existingExternal.refreshPolicy ?? "manual",
       crawlStats: {
         pages: 1,
         byteSize: fetched.byteSize,
         tokenEstimate: estimateTokens(fetched.text),
       },
     },
+    lastIndexedAt: existing?.metadata.lastIndexedAt ?? nowIso,
+    lastRefreshedAt: input.refresh ? nowIso : existing?.metadata.lastRefreshedAt ?? null,
+    contentHash,
+    staleReason: null,
     extraction: fetched.metadata,
   }
   const source = existing ?? await repos.sources.create(userId, {
@@ -180,7 +206,7 @@ async function ingestExternalSourceText(userId: string, input: {
       },
       metadata: {
         ...chunk.metadata,
-        provider: input.provider ?? "relay",
+        provider: "relay",
         sourceType: metadata.external.sourceType,
       },
     })))
@@ -200,7 +226,15 @@ async function ingestExternalSourceText(userId: string, input: {
       tokenEstimate,
       metadata: fetched.metadata,
     })
-    await repos.sources.updateSourceStatus(source.id, "ready", { metadata })
+    await repos.sources.updateSourceStatus(source.id, "ready", { metadata, contentHash, byteSize: fetched.byteSize, staleReason: null })
+    if (contentChanged) {
+      await repos.sources.markLinkedMemoriesPotentiallyStale(source.id, {
+        sourceVersionId: version.id,
+        previousContentHash,
+        contentHash,
+        changedAt: nowIso,
+      })
+    }
     await embedSourceChunksIfConfigured(userId, chunks)
   } catch (error) {
     const message = error instanceof Error ? error.message : "External source ingestion failed."
@@ -238,10 +272,17 @@ export async function searchProjectSources(userId: string, projectId: string, in
   const entitlements = await resolveViewerEntitlements(userId)
   await consumeQuota(userId, "external_source_search_daily", "day", entitlements.limits.externalSourceSearchesDaily, 1, entitlements.plan)
   const repos = createRepositoryBundle(userId)
+  let queryEmbedding: number[] | undefined
+  try {
+    queryEmbedding = await generateEmbedding(input.query, "RETRIEVAL_QUERY")
+  } catch {
+    queryEmbedding = undefined
+  }
   const results = await repos.sources.searchChunks(projectId, {
     query: input.query,
     sourceId: input.sourceId,
     kinds: input.kinds,
+    queryEmbedding,
     limit: input.limit,
   })
   return {
@@ -261,13 +302,21 @@ export async function searchProjectSources(userId: string, projectId: string, in
   }
 }
 
-export async function getProjectSourceDetail(userId: string, projectId: string, sourceId: string) {
+export async function getProjectSourceDetail(userId: string, projectId: string, sourceId: string, options: { chunkId?: string; limit?: number } = {}) {
   const repos = createRepositoryBundle(userId)
   const source = await repos.sources.getById(sourceId)
   if (!source || source.projectId !== projectId) throw new NotFoundError("Source not found.")
+  if (options.chunkId) {
+    const [latestVersion, chunk] = await Promise.all([
+      repos.sources.getLatestVersion(sourceId),
+      repos.sources.getChunkById(options.chunkId),
+    ])
+    if (!chunk || chunk.sourceId !== sourceId || chunk.projectId !== projectId) throw new NotFoundError("Source chunk not found.")
+    return { source, latestVersion, chunks: [chunk], candidates: [] }
+  }
   const [latestVersion, chunks, candidates] = await Promise.all([
     repos.sources.getLatestVersion(sourceId),
-    repos.sources.listChunks(sourceId, { limit: 20 }),
+    repos.sources.listChunks(sourceId, { limit: Math.min(options.limit ?? 20, 50) }),
     repos.sources.listFactCandidates(sourceId),
   ])
   return { source, latestVersion, chunks, candidates }

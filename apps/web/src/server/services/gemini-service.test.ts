@@ -1,12 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { runGeminiJsonWithFallback } from "./gemini-service"
+import { GEMINI_MODELS, runGeminiJsonWithFallback } from "./gemini-service"
 
 describe("runGeminiJsonWithFallback", () => {
   afterEach(() => {
     delete process.env.GEMINI_API_KEY
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+  })
+
+  it("defaults flash-lite traffic to the stable Gemini 3.1 Flash-Lite model", () => {
+    expect(GEMINI_MODELS.digest.primary).toBe("gemini-3.1-flash-lite")
+    expect(GEMINI_MODELS.adjudication.primary).toBe("gemini-3.1-flash-lite")
+    expect(JSON.stringify(GEMINI_MODELS)).not.toContain("gemini-3.1-flash-lite-preview")
   })
 
   it("falls back when the primary model fails during countTokens", async () => {
@@ -17,12 +23,6 @@ describe("runGeminiJsonWithFallback", () => {
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ error: { message: "Primary model unavailable." } }), {
           status: 404,
-          headers: { "content-type": "application/json" }
-        })
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ totalTokens: 18 }), {
-          status: 200,
           headers: { "content-type": "application/json" }
         })
       )
@@ -62,7 +62,9 @@ describe("runGeminiJsonWithFallback", () => {
 
     expect(result.actualModel).toBe("gemini-2.5-flash-lite")
     expect(result.fallbackUsed).toBe(true)
-    expect(fetchMock).toHaveBeenCalledTimes(3)
-    expect(fetchMock.mock.calls[0]?.[0]).toContain("key=test-key")
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      headers: expect.objectContaining({ "x-goog-api-key": "test-key" }),
+    })
   })
 })

@@ -24,13 +24,14 @@ export const RELATION_COLORS = {
   supersedes: "#ef4444",
   extends: "#3b82f6",
   derives: "#8b5cf6",
+  mentions: "#14b8a6",
   similar: "#71717a",
 } as const;
 
 export type GraphRelationType = keyof typeof RELATION_COLORS;
 
 export type HubRole = "root" | "type-hub";
-export type GraphNodeKind = "hub" | "memory" | "source-file";
+export type GraphNodeKind = "hub" | "memory" | "source-file" | "entity";
 
 export interface GraphNode {
   id: string;
@@ -61,6 +62,12 @@ export interface GraphNode {
     tokenEstimate: number;
     previewText: string;
   };
+  entity?: {
+    id: string;
+    name: string;
+    kind: string;
+    memoryItemIds: string[];
+  };
   x?: number;
   y?: number;
   fx?: number;
@@ -75,6 +82,7 @@ export interface GraphLink {
   fallback?: boolean;
   hubLink?: "root-to-hub" | "hub-to-item";
   sourceLink?: boolean;
+  entityLink?: boolean;
 }
 
 export interface GraphData {
@@ -128,6 +136,8 @@ export interface RelationsResponse {
   similarityEdges: SimilarityEdgeDto[];
   sources?: SourceGraphDto[];
   sourceMemoryLinks?: SourceMemoryLinkDto[];
+  entities?: EntityGraphDto[];
+  entityMemoryLinks?: EntityMemoryLinkDto[];
 }
 
 export interface SourceGraphDto {
@@ -151,6 +161,19 @@ export interface SourceMemoryLinkDto {
   confidence: number;
 }
 
+export interface EntityGraphDto {
+  id: string;
+  name: string;
+  kind: string;
+  memoryItemIds: string[];
+}
+
+export interface EntityMemoryLinkDto {
+  entityId: string;
+  memoryItemId: string;
+  confidence: number;
+}
+
 function truncateLabel(value: string, maxLength = 44) {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxLength) return normalized;
@@ -160,6 +183,7 @@ function truncateLabel(value: string, maxLength = 44) {
 const HUB_NODE_PREFIX = "__hub__";
 const ROOT_NODE_ID = "__root__";
 const SOURCE_NODE_PREFIX = "__source__";
+const ENTITY_NODE_PREFIX = "__entity__";
 
 export function isHubNode(node: GraphNode) {
   return Boolean(node.hub) || node.id === ROOT_NODE_ID || node.id.startsWith(HUB_NODE_PREFIX);
@@ -225,8 +249,32 @@ function makeSourceNode(source: SourceGraphDto): GraphNode {
   };
 }
 
+function makeEntityNode(entity: EntityGraphDto): GraphNode {
+  return {
+    id: entityNodeId(entity.id),
+    label: truncateLabel(entity.name, 30),
+    type: "note" as MemoryItemType,
+    kind: "entity",
+    decayScore: 0.82,
+    pinned: false,
+    archived: false,
+    sourceSurface: null,
+    sourceUrl: null,
+    content: `${entity.kind}: ${entity.name}`,
+    title: entity.name,
+    updatedAt: new Date().toISOString(),
+    capturedAt: null,
+    lastReaffirmedAt: null,
+    entity,
+  };
+}
+
 function sourceNodeId(sourceId: string) {
   return `${SOURCE_NODE_PREFIX}${sourceId}`;
+}
+
+function entityNodeId(entityId: string) {
+  return `${ENTITY_NODE_PREFIX}${entityId}`;
 }
 
 export function buildGraphNodes(
@@ -234,6 +282,7 @@ export function buildGraphNodes(
   archivedIds?: Set<string>,
   projectName?: string,
   sources: SourceGraphDto[] = [],
+  entities: EntityGraphDto[] = [],
 ): GraphNode[] {
   const itemNodes = items.map((item) => ({
     id: item.id,
@@ -257,7 +306,7 @@ export function buildGraphNodes(
   const hubNodes = Array.from(presentTypes).map(makeHubNode);
   const rootNode = makeRootNode(projectName ?? "Project");
 
-  return [rootNode, ...hubNodes, ...sources.map(makeSourceNode), ...itemNodes];
+  return [rootNode, ...hubNodes, ...sources.map(makeSourceNode), ...entities.map(makeEntityNode), ...itemNodes];
 }
 
 function endpointId(endpoint: string | GraphNode) {
@@ -273,11 +322,13 @@ export function buildGraphLinks(
   relations: RelationDto[],
   similarityEdges: SimilarityEdgeDto[],
   sourceMemoryLinks: SourceMemoryLinkDto[] = [],
+  entityMemoryLinks: EntityMemoryLinkDto[] = [],
 ): GraphLink[] {
   const nodeIds = new Set(nodes.map((node) => node.id));
   const links: GraphLink[] = [];
   const seen = new Set<string>();
   const sourceLinkedMemoryIds = new Set(sourceMemoryLinks.map((link) => link.memoryItemId));
+  const entityLinkedMemoryIds = new Set(entityMemoryLinks.map((link) => link.memoryItemId));
 
   const itemNodes = nodes.filter((n) => n.kind === "memory");
   const hubNodes = nodes.filter((n) => n.hub === "type-hub");
@@ -295,7 +346,7 @@ export function buildGraphLinks(
     seen.add(linkKey(ROOT_NODE_ID, hub.id, "extends"));
 
     for (const item of itemNodes) {
-      if (item.type === hub.type && !sourceLinkedMemoryIds.has(item.id)) {
+      if (item.type === hub.type && !sourceLinkedMemoryIds.has(item.id) && !entityLinkedMemoryIds.has(item.id)) {
         const key = linkKey(hub.id, item.id, "extends");
         links.push({
           source: hub.id,
@@ -333,6 +384,21 @@ export function buildGraphLinks(
       relationType: "derives",
       confidence: sourceLink.confidence,
       sourceLink: true,
+    });
+    seen.add(key);
+  }
+
+  for (const entityLink of entityMemoryLinks) {
+    const sourceId = entityNodeId(entityLink.entityId);
+    if (!nodeIds.has(sourceId) || !nodeIds.has(entityLink.memoryItemId)) continue;
+    const key = linkKey(sourceId, entityLink.memoryItemId, "mentions");
+    if (seen.has(key)) continue;
+    links.push({
+      source: sourceId,
+      target: entityLink.memoryItemId,
+      relationType: "mentions",
+      confidence: entityLink.confidence,
+      entityLink: true,
     });
     seen.add(key);
   }

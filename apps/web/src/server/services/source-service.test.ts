@@ -4,11 +4,15 @@ const {
   consumeQuotaMock,
   createRepositoryBundleMock,
   createMemoryItemMock,
+  generateEmbeddingMock,
+  generateEmbeddingsMock,
   resolveViewerEntitlementsMock,
 } = vi.hoisted(() => ({
   consumeQuotaMock: vi.fn(),
   createRepositoryBundleMock: vi.fn(),
   createMemoryItemMock: vi.fn(),
+  generateEmbeddingMock: vi.fn(),
+  generateEmbeddingsMock: vi.fn(),
   resolveViewerEntitlementsMock: vi.fn(),
 }))
 
@@ -18,6 +22,12 @@ vi.mock("@relay/db", () => ({
 
 vi.mock("./memory-service", () => ({
   createMemoryItem: createMemoryItemMock,
+}))
+
+vi.mock("./embedding-service", () => ({
+  EMBEDDING_MODEL: "text-embedding-004:rd",
+  generateEmbedding: generateEmbeddingMock,
+  generateEmbeddings: generateEmbeddingsMock,
 }))
 
 vi.mock("./entitlement-service", () => ({
@@ -30,6 +40,7 @@ import {
   hardDeleteProjectSource,
   promoteSourceCitation,
   promoteHighConfidenceSourceFacts,
+  refreshExternalSource,
   searchProjectSources,
 } from "./source-service"
 
@@ -37,8 +48,12 @@ describe("source-service", () => {
   beforeEach(() => {
     createRepositoryBundleMock.mockReset()
     createMemoryItemMock.mockReset()
+    generateEmbeddingMock.mockReset()
+    generateEmbeddingsMock.mockReset()
     consumeQuotaMock.mockReset()
     resolveViewerEntitlementsMock.mockReset()
+    generateEmbeddingMock.mockResolvedValue([0.1, 0.2, 0.3])
+    generateEmbeddingsMock.mockResolvedValue([[0.1, 0.2, 0.3]])
     resolveViewerEntitlementsMock.mockResolvedValue({
       plan: "starter",
       limits: {
@@ -151,7 +166,6 @@ describe("source-service", () => {
       projectId: "project-1",
       url: "https://example.com/research",
       displayName: "Paper",
-      provider: "relay",
       kind: "external_docs",
       refreshPolicy: "manual",
       fetcher: async () => new Response("External research source content.", { headers: { "content-type": "text/plain" } }),
@@ -177,7 +191,11 @@ describe("source-service", () => {
     const result = await searchProjectSources("user-1", "project-1", { query: "research", limit: 5 })
 
     expect(result.results).toHaveLength(1)
-    expect(searchChunks).toHaveBeenCalledWith("project-1", expect.objectContaining({ query: "research", limit: 5 }))
+    expect(searchChunks).toHaveBeenCalledWith("project-1", expect.objectContaining({
+      query: "research",
+      limit: 5,
+      queryEmbedding: [0.1, 0.2, 0.3],
+    }))
     expect(consumeQuotaMock).toHaveBeenCalledWith("user-1", "external_source_search_daily", "day", 50, 1, "starter")
   })
 
@@ -194,6 +212,51 @@ describe("source-service", () => {
       /Archive the source before deleting it permanently/,
     )
     expect(hardDelete).not.toHaveBeenCalled()
+  })
+
+  it("marks linked promoted memories potentially stale after changed refresh content", async () => {
+    const source = {
+      id: "source-1",
+      projectId: "project-1",
+      kind: "external_docs",
+      status: "ready",
+      displayName: "Docs",
+      sourceUri: "https://example.com/docs",
+      contentHash: "old-hash",
+      metadata: { external: { refreshPolicy: "manual" } },
+    }
+    const version = { id: "version-2" }
+    const markLinkedMemoriesPotentiallyStale = vi.fn()
+    const repos = {
+      sources: {
+        countExternalByProject: vi.fn().mockResolvedValue(0),
+        sumStorageBytesByUser: vi.fn().mockResolvedValue(0),
+        getById: vi.fn().mockResolvedValue(source),
+        createVersion: vi.fn().mockResolvedValue(version),
+        createChunks: vi.fn().mockResolvedValue([{ id: "chunk-1", content: "Changed docs content.", sourceId: "source-1", versionId: "version-2" }]),
+        markVersionReady: vi.fn(),
+        updateSourceStatus: vi.fn(),
+        getLatestVersion: vi.fn().mockResolvedValue(version),
+        listChunks: vi.fn().mockResolvedValue([]),
+        listFactCandidates: vi.fn().mockResolvedValue([]),
+        markLinkedMemoriesPotentiallyStale,
+      },
+    }
+    createRepositoryBundleMock.mockReturnValue(repos)
+
+    await refreshExternalSource("user-1", "project-1", "source-1", {
+      fetcher: async () => new Response("Changed docs content.", { headers: { "content-type": "text/plain" } }),
+      lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    })
+
+    expect(markLinkedMemoriesPotentiallyStale).toHaveBeenCalledWith("source-1", expect.objectContaining({
+      sourceVersionId: "version-2",
+      previousContentHash: "old-hash",
+    }))
+    expect(repos.sources.updateSourceStatus).toHaveBeenCalledWith("source-1", "ready", expect.objectContaining({
+      contentHash: expect.any(String),
+      staleReason: null,
+    }))
   })
 
   it("hard-deletes an archived source (cascade row removal)", async () => {

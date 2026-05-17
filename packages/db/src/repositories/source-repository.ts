@@ -66,6 +66,7 @@ export interface SourceChunkSearchOptions {
   query: string
   sourceId?: string
   kinds?: ProjectSourceKind[]
+  queryEmbedding?: number[]
   limit?: number
 }
 
@@ -179,12 +180,14 @@ export class SourceRepository {
     return rows[0] ? toSourceVersionRow(rows[0] as Record<string, unknown>) : null
   }
 
-  async updateSourceStatus(sourceId: string, status: ProjectSourceStatus, patch: { staleReason?: string | null; metadata?: Record<string, unknown> } = {}): Promise<ProjectSourceRow> {
+  async updateSourceStatus(sourceId: string, status: ProjectSourceStatus, patch: { staleReason?: string | null; metadata?: Record<string, unknown>; contentHash?: string | null; byteSize?: number } = {}): Promise<ProjectSourceRow> {
     const rows = await this.provider.query(
       `update project_sources
        set status = $2,
            stale_reason = case when $3::boolean then $4 else stale_reason end,
            metadata = coalesce($5::jsonb, metadata),
+           content_hash = case when $6::boolean then $7 else content_hash end,
+           byte_size = case when $8::boolean then $9 else byte_size end,
            archived_at = case when $2 = 'archived' then coalesce(archived_at, now()) else archived_at end,
            updated_at = now()
        where id = $1
@@ -195,6 +198,10 @@ export class SourceRepository {
         Object.prototype.hasOwnProperty.call(patch, "staleReason"),
         patch.staleReason ?? null,
         patch.metadata ? JSON.stringify(patch.metadata) : null,
+        Object.prototype.hasOwnProperty.call(patch, "contentHash"),
+        patch.contentHash ?? null,
+        Object.prototype.hasOwnProperty.call(patch, "byteSize"),
+        patch.byteSize ?? null,
       ],
     )
     return toProjectSourceRow(rows[0] as Record<string, unknown>)
@@ -317,7 +324,6 @@ export class SourceRepository {
     const filters = [
       "s.project_id = $1",
       "s.status = 'ready'",
-      "c.search_vector @@ websearch_to_tsquery('english', $2)",
     ]
     if (options.sourceId) {
       params.push(options.sourceId)
@@ -327,27 +333,54 @@ export class SourceRepository {
       params.push(options.kinds)
       filters.push(`s.kind = ANY($${params.length}::text[])`)
     }
+    let vectorExpr = "0::double precision"
+    let matchFilter = "lexical_score > 0"
+    if (options.queryEmbedding?.length) {
+      params.push(JSON.stringify(options.queryEmbedding))
+      const embeddingParam = params.length
+      vectorExpr = `case when embedding is not null then 1 - (embedding <=> $${embeddingParam}::vector) else 0 end`
+      matchFilter = `(lexical_score > 0 or ${vectorExpr} >= 0.45)`
+    }
+
     params.push(options.limit ?? 10)
     const limitParam = params.length
     const rows = await this.provider.query(
-      `select
-         s.id as source_id,
-         s.kind as source_kind,
-         s.display_name as source_title,
-         s.source_uri as source_url,
-         s.metadata as source_metadata,
-         c.id as chunk_id,
-         c.version_id,
-         c.content,
-         c.locator,
-         c.metadata,
-         ts_rank_cd(c.search_vector, websearch_to_tsquery('english', $2)) as score,
-         v.created_at as indexed_at
-       from source_chunks c
-       join project_sources s on s.id = c.source_id
-       left join source_versions v on v.id = c.version_id
-       where ${filters.join("\n         and ")}
-       order by score desc, c.chunk_index asc
+      `with base as (
+         select
+           s.id as source_id,
+           s.kind as source_kind,
+           s.display_name as source_title,
+           s.source_uri as source_url,
+           s.metadata as source_metadata,
+           c.id as chunk_id,
+           c.version_id,
+           c.content,
+           c.locator,
+           c.metadata,
+           c.embedding,
+           c.chunk_index,
+           ts_rank_cd(c.search_vector, websearch_to_tsquery('english', $2)) as lexical_score,
+           v.created_at as indexed_at
+         from source_chunks c
+         join project_sources s on s.id = c.source_id
+         left join source_versions v on v.id = c.version_id
+       ),
+       ranked as (
+         select *,
+           ${vectorExpr} as vector_score,
+           case
+             when lower(source_title) = lower($2) then 0.2
+             when lower(source_title) like '%' || lower($2) || '%' then 0.1
+             else 0
+           end as title_boost
+         from base
+         where ${filters.join("\n           and ")}
+       )
+       select *,
+         greatest(lexical_score, vector_score) + title_boost as score
+       from ranked
+       where ${matchFilter}
+       order by score desc, chunk_index asc
        limit $${limitParam}`,
       params,
     )
@@ -472,6 +505,47 @@ export class SourceRepository {
       memoryItemId: String((row as Record<string, unknown>).memory_item_id),
       confidence: Number((row as Record<string, unknown>).confidence ?? 1),
     }))
+  }
+
+  async countMemoryLinksBySourceIds(sourceIds: string[]): Promise<Map<string, number>> {
+    if (sourceIds.length === 0) return new Map()
+    const rows = await this.provider.query<{ source_id: string; count: number }>(
+      `select source_id, count(*)::int as count
+       from source_memory_links
+       where source_id = ANY($1::uuid[])
+       group by source_id`,
+      [sourceIds],
+    )
+    const map = new Map<string, number>()
+    for (const row of rows) {
+      map.set(String((row as Record<string, unknown>).source_id), Number((row as Record<string, unknown>).count ?? 0))
+    }
+    return map
+  }
+
+  async markLinkedMemoriesPotentiallyStale(sourceId: string, input: {
+    sourceVersionId: string
+    previousContentHash: string | null
+    contentHash: string
+    changedAt: string
+  }): Promise<void> {
+    await this.provider.query(
+      `update memory_items m
+       set metadata = coalesce(m.metadata, '{}'::jsonb) || jsonb_build_object(
+             'potentially_stale', true,
+             'staleReason', 'source_content_changed',
+             'staleSourceId', $1::text,
+             'staleSourceVersionId', $2::text,
+             'previousSourceContentHash', $3::text,
+             'sourceContentHash', $4::text,
+             'sourceChangedAt', $5::text
+           ),
+           updated_at = now()
+       from source_memory_links l
+       where l.memory_item_id = m.id
+         and l.source_id = $1`,
+      [sourceId, input.sourceVersionId, input.previousContentHash, input.contentHash, input.changedAt],
+    )
   }
 
   async countByProject(projectId: string): Promise<number> {

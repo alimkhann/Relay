@@ -200,7 +200,6 @@ If returned context is stale, completed, contradicted, or superseded, clean it u
     "sources",
     `External source tool for Relay docs and research sources. Actions:
 - list: list indexed project sources
-- discover: return source discovery guidance for a query
 - index: index a public docs/research URL
 - status/read: inspect a source and its chunks
 - search: explicitly search indexed sources with citations

@@ -38,23 +38,41 @@ describe("SourceRepository external source helpers", () => {
     expect(calls[0]!.values).toEqual(["project-1", "https://example.com/docs"])
   })
 
-  it("searches ready source chunks with websearch_to_tsquery and optional kind filters", async () => {
+  it("searches ready source chunks with hybrid vector and lexical ranking when embeddings are available", async () => {
     const { provider, calls } = makeFakeProvider([])
     const repo = new SourceRepository(provider)
 
     await repo.searchChunks("project-1", {
       query: "attention mechanisms",
       kinds: ["external_docs"],
+      queryEmbedding: [0.1, 0.2, 0.3],
       limit: 7,
     })
 
     const sql = calls[0]!.text
     expect(sql).toContain("websearch_to_tsquery")
+    expect(sql).toContain("embedding <=>")
     expect(sql).toContain("s.kind = ANY")
     expect(sql).toContain("s.status = 'ready'")
     expect(calls[0]!.values).toContain("attention mechanisms")
     expect(calls[0]!.values).toContainEqual(["external_docs"])
     expect(calls[0]!.values).toContain(7)
+  })
+
+  it("marks linked promoted memories stale when a source changes", async () => {
+    const { provider, calls } = makeFakeProvider([])
+    const repo = new SourceRepository(provider)
+
+    await repo.markLinkedMemoriesPotentiallyStale("source-1", {
+      sourceVersionId: "version-2",
+      previousContentHash: "old",
+      contentHash: "new",
+      changedAt: "2026-05-18T00:00:00.000Z",
+    })
+
+    expect(calls[0]!.text).toContain("source_memory_links")
+    expect(calls[0]!.text).toContain("'potentially_stale', true")
+    expect(calls[0]!.values).toEqual(["source-1", "version-2", "old", "new", "2026-05-18T00:00:00.000Z"])
   })
 
   it("counts external sources separately from uploaded files", async () => {

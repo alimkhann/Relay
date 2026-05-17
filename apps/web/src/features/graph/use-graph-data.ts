@@ -100,6 +100,8 @@ export function useGraphData(projectId: string, memoryItems: MemoryItemDto[], pr
             similarityEdges: Array.isArray(relationsPayload.similarityEdges) ? relationsPayload.similarityEdges : [],
             sources: Array.isArray(relationsPayload.sources) ? relationsPayload.sources : [],
             sourceMemoryLinks: Array.isArray(relationsPayload.sourceMemoryLinks) ? relationsPayload.sourceMemoryLinks : [],
+            entities: Array.isArray(relationsPayload.entities) ? relationsPayload.entities : [],
+            entityMemoryLinks: Array.isArray(relationsPayload.entityMemoryLinks) ? relationsPayload.entityMemoryLinks : [],
           });
           setArchivedItems(
             Array.isArray(archivedPayload.memory)
@@ -128,7 +130,7 @@ export function useGraphData(projectId: string, memoryItems: MemoryItemDto[], pr
     const deduped = archivedItems.filter((i) => !activeIds.has(i.id));
     const archivedIds = new Set(deduped.map((i) => i.id));
     const allItems = [...memoryItems, ...deduped];
-    const nodes = buildGraphNodes(allItems, archivedIds, projectName, relationsData.sources ?? []);
+    const nodes = buildGraphNodes(allItems, archivedIds, projectName, relationsData.sources ?? [], relationsData.entities ?? []);
     return {
       nodes,
       links: buildGraphLinks(
@@ -136,6 +138,7 @@ export function useGraphData(projectId: string, memoryItems: MemoryItemDto[], pr
         relationsData.relations,
         relationsData.similarityEdges,
         relationsData.sourceMemoryLinks ?? [],
+        relationsData.entityMemoryLinks ?? [],
       ),
     };
   }, [memoryItems, archivedItems, relationsData, projectName]);

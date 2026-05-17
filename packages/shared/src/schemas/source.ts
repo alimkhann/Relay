@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+export const sourceLifecycleActions = ["list", "index", "status", "read", "search", "refresh", "promote", "delete", "purge"] as const
+
 export const sourceKindSchema = z.enum(["uploaded_file", "repo_file", "external_docs", "package_docs"])
 export const sourceStatusSchema = z.enum(["pending_upload", "processing", "ready", "failed", "archived", "stale"])
 export const sourceVersionStatusSchema = z.enum(["pending_upload", "processing", "ready", "failed"])
@@ -62,10 +64,9 @@ export const createExternalSourceSchema = z.object({
   url: z.string().trim().url().refine(isPublicHttpUrl, "External sources require a public https URL."),
   displayName: z.string().trim().min(1).max(255).optional(),
   sourceType: externalSourceTypeSchema.optional(),
-  provider: z.enum(["relay", "context7", "nia"]).default("relay"),
   kind: sourceKindSchema.default("external_docs"),
   refreshPolicy: z.enum(["manual", "daily", "weekly"]).default("manual"),
-}).refine((value) => value.kind === "external_docs" || value.kind === "package_docs", {
+}).strict().refine((value) => value.kind === "external_docs" || value.kind === "package_docs", {
   message: "External source kind must be external_docs or package_docs.",
   path: ["kind"],
 })
@@ -75,16 +76,16 @@ export const searchProjectSourcesSchema = z.object({
   sourceId: z.string().uuid().optional(),
   kinds: z.array(sourceKindSchema).max(4).optional(),
   limit: z.number().int().positive().max(50).default(10),
-})
+}).strict()
 
 export const promoteSourceCitationSchema = z.object({
   chunkId: z.string().uuid(),
   type: sourceMemoryTypeSchema.default("note"),
   title: z.string().trim().min(1).max(120).optional(),
   content: z.string().trim().min(1).max(4_000),
-})
+}).strict()
 
-export const sourcesToolActionSchema = z.enum(["list", "discover", "index", "status", "search", "read", "refresh", "promote"])
+export const sourcesToolActionSchema = z.enum(sourceLifecycleActions)
 
 export const sourcesToolShape = {
   action: sourcesToolActionSchema,
@@ -94,7 +95,7 @@ export const sourcesToolShape = {
   url: z.string().trim().url().optional(),
   query: z.string().trim().min(1).max(500).optional(),
   sourceType: externalSourceTypeSchema.optional(),
-  provider: z.enum(["relay", "context7", "nia"]).optional(),
+  refreshPolicy: z.enum(["manual", "daily", "weekly"]).optional(),
   displayName: z.string().trim().min(1).max(255).optional(),
   limit: z.number().int().positive().max(50).optional(),
   type: sourceMemoryTypeSchema.optional(),
@@ -103,13 +104,13 @@ export const sourcesToolShape = {
 }
 
 export const sourcesToolSchema = z.object(sourcesToolShape).superRefine((value, ctx) => {
-  if (["search", "discover"].includes(value.action) && !value.query) {
+  if (value.action === "search" && !value.query) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "query is required for this source action.", path: ["query"] })
   }
   if (value.action === "index" && !value.url) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "url is required for index.", path: ["url"] })
   }
-  if (["status", "read", "refresh"].includes(value.action) && !value.sourceId) {
+  if (["status", "read", "refresh", "delete", "purge"].includes(value.action) && !value.sourceId) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "sourceId is required for this source action.", path: ["sourceId"] })
   }
   if (value.action === "promote") {
@@ -117,7 +118,7 @@ export const sourcesToolSchema = z.object(sourcesToolShape).superRefine((value, 
     if (!value.chunkId) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "chunkId is required for promote.", path: ["chunkId"] })
     if (!value.content) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "content is required for promote.", path: ["content"] })
   }
-})
+}).strict()
 
 export const updateSourceSchema = z.object({
   displayName: z.string().trim().min(1).max(255).optional(),

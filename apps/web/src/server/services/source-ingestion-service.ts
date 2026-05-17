@@ -56,6 +56,41 @@ export function getSourceFileExtension(fileName: string) {
   return part && part !== clean ? part.replace(/[^a-z0-9]/g, "") : ""
 }
 
+export interface ManifestDependency {
+  name: string
+  versionRange: string
+  section: "dependencies" | "devDependencies" | "peerDependencies" | "optionalDependencies"
+}
+
+export function extractManifestDependencies(fileName: string, contents: string): { dependencies: ManifestDependency[]; unresolved: string[] } {
+  if (!fileName.toLowerCase().endsWith("package.json")) {
+    throw new BadRequestError("Only package.json manifests are supported for dependency extraction in v1.")
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(contents)
+  } catch {
+    throw new BadRequestError("Invalid package.json manifest.")
+  }
+  const manifest = parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {}
+  const sections: ManifestDependency["section"][] = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]
+  const seen = new Set<string>()
+  const dependencies: ManifestDependency[] = []
+  for (const section of sections) {
+    const raw = manifest[section]
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue
+    for (const [name, versionRange] of Object.entries(raw as Record<string, unknown>)) {
+      if (seen.has(name) || typeof versionRange !== "string") continue
+      seen.add(name)
+      dependencies.push({ name, versionRange, section })
+    }
+  }
+  return {
+    dependencies,
+    unresolved: dependencies.map((dependency) => dependency.name),
+  }
+}
+
 // Synchronous structural normalize (no DNS). The authoritative SSRF guard is
 // the async assertPublicHttpsUrl resolution applied in fetchExternalSourceText.
 export function normalizeExternalSourceUrl(value: string) {

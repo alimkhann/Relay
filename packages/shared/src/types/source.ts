@@ -95,6 +95,7 @@ export interface ProjectSourceDto {
   latestVersion?: SourceVersionRow | null
   pendingCandidates?: number
   promotedCandidates?: number
+  derivedMemoryCount?: number
 }
 
 export interface SourceSearchResultDto {
