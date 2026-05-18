@@ -19,6 +19,12 @@ You have access to Relay, a project memory system that keeps context synchronize
 - For coding work, save the facts a future agent needs to continue: files/modules touched, public API or schema changes, migrations, commands/tests run with outcomes, unresolved blockers, and exact small snippets only when the exact text matters.
 - If Relay context looks stale or wrong, inspect it before mutating with \`recall\` filters, includes, memoryId, or tracePhrase.
 
+### Source Retrieval
+- Use \`sources\` first for project-governed docs and repository sources already indexed in Relay.
+- Use \`sources\` action \`resolve\` to find evidence-backed project/global/package/URL candidates. If Relay cannot resolve a source and Context7 or Nia MCP tools are available in the client, call those external tools directly instead of asking Relay to fake an adapter.
+- After using Context7, Nia, or another external docs tool, call \`sources\` action \`import\` only for citations that are useful to keep in this project. Imported citations are source evidence, not durable memory.
+- Promote a source citation into Relay memory only when the user wants the fact to persist beyond the source itself. Refresh can later mark promoted memories potentially stale when their evidence changes.
+
 ### At Session End
 - Use \`save\` action \`checkpoint\` only at meaningful boundaries: before compaction-equivalent actions, before switching tasks, or after finishing a logical milestone.
 - Use \`save\` action \`save_session\` when wrapping a meaningful unit of work, not after every turn.

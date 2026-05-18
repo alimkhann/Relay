@@ -124,6 +124,7 @@ export default function McpDocsPage() {
             {[
               { name: "get_brief", desc: "Load current project context and recent decisions" },
               { name: "recall", desc: "Search memory, inspect state, trace sources, and list continuity data" },
+              { name: "sources", desc: "Resolve, index, search, read, refresh, import, promote, delete, and purge project sources" },
               { name: "save", desc: "Save sessions, checkpoint work, add memory, archive stale memory, and update state" },
               { name: "list_projects", desc: "List all Relay projects" },
               { name: "set_current_project", desc: "Pin the active Relay project for the current MCP session" },

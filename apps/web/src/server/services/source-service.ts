@@ -1,6 +1,11 @@
 import { createRepositoryBundle } from "@relay/db"
+import type { SourceChunkSearchResult } from "@relay/db"
 import type {
+  ContextPackProjectSourcesInput,
   CreateExternalSourceInput,
+  ExploreProjectSourcesInput,
+  GrepProjectSourcesInput,
+  ImportSourceCitationsInput,
   PromoteSourceCitationInput,
   ProjectSourceDto,
   SearchProjectSourcesInput,
@@ -11,7 +16,7 @@ import type {
 import { BadRequestError, ForbiddenError, NotFoundError } from "@/server/http/errors"
 import type { DnsLookup } from "@/server/lib/safe-url"
 import { createMemoryItem } from "./memory-service"
-import { generateEmbeddings, EMBEDDING_MODEL } from "./embedding-service"
+import { generateEmbedding, generateEmbeddings, EMBEDDING_MODEL } from "./embedding-service"
 import { resolveViewerEntitlements, consumeQuota } from "./entitlement-service"
 import {
   buildSourceObjectKey,
@@ -21,6 +26,7 @@ import {
 } from "./source-storage-service"
 import {
   chunkExtractedText,
+  classifyExternalSourceUrl,
   estimateTokens,
   extractFactCandidatesFromChunks,
   extractTextFromSourceBuffer,
@@ -30,6 +36,7 @@ import {
   sha256Hex,
   validateSourceFile,
 } from "./source-ingestion-service"
+import { crawlExternalSourcePages, type CrawledSourcePage } from "./source-crawl-service"
 
 const AUTO_PROMOTE_CONFIDENCE = 0.9
 
@@ -56,17 +63,32 @@ export async function listProjectSources(userId: string, projectId: string): Pro
   const repos = createRepositoryBundle(userId)
   const sources = await repos.sources.listByProject(projectId)
   const sourceIds = sources.map((s) => s.id)
-  const [versionsBySourceId, candidateCountsBySourceId] = await Promise.all([
+  const [versionsBySourceId, candidateCountsBySourceId, memoryCountsBySourceId] = await Promise.all([
     repos.sources.getLatestVersionsBySourceIds(sourceIds),
     repos.sources.countFactCandidatesBySourceIds(sourceIds),
+    repos.sources.countMemoryLinksBySourceIds(sourceIds),
   ])
   return sources.map((source) => {
     const counts = candidateCountsBySourceId.get(source.id) ?? { pending: 0, promoted: 0 }
+    const latestVersion = versionsBySourceId.get(source.id) ?? null
+    const lifecycleMetadata = {
+      ...source.metadata,
+      lastIndexedAt: latestVersion?.createdAt ?? source.createdAt,
+      lastRefreshedAt: source.metadata.lastRefreshedAt ?? null,
+      refreshPolicy: source.metadata.external && typeof source.metadata.external === "object"
+        ? (source.metadata.external as Record<string, unknown>).refreshPolicy ?? "manual"
+        : "manual",
+      contentHash: source.contentHash,
+      staleReason: source.staleReason,
+      derivedMemoryCount: memoryCountsBySourceId.get(source.id) ?? 0,
+    }
     return {
       ...source,
-      latestVersion: versionsBySourceId.get(source.id) ?? null,
+      metadata: lifecycleMetadata,
+      latestVersion,
       pendingCandidates: counts.pending,
       promotedCandidates: counts.promoted,
+      derivedMemoryCount: memoryCountsBySourceId.get(source.id) ?? 0,
     }
   })
 }
@@ -111,7 +133,6 @@ async function ingestExternalSourceText(userId: string, input: {
   url: string
   displayName?: string
   sourceType?: CreateExternalSourceInput["sourceType"]
-  provider?: string
   refreshPolicy?: string
   fetcher?: typeof fetch
   lookup?: DnsLookup
@@ -120,7 +141,44 @@ async function ingestExternalSourceText(userId: string, input: {
 }) {
   const entitlements = await resolveViewerEntitlements(userId)
   await assertExternalSourceIndexQuota(userId, input.projectId, entitlements, input.refresh === true)
-  const fetched = await fetchExternalSourceText(input.url, { fetcher: input.fetcher, lookup: input.lookup })
+  const classifiedType = classifyExternalSourceUrl(input.url)
+  let crawledPages: CrawledSourcePage[]
+  if (classifiedType === "pdf" || classifiedType === "arxiv") {
+    const single = await fetchExternalSourceText(input.url, { fetcher: input.fetcher, lookup: input.lookup })
+    crawledPages = [{
+      url: single.canonicalUrl,
+      canonicalUrl: single.canonicalUrl,
+      title: single.displayName,
+      headingPath: [single.displayName],
+      content: single.text,
+      contentHash: sha256Hex(single.text),
+      contentType: single.mimeType,
+      etag: null,
+      lastModified: null,
+      metadata: single.metadata,
+    }]
+  } else {
+    crawledPages = await crawlExternalSourcePages(input.url, {
+      fetcher: input.fetcher,
+      lookup: input.lookup,
+      maxPages: entitlements.limits.externalSourcePagesPerSource,
+    })
+  }
+  if (crawledPages.length === 0) throw new BadRequestError("Relay could not extract text from this external source.")
+  const combinedText = crawledPages.map((page) => `# ${page.title ?? page.url}\n\n${page.content}`).join("\n\n---\n\n")
+  const firstPage = crawledPages[0]!
+  const fetched = {
+    text: combinedText,
+    canonicalUrl: firstPage.canonicalUrl,
+    displayName: firstPage.title ?? new URL(firstPage.url).hostname,
+    mimeType: firstPage.contentType,
+    byteSize: Buffer.byteLength(combinedText, "utf8"),
+    metadata: {
+      sourceType: input.sourceType ?? classifiedType,
+      fetcher: "relay-native-crawl-v1",
+      pages: crawledPages.length,
+    },
+  }
   await assertExternalSourceStorage(userId, entitlements, fetched.byteSize)
 
   const repos = createRepositoryBundle(userId)
@@ -134,19 +192,31 @@ async function ingestExternalSourceText(userId: string, input: {
   }
 
   const contentHash = sha256Hex(fetched.text)
+  const previousContentHash = existing?.contentHash ?? null
+  const contentChanged = Boolean(input.refresh && existing && previousContentHash && previousContentHash !== contentHash)
+  const nowIso = new Date().toISOString()
+  const existingExternal = existing?.metadata.external && typeof existing.metadata.external === "object"
+    ? existing.metadata.external as Record<string, unknown>
+    : {}
   const metadata = {
+    ...existing?.metadata,
     external: {
+      ...existingExternal,
       kind: "external_docs",
-      provider: input.provider ?? "relay",
+      provider: "relay",
       canonicalUrl,
       sourceType: input.sourceType ?? fetched.metadata.sourceType ?? "website",
-      refreshPolicy: input.refreshPolicy ?? "manual",
+      refreshPolicy: input.refreshPolicy ?? existingExternal.refreshPolicy ?? "manual",
       crawlStats: {
-        pages: 1,
+        pages: crawledPages.length,
         byteSize: fetched.byteSize,
         tokenEstimate: estimateTokens(fetched.text),
       },
     },
+    lastIndexedAt: existing?.metadata.lastIndexedAt ?? nowIso,
+    lastRefreshedAt: input.refresh ? nowIso : existing?.metadata.lastRefreshedAt ?? null,
+    contentHash,
+    staleReason: null,
     extraction: fetched.metadata,
   }
   const source = existing ?? await repos.sources.create(userId, {
@@ -162,6 +232,14 @@ async function ingestExternalSourceText(userId: string, input: {
   if (existing) {
     await repos.sources.updateSourceStatus(existing.id, "processing", { metadata })
   }
+  const job = await repos.sources.createIndexJob(userId, {
+    sourceId: source.id,
+    projectId: input.projectId,
+    kind: input.refresh ? "refresh" : "index",
+    pagesTotal: crawledPages.length,
+    metadata: { canonicalUrl, sourceType: metadata.external.sourceType },
+  })
+  await repos.sources.updateIndexJob(job.id, { status: "running", progress: 0.1, pagesTotal: crawledPages.length })
   const version = await repos.sources.createVersion(userId, {
     sourceId: source.id,
     projectId: input.projectId,
@@ -170,7 +248,39 @@ async function ingestExternalSourceText(userId: string, input: {
     metadata,
   })
   try {
-    const chunkDrafts = chunkExtractedText(fetched.text, { sourceId: source.id, versionId: version.id })
+    await repos.sources.upsertSourcePages(crawledPages.map((page) => ({
+      sourceId: source.id,
+      versionId: version.id,
+      projectId: input.projectId,
+      url: page.url,
+      canonicalUrl: page.canonicalUrl,
+      title: page.title,
+      headingPath: page.headingPath,
+      content: page.content,
+      contentHash: page.contentHash,
+      contentType: page.contentType,
+      etag: page.etag,
+      lastModified: page.lastModified,
+      metadata: page.metadata,
+    })))
+    let nextChunkIndex = 0
+    const chunkDrafts = crawledPages.flatMap((page) => (
+      chunkExtractedText(page.content, { sourceId: source.id, versionId: version.id })
+        .map((chunk) => ({
+          ...chunk,
+          chunkIndex: nextChunkIndex++,
+          locator: {
+            ...chunk.locator,
+            pageUrl: page.url,
+            pageTitle: page.title,
+            headingPath: page.headingPath,
+          },
+          metadata: {
+            ...chunk.metadata,
+            pageContentHash: page.contentHash,
+          },
+        }))
+    ))
     const chunks = await repos.sources.createChunks(chunkDrafts.map((chunk) => ({
       ...chunk,
       projectId: input.projectId,
@@ -180,7 +290,7 @@ async function ingestExternalSourceText(userId: string, input: {
       },
       metadata: {
         ...chunk.metadata,
-        provider: input.provider ?? "relay",
+        provider: "relay",
         sourceType: metadata.external.sourceType,
       },
     })))
@@ -200,11 +310,44 @@ async function ingestExternalSourceText(userId: string, input: {
       tokenEstimate,
       metadata: fetched.metadata,
     })
-    await repos.sources.updateSourceStatus(source.id, "ready", { metadata })
+    await repos.sources.updateSourceStatus(source.id, "ready", { metadata, contentHash, byteSize: fetched.byteSize, staleReason: null })
+    await repos.sources.updateIndexJob(job.id, {
+      status: "ready",
+      progress: 1,
+      pagesTotal: crawledPages.length,
+      pagesIndexed: crawledPages.length,
+      metadata: { canonicalUrl, sourceType: metadata.external.sourceType, chunkCount: chunks.length },
+    })
+    try {
+      const globalSource = await repos.sources.upsertGlobalSource({
+        sourceType: metadata.external.sourceType === "github_repo" ? "repository" : "documentation",
+        canonicalUrl,
+        displayName: input.displayName ?? fetched.displayName,
+        trustScore: 0.5,
+        metadata: { sourceType: metadata.external.sourceType, lastIndexedAt: nowIso },
+      })
+      await repos.sources.linkGlobalSourceToProject({
+        projectId: input.projectId,
+        globalSourceId: globalSource.id,
+        projectSourceId: source.id,
+        metadata: { linkedAt: nowIso },
+      })
+    } catch {
+      // Global source reuse is opportunistic; project-local indexing remains authoritative.
+    }
+    if (contentChanged) {
+      await repos.sources.markLinkedMemoriesPotentiallyStale(source.id, {
+        sourceVersionId: version.id,
+        previousContentHash,
+        contentHash,
+        changedAt: nowIso,
+      })
+    }
     await embedSourceChunksIfConfigured(userId, chunks)
   } catch (error) {
     const message = error instanceof Error ? error.message : "External source ingestion failed."
     await repos.sources.markVersionFailed(version.id, message)
+    await repos.sources.updateIndexJob(job.id, { status: "failed", errorMessage: message }).catch(() => undefined)
     await repos.sources.updateSourceStatus(source.id, "failed", { metadata: { ...metadata, error: message } })
   }
   return getProjectSourceDetail(userId, input.projectId, source.id)
@@ -238,36 +381,293 @@ export async function searchProjectSources(userId: string, projectId: string, in
   const entitlements = await resolveViewerEntitlements(userId)
   await consumeQuota(userId, "external_source_search_daily", "day", entitlements.limits.externalSourceSearchesDaily, 1, entitlements.plan)
   const repos = createRepositoryBundle(userId)
+  let queryEmbedding: number[] | undefined
+  try {
+    queryEmbedding = await generateEmbedding(input.query, "RETRIEVAL_QUERY")
+  } catch {
+    queryEmbedding = undefined
+  }
   const results = await repos.sources.searchChunks(projectId, {
     query: input.query,
     sourceId: input.sourceId,
     kinds: input.kinds,
+    queryEmbedding,
+    limit: input.limit,
+  })
+  return { results: results.map(sourceSearchResultToDto) }
+}
+
+function sourceSearchResultToDto(item: SourceChunkSearchResult): SourceSearchResultDto {
+  const locator = item.locator ?? {}
+  const metadata = item.metadata ?? {}
+  const pageUrl = typeof locator.pageUrl === "string" ? locator.pageUrl : null
+  const pageTitle = typeof locator.pageTitle === "string" ? locator.pageTitle : null
+  const contentHash = typeof metadata.pageContentHash === "string" ? metadata.pageContentHash : null
+  return {
+    sourceId: item.sourceId,
+    sourceKind: item.sourceKind,
+    sourceTitle: item.sourceTitle,
+    sourceUrl: item.sourceUrl,
+    chunkId: item.chunkId,
+    versionId: item.versionId,
+    content: item.content,
+    locator,
+    provider: item.provider,
+    score: item.score,
+    indexedAt: item.indexedAt,
+    citation: {
+      source: item.sourceTitle,
+      url: pageUrl ?? item.sourceUrl,
+      title: pageTitle ?? item.sourceTitle,
+      chunkId: item.chunkId,
+      indexedAt: item.indexedAt,
+      contentHash,
+      stale: metadata.potentiallyStale === true,
+      score: item.score,
+    },
+  } as SourceSearchResultDto
+}
+
+function citationFromResult(item: SourceChunkSearchResult) {
+  const locator = item.locator ?? {}
+  const metadata = item.metadata ?? {}
+  const pageUrl = typeof locator.pageUrl === "string" ? locator.pageUrl : item.sourceUrl
+  const pageTitle = typeof locator.pageTitle === "string" ? locator.pageTitle : item.sourceTitle
+  return {
+    sourceId: item.sourceId,
+    sourceTitle: item.sourceTitle,
+    pageUrl,
+    title: pageTitle,
+    chunkId: item.chunkId,
+    versionId: item.versionId,
+    locator,
+    indexedAt: item.indexedAt,
+    contentHash: typeof metadata.pageContentHash === "string" ? metadata.pageContentHash : null,
+    score: item.score,
+    stale: metadata.potentiallyStale === true,
+  }
+}
+
+export async function exploreProjectSources(_userId: string, projectId: string, input: ExploreProjectSourcesInput) {
+  const repos = createRepositoryBundle(_userId)
+  const pages = await repos.sources.listSourcePages(projectId, {
+    sourceId: input.sourceId,
     limit: input.limit,
   })
   return {
-    results: results.map((item) => ({
-      sourceId: item.sourceId,
-      sourceKind: item.sourceKind,
-      sourceTitle: item.sourceTitle,
-      sourceUrl: item.sourceUrl,
-      chunkId: item.chunkId,
-      versionId: item.versionId,
-      content: item.content,
-      locator: item.locator,
-      provider: item.provider,
-      score: item.score,
-      indexedAt: item.indexedAt,
+    pages: pages.map((page) => ({
+      pageId: page.id,
+      sourceId: page.sourceId,
+      url: page.url,
+      canonicalUrl: page.canonicalUrl,
+      title: page.title,
+      headingPath: page.headingPath,
+      contentHash: page.contentHash,
+      contentType: page.contentType,
+      updatedAt: page.updatedAt,
     })),
   }
 }
 
-export async function getProjectSourceDetail(userId: string, projectId: string, sourceId: string) {
+export async function grepProjectSources(userId: string, projectId: string, input: GrepProjectSourcesInput): Promise<{ results: SourceSearchResultDto[] }> {
+  const entitlements = await resolveViewerEntitlements(userId)
+  await consumeQuota(userId, "external_source_search_daily", "day", entitlements.limits.externalSourceSearchesDaily, 1, entitlements.plan)
+  const repos = createRepositoryBundle(userId)
+  const results = await repos.sources.grepChunks(projectId, {
+    query: input.query,
+    limit: input.limit,
+    sourceId: input.sourceId,
+  })
+  return { results: results.map(sourceSearchResultToDto) }
+}
+
+export async function buildSourceContextPack(userId: string, projectId: string, input: ContextPackProjectSourcesInput) {
+  const entitlements = await resolveViewerEntitlements(userId)
+  await consumeQuota(userId, "external_source_search_daily", "day", entitlements.limits.externalSourceSearchesDaily, 1, entitlements.plan)
+  const repos = createRepositoryBundle(userId)
+  let queryEmbedding: number[] | undefined
+  try {
+    queryEmbedding = await generateEmbedding(input.query, "RETRIEVAL_QUERY")
+  } catch {
+    queryEmbedding = undefined
+  }
+  const results = await repos.sources.searchChunks(projectId, {
+    query: input.query,
+    sourceId: input.sourceId,
+    queryEmbedding,
+    limit: input.limit,
+  })
+  const snippets: Array<{
+    sourceId: string
+    sourceTitle: string
+    sourceUrl: string | null
+    chunkId: string
+    versionId: string
+    content: string
+    locator: Record<string, unknown>
+    score: number
+    indexedAt: string | null
+  }> = []
+  const citations: ReturnType<typeof citationFromResult>[] = []
+  const seen = new Set<string>()
+  let tokenEstimate = 0
+  const warnings: string[] = []
+  for (const result of results) {
+    if (seen.has(result.chunkId)) continue
+    seen.add(result.chunkId)
+    const tokens = estimateTokens(result.content)
+    if (tokenEstimate + tokens > input.tokenBudget) {
+      warnings.push("Some matching snippets were omitted because they exceeded the context-pack token budget.")
+      continue
+    }
+    tokenEstimate += tokens
+    snippets.push({
+      sourceId: result.sourceId,
+      sourceTitle: result.sourceTitle,
+      sourceUrl: result.sourceUrl,
+      chunkId: result.chunkId,
+      versionId: result.versionId,
+      content: result.content,
+      locator: result.locator,
+      score: result.score,
+      indexedAt: result.indexedAt,
+    })
+    citations.push(citationFromResult(result))
+  }
+  return {
+    query: input.query,
+    tokenBudget: input.tokenBudget,
+    tokenEstimate,
+    snippets,
+    citations,
+    warnings: Array.from(new Set(warnings)),
+  }
+}
+
+export async function importSourceCitations(userId: string, projectId: string, input: ImportSourceCitationsInput) {
+  const entitlements = await resolveViewerEntitlements(userId)
+  await consumeQuota(userId, "external_source_index_daily", "day", entitlements.limits.externalSourceIndexesDaily, 1, entitlements.plan)
+  const repos = createRepositoryBundle(userId)
+  const first = input.citations[0]
+  if (!first) throw new BadRequestError("At least one citation is required.")
+  const combinedText = input.citations
+    .map((citation) => `# ${citation.title}\n${citation.url}\n\n${citation.content}`)
+    .join("\n\n---\n\n")
+  const contentHash = sha256Hex(combinedText)
+  const nowIso = new Date().toISOString()
+  const metadata = {
+    externalImport: {
+      provider: input.provider,
+      providerSourceId: input.providerSourceId ?? null,
+      citationCount: input.citations.length,
+      importedAt: nowIso,
+    },
+    external: {
+      kind: "external_docs",
+      provider: "relay",
+      sourceType: "external_import",
+      refreshPolicy: "manual",
+    },
+    contentHash,
+  }
+  const source = await repos.sources.create(userId, {
+    projectId,
+    kind: "external_docs",
+    displayName: input.displayName ?? first.title,
+    mimeType: "text/markdown",
+    byteSize: Buffer.byteLength(combinedText, "utf8"),
+    contentHash,
+    sourceUri: first.url,
+    metadata,
+  })
+  const job = await repos.sources.createIndexJob(userId, {
+    sourceId: source.id,
+    projectId,
+    kind: "import",
+    pagesTotal: input.citations.length,
+    metadata: metadata.externalImport,
+  })
+  await repos.sources.updateIndexJob(job.id, { status: "running", progress: 0.1, pagesTotal: input.citations.length })
+  const version = await repos.sources.createVersion(userId, {
+    sourceId: source.id,
+    projectId,
+    contentHash,
+    byteSize: Buffer.byteLength(combinedText, "utf8"),
+    metadata,
+  })
+  try {
+    const chunks = await repos.sources.createChunks(input.citations.map((citation, index) => ({
+      sourceId: source.id,
+      versionId: version.id,
+      projectId,
+      chunkIndex: index,
+      content: citation.content,
+      tokenEstimate: estimateTokens(citation.content),
+      locator: {
+        ...(citation.locator ?? {}),
+        pageUrl: citation.url,
+        pageTitle: citation.title,
+      },
+      metadata: {
+        importedProvider: input.provider,
+        providerSourceId: input.providerSourceId ?? null,
+        pageContentHash: sha256Hex(citation.content),
+      },
+    })))
+    await repos.sources.createExternalCitations(input.citations.map((citation, index) => ({
+      projectId,
+      sourceId: source.id,
+      versionId: version.id,
+      chunkId: chunks[index]?.id ?? null,
+      provider: input.provider,
+      providerSourceId: input.providerSourceId ?? null,
+      title: citation.title,
+      url: citation.url,
+      contentHash: sha256Hex(citation.content),
+      locator: citation.locator ?? {},
+      metadata: { importedAt: nowIso },
+    })))
+    const tokenEstimate = estimateTokens(combinedText)
+    await repos.sources.markVersionReady(version.id, {
+      extractedTextHash: contentHash,
+      extractedTextBytes: Buffer.byteLength(combinedText, "utf8"),
+      chunkCount: chunks.length,
+      tokenEstimate,
+      metadata,
+    })
+    await repos.sources.updateSourceStatus(source.id, "ready", { metadata, contentHash, byteSize: Buffer.byteLength(combinedText, "utf8") })
+    await repos.sources.updateIndexJob(job.id, {
+      status: "ready",
+      progress: 1,
+      pagesTotal: input.citations.length,
+      pagesIndexed: input.citations.length,
+      metadata: { ...metadata.externalImport, chunkCount: chunks.length },
+    })
+    await embedSourceChunksIfConfigured(userId, chunks)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "External citation import failed."
+    await repos.sources.markVersionFailed(version.id, message)
+    await repos.sources.updateIndexJob(job.id, { status: "failed", errorMessage: message }).catch(() => undefined)
+    await repos.sources.updateSourceStatus(source.id, "failed", { metadata: { ...metadata, error: message } })
+  }
+  return getProjectSourceDetail(userId, projectId, source.id)
+}
+
+export async function getProjectSourceDetail(userId: string, projectId: string, sourceId: string, options: { chunkId?: string; limit?: number } = {}) {
   const repos = createRepositoryBundle(userId)
   const source = await repos.sources.getById(sourceId)
   if (!source || source.projectId !== projectId) throw new NotFoundError("Source not found.")
+  if (options.chunkId) {
+    const [latestVersion, chunk] = await Promise.all([
+      repos.sources.getLatestVersion(sourceId),
+      repos.sources.getChunkById(options.chunkId),
+    ])
+    if (!chunk || chunk.sourceId !== sourceId || chunk.projectId !== projectId) throw new NotFoundError("Source chunk not found.")
+    return { source, latestVersion, chunks: [chunk], candidates: [] }
+  }
   const [latestVersion, chunks, candidates] = await Promise.all([
     repos.sources.getLatestVersion(sourceId),
-    repos.sources.listChunks(sourceId, { limit: 20 }),
+    repos.sources.listChunks(sourceId, { limit: Math.min(options.limit ?? 20, 50) }),
     repos.sources.listFactCandidates(sourceId),
   ])
   return { source, latestVersion, chunks, candidates }

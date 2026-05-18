@@ -12,10 +12,12 @@
     "bench:longmemeval": "pnpm --dir benchmarks/longmemeval bench",
     "bench:longmemeval:preflight": "pnpm --dir benchmarks/longmemeval preflight",
     "bench:longmemeval:judge": "./benchmarks/longmemeval/evaluate.sh",
+    "bench:sources": "vitest run apps/web/src/server/services/source-benchmark.test.ts",
     "release:cli:dry-run": "pnpm --filter @onrelay/cli pack --pack-destination ../../.tmp/cli-pack",
     "release:cli": "pnpm --filter @onrelay/cli publish --access public",
     "release:mcp:dry-run": "pnpm --filter @onrelay/mcp pack --pack-destination ../../.tmp/mcp-pack",
     "release:mcp": "pnpm --filter @onrelay/mcp publish --access public",
+    "release:extension:zip": "pnpm build:extension:prod && VERSION=$(node -p \"require('./apps/extension/package.json').version\") && OUT=\"apps/extension/releases/relay-${VERSION}.zip\" && rm -f \"$OUT\" && cd apps/extension/build/chrome-mv3-prod && zip -qr \"../../releases/relay-${VERSION}.zip\" . && cd - >/dev/null && zip -T \"$OUT\"",
     "release:wizard:dry-run": "pnpm --filter @onrelay/wizard pack --pack-destination ../../.tmp/wizard-pack",
     "release:wizard": "pnpm --filter @onrelay/wizard publish --access public",
     "release:dry-run": "pnpm release:cli:dry-run && pnpm release:mcp:dry-run && pnpm release:wizard:dry-run",
@@ -54,6 +56,7 @@
     "eslint-plugin-unused-imports": "^4.2.0",
     "jsdom": "^26.1.0",
     "playwright": "^1.55.0",
+    "shadcn": "^4.7.0",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   }

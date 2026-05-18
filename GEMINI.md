@@ -17,4 +17,4 @@ This file is a Gemini CLI compatibility overlay. The shared repository policy li
 ## Save Strategy
 
 - Let `PreCompress` and `SessionEnd` handle normal autosave.
-- Use `checkpoint_context` only for immediate durable milestones, not after every turn.
+- Use `save` action `checkpoint` only for immediate durable milestones, not after every turn.

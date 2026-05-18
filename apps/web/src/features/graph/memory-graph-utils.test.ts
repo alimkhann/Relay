@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MemoryItemDto } from "@relay/shared";
 
-import { buildGraphLinks, buildGraphNodes, type SourceGraphDto } from "./memory-graph-utils";
+import { buildGraphLinks, buildGraphNodes, type EntityGraphDto, type SourceGraphDto } from "./memory-graph-utils";
 
 function memoryItem(id: string, content: string): MemoryItemDto {
   return {
@@ -32,6 +32,13 @@ const source: SourceGraphDto = {
   chunkCount: 2,
   tokenEstimate: 420,
   previewText: "Relay stores source documents encrypted in R2.",
+};
+
+const stripeEntity: EntityGraphDto = {
+  id: "entity-1",
+  name: "Stripe",
+  kind: "technology",
+  memoryItemIds: ["memory-source"],
 };
 
 describe("memory graph source topology", () => {
@@ -72,6 +79,31 @@ describe("memory graph source topology", () => {
     ]));
     expect(links).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ target: "memory-source", hubLink: "hub-to-item" }),
+    ]));
+  });
+
+  it("adds entity nodes and entity-to-memory relation links", () => {
+    const nodes = buildGraphNodes(
+      [memoryItem("memory-source", "Stripe checkout decision")],
+      new Set(),
+      "Test Project",
+      [source],
+      [stripeEntity],
+    );
+    const links = buildGraphLinks(nodes, [], [], [], [
+      { entityId: "entity-1", memoryItemId: "memory-source", confidence: 0.86 },
+    ]);
+
+    expect(nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "__entity__entity-1", kind: "entity", label: "Stripe" }),
+    ]));
+    expect(links).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        source: "__entity__entity-1",
+        target: "memory-source",
+        relationType: "mentions",
+        entityLink: true,
+      }),
     ]));
   });
 });

@@ -4,7 +4,7 @@ import { estimateGeminiCostUsd, resolveGeminiModelPricing } from "./ai-analytics
 
 describe("resolveGeminiModelPricing", () => {
   it("matches flash-lite pricing families", () => {
-    expect(resolveGeminiModelPricing("gemini-3.1-flash-lite-preview")).toMatchObject({
+    expect(resolveGeminiModelPricing("gemini-3.1-flash-lite")).toMatchObject({
       inputUsdPerMillion: 0.1,
       outputUsdPerMillion: 0.4,
     })

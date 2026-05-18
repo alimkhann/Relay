@@ -1,7 +1,12 @@
 import { createRepositoryBundle, getProjectDashboard } from "@relay/db"
 import {
+  contextPackProjectSourcesSchema,
   createExternalSourceSchema,
+  exploreProjectSourcesSchema,
+  grepProjectSourcesSchema,
+  importSourceCitationsSchema,
   promoteSourceCitationSchema,
+  resolveProjectSourcesSchema,
   resolveDefaultTargetProfileKey,
   searchProjectSourcesSchema,
   type MemoryItemRow,
@@ -23,13 +28,20 @@ import { generateBootstrapForProject, getLatestBootstrapForProject } from "@/ser
 import { upsertProjectStateFromMcp } from "@/server/services/mcp-project-state-service"
 import { listProjectsForUser } from "@/server/services/project-service"
 import {
+  buildSourceContextPack,
   createExternalSource,
+  archiveProjectSource,
+  exploreProjectSources,
   getProjectSourceDetail,
+  grepProjectSources,
+  hardDeleteProjectSource,
+  importSourceCitations,
   listProjectSources,
   promoteSourceCitation,
   refreshExternalSource,
   searchProjectSources,
 } from "@/server/services/source-service"
+import { resolveProjectSources } from "@/server/services/source-resolver-service"
 import { getSyncMarkForUser, recordSyncMarkForUser } from "@/server/services/sync-mark-service"
 import { flushWorkSession } from "@/server/services/work-session-flush-service"
 
@@ -96,7 +108,7 @@ export class RelayHttpMcpClient {
         kind,
         syncSurface,
         resumeGuidance:
-          "If this brief is coherent and on the correct project, do not call list_projects, set_current_project, get_project_state, list_sessions, list_briefs, or search_context just to restate the same continuity.",
+          "If this brief is coherent and on the correct project, do not call list_projects, set_current_project, or recall just to restate the same continuity.",
       },
     })
 
@@ -494,7 +506,7 @@ export class RelayHttpMcpClient {
       url: args.url,
       displayName: args.displayName,
       sourceType: args.sourceType,
-      provider: args.provider,
+      refreshPolicy: args.refreshPolicy,
     })
     return createExternalSource(this.viewer.userId, {
       projectId,
@@ -512,8 +524,60 @@ export class RelayHttpMcpClient {
     return searchProjectSources(this.viewer.userId, projectId, parsed)
   }
 
-  async getSourceDetail(projectId: string, sourceId: string) {
-    return getProjectSourceDetail(this.viewer.userId, projectId, sourceId)
+  async resolveSources(projectId: string, args: Record<string, unknown>) {
+    const parsed = resolveProjectSourcesSchema.parse({
+      query: args.query,
+      url: args.url,
+      registry: args.registry,
+      manifestFileName: args.manifestFileName,
+      manifestContent: args.manifestContent,
+      limit: args.limit,
+    })
+    return resolveProjectSources(this.viewer.userId, projectId, parsed)
+  }
+
+  async exploreSources(projectId: string, args: Record<string, unknown>) {
+    const parsed = exploreProjectSourcesSchema.parse({
+      sourceId: args.sourceId,
+      limit: args.limit,
+    })
+    return exploreProjectSources(this.viewer.userId, projectId, parsed)
+  }
+
+  async grepSources(projectId: string, args: Record<string, unknown>) {
+    const parsed = grepProjectSourcesSchema.parse({
+      query: args.query,
+      sourceId: args.sourceId,
+      limit: args.limit,
+    })
+    return grepProjectSources(this.viewer.userId, projectId, parsed)
+  }
+
+  async buildSourceContextPack(projectId: string, args: Record<string, unknown>) {
+    const parsed = contextPackProjectSourcesSchema.parse({
+      query: args.query,
+      sourceId: args.sourceId,
+      limit: args.limit,
+      tokenBudget: args.tokenBudget,
+    })
+    return buildSourceContextPack(this.viewer.userId, projectId, parsed)
+  }
+
+  async importSourceCitations(projectId: string, args: Record<string, unknown>) {
+    const parsed = importSourceCitationsSchema.parse({
+      provider: args.importProvider,
+      providerSourceId: args.providerSourceId,
+      displayName: args.displayName,
+      citations: args.citations,
+    })
+    return importSourceCitations(this.viewer.userId, projectId, parsed)
+  }
+
+  async getSourceDetail(projectId: string, sourceId: string, args: { chunkId?: unknown; limit?: unknown } = {}) {
+    return getProjectSourceDetail(this.viewer.userId, projectId, sourceId, {
+      chunkId: typeof args.chunkId === "string" ? args.chunkId : undefined,
+      limit: typeof args.limit === "number" ? args.limit : undefined,
+    })
   }
 
   async refreshSource(projectId: string, sourceId: string) {
@@ -528,5 +592,15 @@ export class RelayHttpMcpClient {
       content: args.content,
     })
     return promoteSourceCitation(this.viewer.userId, projectId, sourceId, parsed)
+  }
+
+  async archiveSource(projectId: string, sourceId: string) {
+    await archiveProjectSource(this.viewer.userId, projectId, sourceId)
+    return { ok: true, sourceId, archived: true }
+  }
+
+  async purgeSource(projectId: string, sourceId: string) {
+    await hardDeleteProjectSource(this.viewer.userId, projectId, sourceId)
+    return { ok: true, sourceId, purged: true }
   }
 }

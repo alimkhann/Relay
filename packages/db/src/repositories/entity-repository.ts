@@ -99,4 +99,41 @@ export class EntityRepository {
     )
     return rows.map((r) => String((r as Record<string, unknown>).memory_item_id))
   }
+
+  async listMentionsByProject(projectId: string): Promise<Array<{
+    entityId: string
+    entityName: string
+    entityKind: string
+    memoryItemId: string
+    mentionText: string
+  }>> {
+    const rows = await this.provider.query(
+      `SELECT
+         ce.id as entity_id,
+         ce.name as entity_name,
+         ce.kind as entity_kind,
+         em.memory_item_id,
+         em.mention_text
+       FROM entity_mentions em
+       JOIN canonical_entities ce ON ce.id = em.entity_id
+       JOIN memory_items mi ON mi.id = em.memory_item_id
+       WHERE ce.project_id = $1
+         AND mi.project_id = $1
+         AND mi.is_archived = false
+         AND ce.merged_into_id IS NULL
+       ORDER BY ce.name ASC, em.created_at DESC
+       LIMIT 500`,
+      [projectId],
+    )
+    return rows.map((row) => {
+      const r = row as Record<string, unknown>
+      return {
+        entityId: String(r.entity_id),
+        entityName: String(r.entity_name),
+        entityKind: String(r.entity_kind),
+        memoryItemId: String(r.memory_item_id),
+        mentionText: String(r.mention_text),
+      }
+    })
+  }
 }

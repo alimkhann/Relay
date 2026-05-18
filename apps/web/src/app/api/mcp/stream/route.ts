@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
-import { resolveRelayProjectSelection, type RelayProjectResolutionResult } from "@relay/shared"
+import { resolveRelayProjectSelection, sourceLifecycleActions, type RelayProjectResolutionResult } from "@relay/shared"
 import { z } from "zod"
 
 import { isAuthRequiredError, resolveViewer, type Viewer } from "@/server/policies/viewer"
@@ -12,7 +12,7 @@ import { sweepOpenWorkSessions } from "@/server/services/work-session-flush-serv
 import { captureServerEvent } from "@/lib/telemetry/posthog-server"
 import { fireUserMilestone } from "@/server/services/user-milestones-service"
 import { RelayHttpMcpClient } from "./relay-http-mcp-client"
-import { RELAY_MCP_PROMPT_NAMES, RELAY_MCP_RESOURCE_URIS, RELAY_MCP_SERVER_NAME, RELAY_MCP_SERVER_VERSION, RELAY_MCP_TOOL_NAMES } from "@/server/mcp/metadata"
+import { RELAY_MCP_PROMPT_NAMES, RELAY_MCP_RESOURCE_URIS, RELAY_MCP_SERVER_NAME, RELAY_MCP_SERVER_VERSION } from "@/server/mcp/metadata"
 
 /**
  * Opportunistic sweep throttle. Per-user in-memory map of last sweep timestamp.
@@ -29,20 +29,260 @@ const SWEEP_MAX_SESSIONS = 1
 const MCP_READ_TELEMETRY_SAMPLE_RATE = 0.1
 const lastSweepAt = new Map<string, number>()
 const SOURCES_TOOL_NAME = "sources"
+
+// Legacy split names are still referenced by the old handler definitions below.
+// The public hosted surface is gated to the same six stdio tools, so these
+// internal registrations are ignored until the hosted route is fully collapsed.
+const RELAY_MCP_TOOL_NAMES = [
+  "list_projects",
+  "set_current_project",
+  "get_brief",
+  "get_project_state",
+  "list_memory",
+  "get_memory",
+  "search_context",
+  "list_sessions",
+  "archive_session",
+  "list_briefs",
+  "regenerate_brief",
+  "delete_brief",
+  "trace_context_sources",
+  "list_recent_activity",
+  "add_memory",
+  "save_context",
+  "checkpoint_context",
+  "manage_memory",
+  "set_project_state",
+  "update_project",
+  "recall_context",
+] as const
+
+const HOSTED_PUBLIC_TOOL_NAMES = new Set(["list_projects", "set_current_project", "get_brief", "recall", "sources", "save"])
+const memoryTypeSchema = z.enum(["decision", "constraint", "task", "note", "artifact", "requirement"])
+const recallToolShape = {
+  projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)."),
+  query: z.string().optional().describe("Search query across project memory and state."),
+  memoryId: z.string().optional().describe("Get a specific memory item by ID."),
+  include: z.array(z.enum(["state", "sessions", "activity", "briefs", "trace"])).optional().describe("Additional continuity data to include."),
+  filters: z.object({
+    types: z.array(memoryTypeSchema).optional(),
+    tags: z.array(z.string()).optional(),
+    pinned: z.boolean().optional(),
+    archived: z.boolean().optional(),
+  }).optional().describe("Filters for memory listing or search."),
+  tracePhrase: z.string().optional().describe("Trace provenance of a phrase in project context."),
+}
+
+const saveToolShape = {
+  projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)."),
+  action: z.enum([
+    "save_session",
+    "checkpoint",
+    "add_memory",
+    "manage_memory",
+    "set_state",
+    "update_project",
+    "archive_session",
+    "regenerate_brief",
+    "delete_brief",
+  ]).describe("The write action to perform."),
+  payload: z.record(z.string(), z.unknown()).describe("Action-specific payload."),
+}
+
 const sourcesToolShape = {
-  action: z.enum(["list", "discover", "index", "status", "search", "read", "refresh", "promote"]),
+  action: z.enum(sourceLifecycleActions),
   projectId: z.string().optional().describe("Project ID (uses token-scoped project if omitted)"),
-  sourceId: z.string().optional().describe("Source ID for status, read, refresh, or promote."),
-  chunkId: z.string().optional().describe("Source chunk ID for promote."),
+  sourceId: z.string().optional().describe("Source ID for status, read, refresh, promote, delete, or purge."),
+  chunkId: z.string().optional().describe("Source chunk ID for read or promote."),
   url: z.string().optional().describe("Public https URL to index."),
-  query: z.string().optional().describe("Search or discovery query."),
-  sourceType: z.enum(["website", "llms_txt", "pdf", "arxiv", "openapi", "package_docs"]).optional(),
-  provider: z.enum(["relay", "context7", "nia"]).optional(),
+  query: z.string().optional().describe("Search query."),
+  sourceType: z.enum(["website", "llms_txt", "pdf", "arxiv", "openapi", "package_docs", "github_repo"]).optional(),
+  refreshPolicy: z.enum(["manual", "daily", "weekly"]).optional(),
+  registry: z.enum(["npm", "py_pi", "crates_io", "go", "ruby_gems"]).optional(),
+  manifestFileName: z.string().optional(),
+  manifestContent: z.string().optional(),
+  tokenBudget: z.number().optional(),
+  importProvider: z.enum(["context7", "nia", "external"]).optional(),
+  providerSourceId: z.string().optional(),
+  citations: z.array(z.object({
+    title: z.string(),
+    url: z.string(),
+    content: z.string(),
+    locator: z.record(z.string(), z.unknown()).optional(),
+  })).optional(),
   displayName: z.string().optional(),
   limit: z.number().optional(),
   type: z.enum(["note", "decision", "constraint", "requirement", "task", "artifact"]).optional(),
   title: z.string().optional(),
   content: z.string().optional(),
+}
+
+type HostedToolResult = {
+  content: Array<{ type: "text"; text: string }>
+  structuredContent?: Record<string, unknown>
+}
+
+function textResult(text: string): HostedToolResult {
+  return { content: [{ type: "text", text }] }
+}
+
+function jsonResult(value: unknown): HostedToolResult {
+  return textResult(JSON.stringify(value, null, 2))
+}
+
+function requiredString(value: unknown, field: string) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`${field} is required.`)
+  }
+  return value
+}
+
+function optionalString(value: unknown) {
+  return typeof value === "string" ? value : undefined
+}
+
+function optionalStringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : undefined
+}
+
+async function runHostedRecall(
+  client: RelayHttpMcpClient,
+  projectId: string,
+  args: {
+    query?: string
+    memoryId?: string
+    include?: Array<"state" | "sessions" | "activity" | "briefs" | "trace">
+    filters?: {
+      types?: Array<"decision" | "constraint" | "task" | "note" | "artifact" | "requirement">
+      tags?: string[]
+      pinned?: boolean
+      archived?: boolean
+    }
+    tracePhrase?: string
+  },
+): Promise<HostedToolResult> {
+  const sections: string[] = []
+  const include = args.include ?? []
+
+  if (args.memoryId) {
+    const item = await client.getMemory(args.memoryId, projectId)
+    if (!item) throw new Error("Memory item not found or not accessible to the current MCP user.")
+    sections.push(JSON.stringify(item, null, 2))
+  }
+
+  if (args.query) {
+    sections.push(await client.recallContext(projectId, args.query))
+  } else if (!args.memoryId && include.length === 0 && !args.tracePhrase && !args.filters) {
+    sections.push(JSON.stringify(await client.getProjectState(projectId), null, 2))
+  }
+
+  if (args.filters && !args.query) {
+    sections.push(JSON.stringify(await client.listMemory(projectId, {
+      types: args.filters.types,
+      tag: args.filters.tags?.[0],
+      pinned: args.filters.pinned,
+      archived: args.filters.archived,
+    }), null, 2))
+  }
+
+  if (args.query && args.filters) {
+    sections.push(JSON.stringify(await client.searchMemory(projectId, args.query, {
+      types: args.filters.types,
+      tags: args.filters.tags,
+    }), null, 2))
+  }
+
+  if (include.includes("state") && !args.query) {
+    sections.push(JSON.stringify(await client.getProjectState(projectId), null, 2))
+  }
+
+  if (include.includes("sessions")) {
+    sections.push(JSON.stringify(await client.listSessions(projectId), null, 2))
+  }
+
+  if (include.includes("activity")) {
+    sections.push(JSON.stringify(await client.listRecentActivity(projectId), null, 2))
+  }
+
+  if (include.includes("briefs")) {
+    sections.push(JSON.stringify(await client.listBriefs(projectId), null, 2))
+  }
+
+  if (args.tracePhrase || include.includes("trace")) {
+    const phrase = args.tracePhrase ?? args.query ?? ""
+    if (phrase) {
+      sections.push(JSON.stringify(await client.traceContext(projectId, { query: phrase }), null, 2))
+    }
+  }
+
+  if (sections.length === 0) {
+    sections.push(JSON.stringify(await client.getProjectState(projectId), null, 2))
+  }
+
+  return textResult(sections.join("\n\n---\n\n"))
+}
+
+async function runHostedSave(
+  client: RelayHttpMcpClient,
+  projectId: string,
+  args: { action: string; payload: Record<string, unknown> },
+): Promise<HostedToolResult> {
+  const payload: Record<string, unknown> = { ...args.payload, projectId }
+
+  if (args.action === "save_session") {
+    await client.saveContext(projectId, { ...payload, finalize: payload.finalize !== false })
+    return textResult("Relay: session flushed through digest + reconcile pipeline.")
+  }
+
+  if (args.action === "checkpoint") {
+    await client.saveContext(projectId, { ...payload, finalize: false })
+    return textResult("Relay: checkpoint saved. Will flush on next finalize or hook trigger.")
+  }
+
+  if (args.action === "add_memory") {
+    const type = memoryTypeSchema.parse(payload.type)
+    const item = await client.addMemory(projectId, {
+      type,
+      content: requiredString(payload.content, "payload.content"),
+      title: optionalString(payload.title),
+      tags: optionalStringArray(payload.tags),
+    })
+    return jsonResult(item)
+  }
+
+  if (args.action === "manage_memory") {
+    await client.manageMemory(payload)
+    return textResult(`Memory item ${String(payload.action ?? "managed")} successfully.`)
+  }
+
+  if (args.action === "set_state") {
+    return jsonResult({ state: await client.setProjectState(projectId, payload) })
+  }
+
+  if (args.action === "update_project") {
+    await client.updateProject(projectId, {
+      name: optionalString(payload.name),
+      description: optionalString(payload.description),
+    })
+    return textResult("Project updated successfully.")
+  }
+
+  if (args.action === "archive_session") {
+    const session = await client.archiveSession(projectId, requiredString(payload.sessionId, "payload.sessionId"), payload.archived !== false)
+    return jsonResult(session)
+  }
+
+  if (args.action === "regenerate_brief") {
+    return jsonResult(await client.regenerateBrief(projectId, payload))
+  }
+
+  if (args.action === "delete_brief") {
+    const packetId = requiredString(payload.packetId, "payload.packetId")
+    await client.deleteBrief(projectId, packetId)
+    return jsonResult({ ok: true, packetId })
+  }
+
+  throw new Error(`Unsupported save action: ${args.action}`)
 }
 
 export const maxDuration = 60
@@ -141,21 +381,14 @@ function registerHttpTools(
   getCurrentProjectId: () => string | null,
   setCurrentProjectId: (projectId: string) => void,
 ) {
-  const writeTools = new Set<string>([
-    RELAY_MCP_TOOL_NAMES[1],
-    RELAY_MCP_TOOL_NAMES[8],
-    RELAY_MCP_TOOL_NAMES[10],
-    RELAY_MCP_TOOL_NAMES[11],
-    RELAY_MCP_TOOL_NAMES[14],
-    RELAY_MCP_TOOL_NAMES[15],
-    RELAY_MCP_TOOL_NAMES[16],
-    RELAY_MCP_TOOL_NAMES[17],
-    RELAY_MCP_TOOL_NAMES[18],
-    RELAY_MCP_TOOL_NAMES[19],
-  ])
+  const writeTools = new Set<string>(["set_current_project", "save"])
   const originalTool = server.tool.bind(server)
 
   ;(server as McpServer & { tool: typeof server.tool }).tool = ((name: string, description: string, schema: unknown, maybeHintsOrHandler: unknown, maybeHandler?: unknown) => {
+    if (!HOSTED_PUBLIC_TOOL_NAMES.has(name)) {
+      return undefined as unknown as ReturnType<typeof originalTool>
+    }
+
     const hasHints = typeof maybeHandler === "function"
     const hints = hasHints ? maybeHintsOrHandler : undefined
     const handler = (hasHints ? maybeHandler : maybeHintsOrHandler) as (args: Record<string, unknown>) => Promise<unknown>
@@ -174,7 +407,7 @@ function registerHttpTools(
               ? "cached"
               : null
       const readOrWrite =
-        name === SOURCES_TOOL_NAME && ["index", "refresh", "promote"].includes(String(args?.action ?? ""))
+        name === SOURCES_TOOL_NAME && ["index", "refresh", "promote", "import", "delete", "purge"].includes(String(args?.action ?? ""))
           ? "write"
           : writeTools.has(name) ? "write" : "read"
 
@@ -356,6 +589,43 @@ function registerHttpTools(
           ...brief.structured,
         } as Record<string, unknown>,
       }
+    }
+  )
+
+  server.tool(
+    "recall",
+    `Unified read tool — replaces recall_context, search_context, get_project_state, list_memory, get_memory, list_sessions, list_recent_activity, trace_context_sources, and list_briefs.
+
+- No params → project state overview
+- query → hybrid search + project state
+- memoryId → single item detail
+- include: ["sessions"] → list sessions
+- include: ["activity"] → recent activity
+- include: ["briefs"] → list briefs
+- tracePhrase → trace provenance of a phrase
+- filters → filter memory listing by type/tags/pinned/archived
+
+If returned context is stale, completed, contradicted, or superseded, clean it up with save action: "manage_memory" or correct project state with save action: "set_state".`,
+    recallToolShape,
+    { readOnlyHint: true, destructiveHint: false },
+    async (args) => {
+      const pid = await resolveProjectId(args.projectId)
+      return runHostedRecall(client, pid, args)
+    }
+  )
+
+  server.tool(
+    "save",
+    `Unified write tool — replaces save_context, checkpoint_context, add_memory, manage_memory, set_project_state, update_project, archive_session, regenerate_brief, and delete_brief.
+
+Actions: save_session, checkpoint, add_memory, manage_memory, set_state, update_project, archive_session, regenerate_brief, delete_brief.
+
+Pass action-specific fields in payload. Use manage_memory whenever get_brief or recall shows stale, completed, contradicted, or superseded context.`,
+    saveToolShape,
+    { readOnlyHint: false, destructiveHint: true },
+    async (args) => {
+      const pid = await resolveProjectId(args.projectId)
+      return runHostedSave(client, pid, args)
     }
   )
 
@@ -739,7 +1009,7 @@ function registerHttpTools(
 
   server.tool(
     SOURCES_TOOL_NAME,
-    "External source tool for Relay docs and research sources. Use search explicitly when the user asks to consult external docs or indexed sources; use promote only when the user wants a citation saved into memory.",
+    "Project-governed source lifecycle for Relay docs and repository sources. Use resolve to find evidence-backed source candidates, index to add URLs, search/read/explore/grep/context_pack to retrieve citations, import to store external Context7/Nia citations, refresh to update indexed sources, and promote only when the user wants a citation saved into durable memory.",
     sourcesToolShape,
     { readOnlyHint: false, destructiveHint: false },
     async (args) => {
@@ -752,14 +1022,36 @@ function registerHttpTools(
         const result = await client.createExternalSource(pid, args)
         return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
       }
+      if (args.action === "resolve") {
+        if (!args.query) throw new Error("query is required for sources action:resolve.")
+        const result = await client.resolveSources(pid, args)
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
+      }
       if (args.action === "search") {
         if (!args.query) throw new Error("query is required for sources action:search.")
         const result = await client.searchSources(pid, args)
         return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
       }
+      if (args.action === "context_pack") {
+        if (!args.query) throw new Error("query is required for sources action:context_pack.")
+        const result = await client.buildSourceContextPack(pid, args)
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
+      }
+      if (args.action === "explore") {
+        const result = await client.exploreSources(pid, args)
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
+      }
+      if (args.action === "grep") {
+        if (!args.query) throw new Error("query is required for sources action:grep.")
+        const result = await client.grepSources(pid, args)
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
+      }
       if (args.action === "status" || args.action === "read") {
         if (!args.sourceId) throw new Error("sourceId is required for this sources action.")
-        const result = await client.getSourceDetail(pid, args.sourceId)
+        const result = await client.getSourceDetail(pid, args.sourceId, {
+          chunkId: args.action === "read" ? args.chunkId : undefined,
+          limit: args.action === "read" ? args.limit : undefined,
+        })
         return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
       }
       if (args.action === "refresh") {
@@ -772,16 +1064,21 @@ function registerHttpTools(
         const result = await client.promoteSourceCitation(pid, args.sourceId, args)
         return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
       }
-      return {
-        content: [{
-          type: "text" as const,
-          text: JSON.stringify({
-            candidates: [],
-            note: "Relay-native v1 indexes public docs/research URLs directly. Provide a public https URL with action:index to add it.",
-            query: args.query ?? null,
-          }, null, 2),
-        }],
+      if (args.action === "import") {
+        const result = await client.importSourceCitations(pid, args)
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result as unknown as Record<string, unknown> }
       }
+      if (args.action === "delete") {
+        if (!args.sourceId) throw new Error("sourceId is required for sources action:delete.")
+        const result = await client.archiveSource(pid, args.sourceId)
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result }
+      }
+      if (args.action === "purge") {
+        if (!args.sourceId) throw new Error("sourceId is required for sources action:purge.")
+        const result = await client.purgeSource(pid, args.sourceId)
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], structuredContent: result }
+      }
+      throw new Error("Unsupported sources action.")
     }
   )
 }
@@ -793,22 +1090,29 @@ You have access to Relay, a project memory system that keeps context synchronize
 ## Recommended Workflow
 
 ### At Session Start
-1. Call \`get_brief\` first to load the current project context, decisions, constraints, and recent progress.
-2. Only if Relay reports project ambiguity, call \`list_projects\`.
-3. If the cached project is wrong, call \`set_current_project\` with the correct projectId.
-4. Retry \`get_brief\`.
+- Call \`get_brief\` first. Relay will try to resolve the correct project automatically.
+- Only call \`list_projects\` and then \`set_current_project\` if \`get_brief\` reports project ambiguity or clearly resolves to the wrong project.
+- If \`get_brief\` succeeds and the brief is coherent, stop there for a basic resume. Do not immediately follow it with \`recall\` just to restate the same continuity.
 
 ### During the Session
-- Before making architectural, product, or process decisions, call \`search_context\` or \`recall_context\` when local context may be incomplete.
-- When the user confirms a durable decision, constraint, task, or stable product truth, call \`add_memory\` to persist that single fact.
+- Before making architectural, product, or process decisions, call \`recall\` when local context may be incomplete.
+- When the user confirms a durable decision, constraint, task, or stable product truth, call \`save\` with action \`add_memory\` to persist that single fact.
 - If recall/search returns no useful memory and you then investigate files, docs, tests, config, or history, save any confirmed durable findings you discover. Do not save the empty search attempt itself.
+- If \`get_brief\` or \`recall\` shows stale, completed, contradicted, or superseded context, clean it up with \`save\` action \`manage_memory\` or correct project state with \`save\` action \`set_state\`. Prefer archiving obsolete memory over adding duplicate correction notes.
 - Do not save speculative brainstorming, partial ideas, or every conversational turn.
-- If Relay context looks stale or wrong, inspect it before mutating:
-  use \`list_memory\`, \`list_sessions\`, \`list_briefs\`, \`trace_context_sources\`, and \`list_recent_activity\`.
+- For coding work, save the facts a future agent needs to continue: files/modules touched, public API or schema changes, migrations, commands/tests run with outcomes, unresolved blockers, and exact small snippets only when the exact text matters.
+- If Relay context looks stale or wrong, inspect it before mutating with \`recall\` filters, includes, memoryId, or tracePhrase.
+
+### Source Retrieval
+- Use \`sources\` first for project-governed docs and repository sources already indexed in Relay.
+- Use \`sources\` action \`resolve\` to find evidence-backed project/global/package/URL candidates. If Relay cannot resolve a source and Context7 or Nia MCP tools are available in the client, call those external tools directly instead of asking Relay to fake an adapter.
+- After using Context7, Nia, or another external docs tool, call \`sources\` action \`import\` only for citations that are useful to keep in this project. Imported citations are source evidence, not durable memory.
+- Promote a source citation into Relay memory only when the user wants the fact to persist beyond the source itself. Refresh can later mark promoted memories potentially stale when their evidence changes.
 
 ### At Session End
-- Use \`checkpoint_context\` only at meaningful boundaries: before compaction-equivalent actions, before switching tasks, or after finishing a logical milestone.
-- Use \`save_context\` when wrapping a meaningful unit of work, not after every turn.
+- Use \`save\` action \`checkpoint\` only at meaningful boundaries: before compaction-equivalent actions, before switching tasks, or after finishing a logical milestone.
+- Use \`save\` action \`save_session\` when wrapping a meaningful unit of work, not after every turn.
+- This keeps Relay current without turning it into a noisy per-turn write path.
 
 ## Memory Types
 - **decision**: Architectural or implementation choices

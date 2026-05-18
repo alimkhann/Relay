@@ -4,7 +4,7 @@ export type ProjectSourceKind = "uploaded_file" | "repo_file" | "external_docs" 
 export type ProjectSourceStatus = "pending_upload" | "processing" | "ready" | "failed" | "archived" | "stale"
 export type SourceVersionStatus = "pending_upload" | "processing" | "ready" | "failed"
 export type SourceFactCandidateStatus = "pending" | "promoted" | "rejected"
-export type ExternalSourceType = "website" | "llms_txt" | "pdf" | "arxiv" | "openapi" | "package_docs"
+export type ExternalSourceType = "website" | "llms_txt" | "pdf" | "arxiv" | "openapi" | "package_docs" | "github_repo"
 
 export interface ProjectSourceRow {
   id: string
@@ -95,6 +95,7 @@ export interface ProjectSourceDto {
   latestVersion?: SourceVersionRow | null
   pendingCandidates?: number
   promotedCandidates?: number
+  derivedMemoryCount?: number
 }
 
 export interface SourceSearchResultDto {
@@ -109,4 +110,26 @@ export interface SourceSearchResultDto {
   provider: string | null
   score: number
   indexedAt: string | null
+}
+
+export interface SourceResolutionEvidenceDto {
+  type: "project_source" | "global_source" | "explicit_url" | "package_registry" | "repository_metadata" | "llms_txt" | "sitemap"
+  value: string
+  url?: string | null
+}
+
+export interface SourceResolutionCandidateDto {
+  title: string
+  url: string
+  sourceId?: string | null
+  sourceType: ExternalSourceType
+  confidence: number
+  evidence: SourceResolutionEvidenceDto[]
+  notes?: string | null
+}
+
+export interface SourceResolutionResultDto {
+  candidates: SourceResolutionCandidateDto[]
+  unresolved: string[]
+  guidance: string | null
 }

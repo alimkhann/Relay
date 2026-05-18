@@ -15,7 +15,7 @@ This file is a Claude Code compatibility overlay. The canonical repository polic
   - `SessionEnd`
   - `StopFailure`
 - If you are debugging autosave behavior, verify loaded hooks with `/hooks`.
-- If hooks are unavailable or disabled, call `checkpoint_context` manually before compaction, ending a session, or switching to a different task.
+- If hooks are unavailable or disabled, call `save` action `checkpoint` manually before compaction, ending a session, or switching to a different task.
 
 ## Claude Usage Notes
 

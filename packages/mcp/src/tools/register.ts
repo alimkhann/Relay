@@ -46,7 +46,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
             ? "cached"
             : null
       const readOrWrite =
-        name === "sources" && ["index", "refresh", "promote"].includes(String(args?.action ?? ""))
+        name === "sources" && ["index", "refresh", "promote", "import", "delete", "purge"].includes(String(args?.action ?? ""))
           ? "write"
           : writeTools.has(name) ? "write" : "read"
 
@@ -198,14 +198,18 @@ If returned context is stale, completed, contradicted, or superseded, clean it u
 
   server.tool(
     "sources",
-    `External source tool for Relay docs and research sources. Actions:
+    `Project-governed source lifecycle for Relay docs and repository sources. Actions:
 - list: list indexed project sources
-- discover: return source discovery guidance for a query
+- resolve: resolve a technology, package, manifest, or URL to evidence-backed source candidates
 - index: index a public docs/research URL
 - status/read: inspect a source and its chunks
 - search: explicitly search indexed sources with citations
+- context_pack: return grouped source snippets under a token budget
+- explore: list indexed pages/chunks for navigation
+- grep: regex/keyword search indexed source text
 - refresh: re-fetch and re-index a source (external URL or uploaded file)
 - promote: save a selected citation into Relay memory
+- import: save citations returned by external tools such as Context7 or Nia with provenance; Relay does not fake those adapters
 - delete: archive a source (soft, recoverable; hides it from list)
 - purge: permanently delete an archived source and its stored file`,
     sourcesSchema.shape,
