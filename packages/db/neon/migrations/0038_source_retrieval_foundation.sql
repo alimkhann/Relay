@@ -95,7 +95,7 @@ alter table source_external_citations enable row level security;
 create policy "Authenticated users can read global sources"
 on global_sources
 for select
-using (auth.uid() is not null);
+using (public.current_relay_user_id() is not null);
 
 create policy "Members manage project global source links"
 on project_global_source_links

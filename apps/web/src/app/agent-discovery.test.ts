@@ -35,7 +35,14 @@ describe("agent discovery routes", () => {
       type: "streamable-http",
       endpoint: "https://www.onrelay.app/api/mcp/stream",
     })
-    expect(payload.capabilities.tools.names).toContain("get_brief")
+    expect(payload.capabilities.tools.names).toEqual([
+      "list_projects",
+      "set_current_project",
+      "get_brief",
+      "recall",
+      "sources",
+      "save",
+    ])
     expect(payload.capabilities.prompts.names).toContain("relay_session_guidelines")
     expect(payload.capabilities.resources.uris).toContain("relay://session-guidelines")
   })

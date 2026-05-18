@@ -90,8 +90,8 @@ Use this skill when a coding agent needs the current Relay context before making
 ## Guidance
 
 - Prefer \`get_brief\` for human-readable working context.
-- Use \`get_project_state\` when the task needs structured state.
-- Use \`search_context\` or \`recall_context\` before making architectural changes.
+- Use \`recall\` when the task needs structured state, memory search, continuity activity, briefs, or provenance tracing.
+- Use \`sources\` for project-governed docs and repository source retrieval.
 
 ## When to refresh
 
@@ -111,9 +111,9 @@ Use this skill when a coding session produced new durable context that should be
 
 ## Preferred write pattern
 
-- Use \`add_memory\` immediately for clearly confirmed individual decisions, constraints, or tasks.
-- Use \`checkpoint_context\` for a mid-session snapshot that should not close the work session.
-- Use \`save_context\` when you want to finalize the session summary.
+- Use \`save\` action \`add_memory\` immediately for clearly confirmed individual decisions, constraints, or tasks.
+- Use \`save\` action \`checkpoint\` for a mid-session snapshot that should not close the work session.
+- Use \`save\` action \`save_session\` when you want to finalize the session summary.
 - Do not save speculative brainstorming until it becomes confirmed durable context.
 
 ## Minimum end-of-session payload

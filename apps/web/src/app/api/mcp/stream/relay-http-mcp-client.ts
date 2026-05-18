@@ -108,7 +108,7 @@ export class RelayHttpMcpClient {
         kind,
         syncSurface,
         resumeGuidance:
-          "If this brief is coherent and on the correct project, do not call list_projects, set_current_project, get_project_state, list_sessions, list_briefs, or search_context just to restate the same continuity.",
+          "If this brief is coherent and on the correct project, do not call list_projects, set_current_project, or recall just to restate the same continuity.",
       },
     })
 
