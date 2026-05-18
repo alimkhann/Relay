@@ -36,6 +36,27 @@ describe("assistant tool registry", () => {
     expect(String(result.modelResponse.error)).toMatch(/Free plan/i)
   })
 
+  it("flags hard delete as irreversible and archive as reversible", async () => {
+    const client = { manageMemory: async () => {} } as unknown as RelayHttpMcpClient
+    const del = await executeAssistantTool(
+      client,
+      "manage_memory",
+      { action: "delete", memoryId: ["m1", "m2"] },
+      { plan: "pro" }
+    )
+    expect(del.actionResult?.action).toBe("deleted")
+    expect(del.actionResult?.irreversible).toBe(true)
+    expect(del.actionResult?.undoRef).toBeUndefined()
+
+    const arch = await executeAssistantTool(
+      client,
+      "manage_memory",
+      { action: "archive", memoryId: ["m1"] },
+      { plan: "pro" }
+    )
+    expect(arch.actionResult?.irreversible).toBeFalsy()
+  })
+
   it("answers Relay product questions from public docs", async () => {
     const result = await executeAssistantTool(stubClient, "relay_knowledge", { query: "what is mcp" }, {
       plan: "free"

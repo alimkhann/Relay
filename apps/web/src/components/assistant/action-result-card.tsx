@@ -51,6 +51,8 @@ export function ActionResultCard({
             <Undo2 className="size-3.5" />
             Undo
           </button>
+        ) : result.irreversible ? (
+          <span className="text-xs text-[var(--relay-muted)]">Can&apos;t be undone</span>
         ) : null}
       </div>
       {result.items.length > 0 ? (

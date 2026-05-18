@@ -297,6 +297,31 @@ export async function consumeAssistantMessageQuota(userId: string) {
   )
 }
 
+// Hard pre-turn gate: the monthly token bucket is recorded after each turn
+// (so the in-flight response always finishes), but the *next* turn must be
+// blocked once the cap is exceeded or AI cost is unbounded. Throws the same
+// TooManyRequestsError shape consumeQuota uses, so withApiRoute renders the
+// 429 upgrade payload the client already understands.
+export async function assertAssistantTokenBudget(userId: string) {
+  const entitlements = await resolveViewerEntitlements(userId)
+  const limit = entitlements.limits.assistantTokensMonthly
+  const used = await getUsageCount(userId, "assistant_tokens_monthly", "month")
+  if (used >= limit) {
+    const { end } = getWindowBounds("month")
+    const retryAfterSeconds = Math.max(1, Math.ceil((new Date(end).getTime() - Date.now()) / 1000))
+    throw new TooManyRequestsError(
+      "You have reached your plan's monthly Ask Relay AI usage limit.",
+      {
+        retryAfterSeconds,
+        limit,
+        remaining: 0,
+        plan: entitlements.plan,
+        upgradeUrl: "https://www.onrelay.app/settings?section=billing",
+      },
+    )
+  }
+}
+
 export async function consumeAssistantTokenQuota(userId: string, totalTokens: number) {
   const entitlements = await resolveViewerEntitlements(userId)
   return consumeQuota(

@@ -23,6 +23,9 @@ export interface AssistantActionResult {
     tool: string
     args: Record<string, unknown>
   }
+  /** True when the effect cannot be reversed (e.g. a hard delete), so the
+   *  UI states this instead of silently offering no Undo. */
+  irreversible?: boolean
 }
 
 /** A destructive tool call awaiting explicit user confirmation. */

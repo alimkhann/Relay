@@ -299,7 +299,10 @@ export async function runGeminiAgentStep(input: {
       args: (part.functionCall?.args as Record<string, unknown>) ?? {}
     }))
 
-  const inputTokens = payload.usageMetadata?.promptTokenCount ?? 0
+  // Gemini omits usageMetadata on some function-calling responses. Estimate
+  // from the serialized request so the monthly token cap is never fed zeros.
+  const inputTokens =
+    payload.usageMetadata?.promptTokenCount ?? estimateTokenCount(JSON.stringify(input.contents))
   const outputTokens = payload.usageMetadata?.candidatesTokenCount ?? estimateTokenCount(text)
 
   return {

@@ -49,20 +49,26 @@ alter table assistant_chats enable row level security;
 alter table assistant_messages enable row level security;
 alter table assistant_attachments enable row level security;
 
-create policy "Users manage own assistant chats"
-on assistant_chats
-for all
-using (user_id = public.current_relay_user_id())
-with check (user_id = public.current_relay_user_id());
+do $$ begin
+  create policy "Users manage own assistant chats"
+  on assistant_chats
+  for all
+  using (user_id = public.current_relay_user_id())
+  with check (user_id = public.current_relay_user_id());
+exception when duplicate_object then null; end $$;
 
-create policy "Users manage own assistant messages"
-on assistant_messages
-for all
-using (user_id = public.current_relay_user_id())
-with check (user_id = public.current_relay_user_id());
+do $$ begin
+  create policy "Users manage own assistant messages"
+  on assistant_messages
+  for all
+  using (user_id = public.current_relay_user_id())
+  with check (user_id = public.current_relay_user_id());
+exception when duplicate_object then null; end $$;
 
-create policy "Users manage own assistant attachments"
-on assistant_attachments
-for all
-using (user_id = public.current_relay_user_id())
-with check (user_id = public.current_relay_user_id());
+do $$ begin
+  create policy "Users manage own assistant attachments"
+  on assistant_attachments
+  for all
+  using (user_id = public.current_relay_user_id())
+  with check (user_id = public.current_relay_user_id());
+exception when duplicate_object then null; end $$;

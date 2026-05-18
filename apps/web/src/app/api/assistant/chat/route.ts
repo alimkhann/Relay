@@ -5,6 +5,7 @@ import { withApiAuth } from "@/server/http/api-route"
 import { rejectMcpViewer, resolveViewer } from "@/server/policies/viewer"
 import { runAssistantTurn } from "@/server/services/assistant-agent-service"
 import {
+  assertAssistantTokenBudget,
   consumeAssistantMessageQuota,
   consumeAssistantTokenQuota,
   resolveViewerEntitlements
@@ -19,6 +20,10 @@ export const POST = withApiAuth(async (request: Request) => {
   const input = sendAssistantMessageSchema.parse(await request.json())
   const entitlements = await resolveViewerEntitlements(viewer.userId)
   const plan = entitlements.plan
+
+  // Hard monthly token ceiling. Gate both new messages and confirmations
+  // (a confirmation resumes the turn and spends more tokens) before any work.
+  await assertAssistantTokenBudget(viewer.userId)
 
   // A confirmation continues an existing turn and is not a new billable message.
   if (!input.confirmActionId) {

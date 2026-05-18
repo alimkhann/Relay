@@ -202,10 +202,12 @@ export async function executeAssistantTool(
       await client.manageMemory(args)
       const actionResult: AssistantActionResult = {
         tool: "manage_memory",
-        action: action === "delete" ? "deleted" : action === "archive" ? "updated" : "updated",
+        action: action === "delete" ? "deleted" : "updated",
         entity: "memory item",
         count: ids.length,
-        items: ids.map((id) => ({ id, label: id }))
+        items: ids.map((id) => ({ id, label: id })),
+        // delete is a hard remove with no exposed inverse; be honest about it.
+        irreversible: action === "delete"
       }
       return { modelResponse: { result: `Memory ${action} applied to ${ids.length} item(s).` }, actionResult }
     }

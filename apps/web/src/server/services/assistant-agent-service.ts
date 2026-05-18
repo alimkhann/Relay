@@ -186,8 +186,11 @@ export async function* runAssistantTurn(
     }
 
     for (const call of stepResult.functionCalls) {
-      const needsConfirm =
-        DESTRUCTIVE_TOOLS.has(call.name) && !input.confirmActionId
+      // Every destructive call needs its own confirmation. The single action
+      // the user already confirmed is executed before this loop (step 4); a
+      // truthy confirmActionId must NOT blanket-approve further destructive
+      // calls the model makes while continuing the turn.
+      const needsConfirm = DESTRUCTIVE_TOOLS.has(call.name)
       if (needsConfirm) {
         const actionId = randomUUID()
         const summary = describeToolCall(call.name, call.args)
