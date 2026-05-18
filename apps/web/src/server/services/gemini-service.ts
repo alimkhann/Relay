@@ -200,6 +200,120 @@ async function generateJson<T>(model: string, systemInstruction: string, prompt:
   }
 }
 
+export interface GeminiFunctionDeclaration {
+  name: string
+  description: string
+  parameters: Record<string, unknown>
+}
+
+export interface GeminiContent {
+  role: "user" | "model" | "function"
+  parts: Array<
+    | { text: string }
+    | { functionCall: { name: string; args: Record<string, unknown> } }
+    | { functionResponse: { name: string; response: Record<string, unknown> } }
+  >
+}
+
+export interface GeminiAgentStepResult {
+  text: string
+  functionCalls: Array<{ name: string; args: Record<string, unknown> }>
+  finishReason: string | null
+  tokenUsage: GeminiUsage
+}
+
+/**
+ * Single non-streaming agent turn with function calling. The caller owns the
+ * bounded loop (execute tools, append functionResponse, call again).
+ */
+export async function runGeminiAgentStep(input: {
+  model: string
+  systemInstruction: string
+  contents: GeminiContent[]
+  tools: GeminiFunctionDeclaration[]
+  maxOutputTokens: number
+  signal?: AbortSignal
+}): Promise<GeminiAgentStepResult> {
+  const cachedError = getCachedUnavailableError(input.model, "generate")
+  if (cachedError) {
+    throw cachedError
+  }
+
+  const apiKey = getGeminiApiKey()
+  if (!apiKey) {
+    throw new GeminiRequestError("Gemini API key is not configured.", 0, false, "preflight")
+  }
+
+  const response = await fetch(`${GEMINI_API_BASE}/models/${input.model}:generateContent`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-goog-api-key": apiKey
+    },
+    signal: input.signal,
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: input.systemInstruction }] },
+      contents: input.contents,
+      tools: input.tools.length > 0 ? [{ functionDeclarations: input.tools }] : undefined,
+      generationConfig: {
+        maxOutputTokens: input.maxOutputTokens
+      }
+    })
+  })
+
+  if (!response.ok) {
+    const message = await parseError(response)
+    if (isModelUnavailableStatus(response.status)) {
+      rememberUnavailableModel(input.model)
+    }
+    throw new GeminiRequestError(message, response.status, isRetryableStatus(response.status), "generate")
+  }
+
+  const payload = (await response.json()) as {
+    candidates?: Array<{
+      finishReason?: string
+      content?: {
+        parts?: Array<{
+          text?: string
+          functionCall?: { name?: string; args?: Record<string, unknown> }
+        }>
+      }
+    }>
+    usageMetadata?: {
+      promptTokenCount?: number
+      candidatesTokenCount?: number
+      totalTokenCount?: number
+    }
+  }
+
+  const candidate = payload.candidates?.[0]
+  const parts = candidate?.content?.parts ?? []
+  const text = parts
+    .map((part) => part.text ?? "")
+    .join("")
+    .trim()
+  const functionCalls = parts
+    .filter((part) => part.functionCall?.name)
+    .map((part) => ({
+      name: String(part.functionCall?.name),
+      args: (part.functionCall?.args as Record<string, unknown>) ?? {}
+    }))
+
+  const inputTokens = payload.usageMetadata?.promptTokenCount ?? 0
+  const outputTokens = payload.usageMetadata?.candidatesTokenCount ?? estimateTokenCount(text)
+
+  return {
+    text,
+    functionCalls,
+    finishReason: candidate?.finishReason ?? null,
+    tokenUsage: {
+      inputTokens,
+      outputTokens,
+      totalTokens: payload.usageMetadata?.totalTokenCount ?? inputTokens + outputTokens
+    }
+  }
+}
+
 function trimPromptToBudget(prompt: string, maxInputTokens: number) {
   let nextPrompt = normalizeText(prompt)
   let totalTokens = estimateTokenCount(nextPrompt)

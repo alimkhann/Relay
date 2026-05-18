@@ -1,3 +1,6 @@
+import { AssistantAttachmentRepository } from "../repositories/assistant-attachment-repository"
+import { AssistantChatRepository } from "../repositories/assistant-chat-repository"
+import { AssistantMessageRepository } from "../repositories/assistant-message-repository"
 import { BrowserSessionHandoffRepository } from "../repositories/browser-session-handoff-repository"
 import { CliAuthSessionRepository } from "../repositories/cli-auth-session-repository"
 import { AiJobRunRepository } from "../repositories/ai-job-run-repository"
@@ -90,6 +93,9 @@ export interface RepositoryBundle {
   workSessionEvents: WorkSessionEventRepository
   workSessionCheckpoints: WorkSessionCheckpointRepository
   entities: EntityRepository
+  assistantChats: AssistantChatRepository
+  assistantMessages: AssistantMessageRepository
+  assistantAttachments: AssistantAttachmentRepository
 }
 
 export function createRepositoryBundle(
@@ -144,5 +150,8 @@ export function createRepositoryBundle(
     workSessionEvents: new WorkSessionEventRepository(provider),
     workSessionCheckpoints: new WorkSessionCheckpointRepository(provider),
     entities: new EntityRepository(provider),
+    assistantChats: new AssistantChatRepository(provider),
+    assistantMessages: new AssistantMessageRepository(provider),
+    assistantAttachments: new AssistantAttachmentRepository(provider),
   }
 }

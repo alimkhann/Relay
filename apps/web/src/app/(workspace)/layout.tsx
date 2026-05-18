@@ -3,6 +3,7 @@ import { cookies } from "next/headers"
 
 import { createRepositoryBundle } from "@relay/db"
 
+import { AskRelayLauncher } from "@/components/assistant/ask-relay-launcher"
 import { AutoCaptureOnboardingBanner } from "@/components/onboarding/auto-capture-onboarding-banner"
 import { QueryProvider } from "@/components/providers/query-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -90,6 +91,7 @@ export default async function WorkspaceLayout({
             {children}
           </div>
         </SidebarMainArea>
+        <AskRelayLauncher plan={entitlements.plan} surface="dashboard" />
       </div>
     </SidebarProvider>
     </TooltipProvider>

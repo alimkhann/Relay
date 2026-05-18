@@ -1,9 +1,12 @@
 import type { Metadata } from "next"
 import { Suspense } from "react"
 
+import { AskRelayLauncher } from "@/components/assistant/ask-relay-launcher"
 import { DocsSidebar } from "@/components/docs/docs-sidebar"
 import { DocsMobileNav } from "@/components/docs/docs-mobile-nav"
 import { WebMcpBootstrap } from "@/components/webmcp/webmcp-bootstrap"
+import { resolveOptionalViewer } from "@/server/policies/viewer"
+import { resolveViewerEntitlements } from "@/server/services/entitlement-service"
 
 export const metadata: Metadata = {
   title: "Docs — Relay",
@@ -14,10 +17,14 @@ export const metadata: Metadata = {
   },
 }
 
-export default function DocsLayout({ children }: { children: React.ReactNode }) {
+export default async function DocsLayout({ children }: { children: React.ReactNode }) {
+  const viewer = await resolveOptionalViewer()
+  const entitlements = viewer ? await resolveViewerEntitlements(viewer.userId) : null
+
   return (
     <div className="min-h-screen bg-[var(--relay-bg)]">
       <WebMcpBootstrap />
+      {entitlements ? <AskRelayLauncher plan={entitlements.plan} surface="docs" /> : null}
       <Suspense fallback={null}>
         <DocsMobileNav />
       </Suspense>

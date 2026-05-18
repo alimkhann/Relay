@@ -114,6 +114,10 @@ export async function getBillingStatusForUser(userId: string): Promise<BillingSt
     getUsageCount(userId, "external_source_search_daily", "day"),
     getUsageCount(userId, "external_source_refresh_daily", "day"),
   ])
+  const [assistantMessagesThisMonth, assistantTokensThisMonth] = await Promise.all([
+    getUsageCount(userId, "assistant_messages_monthly", "month"),
+    getUsageCount(userId, "assistant_tokens_monthly", "month"),
+  ])
 
   return {
     entitlements,
@@ -145,6 +149,8 @@ export async function getBillingStatusForUser(userId: string): Promise<BillingSt
       externalSourceIndexesToday,
       externalSourceSearchesToday,
       externalSourceRefreshesToday,
+      assistantMessagesThisMonth,
+      assistantTokensThisMonth,
     },
   }
 }
@@ -264,6 +270,43 @@ export async function consumeExtensionMemoryWriteQuota(userId: string, amount = 
   const entitlements = await resolveViewerEntitlements(userId)
   const limit = EXTENSION_MEMORY_WRITE_LIMITS[entitlements.plan]
   return consumeQuota(userId, "extension_memory_write_daily", "day", limit, amount, entitlements.plan)
+}
+
+// Ask Relay. Free plan is a small monthly taste then a hard paywall; paid
+// plans get a generous daily allowance. Token spend is additionally capped
+// monthly so AI cost stays bounded even for paid plans.
+export async function consumeAssistantMessageQuota(userId: string) {
+  const entitlements = await resolveViewerEntitlements(userId)
+  if (entitlements.plan === "free") {
+    return consumeQuota(
+      userId,
+      "assistant_messages_monthly",
+      "month",
+      entitlements.limits.assistantMessagesMonthly,
+      1,
+      entitlements.plan,
+    )
+  }
+  return consumeQuota(
+    userId,
+    "assistant_messages_daily",
+    "day",
+    entitlements.limits.assistantMessagesDaily,
+    1,
+    entitlements.plan,
+  )
+}
+
+export async function consumeAssistantTokenQuota(userId: string, totalTokens: number) {
+  const entitlements = await resolveViewerEntitlements(userId)
+  return consumeQuota(
+    userId,
+    "assistant_tokens_monthly",
+    "month",
+    entitlements.limits.assistantTokensMonthly,
+    Math.max(1, Math.ceil(totalTokens)),
+    entitlements.plan,
+  )
 }
 
 export async function consumeIpRateLimit(scopeKey: string, featureKey: string, perMinuteLimit: number) {
