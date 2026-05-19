@@ -210,14 +210,17 @@ export interface GeminiContent {
   role: "user" | "model" | "function"
   parts: Array<
     | { text: string }
-    | { functionCall: { name: string; args: Record<string, unknown> } }
+    // Gemini 3 returns an opaque thoughtSignature on functionCall parts that
+    // MUST be echoed back unchanged on the model turn, or the follow-up
+    // request is rejected ("function call is missing a thought_signature").
+    | { functionCall: { name: string; args: Record<string, unknown> }; thoughtSignature?: string }
     | { functionResponse: { name: string; response: Record<string, unknown> } }
   >
 }
 
 export interface GeminiAgentStepResult {
   text: string
-  functionCalls: Array<{ name: string; args: Record<string, unknown> }>
+  functionCalls: Array<{ name: string; args: Record<string, unknown>; thoughtSignature?: string }>
   finishReason: string | null
   tokenUsage: GeminiUsage
 }
@@ -276,6 +279,7 @@ export async function runGeminiAgentStep(input: {
         parts?: Array<{
           text?: string
           functionCall?: { name?: string; args?: Record<string, unknown> }
+          thoughtSignature?: string
         }>
       }
     }>
@@ -296,7 +300,8 @@ export async function runGeminiAgentStep(input: {
     .filter((part) => part.functionCall?.name)
     .map((part) => ({
       name: String(part.functionCall?.name),
-      args: (part.functionCall?.args as Record<string, unknown>) ?? {}
+      args: (part.functionCall?.args as Record<string, unknown>) ?? {},
+      thoughtSignature: part.thoughtSignature
     }))
 
   // Gemini omits usageMetadata on some function-calling responses. Estimate

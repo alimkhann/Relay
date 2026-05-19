@@ -3,94 +3,113 @@ import path from "node:path"
 
 import { expect, test, type Page } from "@playwright/test"
 
-// Auth state captured in Part C after the user signs in with Google against
-// the Neon prod-replica branch. Without it the assistant is unreachable
-// (every route is withApiAuth), so the suite skips rather than false-fails.
+// Auth state captured during the Neon prod-replica e2e pass. Without it the
+// assistant is unreachable (every route is withApiAuth), so the suite skips
+// rather than false-fail.
 const STORAGE_STATE = process.env.ASK_RELAY_STORAGE_STATE ?? path.join(process.cwd(), "tests/e2e/.auth/ask-relay.json")
 const SHOTS = path.join(process.cwd(), ".tmp/ask-relay-screenshots")
-
+const SMOKE_PROJECT = process.env.ASK_RELAY_SMOKE_PROJECT ?? "Ask Relay E2E Smoke"
+const SMOKE_PROJECT_ID = process.env.ASK_RELAY_SMOKE_PROJECT_ID ?? ""
 const hasAuth = fs.existsSync(STORAGE_STATE)
 
+// Real account: pin every panel to the throwaway smoke project so the
+// assistant never acts on real projects.
+const dashboardUrl = SMOKE_PROJECT_ID ? `/dashboard?project=${SMOKE_PROJECT_ID}` : "/dashboard"
+
+const assistantMsg = (page: Page) => page.locator('[data-testid="chat-message"][data-role="assistant"]')
+const userMsg = (page: Page) => page.locator('[data-testid="chat-message"][data-role="user"]')
+
 test.describe("Ask Relay assistant", () => {
-  test.skip(!hasAuth, `No auth state at ${STORAGE_STATE} — captured during Part C.`)
+  test.skip(!hasAuth, `No auth state at ${STORAGE_STATE} — captured during the Neon-branch pass.`)
 
   test.use({
     storageState: hasAuth ? STORAGE_STATE : undefined,
     permissions: ["clipboard-read", "clipboard-write"]
   })
 
-  test.beforeAll(() => {
-    fs.mkdirSync(SHOTS, { recursive: true })
-  })
+  test.beforeAll(() => fs.mkdirSync(SHOTS, { recursive: true }))
+  test.beforeEach(({ page }) => page.setDefaultTimeout(90_000))
 
   async function openPanel(page: Page) {
-    await page.goto("/dashboard")
-    await page.getByRole("button", { name: /ask relay/i }).first().click()
+    await page.goto(dashboardUrl, { waitUntil: "domcontentloaded" })
+    // Exact name: a smoke project may contain "Ask Relay" in its title.
+    await page.getByRole("button", { name: "Ask Relay", exact: true }).click()
     await expect(page.getByPlaceholder("Ask anything…")).toBeVisible()
   }
 
-  test("opens the panel from the dashboard launcher", async ({ page }) => {
+  async function ask(page: Page, prompt: string) {
+    const before = await assistantMsg(page).count()
+    await page.getByPlaceholder("Ask anything…").fill(prompt)
+    await page.getByRole("button", { name: "Send" }).click()
+    // A new finalized assistant message must appear (covers cold Next-dev
+    // route compile + live Gemini + the tool loop).
+    await expect(assistantMsg(page)).toHaveCount(before + 1, { timeout: 120_000 })
+    const last = assistantMsg(page).last()
+    await expect(last).not.toBeEmpty({ timeout: 120_000 })
+    return last
+  }
+
+  test("ensures a smoke project exists (real account, isolated project)", async ({ page }) => {
+    await page.goto(dashboardUrl, { waitUntil: "domcontentloaded" })
+    const nameField = page.getByPlaceholder(/Acapella or Internal Tools/i)
+    if (await nameField.isVisible({ timeout: 8000 }).catch(() => false)) {
+      await nameField.fill(SMOKE_PROJECT)
+      await page.getByRole("button", { name: /^create$/i }).click()
+      await page.waitForLoadState("networkidle")
+    }
+    await page.screenshot({ path: path.join(SHOTS, "00-dashboard.png"), fullPage: true })
+  })
+
+  test("opens the panel and shows the empty state", async ({ page }) => {
     await openPanel(page)
     await expect(page.getByText("Ask about your work")).toBeVisible()
     await page.screenshot({ path: path.join(SHOTS, "01-panel-open.png"), fullPage: true })
   })
 
-  test("sends a message and receives a streamed assistant reply", async ({ page }) => {
+  test("sends a message and receives a finalized assistant reply", async ({ page }) => {
     await openPanel(page)
-    await page.getByPlaceholder("Ask anything…").fill("In one sentence, what is Relay?")
-    await page.getByRole("button", { name: "Send" }).click()
-
-    // Live model call — generous budget, assert an assistant bubble appears.
-    const assistantBubble = page.locator(".prose, [class*='relay-soft']").last()
-    await expect(assistantBubble).toBeVisible({ timeout: 45_000 })
-    await expect
-      .poll(async () => (await assistantBubble.innerText()).trim().length, { timeout: 45_000 })
-      .toBeGreaterThan(0)
+    const reply = await ask(page, "In one sentence, what is Relay?")
+    await expect(reply).toContainText(/\w{4,}/)
     await page.screenshot({ path: path.join(SHOTS, "02-message-reply.png"), fullPage: true })
   })
 
-  test("copy control confirms it copied", async ({ page }) => {
+  test("copies an assistant reply", async ({ page }) => {
     await openPanel(page)
-    await page.getByPlaceholder("Ask anything…").fill("Say the word relay back to me.")
-    await page.getByRole("button", { name: "Send" }).click()
-    await expect(page.getByRole("button", { name: /^copy$/i }).first()).toBeVisible({ timeout: 45_000 })
-
-    await page.getByRole("button", { name: /^copy$/i }).first().click()
-    await expect(page.getByRole("button", { name: /copied/i }).first()).toBeVisible()
+    const reply = await ask(page, "Reply with the single word: relay")
+    await reply.scrollIntoViewIfNeeded()
+    await reply.hover()
+    await reply.getByRole("button", { name: /^copy$/i }).click()
+    await expect(reply.getByRole("button", { name: /copied/i })).toBeVisible()
     await page.screenshot({ path: path.join(SHOTS, "03-copy.png"), fullPage: true })
   })
 
-  test("like feedback toggles on and off", async ({ page }) => {
+  test("like feedback toggles and persists", async ({ page }) => {
     await openPanel(page)
-    await page.getByPlaceholder("Ask anything…").fill("Reply with a short greeting.")
-    await page.getByRole("button", { name: "Send" }).click()
-
-    const like = page.getByRole("button", { name: "Good response" }).first()
-    await expect(like).toBeVisible({ timeout: 45_000 })
-
+    const reply = await ask(page, "Give me a short greeting.")
+    await reply.hover()
+    const like = reply.getByRole("button", { name: "Good response" })
     const patch = page.waitForResponse(
-      (r) => r.url().includes("/api/assistant/messages/") && r.request().method() === "PATCH"
+      (r) => r.url().includes("/api/assistant/messages/") && r.request().method() === "PATCH" && r.ok()
     )
     await like.click()
     await patch
     await page.screenshot({ path: path.join(SHOTS, "04-feedback.png"), fullPage: true })
-    // Unlike (same control toggles back to null).
-    await like.click()
+    await like.click() // toggles back off
   })
 
   test("editing a user message branches with chevron cycling", async ({ page }) => {
     await openPanel(page)
-    await page.getByPlaceholder("Ask anything…").fill("First version of my question.")
-    await page.getByRole("button", { name: "Send" }).click()
-    await expect(page.getByRole("button", { name: "Good response" }).first()).toBeVisible({ timeout: 45_000 })
+    await ask(page, "First version of my question.")
 
-    await page.getByRole("button", { name: "Edit" }).first().click()
-    const editor = page.locator("textarea").nth(0)
+    const firstUser = userMsg(page).first()
+    await firstUser.hover()
+    await firstUser.getByRole("button", { name: "Edit" }).click()
+    const editor = page.locator("textarea").nth(1) // 0 = composer, 1 = inline editor
     await editor.fill("Second, edited version of my question.")
     await page.getByRole("button", { name: /save.*submit/i }).click()
 
-    // A sibling branch now exists at this user turn → chevron shows position.
-    await expect(page.getByText(/^[12]\/2$/).first()).toBeVisible({ timeout: 45_000 })
+    // A sibling branch now exists at this user turn → chevron shows N/2.
+    await expect(page.getByText(/\b[12]\/2\b/).first()).toBeVisible({ timeout: 120_000 })
     await page.screenshot({ path: path.join(SHOTS, "05-branch.png"), fullPage: true })
 
     await page.getByRole("button", { name: "Previous version" }).first().click()

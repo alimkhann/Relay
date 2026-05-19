@@ -86,6 +86,8 @@ export function ChatMessage({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
       className={cn("group flex w-full", isUser ? "justify-end" : "justify-start")}
+      data-testid="chat-message"
+      data-role={message.role}
     >
       <div className={cn("flex max-w-[85%] flex-col gap-1.5", isUser && "items-end")}>
         {editing ? (

@@ -41,7 +41,14 @@ function chunkText(text: string): string[] {
 }
 
 interface PendingActionPayload {
-  pendingAction: { id: string; tool: string; summary: string; args: Record<string, unknown> }
+  pendingAction: {
+    id: string
+    tool: string
+    summary: string
+    args: Record<string, unknown>
+    // Echoed back when the confirmed action resumes the turn (Gemini 3).
+    thoughtSignature?: string
+  }
 }
 
 function describeToolCall(tool: string, args: Record<string, unknown>): string {
@@ -128,7 +135,12 @@ export async function* runAssistantTurn(
         if (exec.actionResult) yield { type: "tool_result", result: exec.actionResult }
         contents.push({
           role: "model",
-          parts: [{ functionCall: { name: pending.tool, args: pending.args } }]
+          parts: [
+            {
+              functionCall: { name: pending.tool, args: pending.args },
+              thoughtSignature: pending.thoughtSignature
+            }
+          ]
         })
         contents.push({
           role: "function",
@@ -195,7 +207,13 @@ export async function* runAssistantTurn(
         const actionId = randomUUID()
         const summary = describeToolCall(call.name, call.args)
         const payload: PendingActionPayload = {
-          pendingAction: { id: actionId, tool: call.name, summary, args: call.args }
+          pendingAction: {
+            id: actionId,
+            tool: call.name,
+            summary,
+            args: call.args,
+            thoughtSignature: call.thoughtSignature
+          }
         }
         await repositories.assistantMessages.create({
           chatId: chat.id,
@@ -247,7 +265,12 @@ export async function* runAssistantTurn(
         toolPayload: { args: call.args, response: exec.modelResponse }
       })
       tailId = toolMsg.id
-      contents.push({ role: "model", parts: [{ functionCall: { name: call.name, args: call.args } }] })
+      contents.push({
+        role: "model",
+        parts: [
+          { functionCall: { name: call.name, args: call.args }, thoughtSignature: call.thoughtSignature }
+        ]
+      })
       contents.push({
         role: "function",
         parts: [{ functionResponse: { name: call.name, response: exec.modelResponse } }]
