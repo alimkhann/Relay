@@ -188,7 +188,9 @@ export function ExtensionChat() {
   }, [])
 
   useEffect(() => {
-    void chat.listProjects().then((p) => setProjectId(p[0]?.id ?? null))
+    // Only enable Save-to-Sources when the target is unambiguous (exactly one
+    // project) — never silently route an attachment into projects[0].
+    void chat.listProjects().then((p) => setProjectId(p.length === 1 ? p[0]!.id : null))
   }, [chat])
 
   useEffect(() => {

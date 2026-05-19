@@ -188,7 +188,10 @@ export async function* runAssistantTurn(
     if (pending) {
       yield { type: "tool_start", tool: pending.tool }
       try {
-        const exec = await executeAssistantTool(client, pending.tool, pending.args, { plan: options.plan })
+        const exec = await executeAssistantTool(client, pending.tool, pending.args, {
+          plan: options.plan,
+          chatId: chat.id
+        })
         if (exec.actionResult) {
           turnActionResults.push(exec.actionResult)
           yield { type: "tool_result", result: exec.actionResult }
@@ -307,7 +310,10 @@ export async function* runAssistantTurn(
       yield { type: "tool_start", tool: call.name }
       let exec
       try {
-        exec = await executeAssistantTool(client, call.name, call.args, { plan: options.plan })
+        exec = await executeAssistantTool(client, call.name, call.args, {
+          plan: options.plan,
+          chatId: chat.id
+        })
       } catch (error) {
         exec = {
           modelResponse: {

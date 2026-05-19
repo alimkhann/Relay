@@ -507,12 +507,15 @@ export class RelayHttpMcpClient {
     return sections.join("\n\n")
   }
 
-  async recallPastChats(query: string, options?: { limit?: number }) {
+  async recallPastChats(query: string, options?: { limit?: number; excludeChatId?: string }) {
     const repos = createRepositoryBundle(this.viewer.userId)
     const limit = options?.limit ?? 6
-    const chats = query.trim()
-      ? await repos.assistantChats.searchByUser(this.viewer.userId, query, { limit })
-      : await repos.assistantChats.listByUser(this.viewer.userId, { limit })
+    const found = query.trim()
+      ? await repos.assistantChats.searchByUser(this.viewer.userId, query, { limit: limit + 1 })
+      : await repos.assistantChats.listByUser(this.viewer.userId, { limit: limit + 1 })
+    const chats = found
+      .filter((c) => c.id !== options?.excludeChatId)
+      .slice(0, limit)
     const out = []
     for (const c of chats) {
       const msgs = await repos.assistantMessages.listByChat(c.id, { limit: 12 })

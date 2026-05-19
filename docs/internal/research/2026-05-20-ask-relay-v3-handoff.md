@@ -57,3 +57,6 @@ Rollback unchanged: `git revert <merge> && vercel deploy --prod --yes`
   panel only).
 - `web_search` provider-backed function-tool fallback (only the grounding path
   shipped, per the locked decision).
+- Grounding (`webSearch: true`) is enabled on every Gemini step including
+  mid-tool-loop steps — extra compute + slight web-answer bias when local tools
+  already had the answer. Follow-up: enable only on the final-reasoning step.

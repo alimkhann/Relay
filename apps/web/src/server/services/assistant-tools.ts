@@ -259,7 +259,7 @@ export async function executeAssistantTool(
   client: RelayHttpMcpClient,
   name: string,
   args: Record<string, unknown>,
-  options: { plan: AssistantPlan }
+  options: { plan: AssistantPlan; chatId?: string }
 ): Promise<ToolExecutionResult> {
   if (DESTRUCTIVE_TOOLS.has(name) && options.plan === "free") {
     return {
@@ -339,7 +339,10 @@ export async function executeAssistantTool(
       return { modelResponse: { result: searchRelayKnowledge(String(args.query)) }, actionResult: null }
     }
     case "recall_past_chats": {
-      const res = await client.recallPastChats(String(args.query ?? ""), { limit: 6 })
+      const res = await client.recallPastChats(String(args.query ?? ""), {
+        limit: 6,
+        excludeChatId: options.chatId
+      })
       return { modelResponse: summarizeForModel(res, 6000), actionResult: null }
     }
     case "list_sources": {
