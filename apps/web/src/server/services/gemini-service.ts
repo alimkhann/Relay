@@ -223,6 +223,8 @@ export interface GeminiContent {
 export interface GeminiAgentStepResult {
   text: string
   functionCalls: Array<{ name: string; args: Record<string, unknown>; thoughtSignature?: string }>
+  /** Source URLs when Google Search grounding was used this step. */
+  groundingUris: string[]
   finishReason: string | null
   tokenUsage: GeminiUsage
 }
@@ -237,6 +239,8 @@ export async function runGeminiAgentStep(input: {
   contents: GeminiContent[]
   tools: GeminiFunctionDeclaration[]
   maxOutputTokens: number
+  /** Add Gemini's Google Search grounding tool alongside function calling. */
+  webSearch?: boolean
   signal?: AbortSignal
 }): Promise<GeminiAgentStepResult> {
   const cachedError = getCachedUnavailableError(input.model, "generate")
@@ -249,22 +253,41 @@ export async function runGeminiAgentStep(input: {
     throw new GeminiRequestError("Gemini API key is not configured.", 0, false, "preflight")
   }
 
-  const response = await fetch(`${GEMINI_API_BASE}/models/${input.model}:generateContent`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-goog-api-key": apiKey
-    },
-    signal: input.signal,
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: input.systemInstruction }] },
-      contents: input.contents,
-      tools: input.tools.length > 0 ? [{ functionDeclarations: input.tools }] : undefined,
-      generationConfig: {
-        maxOutputTokens: input.maxOutputTokens
-      }
+  const buildTools = (withSearch: boolean) => {
+    const blocks: Array<Record<string, unknown>> = []
+    if (input.tools.length > 0) blocks.push({ functionDeclarations: input.tools })
+    if (withSearch) blocks.push({ googleSearch: {} })
+    return blocks.length > 0 ? blocks : undefined
+  }
+
+  const attempt = (withSearch: boolean) =>
+    fetch(`${GEMINI_API_BASE}/models/${input.model}:generateContent`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-goog-api-key": apiKey
+      },
+      signal: input.signal,
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: input.systemInstruction }] },
+        contents: input.contents,
+        tools: buildTools(withSearch),
+        generationConfig: {
+          maxOutputTokens: input.maxOutputTokens
+        }
+      })
     })
-  })
+
+  let response = await attempt(Boolean(input.webSearch))
+
+  // Some models reject googleSearch + functionDeclarations in one request.
+  // Never let that break the whole turn — retry once without grounding.
+  if (!response.ok && response.status === 400 && input.webSearch) {
+    const peek = await parseError(response.clone()).catch(() => "")
+    if (/tool|grounding|googleSearch|function|combine|not supported/i.test(peek)) {
+      response = await attempt(false)
+    }
+  }
 
   if (!response.ok) {
     const message = await parseError(response)
@@ -283,6 +306,9 @@ export async function runGeminiAgentStep(input: {
           functionCall?: { name?: string; args?: Record<string, unknown> }
           thoughtSignature?: string
         }>
+      }
+      groundingMetadata?: {
+        groundingChunks?: Array<{ web?: { uri?: string; title?: string } }>
       }
     }>
     usageMetadata?: {
@@ -306,6 +332,14 @@ export async function runGeminiAgentStep(input: {
       thoughtSignature: part.thoughtSignature
     }))
 
+  const groundingUris = Array.from(
+    new Set(
+      (candidate?.groundingMetadata?.groundingChunks ?? [])
+        .map((c) => c.web?.uri)
+        .filter((u): u is string => Boolean(u))
+    )
+  )
+
   // Gemini omits usageMetadata on some function-calling responses. Estimate
   // from the serialized request so the monthly token cap is never fed zeros.
   const inputTokens =
@@ -315,6 +349,7 @@ export async function runGeminiAgentStep(input: {
   return {
     text,
     functionCalls,
+    groundingUris,
     finishReason: candidate?.finishReason ?? null,
     tokenUsage: {
       inputTokens,

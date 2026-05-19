@@ -97,6 +97,127 @@ export const ASSISTANT_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
     description:
       "Look up how Relay itself works (features, plans, MCP, extension, getting started). Use for product questions, not user data.",
     parameters: obj({ query: str("What the user wants to know about Relay") }, ["query"])
+  },
+  {
+    name: "recall_past_chats",
+    description:
+      "Search the user's previous Ask Relay conversations and return matching chat titles with recent snippets. Use when the user refers to something discussed before ('what did we decide earlier', 'continue that').",
+    parameters: obj({ query: str("What to look for in past chats") }, ["query"])
+  },
+  {
+    name: "list_sources",
+    description: "List a project's indexed sources (docs, repos, URLs).",
+    parameters: obj({ projectId: str("Relay project id") }, ["projectId"])
+  },
+  {
+    name: "search_sources",
+    description:
+      "Semantic + lexical search across a project's indexed source content. Use to ground answers in the user's own documents.",
+    parameters: obj(
+      { projectId: str("Relay project id"), query: str("Search query") },
+      ["projectId", "query"]
+    )
+  },
+  {
+    name: "read_source",
+    description: "Read a specific source's detail/chunks by source id.",
+    parameters: obj(
+      {
+        projectId: str("Relay project id"),
+        sourceId: str("Source id"),
+        chunkId: str("Optional chunk id"),
+        limit: { type: "number", description: "Max chunks" }
+      },
+      ["projectId", "sourceId"]
+    )
+  },
+  {
+    name: "explore_sources",
+    description: "Browse a project's source tree / outline to find what to read next.",
+    parameters: obj(
+      { projectId: str("Relay project id"), query: str("Optional focus") },
+      ["projectId"]
+    )
+  },
+  {
+    name: "grep_sources",
+    description: "Regex/literal search inside a project's source files.",
+    parameters: obj(
+      { projectId: str("Relay project id"), pattern: str("Pattern to find") },
+      ["projectId", "pattern"]
+    )
+  },
+  {
+    name: "import_source_citation",
+    description:
+      "Promote a source passage into project memory as a cited fact. Use when the user asks to save something from a source.",
+    parameters: obj(
+      {
+        projectId: str("Relay project id"),
+        sourceId: str("Source id"),
+        chunkId: str("Chunk/citation id"),
+        note: str("Optional note")
+      },
+      ["projectId", "sourceId"]
+    )
+  },
+  {
+    name: "refresh_source",
+    description: "Re-index a source to pull its latest content.",
+    parameters: obj(
+      { projectId: str("Relay project id"), sourceId: str("Source id") },
+      ["projectId", "sourceId"]
+    )
+  },
+  {
+    name: "get_project_state",
+    description:
+      "Get the structured project state: objective, constraints, decisions, open tasks, stack.",
+    parameters: obj({ projectId: str("Relay project id") }, ["projectId"])
+  },
+  {
+    name: "set_project_state",
+    description:
+      "Update structured project state (objective/constraints/tasks/etc). Destructive — only when the user clearly asked to change project state.",
+    parameters: obj(
+      {
+        projectId: str("Relay project id"),
+        currentObjective: str("New objective (optional)"),
+        recentProgress: str("Progress note (optional)"),
+        decisions: { type: "array", items: { type: "string" }, description: "Decisions" },
+        constraints: { type: "array", items: { type: "string" }, description: "Constraints" },
+        openTasks: { type: "array", items: { type: "string" }, description: "Open tasks" }
+      },
+      ["projectId"]
+    )
+  },
+  {
+    name: "trace_context",
+    description: "Trace where a fact/state field came from across captures and sources.",
+    parameters: obj(
+      {
+        projectId: str("Relay project id"),
+        query: str("What to trace"),
+        stateField: str("Optional state field"),
+        limit: { type: "number", description: "Max items" }
+      },
+      ["projectId"]
+    )
+  },
+  {
+    name: "save_context",
+    description:
+      "Save a session checkpoint: summary, progress, decisions, next steps. Use when the user wants to record where things stand.",
+    parameters: obj(
+      {
+        projectId: str("Relay project id"),
+        summary: str("What was done"),
+        progress: str("Current progress"),
+        decisions: { type: "array", items: { type: "string" }, description: "Decisions" },
+        nextSteps: { type: "array", items: { type: "string" }, description: "Next steps" }
+      },
+      ["projectId"]
+    )
   }
 ]
 
@@ -216,6 +337,89 @@ export async function executeAssistantTool(
     }
     case "relay_knowledge": {
       return { modelResponse: { result: searchRelayKnowledge(String(args.query)) }, actionResult: null }
+    }
+    case "recall_past_chats": {
+      const res = await client.recallPastChats(String(args.query ?? ""), { limit: 6 })
+      return { modelResponse: summarizeForModel(res, 6000), actionResult: null }
+    }
+    case "list_sources": {
+      const res = await client.listSources(String(args.projectId))
+      return { modelResponse: summarizeForModel(res), actionResult: null }
+    }
+    case "search_sources": {
+      const res = await client.searchSources(String(args.projectId), args)
+      return { modelResponse: summarizeForModel(res), actionResult: null }
+    }
+    case "read_source": {
+      const res = await client.getSourceDetail(String(args.projectId), String(args.sourceId), {
+        chunkId: args.chunkId,
+        limit: args.limit
+      })
+      return { modelResponse: summarizeForModel(res), actionResult: null }
+    }
+    case "explore_sources": {
+      const res = await client.exploreSources(String(args.projectId), args)
+      return { modelResponse: summarizeForModel(res), actionResult: null }
+    }
+    case "grep_sources": {
+      const res = await client.grepSources(String(args.projectId), args)
+      return { modelResponse: summarizeForModel(res), actionResult: null }
+    }
+    case "import_source_citation": {
+      const res = await client.importSourceCitations(String(args.projectId), args)
+      const actionResult: AssistantActionResult = {
+        tool: "import_source_citation",
+        action: "created",
+        entity: "cited fact",
+        count: 1,
+        items: [{ label: String(args.note ?? "Imported from source") }]
+      }
+      return { modelResponse: summarizeForModel(res), actionResult }
+    }
+    case "refresh_source": {
+      await client.refreshSource(String(args.projectId), String(args.sourceId))
+      const actionResult: AssistantActionResult = {
+        tool: "refresh_source",
+        action: "updated",
+        entity: "source",
+        count: 1,
+        items: [{ id: String(args.sourceId), label: "Re-indexed" }]
+      }
+      return { modelResponse: { result: "Source refresh started." }, actionResult }
+    }
+    case "get_project_state": {
+      const res = await client.getProjectState(String(args.projectId))
+      return { modelResponse: summarizeForModel(res), actionResult: null }
+    }
+    case "set_project_state": {
+      await client.setProjectState(String(args.projectId), args)
+      const actionResult: AssistantActionResult = {
+        tool: "set_project_state",
+        action: "updated",
+        entity: "project state",
+        count: 1,
+        items: []
+      }
+      return { modelResponse: { result: "Project state updated." }, actionResult }
+    }
+    case "trace_context": {
+      const res = await client.traceContext(String(args.projectId), {
+        query: typeof args.query === "string" ? args.query : undefined,
+        stateField: typeof args.stateField === "string" ? args.stateField : undefined,
+        limit: typeof args.limit === "number" ? args.limit : undefined
+      })
+      return { modelResponse: summarizeForModel(res), actionResult: null }
+    }
+    case "save_context": {
+      const res = await client.saveContext(String(args.projectId), args)
+      const actionResult: AssistantActionResult = {
+        tool: "save_context",
+        action: "created",
+        entity: "checkpoint",
+        count: 1,
+        items: [{ label: String(args.summary ?? "Session checkpoint") }]
+      }
+      return { modelResponse: summarizeForModel(res), actionResult }
     }
     default:
       return { modelResponse: { error: `Unknown tool: ${name}` }, actionResult: null }

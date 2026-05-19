@@ -507,6 +507,25 @@ export class RelayHttpMcpClient {
     return sections.join("\n\n")
   }
 
+  async recallPastChats(query: string, options?: { limit?: number }) {
+    const repos = createRepositoryBundle(this.viewer.userId)
+    const limit = options?.limit ?? 6
+    const chats = query.trim()
+      ? await repos.assistantChats.searchByUser(this.viewer.userId, query, { limit })
+      : await repos.assistantChats.listByUser(this.viewer.userId, { limit })
+    const out = []
+    for (const c of chats) {
+      const msgs = await repos.assistantMessages.listByChat(c.id, { limit: 12 })
+      const snippet = msgs
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .slice(-4)
+        .map((m) => `${m.role}: ${m.content.slice(0, 220)}`)
+        .join("\n")
+      out.push({ chatId: c.id, title: c.title, updatedAt: c.updatedAt, snippet })
+    }
+    return { chats: out }
+  }
+
   async listSources(projectId: string) {
     return { sources: await listProjectSources(this.viewer.userId, projectId) }
   }

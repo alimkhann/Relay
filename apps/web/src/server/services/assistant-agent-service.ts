@@ -215,7 +215,8 @@ export async function* runAssistantTurn(
         systemInstruction: systemInstruction(defaultProjectId),
         contents,
         tools: ASSISTANT_TOOL_DECLARATIONS,
-        maxOutputTokens: MAX_OUTPUT_TOKENS
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
+        webSearch: true
       })
     } catch (error) {
       const message =
@@ -231,7 +232,14 @@ export async function* runAssistantTurn(
     totalTokens += stepResult.tokenUsage.totalTokens
 
     if (stepResult.functionCalls.length === 0) {
-      const finalText = stepResult.text || "Done."
+      let finalText = stepResult.text || "Done."
+      if (stepResult.groundingUris.length > 0) {
+        const sources = stepResult.groundingUris
+          .slice(0, 5)
+          .map((u, i) => `${i + 1}. ${u}`)
+          .join("\n")
+        finalText += `\n\n**Sources**\n${sources}`
+      }
       for (const delta of chunkText(finalText)) {
         yield { type: "text", delta }
       }
