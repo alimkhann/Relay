@@ -1,13 +1,17 @@
 import { useCallback, useMemo, useRef, useState } from "react"
 
+// Deep import keeps the shared barrel (node:crypto via utils/hashing) out of
+// the extension bundle.
 import {
   derivePath,
   spliceOptimistic,
-  type AssistantActionResult,
-  type AssistantMessageDto,
-  type AssistantPendingAction,
-  type AssistantStreamEvent,
   type UiMessage
+} from "@relay/shared/utils/assistant-chat-path"
+import type {
+  AssistantActionResult,
+  AssistantMessageDto,
+  AssistantPendingAction,
+  AssistantStreamEvent
 } from "@relay/shared"
 
 import { getRelaySession } from "../storage/session"

@@ -2,17 +2,21 @@
 
 import { useCallback, useMemo, useRef, useState } from "react"
 
+// Deep import: pulling these values from the @relay/shared barrel would drag
+// node:crypto (via utils/hashing) into the client bundle and fail the build.
 import {
   chatKeyOf as keyOf,
   derivePath,
   spliceOptimistic,
-  type AssistantActionResult,
-  type AssistantMessageDto,
-  type AssistantMessageFeedback,
-  type AssistantPendingAction,
-  type AssistantStreamEvent,
-  type AssistantSurface,
   type UiMessage
+} from "@relay/shared/utils/assistant-chat-path"
+import type {
+  AssistantActionResult,
+  AssistantMessageDto,
+  AssistantMessageFeedback,
+  AssistantPendingAction,
+  AssistantStreamEvent,
+  AssistantSurface
 } from "@relay/shared"
 
 export { derivePath, spliceOptimistic }
