@@ -29,6 +29,17 @@ export interface AssistantError {
   upgradeUrl?: string
 }
 
+export interface UiAttachment {
+  id: string
+  fileName: string
+  mime: string
+  byteSize: number
+  hasText: boolean
+  uploading?: boolean
+  saving?: boolean
+  savedToRelay?: boolean
+}
+
 let localSeq = 0
 const tmp = () => `tmp-${(localSeq += 1)}`
 const keyOf = (parentId: string | null) => parentId ?? "root"
@@ -45,6 +56,7 @@ export function useAssistantChat(surface: AssistantSurface, projectId: string | 
   // an edited prompt replaces its sibling in place instead of appending below
   // the stale branch until the post-stream refresh.
   const [branchParentId, setBranchParentId] = useState<string | null>(null)
+  const [attachments, setAttachments] = useState<UiAttachment[]>([])
   const chatIdRef = useRef<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -231,21 +243,120 @@ export function useAssistantChat(surface: AssistantSurface, projectId: string | 
     return { path: d.nodes, leafId: d.leafId }
   }, [serverNodes, selections, optimistic, branchParentId])
 
+  const readyAttachmentIds = useCallback(
+    () => attachments.filter((a) => !a.uploading).map((a) => a.id),
+    [attachments]
+  )
+
   const send = useCallback(
     (text: string) => {
       if (!text.trim() || streaming) return
-      void runStream({ message: text.trim(), parentId: leafId }, text.trim(), leafId)
+      void runStream(
+        { message: text.trim(), parentId: leafId, attachmentIds: readyAttachmentIds() },
+        text.trim(),
+        leafId
+      )
+      setAttachments([])
     },
-    [runStream, streaming, leafId]
+    [runStream, streaming, leafId, readyAttachmentIds]
   )
 
   const editMessage = useCallback(
     (message: UiMessage, text: string) => {
       if (!text.trim() || streaming) return
       // Branch as a new sibling under the same parent as the edited message.
-      void runStream({ message: text.trim(), parentId: message.parentId }, text.trim(), message.parentId)
+      void runStream(
+        { message: text.trim(), parentId: message.parentId, attachmentIds: readyAttachmentIds() },
+        text.trim(),
+        message.parentId
+      )
+      setAttachments([])
     },
-    [runStream, streaming]
+    [runStream, streaming, readyAttachmentIds]
+  )
+
+  const ensureChat = useCallback(async (): Promise<string | null> => {
+    if (chatIdRef.current) return chatIdRef.current
+    try {
+      const res = await fetch("/api/assistant/chats", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ surface, projectId })
+      })
+      if (!res.ok) return null
+      const data = (await res.json()) as { chat: { id: string } }
+      chatIdRef.current = data.chat.id
+      setChatId(data.chat.id)
+      return data.chat.id
+    } catch {
+      return null
+    }
+  }, [surface, projectId])
+
+  const addFiles = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) return
+      const chat = await ensureChat()
+      if (!chat) {
+        setError({ message: "Couldn't start a chat for the attachment." })
+        return
+      }
+      for (const file of files) {
+        const localId = tmp()
+        setAttachments((prev) => [
+          ...prev,
+          {
+            id: localId,
+            fileName: file.name,
+            mime: file.type,
+            byteSize: file.size,
+            hasText: false,
+            uploading: true
+          }
+        ])
+        try {
+          const fd = new FormData()
+          fd.append("chatId", chat)
+          fd.append("file", file)
+          const res = await fetch("/api/assistant/attachments", { method: "POST", body: fd })
+          if (!res.ok) throw new Error("upload failed")
+          const data = (await res.json()) as UiAttachment
+          setAttachments((prev) =>
+            prev.map((a) => (a.id === localId ? { ...data, uploading: false } : a))
+          )
+        } catch {
+          setAttachments((prev) => prev.filter((a) => a.id !== localId))
+          setError({ message: `Couldn't attach ${file.name}.` })
+        }
+      }
+    },
+    [ensureChat]
+  )
+
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id))
+  }, [])
+
+  const saveAttachmentToSources = useCallback(
+    async (id: string) => {
+      if (!projectId) return
+      setAttachments((prev) => prev.map((a) => (a.id === id ? { ...a, saving: true } : a)))
+      try {
+        const res = await fetch(`/api/assistant/attachments/${id}/save-to-source`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ projectId })
+        })
+        if (!res.ok) throw new Error("save failed")
+        setAttachments((prev) =>
+          prev.map((a) => (a.id === id ? { ...a, saving: false, savedToRelay: true } : a))
+        )
+      } catch {
+        setAttachments((prev) => prev.map((a) => (a.id === id ? { ...a, saving: false } : a)))
+        setError({ message: "Couldn't save the attachment to Sources." })
+      }
+    },
+    [projectId]
   )
 
   const confirmAction = useCallback(
@@ -307,6 +418,7 @@ export function useAssistantChat(surface: AssistantSurface, projectId: string | 
     setChatId(null)
     chatIdRef.current = null
     setBranchParentId(null)
+    setAttachments([])
     setError(null)
   }, [])
 
@@ -323,6 +435,11 @@ export function useAssistantChat(surface: AssistantSurface, projectId: string | 
     selectBranch,
     setFeedback,
     undo,
+    attachments,
+    addFiles,
+    removeAttachment,
+    saveAttachmentToSources,
+    canSaveToSources: Boolean(projectId),
     copyMessage: (text: string) => navigator.clipboard?.writeText(text).catch(() => {}),
     reset
   }

@@ -44,6 +44,16 @@ export class AssistantAttachmentRepository {
     return rows.map((row) => toAssistantAttachmentRow(row as Record<string, unknown>))
   }
 
+  async listByIds(ids: string[], userId: string): Promise<AssistantAttachmentRow[]> {
+    if (ids.length === 0) return []
+    const rows = await this.provider.query(
+      `select * from assistant_attachments
+       where id = any($1::uuid[]) and user_id = $2`,
+      [ids, userId]
+    )
+    return rows.map((row) => toAssistantAttachmentRow(row as Record<string, unknown>))
+  }
+
   async markSaved(id: string): Promise<void> {
     await this.provider.query(
       `update assistant_attachments set saved_to_relay = true where id = $1`,

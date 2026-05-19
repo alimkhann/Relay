@@ -1,9 +1,21 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { type ClipboardEvent, type DragEvent, useEffect, useRef, useState } from "react"
 import { Dialog as DialogPrimitive } from "radix-ui"
 import { AnimatePresence, motion } from "motion/react"
-import { ArrowUp, Mic, Sparkles, Square, X } from "lucide-react"
+import {
+  ArrowUp,
+  BookmarkCheck,
+  BookmarkPlus,
+  FileText,
+  ImageIcon,
+  Loader2,
+  Mic,
+  Paperclip,
+  Sparkles,
+  Square,
+  X
+} from "lucide-react"
 
 import type { AssistantSurface } from "@relay/shared"
 
@@ -40,11 +52,18 @@ export function AskRelayPanel({
     selectBranch,
     setFeedback,
     undo,
+    attachments,
+    addFiles,
+    removeAttachment,
+    saveAttachmentToSources,
+    canSaveToSources,
     copyMessage,
     reset
   } = useAssistantChat(surface, projectId)
   const [draft, setDraft] = useState("")
+  const [dragOver, setDragOver] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const voice = useVoiceInput((text) => setDraft((d) => (d ? `${d} ${text}` : text)))
 
   useEffect(() => {
@@ -55,6 +74,21 @@ export function AskRelayPanel({
     if (!draft.trim() || streaming) return
     send(draft)
     setDraft("")
+  }
+
+  const onDrop = (e: DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) void addFiles(files)
+  }
+
+  const onPaste = (e: ClipboardEvent) => {
+    const files = Array.from(e.clipboardData.files)
+    if (files.length > 0) {
+      e.preventDefault()
+      void addFiles(files)
+    }
   }
 
   const empty = messages.length === 0
@@ -68,8 +102,22 @@ export function AskRelayPanel({
             "fixed top-0 right-0 z-50 flex h-full w-full max-w-[440px] flex-col border-l border-[var(--relay-line)] bg-[var(--relay-bg)] shadow-[var(--relay-shadow-lg)]",
             "data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:animate-in data-[state=open]:slide-in-from-right"
           )}
+          onDragOver={(e) => {
+            e.preventDefault()
+            setDragOver(true)
+          }}
+          onDragLeave={(e) => {
+            if (e.currentTarget === e.target) setDragOver(false)
+          }}
+          onDrop={onDrop}
         >
           <DialogPrimitive.Title className="sr-only">Relay</DialogPrimitive.Title>
+
+          {dragOver ? (
+            <div className="pointer-events-none absolute inset-0 z-10 m-2 grid place-items-center rounded-[var(--relay-radius-lg)] border-2 border-dashed border-[var(--relay-accent-blue)] bg-[var(--relay-accent-blue-soft)] text-sm font-semibold text-[var(--relay-accent-blue)]">
+              Drop files to attach
+            </div>
+          ) : null}
 
           <header className="flex items-center justify-between border-b border-[var(--relay-line)] px-4 py-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-[var(--relay-ink)]">
@@ -157,10 +205,68 @@ export function AskRelayPanel({
           ) : null}
 
           <div className="p-3">
-            <div className="flex items-end gap-2 rounded-[var(--relay-radius-lg)] bg-[var(--relay-soft)] px-3 py-2 ring-1 ring-transparent transition-shadow focus-within:ring-[var(--relay-accent-blue)]/50">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              hidden
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? [])
+                if (files.length > 0) void addFiles(files)
+                e.target.value = ""
+              }}
+            />
+            <div className="rounded-[var(--relay-radius-lg)] bg-[var(--relay-soft)] px-3 py-2 ring-1 ring-transparent transition-shadow focus-within:ring-[var(--relay-accent-blue)]/50">
+              {attachments.length > 0 ? (
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {attachments.map((a) => (
+                    <span
+                      key={a.id}
+                      className="flex items-center gap-1.5 rounded-[var(--relay-radius)] bg-[var(--relay-surface)] py-1 pl-2 pr-1 text-xs text-[var(--relay-ink)] ring-1 ring-[var(--relay-line)]"
+                    >
+                      {a.uploading ? (
+                        <Loader2 className="size-3.5 animate-spin text-[var(--relay-muted)]" />
+                      ) : a.mime.startsWith("image/") ? (
+                        <ImageIcon className="size-3.5 text-[var(--relay-accent-blue)]" />
+                      ) : (
+                        <FileText className="size-3.5 text-[var(--relay-accent-blue)]" />
+                      )}
+                      <span className="max-w-[140px] truncate">{a.fileName}</span>
+                      {canSaveToSources && !a.uploading ? (
+                        <button
+                          type="button"
+                          onClick={() => !a.savedToRelay && saveAttachmentToSources(a.id)}
+                          aria-label={a.savedToRelay ? "Saved to Sources" : "Save to Sources"}
+                          title={a.savedToRelay ? "Saved to Sources" : "Save to Sources"}
+                          disabled={a.savedToRelay || a.saving}
+                          className="rounded-[var(--relay-radius-sm)] p-0.5 text-[var(--relay-muted)] hover:text-[var(--relay-accent-blue)] disabled:opacity-100"
+                        >
+                          {a.saving ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : a.savedToRelay ? (
+                            <BookmarkCheck className="size-3.5 text-[var(--relay-accent-blue)]" />
+                          ) : (
+                            <BookmarkPlus className="size-3.5" />
+                          )}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(a.id)}
+                        aria-label={`Remove ${a.fileName}`}
+                        className="rounded-[var(--relay-radius-sm)] p-0.5 text-[var(--relay-muted)] hover:bg-[var(--relay-soft-hover)] hover:text-[var(--relay-ink)]"
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              <div className="flex items-end gap-2">
               <textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
+                onPaste={onPaste}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault()
@@ -171,6 +277,14 @@ export function AskRelayPanel({
                 placeholder="Ask anything…"
                 className="max-h-32 flex-1 resize-none border-0 bg-transparent text-sm text-[var(--relay-ink)] outline-none focus:ring-0 placeholder:text-[var(--relay-muted)]"
               />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="Attach files"
+                className="rounded-full p-1.5 text-[var(--relay-muted)] transition-colors hover:bg-[var(--relay-soft-hover)] hover:text-[var(--relay-ink)]"
+              >
+                <Paperclip className="size-4" />
+              </button>
               {voice.supported ? (
                 <button
                   type="button"
@@ -206,6 +320,7 @@ export function AskRelayPanel({
                   <ArrowUp className="size-4" />
                 </button>
               )}
+              </div>
             </div>
           </div>
         </DialogPrimitive.Content>

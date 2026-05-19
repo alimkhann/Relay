@@ -210,6 +210,8 @@ export interface GeminiContent {
   role: "user" | "model" | "function"
   parts: Array<
     | { text: string }
+    // Base64 image/data part for vision input (attachments).
+    | { inlineData: { mimeType: string; data: string } }
     // Gemini 3 returns an opaque thoughtSignature on functionCall parts that
     // MUST be echoed back unchanged on the model turn, or the follow-up
     // request is rejected ("function call is missing a thought_signature").

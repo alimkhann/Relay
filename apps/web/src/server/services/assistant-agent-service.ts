@@ -13,6 +13,7 @@ import {
   type AssistantPlan
 } from "@/server/services/assistant-tools"
 import { GeminiRequestError, runGeminiAgentStep, type GeminiContent } from "@/server/services/gemini-service"
+import { getDecryptedSourceObject } from "@/server/services/source-storage-service"
 
 const AGENT_MODEL = process.env.GEMINI_MODEL_ASSISTANT ?? "gemini-3-flash-preview"
 const MAX_OUTPUT_TOKENS = 1_400
@@ -118,7 +119,38 @@ export async function* runAssistantTurn(
   if (input.pageContext?.url || input.pageContext?.selection) {
     userText += `\n\n[Page context] ${input.pageContext.title ?? ""} ${input.pageContext.url ?? ""}\n${(input.pageContext.selection ?? "").slice(0, 4000)}`
   }
-  contents.push({ role: "user", parts: [{ text: userText }] })
+
+  // Attachments: extracted document text is folded into the prompt; images are
+  // sent to Gemini as inline vision parts. Attachments are persisted at upload
+  // time, so this only reads them back for the current turn.
+  const imageParts: GeminiContent["parts"] = []
+  if (input.attachmentIds && input.attachmentIds.length > 0) {
+    const attachments = await repositories.assistantAttachments.listByIds(
+      input.attachmentIds,
+      viewer.userId
+    )
+    for (const att of attachments) {
+      if (att.chatId !== chat.id) continue
+      if (att.extractedText) {
+        userText += `\n\n[Attached file: ${att.fileName}]\n${att.extractedText.slice(0, 6000)}`
+      } else if (att.mime.startsWith("image/")) {
+        try {
+          const objId = att.storageKey.split("/").pop()?.replace(/\.[^.]+$/, "") ?? ""
+          const buffer = await getDecryptedSourceObject({
+            key: att.storageKey,
+            crypto: { projectId: chat.id, sourceId: objId, versionId: "v1" }
+          })
+          imageParts.push({
+            inlineData: { mimeType: att.mime, data: buffer.toString("base64") }
+          })
+        } catch {
+          // Unreadable / storage unconfigured — skip the image silently.
+        }
+      }
+    }
+  }
+
+  contents.push({ role: "user", parts: [{ text: userText }, ...imageParts] })
 
   let totalTokens = 0
 
