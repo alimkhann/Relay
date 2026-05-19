@@ -12,7 +12,7 @@ import {
   type MemoryItemRow,
   type WorkSessionStructuredState,
 } from "@relay/shared"
-import type { ProjectSummaryDto } from "@relay/shared"
+import type { ProjectSummaryDto, SourceSurface } from "@relay/shared"
 
 import type { Viewer } from "@/server/policies/viewer"
 import {
@@ -275,7 +275,16 @@ export class RelayHttpMcpClient {
     return getMemoryForExplainability(this.viewer.userId, memoryId, projectId)
   }
 
-  async addMemory(projectId: string, input: { type: string; content: string; title?: string; tags?: string[] }) {
+  async addMemory(
+    projectId: string,
+    input: {
+      type: string
+      content: string
+      title?: string
+      tags?: string[]
+      sourceSurface?: SourceSurface | null
+    }
+  ) {
     const repositories = createRepositoryBundle(this.viewer.userId)
     return repositories.memory.create(this.viewer.userId, {
       projectId,
@@ -283,6 +292,7 @@ export class RelayHttpMcpClient {
       content: input.content,
       title: input.title ?? null,
       tags: input.tags ?? [],
+      sourceSurface: input.sourceSurface ?? null,
     })
   }
 

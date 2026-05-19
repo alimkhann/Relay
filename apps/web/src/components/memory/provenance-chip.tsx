@@ -51,6 +51,14 @@ const surfaceMap: Record<SourceSurface, SurfaceMeta> = {
     label: "API",
     classes: "bg-amber-500/10 text-amber-600",
   },
+  ask_relay: {
+    label: "Ask Relay",
+    classes: "bg-sky-500/10 text-sky-600",
+  },
+  extension: {
+    label: "Extension",
+    classes: "bg-teal-500/10 text-teal-600",
+  },
 };
 
 /* ─── Relative time helper ─── */

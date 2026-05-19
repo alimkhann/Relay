@@ -179,7 +179,10 @@ export async function executeAssistantTool(
         type: String(args.type),
         content: String(args.content),
         title: args.title ? String(args.title) : undefined,
-        tags: Array.isArray(args.tags) ? (args.tags as string[]) : undefined
+        tags: Array.isArray(args.tags) ? (args.tags as string[]) : undefined,
+        // Attribute in-app assistant ("Ask Relay") captures so the memory
+        // list can show provenance.
+        sourceSurface: "ask_relay"
       })) as { id?: string; title?: string | null; content?: string }
       const label = created.title || (created.content ?? String(args.content)).slice(0, 80)
       const actionResult: AssistantActionResult = {
