@@ -4,7 +4,7 @@ import { Suspense } from "react"
 
 import { DocsFooterNav } from "@/components/docs/docs-footer-nav"
 import { PRICING } from "@/app/(marketing)/pricing.config"
-import { FREE_LIMITS, PLAN_LIMIT_ROWS, PRO_LIMITS, STARTER_LIMITS } from "@/server/services/billing-config"
+import { FREE_LIMITS, PLAN_GLOSSARY, PLAN_LIMIT_ROWS, PRO_LIMITS, STARTER_LIMITS } from "@/server/services/billing-config"
 
 const PLAN_TABLE_ROWS = PLAN_LIMIT_ROWS.map((row) => {
   if (row.key === "historyRetentionDays") {
@@ -79,9 +79,24 @@ export default function PlansDocsPage() {
       <div>
         <h1 className="text-2xl font-bold text-[var(--relay-ink)]">Plans &amp; limits</h1>
         <p className="mt-2 text-[15px] leading-relaxed text-[var(--relay-muted)]">
-          Three tiers: Free to explore, Starter for daily use, Pro for heavier solo workflows.
+          Three simple tiers: Free to try it out, Starter for everyday use, and Pro for heavier
+          solo workflows. New to the terms below? See the plain-language guide.
         </p>
       </div>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">
+          What these mean
+        </h2>
+        <dl className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] divide-y divide-[var(--relay-line)]">
+          {PLAN_GLOSSARY.map((entry) => (
+            <div key={entry.term} className="px-4 py-3">
+              <dt className="text-[14px] font-semibold text-[var(--relay-ink)]">{entry.term}</dt>
+              <dd className="mt-0.5 text-[13px] leading-relaxed text-[var(--relay-muted)]">{entry.plain}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-[var(--relay-ink)] border-b border-[var(--relay-line)] pb-2 mb-4">Included on every plan</h2>
@@ -111,6 +126,12 @@ export default function PlansDocsPage() {
               {[
                 ...PLAN_TABLE_ROWS,
                 ...SOURCE_LIMIT_ROWS,
+                {
+                  label: "Ask Relay AI assistant",
+                  free: `${FREE_LIMITS.assistantMessagesMonthly} / month`,
+                  starter: "Daily allowance",
+                  pro: "Highest allowance",
+                },
                 { label: "Autonomous context", free: "—", starter: "Yes", pro: "Yes" },
                 { label: "High-quality model", free: "—", starter: "—", pro: "Yes" },
               ].map((row) => (

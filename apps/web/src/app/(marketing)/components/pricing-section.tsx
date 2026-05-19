@@ -125,6 +125,9 @@ export function PricingSection() {
           <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-white">
             Simple, honest pricing
           </h2>
+          <p className="mt-3 text-sm text-white/40">
+            Start free. Upgrade when Relay is part of how you work — no jargon, cancel anytime.
+          </p>
         </motion.div>
 
         {/* Billing toggle */}

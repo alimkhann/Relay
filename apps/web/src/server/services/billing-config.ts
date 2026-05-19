@@ -23,6 +23,11 @@ export const FREE_LIMITS: EntitlementLimitsDto = {
   externalSourceSearchesDaily: 3,
   externalSourceRefreshesDaily: 0,
   externalSourceMcpActionsPerMinute: 5,
+  // Free is a paywalled taste of Ask Relay: a small monthly allowance then upgrade.
+  assistantMessagesMonthly: 10,
+  assistantMessagesDaily: 10,
+  assistantTokensMonthly: 60_000,
+  assistantMaxSteps: 4,
 }
 
 export const STARTER_LIMITS: EntitlementLimitsDto = {
@@ -48,6 +53,10 @@ export const STARTER_LIMITS: EntitlementLimitsDto = {
   externalSourceSearchesDaily: 50,
   externalSourceRefreshesDaily: 5,
   externalSourceMcpActionsPerMinute: 20,
+  assistantMessagesMonthly: 3_000,
+  assistantMessagesDaily: 100,
+  assistantTokensMonthly: 2_000_000,
+  assistantMaxSteps: 6,
 }
 
 export const PRO_LIMITS: EntitlementLimitsDto = {
@@ -73,6 +82,10 @@ export const PRO_LIMITS: EntitlementLimitsDto = {
   externalSourceSearchesDaily: 200,
   externalSourceRefreshesDaily: 25,
   externalSourceMcpActionsPerMinute: 60,
+  assistantMessagesMonthly: 12_000,
+  assistantMessagesDaily: 400,
+  assistantTokensMonthly: 8_000_000,
+  assistantMaxSteps: 8,
 }
 
 export const PLAN_PRODUCT_IDS = {
@@ -107,39 +120,70 @@ export const PLAN_LIMIT_ROWS = [
 export const PLAN_MARKETING_COPY = {
   free: {
     features: [
-      `Up to ${FREE_LIMITS.activeProjects} active projects`,
+      `Up to ${FREE_LIMITS.activeProjects} projects to keep your work organized`,
       `${formatNumber(FREE_LIMITS.mcpReadDaily)} MCP reads + ${formatNumber(FREE_LIMITS.mcpDeepReadDaily)} deep reads / day`,
-      `${FREE_LIMITS.historyRetentionDays}-day source retention, ${formatNumber(FREE_LIMITS.captureMonthly)} captures / month`,
-      "Browser capture across supported AI tools",
-      `${FREE_LIMITS.sourcesPerProject} source imports / project`,
-      `${FREE_LIMITS.externalSourcesPerProject} external source / project`,
-      "Basic context briefs",
+      `Keeps history for ${FREE_LIMITS.historyRetentionDays} days · ${formatNumber(FREE_LIMITS.captureMonthly)} captures / month`,
+      "One-click capture from ChatGPT, Claude & more",
+      `Add up to ${FREE_LIMITS.sourcesPerProject} of your own docs per project`,
+      `${FREE_LIMITS.externalSourcesPerProject} linked website or repo per project`,
+      "Context briefs to pick up where you left off",
+      `${formatNumber(FREE_LIMITS.assistantMessagesMonthly)} Ask Relay AI messages / month`,
     ],
   },
   starter: {
     features: [
-      `Up to ${STARTER_LIMITS.activeProjects} active projects`,
+      `Up to ${STARTER_LIMITS.activeProjects} projects to keep your work organized`,
       `${formatNumber(STARTER_LIMITS.mcpReadDaily)} MCP reads + ${formatNumber(STARTER_LIMITS.mcpDeepReadDaily)} deep reads / day`,
-      `${formatNumber(STARTER_LIMITS.captureMonthly)} captures / month across all projects`,
-      "Autonomous context updates",
-      `${STARTER_LIMITS.sourcesPerProject} source imports / project`,
-      `${STARTER_LIMITS.externalSourcesPerProject} external sources / project`,
-      "Full + continuity briefs",
+      `${formatNumber(STARTER_LIMITS.captureMonthly)} captures / month across every project`,
+      "Relay keeps your project context up to date automatically",
+      `Add up to ${STARTER_LIMITS.sourcesPerProject} of your own docs per project`,
+      `${STARTER_LIMITS.externalSourcesPerProject} linked websites or repos per project`,
+      "Richer briefs that carry continuity between sessions",
+      "Daily Ask Relay AI allowance (no monthly cap)",
     ],
   },
   pro: {
     features: [
-      `Up to ${PRO_LIMITS.activeProjects} active projects`,
+      `Up to ${PRO_LIMITS.activeProjects} projects to keep your work organized`,
       `${formatNumber(PRO_LIMITS.mcpReadDaily)} MCP reads + ${formatNumber(PRO_LIMITS.mcpDeepReadDaily)} deep reads / day`,
-      `${formatNumber(PRO_LIMITS.captureMonthly)} captures / month across all projects`,
-      "High-quality model for reflections",
-      `${PRO_LIMITS.sourcesPerProject} source imports / project`,
-      `${PRO_LIMITS.externalSourcesPerProject} external sources / project`,
-      "Aggressive autonomy + conflict resolution",
-      "Priority support",
+      `${formatNumber(PRO_LIMITS.captureMonthly)} captures / month across every project`,
+      "Highest-quality AI model for summaries and reflections",
+      `Add up to ${PRO_LIMITS.sourcesPerProject} of your own docs per project`,
+      `${PRO_LIMITS.externalSourcesPerProject} linked websites or repos per project`,
+      "Most proactive context updates with conflict resolution",
+      "Highest Ask Relay AI allowance + priority support",
     ],
   },
 } as const
+
+/**
+ * Plain-language explanations of Relay terms for non-technical visitors.
+ * Term names are intentionally unchanged; only the explanation is friendly.
+ */
+export const PLAN_GLOSSARY = [
+  {
+    term: "Captures",
+    plain: "Snippets you save from an AI chat (ChatGPT, Claude, etc.) so Relay can remember them.",
+  },
+  {
+    term: "MCP reads / writes",
+    plain:
+      "When a connected AI coding tool reads your saved context or writes new context back. A “deep read” pulls a fuller briefing.",
+  },
+  {
+    term: "Sources",
+    plain: "Your own documents, websites, or repos you attach to a project for Relay to reference.",
+  },
+  {
+    term: "Briefs",
+    plain: "A short, ready-to-paste summary of where a project stands so you can resume instantly.",
+  },
+  {
+    term: "Ask Relay",
+    plain:
+      "The built-in AI assistant that can answer questions and act on your projects, memory, and briefs for you.",
+  },
+] as const
 
 export function getPlanLimits(plan: BillingPlanKey): EntitlementLimitsDto {
   if (plan === "pro") return PRO_LIMITS

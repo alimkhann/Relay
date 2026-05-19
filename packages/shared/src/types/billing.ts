@@ -25,6 +25,10 @@ export interface EntitlementLimitsDto {
   externalSourceSearchesDaily: number
   externalSourceRefreshesDaily: number
   externalSourceMcpActionsPerMinute: number
+  assistantMessagesMonthly: number
+  assistantMessagesDaily: number
+  assistantTokensMonthly: number
+  assistantMaxSteps: number
 }
 
 export interface UserEntitlementsDto {
@@ -75,5 +79,7 @@ export interface BillingStatusDto {
     externalSourceIndexesToday: number
     externalSourceSearchesToday: number
     externalSourceRefreshesToday: number
+    assistantMessagesThisMonth: number
+    assistantTokensThisMonth: number
   }
 }
