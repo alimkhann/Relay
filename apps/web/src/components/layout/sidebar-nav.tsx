@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Activity, Brain, FileDown, BookOpen, Network, Files } from "lucide-react";
+import { LayoutDashboard, Activity, Brain, FileDown, BookOpen, Network, Files, MessageSquare } from "lucide-react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { cn } from "@/lib/cn";
 
@@ -41,6 +41,9 @@ export function SidebarNav({
   const activityHref = currentProjectId
     ? `/activity?project=${currentProjectId}`
     : "/activity";
+  const chatHref = currentProjectId
+    ? `/chat?project=${currentProjectId}`
+    : "/chat";
   const docsHref = currentProjectId
     ? `/docs?project=${currentProjectId}`
     : "/docs";
@@ -80,6 +83,11 @@ export function SidebarNav({
       label: "Activity",
       icon: <Activity className="h-4 w-4" />,
       requiresProject: true,
+    },
+    {
+      href: chatHref,
+      label: "Chat",
+      icon: <MessageSquare className="h-4 w-4" />,
     },
     {
       href: docsHref,
