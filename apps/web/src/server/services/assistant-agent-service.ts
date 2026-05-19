@@ -144,8 +144,21 @@ export async function* runAssistantTurn(
           imageParts.push({
             inlineData: { mimeType: att.mime, data: buffer.toString("base64") }
           })
-        } catch {
-          // Unreadable / storage unconfigured — skip the image silently.
+        } catch (error) {
+          // Unreadable / storage unconfigured — drop the image but record it so
+          // "docs work, images ignored" is diagnosable rather than silent.
+          void logServerEvent({
+            level: "warn",
+            surface: "web-api",
+            area: "assistant",
+            event: "assistant.attachment_image_unreadable",
+            message: "could not load attachment image for vision",
+            context: {
+              userId: viewer.userId,
+              attachmentId: att.id,
+              reason: error instanceof Error ? error.message : "unknown"
+            }
+          })
         }
       }
     }

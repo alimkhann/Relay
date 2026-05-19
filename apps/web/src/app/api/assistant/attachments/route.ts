@@ -6,6 +6,7 @@ import { createRepositoryBundle } from "@relay/db"
 
 import { withApiAuth } from "@/server/http/api-route"
 import { BadRequestError } from "@/server/http/errors"
+import { logServerEvent } from "@/server/logging/logger"
 import { rejectMcpViewer, resolveViewer } from "@/server/policies/viewer"
 import { extractTextFromSourceBuffer } from "@/server/services/source-ingestion-service"
 import {
@@ -81,9 +82,22 @@ export const POST = withApiAuth(async (request: Request) => {
       contentType: mime,
       crypto: { projectId: chat.id, sourceId: objectId, versionId: "v1" }
     })
-  } catch {
+  } catch (error) {
     // Storage unconfigured (local/memory mode): still persist the row + text so
-    // document context works; only image vision needs the blob.
+    // document context works; only image vision needs the blob. Logged so a
+    // misconfigured R2 in prod is visible instead of silently dropping images.
+    void logServerEvent({
+      level: "warn",
+      surface: "web-api",
+      area: "assistant",
+      event: "assistant.attachment_store_failed",
+      message: "attachment blob upload failed; row persisted without blob",
+      context: {
+        userId: viewer.userId,
+        mime,
+        reason: error instanceof Error ? error.message : "unknown"
+      }
+    })
   }
 
   const row = await repositories.assistantAttachments.create({
