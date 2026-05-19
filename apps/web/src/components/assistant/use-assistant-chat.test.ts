@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import type { AssistantMessageDto } from "@relay/shared"
+import type { AssistantActionResult, AssistantMessageDto } from "@relay/shared"
 
 import { derivePath, spliceOptimistic, type UiMessage } from "./use-assistant-chat"
 
@@ -8,9 +8,20 @@ function msg(
   id: string,
   parentId: string | null,
   role: "user" | "assistant",
-  createdAt: string
+  createdAt: string,
+  actionResults: AssistantActionResult[] = []
 ): AssistantMessageDto {
-  return { id, parentId, role, content: `${role}:${id}`, toolName: null, actionResult: null, feedback: null, createdAt }
+  return {
+    id,
+    parentId,
+    role,
+    content: `${role}:${id}`,
+    toolName: null,
+    actionResult: actionResults[0] ?? null,
+    actionResults,
+    feedback: null,
+    createdAt
+  }
 }
 
 describe("derivePath branch reconstruction", () => {
@@ -61,6 +72,48 @@ describe("derivePath branch reconstruction", () => {
 function ui(id: string, parentId: string | null, role: "user" | "assistant"): UiMessage {
   return { id, parentId, role, content: `${role}:${id}`, actionResults: [], feedback: null }
 }
+
+describe("derivePath action-result persistence (cards survive refresh)", () => {
+  it("hydrates actionResults from the persisted assistant message", () => {
+    const created: AssistantActionResult = {
+      tool: "add_memory",
+      action: "created",
+      entity: "memory item",
+      count: 1,
+      items: [{ id: "mem1", label: "Use Postgres" }]
+    }
+    const nodes = [
+      msg("u1", null, "user", "1"),
+      msg("a1", "u1", "assistant", "2", [created])
+    ]
+    const { nodes: path } = derivePath(nodes, {})
+    const assistant = path.find((n) => n.id === "a1")
+    expect(assistant?.actionResults).toEqual([created])
+  })
+
+  it("falls back to the legacy singular actionResult", () => {
+    const updated: AssistantActionResult = {
+      tool: "manage_memory",
+      action: "updated",
+      entity: "memory item",
+      count: 2,
+      items: []
+    }
+    const legacy = {
+      id: "a1",
+      parentId: "u1",
+      role: "assistant" as const,
+      content: "done",
+      toolName: null,
+      actionResult: updated,
+      feedback: null,
+      createdAt: "2"
+    } as AssistantMessageDto
+    const nodes = [msg("u1", null, "user", "1"), legacy]
+    const { nodes: path } = derivePath(nodes, {})
+    expect(path.find((n) => n.id === "a1")?.actionResults).toEqual([updated])
+  })
+})
 
 describe("spliceOptimistic", () => {
   const base = [ui("u1", null, "user"), ui("a1", "u1", "assistant"), ui("u2", "a1", "user"), ui("a2", "u2", "assistant")]

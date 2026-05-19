@@ -88,7 +88,10 @@ export interface AssistantMessageDto {
   role: AssistantMessageRole
   content: string
   toolName: string | null
+  /** @deprecated single result kept for back-compat; use actionResults */
   actionResult: AssistantActionResult | null
+  /** All mutating tool results from the turn that produced this message. */
+  actionResults: AssistantActionResult[]
   feedback: AssistantMessageFeedback | null
   createdAt: string
 }

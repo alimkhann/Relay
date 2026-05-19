@@ -44,14 +44,20 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
   const messages: AssistantMessageDto[] = rows
     .filter((m) => kept(m.role))
     .map((m) => {
-      const payload = m.toolPayload as { actionResult?: AssistantActionResult }
+      const payload = m.toolPayload as {
+        actionResult?: AssistantActionResult
+        actionResults?: AssistantActionResult[]
+      }
+      const actionResults =
+        payload?.actionResults ?? (payload?.actionResult ? [payload.actionResult] : [])
       return {
         id: m.id,
         parentId: effectiveParent(m.parentId),
         role: m.role,
         content: m.content,
         toolName: m.toolName,
-        actionResult: payload?.actionResult ?? null,
+        actionResult: actionResults[0] ?? null,
+        actionResults,
         feedback: m.feedback,
         createdAt: m.createdAt
       }

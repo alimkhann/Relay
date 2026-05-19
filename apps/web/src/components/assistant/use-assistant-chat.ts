@@ -514,13 +514,15 @@ export function derivePath(
     const siblings = children.filter((c) => c.role === chosen.role)
     const payload = chosen as AssistantMessageDto & {
       actionResult?: AssistantActionResult | null
+      actionResults?: AssistantActionResult[]
     }
     out.push({
       id: chosen.id,
       parentId: chosen.parentId,
       role: chosen.role === "user" ? "user" : "assistant",
       content: chosen.content,
-      actionResults: payload.actionResult ? [payload.actionResult] : [],
+      actionResults:
+        payload.actionResults ?? (payload.actionResult ? [payload.actionResult] : []),
       feedback: chosen.feedback,
       branch:
         siblings.length > 1

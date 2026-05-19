@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 
 import { createRepositoryBundle } from "@relay/db"
-import type { AssistantStreamEvent, SendAssistantMessageInput } from "@relay/shared"
+import type { AssistantActionResult, AssistantStreamEvent, SendAssistantMessageInput } from "@relay/shared"
 
 import { RelayHttpMcpClient } from "@/app/api/mcp/stream/relay-http-mcp-client"
 import { logServerEvent } from "@/server/logging/logger"
@@ -167,6 +167,10 @@ export async function* runAssistantTurn(
   contents.push({ role: "user", parts: [{ text: userText }, ...imageParts] })
 
   let totalTokens = 0
+  // Every mutating tool result from this turn, persisted onto the final
+  // assistant message so the action cards survive refresh/reload (they used to
+  // vanish once the stream ended because nothing stored them).
+  const turnActionResults: AssistantActionResult[] = []
 
   // 4. Confirmed destructive action: execute the stored pending action first.
   if (input.confirmActionId) {
@@ -178,7 +182,10 @@ export async function* runAssistantTurn(
       yield { type: "tool_start", tool: pending.tool }
       try {
         const exec = await executeAssistantTool(client, pending.tool, pending.args, { plan: options.plan })
-        if (exec.actionResult) yield { type: "tool_result", result: exec.actionResult }
+        if (exec.actionResult) {
+          turnActionResults.push(exec.actionResult)
+          yield { type: "tool_result", result: exec.actionResult }
+        }
         contents.push({
           role: "model",
           parts: [
@@ -235,7 +242,9 @@ export async function* runAssistantTurn(
         role: "assistant",
         content: finalText,
         tokenOutput: stepResult.tokenUsage.outputTokens,
-        tokenInput: stepResult.tokenUsage.inputTokens
+        tokenInput: stepResult.tokenUsage.inputTokens,
+        toolPayload:
+          turnActionResults.length > 0 ? { actionResults: turnActionResults } : undefined
       })
       await repositories.assistantChats.touch(chat.id)
       yield { type: "usage", totalTokens }
@@ -305,7 +314,10 @@ export async function* runAssistantTurn(
         distinctId: viewer.userId,
         properties: { tool: call.name, surface: input.surface }
       })
-      if (exec.actionResult) yield { type: "tool_result", result: exec.actionResult }
+      if (exec.actionResult) {
+        turnActionResults.push(exec.actionResult)
+        yield { type: "tool_result", result: exec.actionResult }
+      }
       const toolMsg = await repositories.assistantMessages.create({
         chatId: chat.id,
         userId: viewer.userId,
@@ -338,7 +350,9 @@ export async function* runAssistantTurn(
     userId: viewer.userId,
     parentId: tailId,
     role: "assistant",
-    content: cappedText
+    content: cappedText,
+    toolPayload:
+      turnActionResults.length > 0 ? { actionResults: turnActionResults } : undefined
   })
   await repositories.assistantChats.touch(chat.id)
   yield { type: "usage", totalTokens }
