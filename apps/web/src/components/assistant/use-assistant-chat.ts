@@ -29,6 +29,12 @@ export interface AssistantError {
   upgradeUrl?: string
 }
 
+export interface PageContext {
+  url?: string
+  title?: string
+  selection?: string
+}
+
 export interface UiAttachment {
   id: string
   fileName: string
@@ -249,10 +255,10 @@ export function useAssistantChat(surface: AssistantSurface, projectId: string | 
   )
 
   const send = useCallback(
-    (text: string) => {
+    (text: string, pageContext?: PageContext) => {
       if (!text.trim() || streaming) return
       void runStream(
-        { message: text.trim(), parentId: leafId, attachmentIds: readyAttachmentIds() },
+        { message: text.trim(), parentId: leafId, attachmentIds: readyAttachmentIds(), pageContext },
         text.trim(),
         leafId
       )
@@ -262,11 +268,16 @@ export function useAssistantChat(surface: AssistantSurface, projectId: string | 
   )
 
   const editMessage = useCallback(
-    (message: UiMessage, text: string) => {
+    (message: UiMessage, text: string, pageContext?: PageContext) => {
       if (!text.trim() || streaming) return
       // Branch as a new sibling under the same parent as the edited message.
       void runStream(
-        { message: text.trim(), parentId: message.parentId, attachmentIds: readyAttachmentIds() },
+        {
+          message: text.trim(),
+          parentId: message.parentId,
+          attachmentIds: readyAttachmentIds(),
+          pageContext
+        },
         text.trim(),
         message.parentId
       )
@@ -409,6 +420,22 @@ export function useAssistantChat(surface: AssistantSurface, projectId: string | 
     )
   }, [])
 
+  const loadChat = useCallback(
+    async (id: string) => {
+      abortRef.current?.abort()
+      abortRef.current = null
+      chatIdRef.current = id
+      setChatId(id)
+      setOptimistic([])
+      setAttachments([])
+      setSelections({})
+      setBranchParentId(null)
+      setError(null)
+      await refresh()
+    },
+    [refresh]
+  )
+
   const reset = useCallback(() => {
     abortRef.current?.abort()
     abortRef.current = null
@@ -440,6 +467,7 @@ export function useAssistantChat(surface: AssistantSurface, projectId: string | 
     removeAttachment,
     saveAttachmentToSources,
     canSaveToSources: Boolean(projectId),
+    loadChat,
     copyMessage: (text: string) => navigator.clipboard?.writeText(text).catch(() => {}),
     reset
   }

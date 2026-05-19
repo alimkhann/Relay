@@ -5,6 +5,7 @@ import type { AssistantStreamEvent, SendAssistantMessageInput } from "@relay/sha
 
 import { RelayHttpMcpClient } from "@/app/api/mcp/stream/relay-http-mcp-client"
 import { logServerEvent } from "@/server/logging/logger"
+import { captureServerEvent } from "@/lib/telemetry/posthog-server"
 import type { Viewer } from "@/server/policies/viewer"
 import {
   ASSISTANT_TOOL_DECLARATIONS,
@@ -285,6 +286,11 @@ export async function* runAssistantTurn(
         event: "assistant.tool_invoked",
         message: `assistant tool ${call.name}`,
         context: { userId: viewer.userId, tool: call.name }
+      })
+      captureServerEvent({
+        event: "assistant_tool_used",
+        distinctId: viewer.userId,
+        properties: { tool: call.name, surface: input.surface }
       })
       if (exec.actionResult) yield { type: "tool_result", result: exec.actionResult }
       const toolMsg = await repositories.assistantMessages.create({

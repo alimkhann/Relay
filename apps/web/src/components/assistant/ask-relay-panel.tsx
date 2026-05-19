@@ -8,9 +8,12 @@ import {
   BookmarkCheck,
   BookmarkPlus,
   FileText,
+  History,
   ImageIcon,
   Loader2,
+  Maximize2,
   Mic,
+  Minimize2,
   Paperclip,
   Sparkles,
   Square,
@@ -22,6 +25,7 @@ import type { AssistantSurface } from "@relay/shared"
 import { cn } from "@/lib/cn"
 import { useVoiceInput } from "@/hooks/use-voice-input"
 
+import { AskRelayHistory } from "./ask-relay-history"
 import { ChatMessage } from "./chat-message"
 import { ThinkingIndicator } from "./thinking-indicator"
 import { toolLabel } from "./tool-icons"
@@ -57,11 +61,15 @@ export function AskRelayPanel({
     removeAttachment,
     saveAttachmentToSources,
     canSaveToSources,
+    loadChat,
+    chatId,
     copyMessage,
     reset
   } = useAssistantChat(surface, projectId)
   const [draft, setDraft] = useState("")
   const [dragOver, setDragOver] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const voice = useVoiceInput((text) => setDraft((d) => (d ? `${d} ${text}` : text)))
@@ -70,9 +78,19 @@ export function AskRelayPanel({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" })
   }, [messages, streaming, activeTool])
 
+  const capturePageContext = () => {
+    if (typeof window === "undefined") return undefined
+    const selection = window.getSelection?.()?.toString().trim().slice(0, 20000) || undefined
+    return {
+      url: window.location.href,
+      title: `${document.title} · ${surface}`,
+      selection
+    }
+  }
+
   const submit = () => {
     if (!draft.trim() || streaming) return
-    send(draft)
+    send(draft, capturePageContext())
     setDraft("")
   }
 
@@ -99,7 +117,8 @@ export function AskRelayPanel({
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content
           className={cn(
-            "fixed top-0 right-0 z-50 flex h-full w-full max-w-[440px] flex-col border-l border-[var(--relay-line)] bg-[var(--relay-bg)] shadow-[var(--relay-shadow-lg)]",
+            "fixed top-0 right-0 z-50 flex h-full w-full flex-col border-l border-[var(--relay-line)] bg-[var(--relay-bg)] shadow-[var(--relay-shadow-lg)] transition-[max-width] duration-200",
+            expanded ? "max-w-[min(1100px,100vw)]" : "max-w-[440px]",
             "data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:animate-in data-[state=open]:slide-in-from-right"
           )}
           onDragOver={(e) => {
@@ -119,18 +138,46 @@ export function AskRelayPanel({
             </div>
           ) : null}
 
+          <AskRelayHistory
+            open={historyOpen}
+            onClose={() => setHistoryOpen(false)}
+            currentChatId={chatId}
+            onSelect={(id) => {
+              void loadChat(id)
+              setHistoryOpen(false)
+            }}
+          />
+
           <header className="flex items-center justify-between border-b border-[var(--relay-line)] px-4 py-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-[var(--relay-ink)]">
               <Sparkles className="size-4 text-[var(--relay-accent-blue)]" />
               Relay
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-0.5">
               <button
                 type="button"
                 onClick={reset}
                 className="rounded-[var(--relay-radius-sm)] px-2 py-1 text-xs text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
               >
                 New
+              </button>
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(true)}
+                aria-label="Chat history"
+                title="Chat history"
+                className="rounded-[var(--relay-radius-sm)] p-1.5 text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
+              >
+                <History className="size-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                aria-label={expanded ? "Collapse" : "Expand full screen"}
+                title={expanded ? "Collapse" : "Expand full screen"}
+                className="rounded-[var(--relay-radius-sm)] p-1.5 text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
+              >
+                {expanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
               </button>
               <DialogPrimitive.Close className="rounded-[var(--relay-radius-sm)] p-1.5 text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]">
                 <X className="size-4" />
