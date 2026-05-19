@@ -57,6 +57,7 @@ export function ChatView({
 }) {
   const router = useRouter()
   const lastRefreshRef = useRef(0)
+  const trailingRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const {
     messages,
     streaming,
@@ -79,14 +80,25 @@ export function ChatView({
     copyMessage,
     reset
   } = useAssistantChat(surface, projectId, {
-    onMutation: () => {
-      // The agent changed memory/state — re-fetch server components for this
-      // surface (memory list, brief, etc). Throttled so a burst of tool
-      // results triggers a single refresh.
+    onMutation: (result) => {
+      // Let any same-tab client widget (memory list, brief) react instantly.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("relay:memory-mutated", { detail: result }))
+      }
+      // Re-fetch server components for this surface. Leading-edge (first
+      // change reflects immediately) + a trailing refresh so the last of a
+      // burst is never dropped.
       const now = Date.now()
-      if (now - lastRefreshRef.current < 1500) return
-      lastRefreshRef.current = now
-      router.refresh()
+      if (now - lastRefreshRef.current >= 1500) {
+        lastRefreshRef.current = now
+        router.refresh()
+      } else if (!trailingRefreshRef.current) {
+        trailingRefreshRef.current = setTimeout(() => {
+          trailingRefreshRef.current = null
+          lastRefreshRef.current = Date.now()
+          router.refresh()
+        }, 1500)
+      }
     }
   })
   const [draft, setDraft] = useState("")
@@ -95,6 +107,13 @@ export function ChatView({
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const voice = useVoiceInput((text) => setDraft((d) => (d ? `${d} ${text}` : text)))
+
+  useEffect(
+    () => () => {
+      if (trailingRefreshRef.current) clearTimeout(trailingRefreshRef.current)
+    },
+    []
+  )
 
   useEffect(() => {
     // Load a deep-linked chat (e.g. /chat?chatId=…). loadChat is stable.
