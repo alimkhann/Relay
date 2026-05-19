@@ -1,6 +1,7 @@
 "use client"
 
 import { type ClipboardEvent, type DragEvent, useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "motion/react"
 import {
   ArrowUp,
@@ -54,6 +55,8 @@ export function ChatView({
   onToggleExpand?: () => void
   initialChatId?: string | null
 }) {
+  const router = useRouter()
+  const lastRefreshRef = useRef(0)
   const {
     messages,
     streaming,
@@ -75,7 +78,17 @@ export function ChatView({
     chatId,
     copyMessage,
     reset
-  } = useAssistantChat(surface, projectId)
+  } = useAssistantChat(surface, projectId, {
+    onMutation: () => {
+      // The agent changed memory/state — re-fetch server components for this
+      // surface (memory list, brief, etc). Throttled so a burst of tool
+      // results triggers a single refresh.
+      const now = Date.now()
+      if (now - lastRefreshRef.current < 1500) return
+      lastRefreshRef.current = now
+      router.refresh()
+    }
+  })
   const [draft, setDraft] = useState("")
   const [dragOver, setDragOver] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)

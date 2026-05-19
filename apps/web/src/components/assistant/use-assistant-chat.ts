@@ -50,7 +50,13 @@ let localSeq = 0
 const tmp = () => `tmp-${(localSeq += 1)}`
 const keyOf = (parentId: string | null) => parentId ?? "root"
 
-export function useAssistantChat(surface: AssistantSurface, projectId: string | null) {
+export function useAssistantChat(
+  surface: AssistantSurface,
+  projectId: string | null,
+  opts?: { onMutation?: (result: AssistantActionResult) => void }
+) {
+  const onMutationRef = useRef(opts?.onMutation)
+  onMutationRef.current = opts?.onMutation
   const [serverNodes, setServerNodes] = useState<AssistantMessageDto[]>([])
   const [optimistic, setOptimistic] = useState<UiMessage[]>([])
   const [selections, setSelections] = useState<Record<string, string>>({})
@@ -188,6 +194,11 @@ export function useAssistantChat(surface: AssistantSurface, projectId: string | 
               case "tool_result":
                 patch((m) => ({ ...m, actionResults: [...m.actionResults, event.result] }))
                 setActiveTool(null)
+                // Reflect a write the agent just made (memory/state) in the
+                // surrounding surface (e.g. router.refresh() the memory list).
+                if (event.result.action !== "read") {
+                  onMutationRef.current?.(event.result)
+                }
                 break
               case "pending_action":
                 patch((m) => ({
