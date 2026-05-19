@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import type { AssistantMessageDto } from "@relay/shared"
 
-import { derivePath } from "./use-assistant-chat"
+import { derivePath, spliceOptimistic, type UiMessage } from "./use-assistant-chat"
 
 function msg(
   id: string,
@@ -55,5 +55,44 @@ describe("derivePath branch reconstruction", () => {
     const { nodes: path } = derivePath(nodes, { a1: "u2a" })
     expect(path.map((n) => n.id)).toEqual(["u1", "a1", "u2a", "a2a"])
     expect(path.find((n) => n.id === "u2a")?.branch?.index).toBe(1)
+  })
+})
+
+function ui(id: string, parentId: string | null, role: "user" | "assistant"): UiMessage {
+  return { id, parentId, role, content: `${role}:${id}`, actionResults: [], feedback: null }
+}
+
+describe("spliceOptimistic", () => {
+  const base = [ui("u1", null, "user"), ui("a1", "u1", "assistant"), ui("u2", "a1", "user"), ui("a2", "u2", "assistant")]
+
+  it("returns the base path unchanged when nothing is in flight", () => {
+    expect(spliceOptimistic(base, [], "a2")).toBe(base)
+  })
+
+  it("appends a normal send after the current leaf (full context kept)", () => {
+    const optimistic = [ui("tmp-u", "a2", "user"), ui("tmp-a", "tmp-u", "assistant")]
+    // send() passes the leaf id as the branch parent
+    const out = spliceOptimistic(base, optimistic, "a2")
+    expect(out.map((n) => n.id)).toEqual(["u1", "a1", "u2", "a2", "tmp-u", "tmp-a"])
+  })
+
+  it("replaces an edited prompt in place, dropping the stale sibling subtree", () => {
+    // editing u2 sends its parent a1 as the branch parent
+    const optimistic = [ui("tmp-u", "a1", "user"), ui("tmp-a", "tmp-u", "assistant")]
+    const out = spliceOptimistic(base, optimistic, "a1")
+    // old u2 / a2 are gone — no flicker, no "appeared then swapped"
+    expect(out.map((n) => n.id)).toEqual(["u1", "a1", "tmp-u", "tmp-a"])
+  })
+
+  it("editing the first user message yields only the optimistic turn", () => {
+    const optimistic = [ui("tmp-u", null, "user"), ui("tmp-a", "tmp-u", "assistant")]
+    const out = spliceOptimistic(base, optimistic, null)
+    expect(out.map((n) => n.id)).toEqual(["tmp-u", "tmp-a"])
+  })
+
+  it("falls back to appending when the branch parent is not on the path", () => {
+    const optimistic = [ui("tmp-u", "ghost", "user")]
+    const out = spliceOptimistic(base, optimistic, "ghost")
+    expect(out.map((n) => n.id)).toEqual(["u1", "a1", "u2", "a2", "tmp-u"])
   })
 })

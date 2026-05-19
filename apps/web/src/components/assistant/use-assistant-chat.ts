@@ -41,7 +41,12 @@ export function useAssistantChat(surface: AssistantSurface, projectId: string | 
   const [streaming, setStreaming] = useState(false)
   const [activeTool, setActiveTool] = useState<string | null>(null)
   const [error, setError] = useState<AssistantError | null>(null)
+  // Parent the in-flight optimistic nodes hang from. Drives spliceOptimistic so
+  // an edited prompt replaces its sibling in place instead of appending below
+  // the stale branch until the post-stream refresh.
+  const [branchParentId, setBranchParentId] = useState<string | null>(null)
   const chatIdRef = useRef<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const refresh = useCallback(async (): Promise<AssistantMessageDto[]> => {
     const id = chatIdRef.current
@@ -79,6 +84,10 @@ export function useAssistantChat(surface: AssistantSurface, projectId: string | 
     ) => {
       setError(null)
       setStreaming(true)
+      setBranchParentId(parentForOptimistic)
+      const controller = new AbortController()
+      abortRef.current = controller
+      let aborted = false
       const userTmp = tmp()
       const asstTmp = tmp()
       const seed: UiMessage[] = []
@@ -110,7 +119,8 @@ export function useAssistantChat(surface: AssistantSurface, projectId: string | 
         const response = await fetch("/api/assistant/chat", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ ...body, surface, projectId, chatId: chatIdRef.current })
+          body: JSON.stringify({ ...body, surface, projectId, chatId: chatIdRef.current }),
+          signal: controller.signal
         })
 
         if (!response.ok || !response.body) {
@@ -177,28 +187,49 @@ export function useAssistantChat(surface: AssistantSurface, projectId: string | 
             }
           }
         }
-      } catch {
-        setError({ message: "Connection lost. Please try again." })
+      } catch (err) {
+        if (controller.signal.aborted || (err as Error)?.name === "AbortError") {
+          aborted = true
+        } else {
+          setError({ message: "Connection lost. Please try again." })
+        }
       } finally {
         setActiveTool(null)
         setStreaming(false)
-        await refresh()
-        setOptimistic([])
+        abortRef.current = null
+        if (aborted) {
+          // Keep the partial answer on screen; the server turn may not have
+          // persisted, so do not refresh it away.
+          setOptimistic((prev) =>
+            prev.map((m) =>
+              m.id === asstTmp
+                ? { ...m, streaming: false, content: m.content || "_(stopped)_" }
+                : m
+            )
+          )
+        } else {
+          await refresh()
+          setOptimistic([])
+        }
       }
     },
     [surface, projectId, refresh]
   )
 
-  // Derived active path through the branch tree.
+  const stop = useCallback(() => {
+    abortRef.current?.abort()
+  }, [])
+
+  // Derived active path through the branch tree. While a turn is in flight the
+  // optimistic nodes are spliced at their branch parent so an edited prompt
+  // replaces its sibling immediately instead of rendering below the old one.
   const { path, leafId } = useMemo(() => {
-    if (optimistic.length > 0) {
-      // Show the canonical active path then append the in-flight nodes.
-      const base = derivePath(serverNodes, selections)
-      return { path: [...base.nodes, ...optimistic], leafId: base.leafId }
-    }
     const d = derivePath(serverNodes, selections)
+    if (optimistic.length > 0) {
+      return { path: spliceOptimistic(d.nodes, optimistic, branchParentId), leafId: d.leafId }
+    }
     return { path: d.nodes, leafId: d.leafId }
-  }, [serverNodes, selections, optimistic])
+  }, [serverNodes, selections, optimistic, branchParentId])
 
   const send = useCallback(
     (text: string) => {
@@ -268,11 +299,14 @@ export function useAssistantChat(surface: AssistantSurface, projectId: string | 
   }, [])
 
   const reset = useCallback(() => {
+    abortRef.current?.abort()
+    abortRef.current = null
     setServerNodes([])
     setOptimistic([])
     setSelections({})
     setChatId(null)
     chatIdRef.current = null
+    setBranchParentId(null)
     setError(null)
   }, [])
 
@@ -283,6 +317,7 @@ export function useAssistantChat(surface: AssistantSurface, projectId: string | 
     activeTool,
     error,
     send,
+    stop,
     editMessage,
     confirmAction,
     selectBranch,
@@ -344,4 +379,24 @@ export function derivePath(
     parentKey = chosen.id
   }
   return { nodes: out, leafId }
+}
+
+/**
+ * Splice in-flight optimistic nodes onto the canonical path at their branch
+ * parent. For a normal send the parent is the current leaf, so the whole base
+ * path is kept and the new turn is appended (unchanged behaviour). For an
+ * edited prompt the parent is an earlier node, so the stale sibling subtree
+ * after it is dropped and the edited turn replaces it in place — no flicker,
+ * no "sent as a new message then swapped seconds later".
+ */
+export function spliceOptimistic(
+  base: UiMessage[],
+  optimistic: UiMessage[],
+  branchParentId: string | null
+): UiMessage[] {
+  if (optimistic.length === 0) return base
+  if (branchParentId === null) return optimistic
+  const idx = base.findIndex((n) => n.id === branchParentId)
+  if (idx === -1) return [...base, ...optimistic]
+  return [...base.slice(0, idx + 1), ...optimistic]
 }
