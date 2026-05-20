@@ -12,7 +12,7 @@ import {
   type MemoryItemRow,
   type WorkSessionStructuredState,
 } from "@relay/shared"
-import type { ProjectSummaryDto } from "@relay/shared"
+import type { ProjectSummaryDto, SourceSurface } from "@relay/shared"
 
 import type { Viewer } from "@/server/policies/viewer"
 import {
@@ -275,7 +275,16 @@ export class RelayHttpMcpClient {
     return getMemoryForExplainability(this.viewer.userId, memoryId, projectId)
   }
 
-  async addMemory(projectId: string, input: { type: string; content: string; title?: string; tags?: string[] }) {
+  async addMemory(
+    projectId: string,
+    input: {
+      type: string
+      content: string
+      title?: string
+      tags?: string[]
+      sourceSurface?: SourceSurface | null
+    }
+  ) {
     const repositories = createRepositoryBundle(this.viewer.userId)
     return repositories.memory.create(this.viewer.userId, {
       projectId,
@@ -283,6 +292,7 @@ export class RelayHttpMcpClient {
       content: input.content,
       title: input.title ?? null,
       tags: input.tags ?? [],
+      sourceSurface: input.sourceSurface ?? null,
     })
   }
 
@@ -495,6 +505,28 @@ export class RelayHttpMcpClient {
     }
 
     return sections.join("\n\n")
+  }
+
+  async recallPastChats(query: string, options?: { limit?: number; excludeChatId?: string }) {
+    const repos = createRepositoryBundle(this.viewer.userId)
+    const limit = options?.limit ?? 6
+    const found = query.trim()
+      ? await repos.assistantChats.searchByUser(this.viewer.userId, query, { limit: limit + 1 })
+      : await repos.assistantChats.listByUser(this.viewer.userId, { limit: limit + 1 })
+    const chats = found
+      .filter((c) => c.id !== options?.excludeChatId)
+      .slice(0, limit)
+    const out = []
+    for (const c of chats) {
+      const msgs = await repos.assistantMessages.listByChat(c.id, { limit: 12 })
+      const snippet = msgs
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .slice(-4)
+        .map((m) => `${m.role}: ${m.content.slice(0, 220)}`)
+        .join("\n")
+      out.push({ chatId: c.id, title: c.title, updatedAt: c.updatedAt, snippet })
+    }
+    return { chats: out }
   }
 
   async listSources(projectId: string) {

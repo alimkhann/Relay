@@ -1,11 +1,8 @@
-"use client"
-
 import { useCallback, useMemo, useRef, useState } from "react"
 
-// Deep import: pulling these values from the @relay/shared barrel would drag
-// node:crypto (via utils/hashing) into the client bundle and fail the build.
+// Deep import keeps the shared barrel (node:crypto via utils/hashing) out of
+// the extension bundle.
 import {
-  chatKeyOf as keyOf,
   derivePath,
   spliceOptimistic,
   type UiMessage
@@ -13,27 +10,14 @@ import {
 import type {
   AssistantActionResult,
   AssistantMessageDto,
-  AssistantMessageFeedback,
   AssistantPendingAction,
-  AssistantStreamEvent,
-  AssistantSurface
+  AssistantStreamEvent
 } from "@relay/shared"
 
-export { derivePath, spliceOptimistic }
-export type { UiMessage }
+import { getRelaySession } from "../storage/session"
+import { getActiveTab } from "../utils/browser"
 
-export interface AssistantError {
-  message: string
-  upgradeUrl?: string
-}
-
-export interface PageContext {
-  url?: string
-  title?: string
-  selection?: string
-}
-
-export interface UiAttachment {
+export interface ExtAttachment {
   id: string
   fileName: string
   mime: string
@@ -44,28 +28,47 @@ export interface UiAttachment {
   savedToRelay?: boolean
 }
 
-let localSeq = 0
-const tmp = () => `tmp-${(localSeq += 1)}`
+export interface ExtChatSummary {
+  id: string
+  title: string
+  updatedAt: string
+}
 
-export function useAssistantChat(
-  surface: AssistantSurface,
-  projectId: string | null,
-  opts?: { onMutation?: (result: AssistantActionResult) => void }
-) {
+interface PageContext {
+  url?: string
+  title?: string
+}
+
+let seq = 0
+const tmp = () => `xtmp-${(seq += 1)}`
+const keyOf = (parentId: string | null) => parentId ?? "root"
+
+async function api(path: string, init?: RequestInit) {
+  const session = await getRelaySession()
+  return fetch(`${session.apiBase}${path}`, {
+    ...init,
+    headers: {
+      ...(session.token ? { authorization: `Bearer ${session.token}` } : {}),
+      ...(init?.headers ?? {})
+    }
+  })
+}
+
+export function useExtensionChat(opts?: {
+  onMutation?: (r: AssistantActionResult) => void
+}) {
   const onMutationRef = useRef(opts?.onMutation)
   onMutationRef.current = opts?.onMutation
+
   const [serverNodes, setServerNodes] = useState<AssistantMessageDto[]>([])
   const [optimistic, setOptimistic] = useState<UiMessage[]>([])
   const [selections, setSelections] = useState<Record<string, string>>({})
+  const [branchParentId, setBranchParentId] = useState<string | null>(null)
   const [chatId, setChatId] = useState<string | null>(null)
   const [streaming, setStreaming] = useState(false)
   const [activeTool, setActiveTool] = useState<string | null>(null)
-  const [error, setError] = useState<AssistantError | null>(null)
-  // Parent the in-flight optimistic nodes hang from. Drives spliceOptimistic so
-  // an edited prompt replaces its sibling in place instead of appending below
-  // the stale branch until the post-stream refresh.
-  const [branchParentId, setBranchParentId] = useState<string | null>(null)
-  const [attachments, setAttachments] = useState<UiAttachment[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [attachments, setAttachments] = useState<ExtAttachment[]>([])
   const chatIdRef = useRef<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -73,12 +76,13 @@ export function useAssistantChat(
     const id = chatIdRef.current
     if (!id) return []
     try {
-      const res = await fetch(`/api/assistant/chats/${id}`)
+      const res = await api(`/api/assistant/chats/${id}`)
       if (!res.ok) return []
       const data = (await res.json()) as { messages: AssistantMessageDto[] }
       setServerNodes(data.messages)
-      // Default to the newest leaf so a fresh branch is shown after sending.
-      const newest = [...data.messages].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1)
+      const newest = [...data.messages]
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        .at(-1)
       if (newest) {
         const path: Record<string, string> = {}
         const byId = new Map(data.messages.map((m) => [m.id, m]))
@@ -132,34 +136,31 @@ export function useAssistantChat(
         streaming: true
       })
       setOptimistic(seed)
-
       const patch = (fn: (m: UiMessage) => UiMessage) =>
         setOptimistic((prev) => prev.map((m) => (m.id === asstTmp ? fn(m) : m)))
 
       try {
-        const response = await fetch("/api/assistant/chat", {
+        const tab = await getActiveTab().catch(() => undefined)
+        const pageContext: PageContext | undefined = tab
+          ? { url: tab.url, title: tab.title }
+          : undefined
+        const res = await api("/api/assistant/chat", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ ...body, surface, projectId, chatId: chatIdRef.current }),
-          signal: controller.signal
-        })
-
-        if (!response.ok || !response.body) {
-          let payload: { error?: string; upgradeUrl?: string } = {}
-          try {
-            payload = await response.json()
-          } catch {
-            /* noop */
-          }
-          setError({
-            message: payload.error ?? "The assistant is unavailable right now.",
-            upgradeUrl: payload.upgradeUrl
+          signal: controller.signal,
+          body: JSON.stringify({
+            ...body,
+            surface: "extension",
+            chatId: chatIdRef.current,
+            pageContext
           })
+        })
+        if (!res.ok || !res.body) {
+          setError("Relay is unavailable right now.")
           setOptimistic([])
           return
         }
-
-        const reader = response.body.getReader()
+        const reader = res.body.getReader()
         const decoder = new TextDecoder()
         let buffer = ""
         for (;;) {
@@ -171,45 +172,34 @@ export function useAssistantChat(
           for (const frame of frames) {
             const line = frame.trim()
             if (!line.startsWith("data:")) continue
-            let event: AssistantStreamEvent
+            let ev: AssistantStreamEvent
             try {
-              event = JSON.parse(line.slice(5).trim())
+              ev = JSON.parse(line.slice(5).trim())
             } catch {
               continue
             }
-            switch (event.type) {
-              case "chat":
-                chatIdRef.current = event.chatId
-                setChatId(event.chatId)
-                break
-              case "text":
-                patch((m) => ({ ...m, content: m.content + event.delta }))
-                break
-              case "tool_start":
-                setActiveTool(event.tool)
-                break
-              case "tool_result":
-                patch((m) => ({ ...m, actionResults: [...m.actionResults, event.result] }))
-                setActiveTool(null)
-                // Reflect a write the agent just made (memory/state) in the
-                // surrounding surface (e.g. router.refresh() the memory list).
-                if (event.result.action !== "read") {
-                  onMutationRef.current?.(event.result)
-                }
-                break
-              case "pending_action":
-                patch((m) => ({
-                  ...m,
-                  pending: event.action,
-                  content: m.content || `I can ${event.action.summary}. Confirm to proceed.`
-                }))
-                break
-              case "error":
-                setError({ message: event.message, upgradeUrl: event.upgradeUrl })
-                break
-              case "usage":
-              case "done":
-                break
+            if (ev.type === "chat") {
+              chatIdRef.current = ev.chatId
+              setChatId(ev.chatId)
+            } else if (ev.type === "text") {
+              const delta = ev.delta
+              patch((m) => ({ ...m, content: m.content + delta }))
+            } else if (ev.type === "tool_start") {
+              setActiveTool(ev.tool)
+            } else if (ev.type === "tool_result") {
+              const result = ev.result
+              patch((m) => ({ ...m, actionResults: [...m.actionResults, result] }))
+              setActiveTool(null)
+              if (result.action !== "read") onMutationRef.current?.(result)
+            } else if (ev.type === "pending_action") {
+              const action = ev.action
+              patch((m) => ({
+                ...m,
+                pending: action,
+                content: m.content || `I can ${action.summary}. Confirm to proceed.`
+              }))
+            } else if (ev.type === "error") {
+              setError(ev.message)
             }
           }
         }
@@ -217,20 +207,16 @@ export function useAssistantChat(
         if (controller.signal.aborted || (err as Error)?.name === "AbortError") {
           aborted = true
         } else {
-          setError({ message: "Connection lost. Please try again." })
+          setError("Connection lost. Please try again.")
         }
       } finally {
         setActiveTool(null)
         setStreaming(false)
         abortRef.current = null
         if (aborted) {
-          // Keep the partial answer on screen; the server turn may not have
-          // persisted, so do not refresh it away.
           setOptimistic((prev) =>
             prev.map((m) =>
-              m.id === asstTmp
-                ? { ...m, streaming: false, content: m.content || "_(stopped)_" }
-                : m
+              m.streaming ? { ...m, streaming: false, content: m.content || "_(stopped)_" } : m
             )
           )
         } else {
@@ -239,16 +225,11 @@ export function useAssistantChat(
         }
       }
     },
-    [surface, projectId, refresh]
+    [refresh]
   )
 
-  const stop = useCallback(() => {
-    abortRef.current?.abort()
-  }, [])
+  const stop = useCallback(() => abortRef.current?.abort(), [])
 
-  // Derived active path through the branch tree. While a turn is in flight the
-  // optimistic nodes are spliced at their branch parent so an edited prompt
-  // replaces its sibling immediately instead of rendering below the old one.
   const { path, leafId } = useMemo(() => {
     const d = derivePath(serverNodes, selections)
     if (optimistic.length > 0) {
@@ -263,10 +244,10 @@ export function useAssistantChat(
   )
 
   const send = useCallback(
-    (text: string, pageContext?: PageContext) => {
+    (text: string) => {
       if (!text.trim() || streaming) return
       void runStream(
-        { message: text.trim(), parentId: leafId, attachmentIds: readyAttachmentIds(), pageContext },
+        { message: text.trim(), parentId: leafId, attachmentIds: readyAttachmentIds() },
         text.trim(),
         leafId
       )
@@ -276,16 +257,10 @@ export function useAssistantChat(
   )
 
   const editMessage = useCallback(
-    (message: UiMessage, text: string, pageContext?: PageContext) => {
+    (message: UiMessage, text: string) => {
       if (!text.trim() || streaming) return
-      // Branch as a new sibling under the same parent as the edited message.
       void runStream(
-        {
-          message: text.trim(),
-          parentId: message.parentId,
-          attachmentIds: readyAttachmentIds(),
-          pageContext
-        },
+        { message: text.trim(), parentId: message.parentId, attachmentIds: readyAttachmentIds() },
         text.trim(),
         message.parentId
       )
@@ -294,13 +269,29 @@ export function useAssistantChat(
     [runStream, streaming, readyAttachmentIds]
   )
 
+  const confirmAction = useCallback(
+    (action: AssistantPendingAction) => {
+      if (streaming) return
+      void runStream(
+        { message: `Confirmed: ${action.summary}`, confirmActionId: action.id, parentId: leafId },
+        null,
+        leafId
+      )
+    },
+    [runStream, streaming, leafId]
+  )
+
+  const selectBranch = useCallback((parentId: string | null, siblingId: string) => {
+    setSelections((prev) => ({ ...prev, [keyOf(parentId)]: siblingId }))
+  }, [])
+
   const ensureChat = useCallback(async (): Promise<string | null> => {
     if (chatIdRef.current) return chatIdRef.current
     try {
-      const res = await fetch("/api/assistant/chats", {
+      const res = await api("/api/assistant/chats", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ surface, projectId })
+        body: JSON.stringify({ surface: "extension" })
       })
       if (!res.ok) return null
       const data = (await res.json()) as { chat: { id: string } }
@@ -310,14 +301,14 @@ export function useAssistantChat(
     } catch {
       return null
     }
-  }, [surface, projectId])
+  }, [])
 
   const addFiles = useCallback(
     async (files: File[]) => {
       if (files.length === 0) return
       const chat = await ensureChat()
       if (!chat) {
-        setError({ message: "Couldn't start a chat for the attachment." })
+        setError("Couldn't start a chat for the attachment.")
         return
       }
       for (const file of files) {
@@ -337,15 +328,21 @@ export function useAssistantChat(
           const fd = new FormData()
           fd.append("chatId", chat)
           fd.append("file", file)
-          const res = await fetch("/api/assistant/attachments", { method: "POST", body: fd })
-          if (!res.ok) throw new Error("upload failed")
-          const data = (await res.json()) as UiAttachment
+          const res = await api("/api/assistant/attachments", { method: "POST", body: fd })
+          if (!res.ok) {
+            // Surface the server's reason so unsupported types / chat-full
+            // hit the user instead of failing silently.
+            const body = (await res.json().catch(() => ({}))) as { error?: string }
+            throw new Error(body?.error || `upload failed (${res.status})`)
+          }
+          const data = (await res.json()) as ExtAttachment
           setAttachments((prev) =>
             prev.map((a) => (a.id === localId ? { ...data, uploading: false } : a))
           )
-        } catch {
+        } catch (err) {
           setAttachments((prev) => prev.filter((a) => a.id !== localId))
-          setError({ message: `Couldn't attach ${file.name}.` })
+          const reason = err instanceof Error ? err.message : "unknown error"
+          setError(`Couldn't attach ${file.name}: ${reason}`)
         }
       }
     },
@@ -356,76 +353,74 @@ export function useAssistantChat(
     setAttachments((prev) => prev.filter((a) => a.id !== id))
   }, [])
 
-  const saveAttachmentToSources = useCallback(
-    async (id: string) => {
-      if (!projectId) return
-      setAttachments((prev) => prev.map((a) => (a.id === id ? { ...a, saving: true } : a)))
-      try {
-        const res = await fetch(`/api/assistant/attachments/${id}/save-to-source`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ projectId })
-        })
-        if (!res.ok) throw new Error("save failed")
-        setAttachments((prev) =>
-          prev.map((a) => (a.id === id ? { ...a, saving: false, savedToRelay: true } : a))
-        )
-      } catch {
-        setAttachments((prev) => prev.map((a) => (a.id === id ? { ...a, saving: false } : a)))
-        setError({ message: "Couldn't save the attachment to Sources." })
-      }
-    },
-    [projectId]
-  )
-
-  const confirmAction = useCallback(
-    (action: AssistantPendingAction) => {
-      if (streaming) return
-      void runStream(
-        { message: `Confirmed: ${action.summary}`, confirmActionId: action.id, parentId: leafId },
-        null,
-        leafId
-      )
-    },
-    [runStream, streaming, leafId]
-  )
-
-  const selectBranch = useCallback((parentId: string | null, siblingId: string) => {
-    setSelections((prev) => ({ ...prev, [keyOf(parentId)]: siblingId }))
-  }, [])
-
   const setFeedback = useCallback(
-    async (messageId: string, value: AssistantMessageFeedback) => {
-      const next =
-        serverNodes.find((m) => m.id === messageId)?.feedback === value ? null : value
+    async (messageId: string, value: "like" | "dislike" | null) => {
+      // Optimistic — the server persists asynchronously and we don't want the
+      // thumb to flicker while the PATCH is in flight.
       setServerNodes((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, feedback: next } : m))
+        prev.map((m) => (m.id === messageId ? { ...m, feedback: value } : m))
       )
-      await fetch(`/api/assistant/messages/${messageId}`, {
+      await api(`/api/assistant/messages/${messageId}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ feedback: next })
+        body: JSON.stringify({ feedback: value })
       }).catch(() => {})
     },
-    [serverNodes]
+    []
   )
 
-  const undo = useCallback(async (result: AssistantActionResult) => {
-    if (!result.undoRef) return
-    await fetch("/api/assistant/undo", {
-      method: "POST",
+  const saveAttachmentToSources = useCallback(async (id: string, projectId: string) => {
+    setAttachments((prev) => prev.map((a) => (a.id === id ? { ...a, saving: true } : a)))
+    try {
+      const res = await api(`/api/assistant/attachments/${id}/save-to-source`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId })
+      })
+      if (!res.ok) throw new Error("save failed")
+      setAttachments((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, saving: false, savedToRelay: true } : a))
+      )
+    } catch {
+      setAttachments((prev) => prev.map((a) => (a.id === id ? { ...a, saving: false } : a)))
+      setError("Couldn't save the attachment to Sources.")
+    }
+  }, [])
+
+  const listProjects = useCallback(async (): Promise<{ id: string; name: string }[]> => {
+    try {
+      const res = await api("/api/projects")
+      if (!res.ok) return []
+      const data = (await res.json()) as { projects: { id: string; name: string }[] }
+      return data.projects
+    } catch {
+      return []
+    }
+  }, [])
+
+  const listChats = useCallback(async (query?: string): Promise<ExtChatSummary[]> => {
+    try {
+      const res = await api(
+        `/api/assistant/chats${query ? `?q=${encodeURIComponent(query)}` : ""}`
+      )
+      if (!res.ok) return []
+      const data = (await res.json()) as { chats: ExtChatSummary[] }
+      return data.chats
+    } catch {
+      return []
+    }
+  }, [])
+
+  const renameChat = useCallback(async (id: string, title: string) => {
+    await api(`/api/assistant/chats/${id}`, {
+      method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(result.undoRef)
+      body: JSON.stringify({ title })
     }).catch(() => {})
-    setServerNodes((prev) =>
-      prev.map((m) => ({
-        ...m,
-        actionResult:
-          m.actionResult === result
-            ? { ...result, action: "deleted", entity: `${result.entity} (undone)` }
-            : m.actionResult
-      }))
-    )
+  }, [])
+
+  const deleteChat = useCallback(async (id: string) => {
+    await api(`/api/assistant/chats/${id}`, { method: "DELETE" }).catch(() => {})
   }, [])
 
   const loadChat = useCallback(
@@ -450,10 +445,10 @@ export function useAssistantChat(
     setServerNodes([])
     setOptimistic([])
     setSelections({})
-    setChatId(null)
-    chatIdRef.current = null
     setBranchParentId(null)
     setAttachments([])
+    setChatId(null)
+    chatIdRef.current = null
     setError(null)
   }, [])
 
@@ -463,20 +458,21 @@ export function useAssistantChat(
     streaming,
     activeTool,
     error,
+    attachments,
     send,
     stop,
     editMessage,
     confirmAction,
     selectBranch,
-    setFeedback,
-    undo,
-    attachments,
     addFiles,
     removeAttachment,
     saveAttachmentToSources,
-    canSaveToSources: Boolean(projectId),
+    setFeedback,
+    listProjects,
+    listChats,
+    renameChat,
+    deleteChat,
     loadChat,
-    copyMessage: (text: string) => navigator.clipboard?.writeText(text).catch(() => {}),
     reset
   }
 }

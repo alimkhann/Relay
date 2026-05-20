@@ -1,18 +1,13 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useState } from "react"
 import { Dialog as DialogPrimitive } from "radix-ui"
-import { AnimatePresence, motion } from "motion/react"
-import { ArrowUp, Mic, Sparkles, X } from "lucide-react"
 
 import type { AssistantSurface } from "@relay/shared"
 
 import { cn } from "@/lib/cn"
-import { useVoiceInput } from "@/hooks/use-voice-input"
 
-import { ChatMessage } from "./chat-message"
-import { ThinkingIndicator } from "./thinking-indicator"
-import { useAssistantChat } from "./use-assistant-chat"
+import { ChatView } from "./chat-view"
 
 export function AskRelayPanel({
   open,
@@ -27,33 +22,7 @@ export function AskRelayPanel({
   projectId: string | null
   plan: "free" | "starter" | "pro"
 }) {
-  const {
-    messages,
-    streaming,
-    activeTool,
-    error,
-    send,
-    editMessage,
-    confirmAction,
-    selectBranch,
-    setFeedback,
-    undo,
-    copyMessage,
-    reset
-  } = useAssistantChat(surface, projectId)
-  const [draft, setDraft] = useState("")
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const voice = useVoiceInput((text) => setDraft((d) => (d ? `${d} ${text}` : text)))
-
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" })
-  }, [messages, streaming, activeTool])
-
-  const submit = () => {
-    if (!draft.trim() || streaming) return
-    send(draft)
-    setDraft("")
-  }
+  const [expanded, setExpanded] = useState(false)
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
@@ -61,132 +30,21 @@ export function AskRelayPanel({
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content
           className={cn(
-            "fixed top-0 right-0 z-50 flex h-full w-full max-w-[440px] flex-col border-l border-[var(--relay-line)] bg-[var(--relay-bg)] shadow-[var(--relay-shadow-lg)]",
+            "fixed top-0 right-0 z-50 flex h-full w-full flex-col border-l border-[var(--relay-line)] bg-[var(--relay-bg)] shadow-[var(--relay-shadow-lg)] transition-[max-width] duration-200",
+            expanded ? "max-w-[min(1100px,100vw)]" : "max-w-[440px]",
             "data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:animate-in data-[state=open]:slide-in-from-right"
           )}
         >
-          <DialogPrimitive.Title className="sr-only">Ask Relay</DialogPrimitive.Title>
-
-          <header className="flex items-center justify-between border-b border-[var(--relay-line)] px-4 py-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-[var(--relay-ink)]">
-              <Sparkles className="size-4 text-emerald-600 dark:text-emerald-400" />
-              Ask Relay
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={reset}
-                className="rounded-[var(--relay-radius-sm)] px-2 py-1 text-xs text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
-              >
-                New
-              </button>
-              <DialogPrimitive.Close className="rounded-[var(--relay-radius-sm)] p-1.5 text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]">
-                <X className="size-4" />
-              </DialogPrimitive.Close>
-            </div>
-          </header>
-
-          <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-            {messages.length === 0 ? (
-              <div className="mt-10 text-center text-sm text-[var(--relay-muted)]">
-                <Sparkles className="mx-auto mb-3 size-6 text-emerald-600 dark:text-emerald-400" />
-                <p className="font-medium text-[var(--relay-ink)]">Ask about your work</p>
-                <p className="mt-1">
-                  &ldquo;What was I working on?&rdquo; · &ldquo;Save this decision&rdquo; ·
-                  &ldquo;Summarize my project&rdquo;
-                </p>
-              </div>
-            ) : null}
-
-            {messages.map((m) => (
-              <ChatMessage
-                key={m.id}
-                message={m}
-                onConfirm={confirmAction}
-                onUndo={undo}
-                onCopy={copyMessage}
-                onFeedback={setFeedback}
-                onEdit={editMessage}
-                onSelectBranch={selectBranch}
-              />
-            ))}
-
-            <AnimatePresence>
-              {activeTool ? (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                >
-                  <ThinkingIndicator label={`Running ${activeTool.replace(/_/g, " ")}…`} />
-                </motion.div>
-              ) : streaming ? (
-                <ThinkingIndicator />
-              ) : null}
-            </AnimatePresence>
-
-            {error ? (
-              <div className="rounded-[var(--relay-radius-lg)] border border-[var(--relay-danger)]/30 bg-[var(--relay-danger-soft)] p-3 text-sm text-[var(--relay-ink)]">
-                <p>{error.message}</p>
-                {error.upgradeUrl ? (
-                  <a
-                    href={error.upgradeUrl}
-                    className="mt-2 inline-block rounded-[var(--relay-radius-sm)] bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
-                  >
-                    Upgrade to keep going
-                  </a>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-
-          {plan === "free" ? (
-            <div className="border-t border-[var(--relay-line)] bg-[var(--relay-soft)]/50 px-4 py-2 text-center text-xs text-[var(--relay-muted)]">
-              Free preview — upgrade for unlimited Ask Relay
-            </div>
-          ) : null}
-
-          <div className="border-t border-[var(--relay-line)] p-3">
-            <div className="flex items-end gap-2 rounded-[var(--relay-radius-lg)] border border-[var(--relay-line-strong)] bg-[var(--relay-surface)] px-3 py-2">
-              <textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault()
-                    submit()
-                  }
-                }}
-                rows={1}
-                placeholder="Ask anything…"
-                className="max-h-32 flex-1 resize-none bg-transparent text-sm text-[var(--relay-ink)] outline-none placeholder:text-[var(--relay-muted)]"
-              />
-              {voice.supported ? (
-                <button
-                  type="button"
-                  onClick={() => (voice.listening ? voice.stop() : voice.start())}
-                  aria-label="Voice input"
-                  className={cn(
-                    "rounded-full p-1.5 transition-colors",
-                    voice.listening
-                      ? "bg-emerald-600 text-white"
-                      : "text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
-                  )}
-                >
-                  <Mic className="size-4" />
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={submit}
-                disabled={!draft.trim() || streaming}
-                aria-label="Send"
-                className="rounded-full bg-[var(--relay-accent)] p-1.5 text-[var(--relay-accent-text)] transition-opacity disabled:opacity-40"
-              >
-                <ArrowUp className="size-4" />
-              </button>
-            </div>
-          </div>
+          <DialogPrimitive.Title className="sr-only">Relay</DialogPrimitive.Title>
+          <ChatView
+            surface={surface}
+            projectId={projectId}
+            plan={plan}
+            variant="panel"
+            expanded={expanded}
+            onToggleExpand={() => setExpanded((v) => !v)}
+            onClose={() => onOpenChange(false)}
+          />
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

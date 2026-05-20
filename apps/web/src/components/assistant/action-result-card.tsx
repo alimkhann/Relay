@@ -7,11 +7,17 @@ import type { AssistantActionResult } from "@relay/shared"
 
 import { cn } from "@/lib/cn"
 
+import { toolIcon } from "./tool-icons"
+
 const ACTION_META: Record<
   AssistantActionResult["action"],
   { Icon: typeof CheckCircle2; tone: string; verb: string }
 > = {
-  created: { Icon: CheckCircle2, tone: "text-emerald-600 dark:text-emerald-400", verb: "Created" },
+  created: {
+    Icon: CheckCircle2,
+    tone: "text-[var(--relay-accent-blue)]",
+    verb: "Created"
+  },
   updated: { Icon: PencilLine, tone: "text-amber-600 dark:text-amber-400", verb: "Updated" },
   deleted: { Icon: Trash2, tone: "text-[var(--relay-danger)]", verb: "Deleted" },
   read: { Icon: CheckCircle2, tone: "text-[var(--relay-muted)]", verb: "Read" }
@@ -26,6 +32,7 @@ export function ActionResultCard({
 }) {
   const meta = ACTION_META[result.action] ?? ACTION_META.read
   const { Icon } = meta
+  const ToolGlyph = toolIcon(result.tool)
 
   return (
     <motion.div
@@ -35,7 +42,10 @@ export function ActionResultCard({
       className="rounded-[var(--relay-radius-lg)] border border-[var(--relay-line)] bg-[var(--relay-soft)]/60 p-3"
     >
       <div className="flex items-center justify-between gap-2">
-        <div className={cn("flex items-center gap-1.5 text-sm font-semibold", meta.tone)}>
+        <div className={cn("flex items-center gap-2 text-sm font-semibold", meta.tone)}>
+          <span className="grid size-6 place-items-center rounded-[var(--relay-radius)] bg-[var(--relay-accent-blue-soft)] text-[var(--relay-accent-blue)]">
+            <ToolGlyph className="size-3.5" />
+          </span>
           <Icon className="size-4" />
           <span>
             {meta.verb} {result.count} {result.entity}
@@ -57,15 +67,32 @@ export function ActionResultCard({
       </div>
       {result.items.length > 0 ? (
         <ul className="mt-2 space-y-1">
-          {result.items.slice(0, 5).map((item, i) => (
-            <li
-              key={item.id ?? i}
-              className="flex gap-2 text-xs text-[var(--relay-ink-secondary)]"
-            >
-              <span className="text-[var(--relay-muted)]">—</span>
-              <span className="truncate">{item.label}</span>
-            </li>
-          ))}
+          {result.items.slice(0, 5).map((item, i) => {
+            // web_search items carry the cited URL in `id`; render those as
+            // external links so users can verify what the agent grounded on.
+            const isUrl =
+              typeof item.id === "string" && /^https?:\/\//i.test(item.id)
+            return (
+              <li
+                key={item.id ?? i}
+                className="flex gap-2 text-xs text-[var(--relay-ink-secondary)]"
+              >
+                <span className="text-[var(--relay-muted)]">—</span>
+                {isUrl ? (
+                  <a
+                    href={item.id}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="truncate text-[var(--relay-accent-blue)] hover:underline"
+                  >
+                    {item.label}
+                  </a>
+                ) : (
+                  <span className="truncate">{item.label}</span>
+                )}
+              </li>
+            )
+          })}
         </ul>
       ) : null}
     </motion.div>

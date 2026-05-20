@@ -35,10 +35,11 @@ export function AskRelayLauncher({
     <>
       <button
         type="button"
+        data-relay-surface="assistant"
         onClick={openPanel}
-        className="fixed top-4 right-4 z-40 flex items-center gap-1.5 rounded-full border border-[var(--relay-line-strong)] bg-[var(--relay-surface)] px-3.5 py-2 text-sm font-semibold text-[var(--relay-ink)] shadow-[var(--relay-shadow)] transition-all hover:shadow-[var(--relay-shadow-lg)]"
+        className="fixed top-4 right-4 z-40 flex items-center gap-1.5 rounded-full border border-[var(--relay-line-strong)] bg-[var(--relay-surface-raised)] px-3.5 py-2 text-sm font-semibold text-[var(--relay-ink)] shadow-[var(--relay-shadow)] transition-all hover:bg-[var(--relay-soft)] hover:shadow-[var(--relay-shadow-lg)]"
       >
-        <Sparkles className="size-4 text-emerald-600 dark:text-emerald-400" />
+        <Sparkles className="size-4 text-[var(--relay-accent-blue)]" />
         Ask Relay
       </button>
       <AskRelayPanel

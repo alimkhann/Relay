@@ -111,6 +111,8 @@ export type SourceSurface =
   | "mcp"
   | "web"
   | "api"
+  | "ask_relay"
+  | "extension"
 
 export interface MemoryItemRow {
   id: string

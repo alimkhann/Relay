@@ -30,6 +30,12 @@
   --relay-section-constraint: #f59e0b;
   --relay-section-task: #10b981;
 
+  /* Ask Relay assistant accent (sky) */
+  --relay-accent-blue: #0ea5e9;
+  --relay-accent-blue-hover: #0284c7;
+  --relay-accent-blue-soft: rgba(14, 165, 233, 0.1);
+  --relay-accent-blue-ink: #ffffff;
+
   /* Flat by default — structure comes from borders, not shadows */
   --relay-shadow-sm: 0 1px 1px rgba(0, 0, 0, 0.03);
   --relay-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -78,6 +84,11 @@
   --relay-section-constraint: #fbbf24;
   --relay-section-task: #34d399;
 
+  --relay-accent-blue: #38bdf8;
+  --relay-accent-blue-hover: #7dd3fc;
+  --relay-accent-blue-soft: rgba(56, 189, 248, 0.14);
+  --relay-accent-blue-ink: #07131c;
+
   --relay-shadow-sm: 0 1px 1px rgba(0, 0, 0, 0.25);
   --relay-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
   --relay-shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.45);
@@ -111,9 +122,33 @@
     --relay-section-constraint: #fbbf24;
     --relay-section-task: #34d399;
 
+    --relay-accent-blue: #38bdf8;
+    --relay-accent-blue-hover: #7dd3fc;
+    --relay-accent-blue-soft: rgba(56, 189, 248, 0.14);
+    --relay-accent-blue-ink: #07131c;
+
     --relay-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
     --relay-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.2);
     --relay-shadow-lg: 0 2px 8px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* ─── Ask Relay assistant accent override ───
+ * Repoints the sky-blue accent family to the neutral `--relay-accent` token
+ * so the assistant surface reads as ink-on-surface (auto-inverting per theme)
+ * instead of branded blue. Scoped via [data-relay-surface="assistant"] so the
+ * rest of the app keeps the original blue.
+ */
+[data-relay-surface="assistant"] {
+  --relay-accent-blue: var(--relay-accent);
+  --relay-accent-blue-hover: var(--relay-accent-hover);
+  --relay-accent-blue-soft: var(--relay-soft);
+  --relay-accent-blue-ink: var(--relay-accent-text);
+}
+
+@keyframes relay-shimmer {
+  to {
+    background-position: -200% center;
   }
 }
 

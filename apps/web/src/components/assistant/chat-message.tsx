@@ -89,14 +89,20 @@ export function ChatMessage({
       data-testid="chat-message"
       data-role={message.role}
     >
-      <div className={cn("flex max-w-[85%] flex-col gap-1.5", isUser && "items-end")}>
+      <div
+        className={cn(
+          "flex flex-col gap-1.5",
+          isUser ? "max-w-[85%] items-end" : "w-full"
+        )}
+      >
         {editing ? (
-          <div className="w-full min-w-[260px] rounded-[var(--relay-radius-lg)] border border-[var(--relay-line-strong)] bg-[var(--relay-surface)] p-2">
+          <div className="w-full min-w-[260px] rounded-[var(--relay-radius-lg)] bg-[var(--relay-soft)] p-2 ring-1 ring-[var(--relay-accent-blue)]/40 focus-within:ring-2 focus-within:ring-[var(--relay-accent-blue)]">
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               rows={3}
-              className="w-full resize-none bg-transparent text-sm text-[var(--relay-ink)] outline-none"
+              autoFocus
+              className="w-full resize-none border-0 bg-transparent text-sm text-[var(--relay-ink)] outline-none focus:ring-0"
             />
             <div className="mt-2 flex justify-end gap-2">
               <button
@@ -105,7 +111,7 @@ export function ChatMessage({
                   setEditing(false)
                   setDraft(message.content)
                 }}
-                className="rounded-[var(--relay-radius-sm)] px-2.5 py-1 text-xs text-[var(--relay-muted)] hover:bg-[var(--relay-soft)]"
+                className="rounded-[var(--relay-radius-sm)] px-2.5 py-1 text-xs text-[var(--relay-muted)] hover:bg-[var(--relay-soft-hover)]"
               >
                 Cancel
               </button>
@@ -117,25 +123,22 @@ export function ChatMessage({
                     setEditing(false)
                   }
                 }}
-                className="rounded-[var(--relay-radius-sm)] bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-700"
+                className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-accent-blue)] px-2.5 py-1 text-xs font-semibold text-[var(--relay-accent-blue-ink)] hover:bg-[var(--relay-accent-blue-hover)]"
               >
                 Save &amp; submit
               </button>
             </div>
           </div>
         ) : message.content ? (
-          <div
-            className={cn(
-              "rounded-[var(--relay-radius-lg)] px-3.5 py-2.5 text-sm",
-              isUser ? "bg-emerald-600 text-white" : "bg-[var(--relay-soft)] text-[var(--relay-ink)]"
-            )}
-          >
-            {isUser ? (
+          isUser ? (
+            <div className="rounded-[var(--relay-radius-lg)] bg-[var(--relay-accent-blue)] px-3.5 py-2.5 text-sm text-[var(--relay-accent-blue-ink)]">
               <span className="whitespace-pre-wrap">{message.content}</span>
-            ) : (
+            </div>
+          ) : (
+            <div className="w-full text-sm text-[var(--relay-ink)]">
               <Markdown content={message.content} className="text-sm" />
-            )}
-          </div>
+            </div>
+          )
         ) : null}
 
         {message.actionResults.map((result, i) => (
@@ -151,7 +154,7 @@ export function ChatMessage({
               <button
                 type="button"
                 onClick={() => message.pending && onConfirm(message.pending)}
-                className="rounded-[var(--relay-radius-sm)] bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-accent-blue)] px-3 py-1.5 text-xs font-semibold text-[var(--relay-accent-blue-ink)] hover:bg-[var(--relay-accent-blue-hover)]"
               >
                 Confirm
               </button>

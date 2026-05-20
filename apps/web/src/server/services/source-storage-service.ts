@@ -70,6 +70,16 @@ export function buildSourceObjectKey(input: {
   return `projects/${input.projectId}/sources/${input.sourceId}/versions/${input.versionId}/original.${extension}`
 }
 
+export function buildAssistantObjectKey(input: {
+  userId: string
+  chatId: string
+  attachmentId: string
+  extension: string
+}) {
+  const extension = input.extension.replace(/[^a-z0-9]/gi, "").toLowerCase() || "bin"
+  return `assistant/${input.userId}/${input.chatId}/${input.attachmentId}.${extension}`
+}
+
 function getR2Client() {
   const endpoint = process.env.R2_ENDPOINT ?? process.env.S3_ENDPOINT
   const accessKeyId = process.env.R2_ACCESS_KEY_ID ?? process.env.S3_ACCESS_KEY_ID

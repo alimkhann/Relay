@@ -54,6 +54,17 @@ export class AssistantMessageRepository {
     )
   }
 
+  /** Stamp `{ consumed: true }` onto a pending_action row's tool_payload so a
+   *  repeated confirmActionId (double-click, retry) becomes a no-op. */
+  async markToolPayloadConsumed(id: string): Promise<void> {
+    await this.provider.query(
+      `update assistant_messages
+       set tool_payload = coalesce(tool_payload, '{}'::jsonb) || '{"consumed":true}'::jsonb
+       where id = $1`,
+      [id]
+    )
+  }
+
   async listByChat(chatId: string, options: { limit?: number } = {}): Promise<AssistantMessageRow[]> {
     const rows = await this.provider.query(
       `select * from assistant_messages

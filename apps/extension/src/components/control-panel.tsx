@@ -497,6 +497,21 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     };
   }, []);
 
+  // Reflect agent writes from the embedded chat: when Ask Relay creates /
+  // updates / deletes memory, refresh the panel so it isn't stale.
+  useEffect(() => {
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel("relay-mutations");
+      channel.onmessage = () => {
+        void refreshActiveProjectState();
+      };
+    } catch {
+      /* BroadcastChannel unavailable */
+    }
+    return () => channel?.close();
+  }, []);
+
   useEffect(() => {
     const handleRuntimeMessage = (message: unknown) => {
       if (
