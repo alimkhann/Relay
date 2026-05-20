@@ -280,15 +280,25 @@ export async function runGeminiAgentStep(input: {
       })
     })
 
-  let response = await attempt(Boolean(input.webSearch))
-
-  // Some models reject googleSearch + functionDeclarations in one request.
-  // Never let that break the whole turn — retry once without grounding.
-  if (!response.ok && response.status === 400 && input.webSearch) {
-    const peek = await parseError(response.clone()).catch(() => "")
-    if (/tool|grounding|googleSearch|function|combine|not supported/i.test(peek)) {
+  let response: Response
+  try {
+    response = await attempt(Boolean(input.webSearch))
+  } catch (err) {
+    // Network / fetch error with grounding enabled — fall back to no
+    // grounding so a flaky googleSearch dependency doesn't take down the
+    // entire turn ("The assistant is temporarily unavailable").
+    if (input.webSearch) {
       response = await attempt(false)
+    } else {
+      throw err
     }
+  }
+
+  // Grounding-combo errors AND any other non-OK status with web search on:
+  // retry once without grounding before throwing. Better to answer without
+  // citations than to fail the whole turn.
+  if (!response.ok && input.webSearch) {
+    response = await attempt(false)
   }
 
   if (!response.ok) {

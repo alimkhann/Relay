@@ -557,6 +557,10 @@ export function ExtensionChat() {
                     title="Delete"
                     onClick={(e) => {
                       e.stopPropagation()
+                      const ok = window.confirm(
+                        `Delete chat "${c.title || "Untitled"}"? This can't be undone.`
+                      )
+                      if (!ok) return
                       void chat.deleteChat(c.id)
                       setChats((prev) => prev.filter((x) => x.id !== c.id))
                     }}

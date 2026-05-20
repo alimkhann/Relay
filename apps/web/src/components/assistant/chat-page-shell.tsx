@@ -60,7 +60,12 @@ export function ChatPageShell({
     }).catch(() => {})
   }
 
-  const remove = async (id: string) => {
+  const remove = async (id: string, title: string) => {
+    // Hard delete — confirm so a stray click doesn't nuke a conversation.
+    const ok = typeof window !== "undefined"
+      ? window.confirm(`Delete chat "${title || "Untitled"}"? This can't be undone.`)
+      : false
+    if (!ok) return
     setChats((prev) => prev.filter((c) => c.id !== id))
     if (selectedChatId === id) {
       setSelectedChatId(null)
@@ -153,7 +158,7 @@ export function ChatPageShell({
                         </button>
                         <button
                           type="button"
-                          onClick={() => void remove(c.id)}
+                          onClick={() => void remove(c.id, c.title)}
                           aria-label="Delete"
                           className="opacity-0 transition-opacity group-hover:opacity-100 rounded-[var(--relay-radius-sm)] p-1 text-[var(--relay-muted)] hover:bg-[var(--relay-soft-hover)] hover:text-[var(--relay-danger)]"
                         >
