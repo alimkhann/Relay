@@ -31,10 +31,16 @@ export class AssistantChatRepository {
   }
 
   async listByUser(userId: string, options: { limit?: number } = {}): Promise<AssistantChatRow[]> {
+    // Hide empty chats — created speculatively by attachment uploads or
+    // brand-new-chat taps that the user never sent a message in.
     const rows = await this.provider.query(
-      `select * from assistant_chats
-       where user_id = $1
-       order by updated_at desc
+      `select c.* from assistant_chats c
+       where c.user_id = $1
+         and exists (
+           select 1 from assistant_messages m
+           where m.chat_id = c.id and m.role = 'user'
+         )
+       order by c.updated_at desc
        limit $2`,
       [userId, options.limit ?? 50]
     )
@@ -43,9 +49,13 @@ export class AssistantChatRepository {
 
   async searchByUser(userId: string, query: string, options: { limit?: number } = {}): Promise<AssistantChatRow[]> {
     const rows = await this.provider.query(
-      `select * from assistant_chats
-       where user_id = $1 and title ilike $2
-       order by updated_at desc
+      `select c.* from assistant_chats c
+       where c.user_id = $1 and c.title ilike $2
+         and exists (
+           select 1 from assistant_messages m
+           where m.chat_id = c.id and m.role = 'user'
+         )
+       order by c.updated_at desc
        limit $3`,
       [userId, `%${query}%`, options.limit ?? 50]
     )

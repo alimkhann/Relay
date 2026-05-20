@@ -32,6 +32,31 @@ async function ensureExtensionAudioPermission(): Promise<boolean> {
   }
 }
 
+// Chrome only surfaces the mic permission prompt for getUserMedia inside a
+// regular tab — never from the side panel / popup. The denied UI calls this to
+// hand control off to a tab page that asks for the permission directly.
+export function openMicrophonePermissionTab() {
+  try {
+    const url = chrome?.runtime?.getURL?.("tabs/microphone-permission.html")
+    if (url && chrome?.tabs?.create) {
+      void chrome.tabs.create({ url })
+      return
+    }
+  } catch {
+    /* fall through to the chrome:// settings link */
+  }
+  try {
+    const id = chrome?.runtime?.id
+    if (id && chrome?.tabs?.create) {
+      void chrome.tabs.create({
+        url: `chrome://settings/content/siteDetails?site=chrome-extension://${id}`
+      })
+    }
+  } catch {
+    /* nothing more we can do without user gesture context */
+  }
+}
+
 /**
  * Web Speech API wrapper, copy of the web hook. Kept here rather than imported
  * from the web app so the extension's Plasmo bundler doesn't reach into a

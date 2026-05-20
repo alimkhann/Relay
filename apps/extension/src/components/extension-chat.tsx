@@ -34,7 +34,7 @@ import { getRelaySession } from "../storage/session"
 import styles from "./extension-chat.module.css"
 import { useExtensionChat, type ExtChatSummary } from "./use-extension-chat"
 import { useResolvedTheme } from "./use-resolved-theme"
-import { useVoiceInput } from "./use-voice-input"
+import { openMicrophonePermissionTab, useVoiceInput } from "./use-voice-input"
 
 const MUTATION_CHANNEL = "relay-mutations"
 const MIN_H = 200
@@ -1011,6 +1011,18 @@ export function ExtensionChat() {
           }`}
         >
           {voice.listening ? "Listening - tap the microphone to stop" : voiceStatusText}
+          {voice.status === "denied" ? (
+            <>
+              {" "}
+              <button
+                type="button"
+                className={styles.linkBtn}
+                onClick={() => openMicrophonePermissionTab()}
+              >
+                Allow microphone
+              </button>
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>

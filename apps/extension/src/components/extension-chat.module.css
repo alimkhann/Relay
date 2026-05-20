@@ -589,6 +589,15 @@
 .voiceStatusError {
   color: var(--ec-danger);
 }
+.linkBtn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--ec-accent, #60a5fa);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
 
 /* Launcher button — prominent: accent surface, ink-on-accent text, theme-aware
  * via the data-theme attribute we set on the element. */
