@@ -27,9 +27,10 @@ import {
   type LucideIcon
 } from "lucide-react"
 
-import type { AssistantActionResult, UiMessage } from "@relay/shared"
+import type { AssistantActionResult, AssistantAttachmentDto, UiMessage } from "@relay/shared"
 
 import { MiniMarkdown } from "../utils/mini-markdown"
+import { getRelaySession } from "../storage/session"
 import styles from "./extension-chat.module.css"
 import { useExtensionChat, type ExtChatSummary } from "./use-extension-chat"
 import { useResolvedTheme } from "./use-resolved-theme"
@@ -167,6 +168,125 @@ function ThinkingChip({ tool }: { tool: string | null }) {
   )
 }
 
+function AttachmentImage({
+  id,
+  fileName,
+  className
+}: {
+  id: string
+  fileName: string
+  className?: string
+}) {
+  const [url, setUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    let objectUrl: string | null = null
+    void getRelaySession()
+      .then((session) =>
+        fetch(`${session.apiBase}/api/assistant/attachments/${id}/content`, {
+          headers: session.token ? { authorization: `Bearer ${session.token}` } : {}
+        })
+      )
+      .then((res) => (res.ok ? res.blob() : null))
+      .then((blob) => {
+        if (!blob || !alive) return
+        objectUrl = URL.createObjectURL(blob)
+        setUrl(objectUrl)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [id])
+
+  if (!url) {
+    return (
+      <span className={className}>
+        <ImageIcon size={12} />
+      </span>
+    )
+  }
+
+  return <img src={url} alt={fileName} className={className} />
+}
+
+function AttachmentStrip({
+  attachments,
+  projectId,
+  onSave
+}: {
+  attachments: AssistantAttachmentDto[]
+  projectId: string | null
+  onSave: (id: string, projectId: string) => Promise<void>
+}) {
+  const [preview, setPreview] = useState<AssistantAttachmentDto | null>(null)
+  const [savingId, setSavingId] = useState<string | null>(null)
+  if (attachments.length === 0) return null
+
+  return (
+    <>
+      <div className={styles.sentAttachments}>
+        {attachments.map((a) => {
+          const isImg = a.mime.startsWith("image/")
+          return (
+            <span key={a.id} className={styles.chip}>
+              {isImg ? (
+                <button
+                  type="button"
+                  className={styles.thumbButton}
+                  onClick={() => setPreview(a)}
+                  aria-label={`Preview ${a.fileName}`}
+                >
+                  <AttachmentImage id={a.id} fileName={a.fileName} className={styles.thumbImg} />
+                </button>
+              ) : (
+                <FileText size={11} />
+              )}
+              <span className={styles.chipLabel}>{a.fileName}</span>
+              {projectId && !isImg ? (
+                <button
+                  type="button"
+                  title={a.savedToRelay ? "Saved to Sources" : "Save to Sources"}
+                  disabled={a.savedToRelay || savingId === a.id}
+                  onClick={async () => {
+                    if (a.savedToRelay || savingId) return
+                    setSavingId(a.id)
+                    await onSave(a.id, projectId)
+                    setSavingId(null)
+                  }}
+                >
+                  {a.savedToRelay ? <Check size={11} /> : <Undo2 size={11} />}
+                </button>
+              ) : null}
+            </span>
+          )
+        })}
+      </div>
+      {preview ? (
+        <div className={styles.previewOverlay} onClick={() => setPreview(null)}>
+          <div className={styles.previewFrame} onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className={styles.previewClose}
+              onClick={() => setPreview(null)}
+              aria-label="Close preview"
+            >
+              <X size={14} />
+            </button>
+            <AttachmentImage
+              id={preview.id}
+              fileName={preview.fileName}
+              className={styles.previewImage}
+            />
+          </div>
+        </div>
+      ) : null}
+    </>
+  )
+}
+
 function MessageRow({
   m,
   onEdit,
@@ -174,7 +294,9 @@ function MessageRow({
   onSelectBranch,
   onCopy,
   onFeedback,
-  streaming
+  streaming,
+  projectId,
+  onSaveAttachment
 }: {
   m: UiMessage
   onEdit: (m: UiMessage, text: string) => void
@@ -183,6 +305,8 @@ function MessageRow({
   onCopy: (text: string) => void
   onFeedback: (id: string, value: "like" | "dislike" | null) => void
   streaming: boolean
+  projectId: string | null
+  onSaveAttachment: (id: string, projectId: string) => Promise<void>
 }) {
   const isUser = m.role === "user"
   const [editing, setEditing] = useState(false)
@@ -241,7 +365,14 @@ function MessageRow({
         </div>
       ) : m.content ? (
         isUser ? (
-          <div className={styles.userMsg}>{m.content}</div>
+          <>
+            <AttachmentStrip
+              attachments={m.attachments}
+              projectId={projectId}
+              onSave={onSaveAttachment}
+            />
+            <div className={styles.userMsg}>{m.content}</div>
+          </>
         ) : (
           <div className={styles.asstMsg}>
             <MiniMarkdown text={m.content} />
@@ -358,6 +489,7 @@ export function ExtensionChat() {
   const [projectId, setProjectId] = useState<string | null>(null)
   const [composerMenuOpen, setComposerMenuOpen] = useState(false)
   const [webSearch, setWebSearch] = useState(false)
+  const [previewAttachment, setPreviewAttachment] = useState<{ id: string; fileName: string } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -440,7 +572,7 @@ export function ExtensionChat() {
   }
 
   const submit = useCallback(() => {
-    if (!draft.trim() || chat.streaming) return
+    if (!draft.trim() || chat.streaming || chat.hasUploadingAttachments) return
     chat.send(draft, { webSearch })
     setDraft("")
     setWebSearch(false)
@@ -601,6 +733,25 @@ export function ExtensionChat() {
           </div>
         </div>
       ) : null}
+      {previewAttachment ? (
+        <div className={styles.previewOverlay} onClick={() => setPreviewAttachment(null)}>
+          <div className={styles.previewFrame} onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className={styles.previewClose}
+              onClick={() => setPreviewAttachment(null)}
+              aria-label="Close preview"
+            >
+              <X size={14} />
+            </button>
+            <AttachmentImage
+              id={previewAttachment.id}
+              fileName={previewAttachment.fileName}
+              className={styles.previewImage}
+            />
+          </div>
+        </div>
+      ) : null}
 
       <header className={styles.header}>
         <span className={styles.titleRow}>
@@ -667,6 +818,8 @@ export function ExtensionChat() {
               onSelectBranch={chat.selectBranch}
               onCopy={(t) => navigator.clipboard?.writeText(t).catch(() => {})}
               onFeedback={chat.setFeedback}
+              projectId={projectId}
+              onSaveAttachment={chat.saveAttachmentToSources}
             />
           ))
         )}
@@ -733,12 +886,19 @@ export function ExtensionChat() {
                     {a.uploading ? (
                       <Sparkles size={11} />
                     ) : isImg ? (
-                      <ImageIcon size={11} />
+                      <button
+                        type="button"
+                        className={styles.thumbButton}
+                        onClick={() => setPreviewAttachment({ id: a.id, fileName: a.fileName })}
+                        aria-label={`Preview ${a.fileName}`}
+                      >
+                        <AttachmentImage id={a.id} fileName={a.fileName} className={styles.thumbImg} />
+                      </button>
                     ) : (
                       <FileText size={11} />
                     )}
                     <span className={styles.chipLabel}>{a.fileName}</span>
-                    {projectId && !a.uploading ? (
+                    {projectId && !a.uploading && !isImg ? (
                       <button
                         type="button"
                         title={a.savedToRelay ? "Saved to Sources" : "Save to Sources"}
@@ -795,7 +955,7 @@ export function ExtensionChat() {
           type="button"
           onClick={() => (voice.listening ? voice.stop() : void voice.start())}
           disabled={!voice.supported || voice.status === "requesting"}
-          className={`${styles.attachBtn} ${voice.listening ? styles.iconBtnActive : ""} ${
+          className={`${styles.attachBtn} ${voice.listening ? styles.voiceActive : ""} ${
             voice.status === "denied" || voice.status === "error" ? styles.voiceError : ""
           }`}
           aria-label={
@@ -807,6 +967,7 @@ export function ExtensionChat() {
           }
           title={voiceStatusText ?? "Voice input"}
         >
+          {voice.listening ? <span className={styles.voiceDot} /> : null}
           <Mic size={14} />
         </button>
         {chat.streaming ? (
@@ -823,7 +984,7 @@ export function ExtensionChat() {
           <button
             type="button"
             onClick={submit}
-            disabled={!draft.trim()}
+            disabled={!draft.trim() || chat.hasUploadingAttachments}
             className={styles.sendBtn}
             aria-label="Send"
             title="Send"
@@ -838,7 +999,7 @@ export function ExtensionChat() {
             voice.status === "denied" || voice.status === "error" ? styles.voiceStatusError : ""
           }`}
         >
-          {voiceStatusText}
+          {voice.listening ? "Listening - tap the microphone to stop" : voiceStatusText}
         </div>
       ) : null}
     </div>

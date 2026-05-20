@@ -12,6 +12,7 @@ import {
 } from "@relay/shared/utils/assistant-chat-path"
 import type {
   AssistantActionResult,
+  AssistantAttachmentDto,
   AssistantMessageDto,
   AssistantMessageFeedback,
   AssistantPendingAction,
@@ -42,6 +43,17 @@ export interface UiAttachment {
   uploading?: boolean
   saving?: boolean
   savedToRelay?: boolean
+}
+
+function toAttachmentDto(a: UiAttachment): AssistantAttachmentDto {
+  return {
+    id: a.id,
+    fileName: a.fileName,
+    mime: a.mime,
+    byteSize: a.byteSize,
+    hasText: a.hasText,
+    savedToRelay: Boolean(a.savedToRelay)
+  }
 }
 
 export interface AssistantSendOptions {
@@ -116,6 +128,12 @@ export function useAssistantChat(
       const userTmp = tmp()
       const asstTmp = tmp()
       const seed: UiMessage[] = []
+      const optimisticAttachments =
+        body.attachmentIds && Array.isArray(body.attachmentIds)
+          ? attachments
+              .filter((a) => !a.uploading && (body.attachmentIds as unknown[]).includes(a.id))
+              .map(toAttachmentDto)
+          : []
       if (optimisticUser) {
         seed.push({
           id: userTmp,
@@ -123,6 +141,7 @@ export function useAssistantChat(
           role: "user",
           content: optimisticUser,
           actionResults: [],
+          attachments: optimisticAttachments,
           feedback: null
         })
       }
@@ -132,6 +151,7 @@ export function useAssistantChat(
         role: "assistant",
         content: "",
         actionResults: [],
+        attachments: [],
         feedback: null,
         streaming: true
       })
@@ -243,7 +263,7 @@ export function useAssistantChat(
         }
       }
     },
-    [surface, projectId, refresh]
+    [surface, projectId, refresh, attachments]
   )
 
   const stop = useCallback(() => {
@@ -265,10 +285,11 @@ export function useAssistantChat(
     () => attachments.filter((a) => !a.uploading).map((a) => a.id),
     [attachments]
   )
+  const hasUploadingAttachments = attachments.some((a) => a.uploading)
 
   const send = useCallback(
     (text: string, pageContext?: PageContext, options?: AssistantSendOptions) => {
-      if (!text.trim() || streaming) return
+      if (!text.trim() || streaming || hasUploadingAttachments) return
       void runStream(
         {
           message: text.trim(),
@@ -282,12 +303,12 @@ export function useAssistantChat(
       )
       setAttachments([])
     },
-    [runStream, streaming, leafId, readyAttachmentIds]
+    [runStream, streaming, hasUploadingAttachments, leafId, readyAttachmentIds]
   )
 
   const editMessage = useCallback(
     (message: UiMessage, text: string, pageContext?: PageContext, options?: AssistantSendOptions) => {
-      if (!text.trim() || streaming) return
+      if (!text.trim() || streaming || hasUploadingAttachments) return
       // Branch as a new sibling under the same parent as the edited message.
       void runStream(
         {
@@ -302,7 +323,7 @@ export function useAssistantChat(
       )
       setAttachments([])
     },
-    [runStream, streaming, readyAttachmentIds]
+    [runStream, streaming, hasUploadingAttachments, readyAttachmentIds]
   )
 
   const ensureChat = useCallback(async (): Promise<string | null> => {
@@ -380,6 +401,14 @@ export function useAssistantChat(
         if (!res.ok) throw new Error("save failed")
         setAttachments((prev) =>
           prev.map((a) => (a.id === id ? { ...a, saving: false, savedToRelay: true } : a))
+        )
+        setServerNodes((prev) =>
+          prev.map((m) => ({
+            ...m,
+            attachments: m.attachments.map((a) =>
+              a.id === id ? { ...a, savedToRelay: true } : a
+            )
+          }))
         )
       } catch {
         setAttachments((prev) => prev.map((a) => (a.id === id ? { ...a, saving: false } : a)))
@@ -482,6 +511,7 @@ export function useAssistantChat(
     setFeedback,
     undo,
     attachments,
+    hasUploadingAttachments,
     addFiles,
     removeAttachment,
     saveAttachmentToSources,

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRef } from "react";
 
 import { ErrorView } from "@/components/ui/error-view";
 import { logClientEvent } from "@/lib/telemetry/client";
@@ -14,8 +13,6 @@ export default function DashboardError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  const retriedRef = useRef(false);
-
   useEffect(() => {
     const payload = {
       level: "error",
@@ -29,13 +26,6 @@ export default function DashboardError({
     logClientEvent(payload);
     reportClientError(payload);
   }, [error]);
-
-  useEffect(() => {
-    if (retriedRef.current) return;
-    retriedRef.current = true;
-    const id = window.setTimeout(() => reset(), 250);
-    return () => window.clearTimeout(id);
-  }, [reset]);
 
   return (
     <ErrorView

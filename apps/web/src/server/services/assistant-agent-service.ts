@@ -103,6 +103,12 @@ function wantsOnlyWebSearch(message: string): boolean {
   )
 }
 
+function wantsRelayTools(message: string): boolean {
+  return /\b(memory|remember|save|delete|project|brief|source|sources|doc|docs|file|attachment|relay|mcp|chat history|past chat|what was i|summarize my project)\b/i.test(
+    message
+  )
+}
+
 function webSearchActionResult(
   groundingChunks: Array<{ uri: string; title?: string }>
 ): AssistantActionResult {
@@ -137,6 +143,20 @@ async function runAssistantGeminiStep(input: {
       ...input
     })
   } catch (error) {
+    void logServerEvent({
+      level: "warn",
+      surface: "web-api",
+      area: "assistant",
+      event: "assistant.gemini_step_failed",
+      message: "assistant Gemini step failed",
+      context: {
+        model: AGENT_MODEL,
+        webSearch: Boolean(input.webSearch),
+        status: error instanceof GeminiRequestError ? error.status : null,
+        phase: error instanceof GeminiRequestError ? error.phase : null,
+        reason: error instanceof Error ? error.message : "unknown"
+      }
+    })
     if (
       !(error instanceof GeminiRequestError) ||
       !error.retryable ||
@@ -146,10 +166,28 @@ async function runAssistantGeminiStep(input: {
     }
   }
 
-  return runGeminiAgentStep({
-    model: AGENT_FALLBACK_MODEL,
-    ...input
-  })
+  try {
+    return await runGeminiAgentStep({
+      model: AGENT_FALLBACK_MODEL,
+      ...input
+    })
+  } catch (error) {
+    void logServerEvent({
+      level: "warn",
+      surface: "web-api",
+      area: "assistant",
+      event: "assistant.gemini_fallback_failed",
+      message: "assistant Gemini fallback step failed",
+      context: {
+        model: AGENT_FALLBACK_MODEL,
+        webSearch: Boolean(input.webSearch),
+        status: error instanceof GeminiRequestError ? error.status : null,
+        phase: error instanceof GeminiRequestError ? error.phase : null,
+        reason: error instanceof Error ? error.message : "unknown"
+      }
+    })
+    throw error
+  }
 }
 
 export async function* runAssistantTurn(
@@ -202,7 +240,11 @@ export async function* runAssistantTurn(
     userId: viewer.userId,
     parentId: input.parentId ?? null,
     role: "user",
-    content: input.message
+    content: input.message,
+    toolPayload:
+      input.attachmentIds && input.attachmentIds.length > 0
+        ? { attachmentIds: input.attachmentIds.slice(0, MAX_ATTACHMENTS_PER_TURN) }
+        : undefined
   })
   let tailId = userMessage.id
   let userText = input.message
@@ -215,6 +257,7 @@ export async function* runAssistantTurn(
   // time, so this only reads them back for the current turn.
   const imageParts: GeminiContent["parts"] = []
   let totalAttachmentChars = 0
+  const unreadableImages: string[] = []
   if (input.attachmentIds && input.attachmentIds.length > 0) {
     // Cap turn-level attachment count so a runaway client cannot blow up the
     // prompt by re-using all of a chat's attachments.
@@ -243,6 +286,7 @@ export async function* runAssistantTurn(
             inlineData: { mimeType: att.mime, data: buffer.toString("base64") }
           })
         } catch (error) {
+          unreadableImages.push(att.fileName)
           // Unreadable / storage unconfigured — drop the image but record it so
           // "docs work, images ignored" is diagnosable rather than silent.
           void logServerEvent({
@@ -260,6 +304,9 @@ export async function* runAssistantTurn(
         }
       }
     }
+  }
+  if (unreadableImages.length > 0) {
+    userText += `\n\n[Attachment warning] Could not read image attachment(s): ${unreadableImages.join(", ")}. Tell the user these image files could not be read.`
   }
 
   contents.push({ role: "user", parts: [{ text: userText }, ...imageParts] })
@@ -332,6 +379,10 @@ export async function* runAssistantTurn(
   const userWantsWeb = wantsWebSearch(input.message)
   const onlyWebSearch = wantsOnlyWebSearch(input.message)
   const shouldRunWebSearch = webSearchEnabled && (explicitWebSearch || userWantsWeb)
+  const shouldDirectWebSearch =
+    shouldRunWebSearch &&
+    !wantsRelayTools(input.message) &&
+    (!input.attachmentIds || input.attachmentIds.length === 0)
   if (!webSearchEnabled && (explicitWebSearch || onlyWebSearch)) {
     const upgradeText = "Web search is available on paid Relay plans. Turn off Web search or upgrade to use grounded web answers."
     for (const delta of chunkText(upgradeText)) yield { type: "text", delta }
@@ -347,7 +398,7 @@ export async function* runAssistantTurn(
     yield { type: "done", messageId: saved.id }
     return
   }
-  if (webSearchEnabled && onlyWebSearch) {
+  if (webSearchEnabled && (onlyWebSearch || shouldDirectWebSearch)) {
     yield { type: "tool_start", tool: "web_search" }
     try {
       const grounded = await runAssistantGeminiStep({
@@ -384,7 +435,7 @@ export async function* runAssistantTurn(
     } catch (error) {
       const message =
         error instanceof GeminiRequestError
-          ? "Web search is temporarily unavailable. Please try again."
+          ? "Web search is temporarily unavailable. Please try again in a moment."
           : error instanceof Error
             ? error.message
             : "Web search failed."

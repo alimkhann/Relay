@@ -32,6 +32,7 @@ export function useVoiceInput(onFinal: (text: string) => void) {
   const [permissionState, setPermissionState] = useState<VoicePermissionState>("unknown")
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const onFinalRef = useRef(onFinal)
+  const desiredListeningRef = useRef(false)
 
   useEffect(() => {
     onFinalRef.current = onFinal
@@ -52,7 +53,7 @@ export function useVoiceInput(onFinal: (text: string) => void) {
     setStatus("idle")
     const recognition = new Ctor()
     recognition.lang = "en-US"
-    recognition.continuous = false
+    recognition.continuous = true
     recognition.interimResults = true
     recognition.onresult = (event) => {
       let finalText = ""
@@ -64,6 +65,16 @@ export function useVoiceInput(onFinal: (text: string) => void) {
       if (finalText) onFinalRef.current(finalText)
     }
     recognition.onend = () => {
+      if (desiredListeningRef.current && recognitionRef.current) {
+        try {
+          recognitionRef.current.start()
+          setListening(true)
+          setStatus("listening")
+          return
+        } catch {
+          /* fall through to stopped state */
+        }
+      }
       setListening(false)
       setStatus((current) =>
         current === "denied" || current === "error" || current === "unsupported" ? current : "idle"
@@ -71,6 +82,7 @@ export function useVoiceInput(onFinal: (text: string) => void) {
     }
     recognition.onerror = (event) => {
       setListening(false)
+      desiredListeningRef.current = false
       const code = event?.error ?? "unknown"
       if (code === "not-allowed" || code === "service-not-allowed") {
         setPermissionState("denied")
@@ -98,6 +110,7 @@ export function useVoiceInput(onFinal: (text: string) => void) {
 
   const start = useCallback(async () => {
     if (!recognitionRef.current || listening || status === "requesting") return
+    desiredListeningRef.current = true
     setError(null)
     setStatus("requesting")
     if (navigator.permissions?.query) {
@@ -132,12 +145,14 @@ export function useVoiceInput(onFinal: (text: string) => void) {
       setStatus("listening")
     } catch {
       setListening(false)
+      desiredListeningRef.current = false
       setStatus("error")
       setError("Voice input could not start.")
     }
   }, [listening, status])
 
   const stop = useCallback(() => {
+    desiredListeningRef.current = false
     recognitionRef.current?.stop()
     setListening(false)
     setStatus("idle")

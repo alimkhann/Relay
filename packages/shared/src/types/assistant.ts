@@ -80,6 +80,16 @@ export interface AssistantAttachmentRow {
   createdAt: string
 }
 
+export interface AssistantAttachmentDto {
+  id: string
+  fileName: string
+  mime: string
+  byteSize: number
+  hasText: boolean
+  savedToRelay: boolean
+  createdAt?: string
+}
+
 export interface AssistantChatSummaryDto {
   id: string
   title: string
@@ -98,6 +108,7 @@ export interface AssistantMessageDto {
   actionResult: AssistantActionResult | null
   /** All mutating tool results from the turn that produced this message. */
   actionResults: AssistantActionResult[]
+  attachments: AssistantAttachmentDto[]
   feedback: AssistantMessageFeedback | null
   createdAt: string
 }

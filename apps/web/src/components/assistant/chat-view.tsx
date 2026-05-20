@@ -9,7 +9,6 @@ import {
   BookmarkPlus,
   FileText,
   History,
-  ImageIcon,
   Loader2,
   Maximize2,
   Minimize2,
@@ -73,6 +72,7 @@ export function ChatView({
     setFeedback,
     undo,
     attachments,
+    hasUploadingAttachments,
     addFiles,
     removeAttachment,
     saveAttachmentToSources,
@@ -108,6 +108,7 @@ export function ChatView({
   const [historyOpen, setHistoryOpen] = useState(false)
   const [composerMenuOpen, setComposerMenuOpen] = useState(false)
   const [webSearch, setWebSearch] = useState(false)
+  const [previewAttachment, setPreviewAttachment] = useState<{ id: string; fileName: string } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -146,7 +147,7 @@ export function ChatView({
   }
 
   const submit = () => {
-    if (!draft.trim() || streaming) return
+    if (!draft.trim() || streaming || hasUploadingAttachments) return
     send(draft, capturePageContext(), { webSearch })
     setDraft("")
     setWebSearch(false)
@@ -214,6 +215,28 @@ export function ChatView({
           setHistoryOpen(false)
         }}
       />
+      {previewAttachment ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4"
+          onClick={() => setPreviewAttachment(null)}
+        >
+          <div className="max-h-[86vh] max-w-4xl" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setPreviewAttachment(null)}
+              className="mb-2 ml-auto grid size-8 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20"
+              aria-label="Close preview"
+            >
+              <X className="size-4" />
+            </button>
+            <img
+              src={`/api/assistant/attachments/${previewAttachment.id}/content`}
+              alt={previewAttachment.fileName}
+              className="max-h-[80vh] rounded-[var(--relay-radius-lg)] object-contain"
+            />
+          </div>
+        </div>
+      ) : null}
 
       <header className="flex items-center justify-between border-b border-[var(--relay-line)] px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-[var(--relay-ink)]">
@@ -298,6 +321,8 @@ export function ChatView({
               onFeedback={setFeedback}
               onEdit={editMessage}
               onSelectBranch={selectBranch}
+              onSaveAttachment={saveAttachmentToSources}
+              canSaveAttachments={canSaveToSources}
             />
           ))}
 
@@ -361,12 +386,23 @@ export function ChatView({
                   {a.uploading ? (
                     <Loader2 className="size-3.5 animate-spin text-[var(--relay-muted)]" />
                   ) : a.mime.startsWith("image/") ? (
-                    <ImageIcon className="size-3.5 text-[var(--relay-accent-blue)]" />
+                    <button
+                      type="button"
+                      onClick={() => setPreviewAttachment({ id: a.id, fileName: a.fileName })}
+                      className="h-8 w-8 overflow-hidden rounded-[var(--relay-radius-sm)] bg-[var(--relay-soft)]"
+                      aria-label={`Preview ${a.fileName}`}
+                    >
+                      <img
+                        src={`/api/assistant/attachments/${a.id}/content`}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    </button>
                   ) : (
                     <FileText className="size-3.5 text-[var(--relay-accent-blue)]" />
                   )}
                   <span className="max-w-[140px] truncate">{a.fileName}</span>
-                  {canSaveToSources && !a.uploading ? (
+                  {canSaveToSources && !a.uploading && !a.mime.startsWith("image/") ? (
                     <button
                       type="button"
                       onClick={() => !a.savedToRelay && saveAttachmentToSources(a.id)}
@@ -496,9 +532,9 @@ export function ChatView({
               }
               title={voiceStatusText ?? "Voice input"}
               className={cn(
-                "grid size-7 place-items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                "relative grid size-7 place-items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                 voice.listening
-                  ? "bg-[var(--relay-accent-blue)] text-[var(--relay-accent-blue-ink)]"
+                  ? "bg-[var(--relay-accent-blue)] text-[var(--relay-accent-blue-ink)] shadow-[0_0_0_4px_var(--relay-accent-blue-soft)]"
                   : voice.status === "denied" || voice.status === "error"
                     ? "text-[var(--relay-danger)] hover:bg-[var(--relay-danger-soft)]"
                     : "text-[var(--relay-muted)] hover:bg-[var(--relay-soft-hover)] hover:text-[var(--relay-ink)]"
@@ -507,7 +543,12 @@ export function ChatView({
               {voice.status === "requesting" ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
-                <Mic className="size-4" />
+                <>
+                  {voice.listening ? (
+                    <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-[var(--relay-danger)] animate-pulse" />
+                  ) : null}
+                  <Mic className="size-4" />
+                </>
               )}
             </button>
             {streaming ? (
@@ -523,7 +564,7 @@ export function ChatView({
               <button
                 type="button"
                 onClick={submit}
-                disabled={!draft.trim()}
+                disabled={!draft.trim() || hasUploadingAttachments}
                 aria-label="Send"
                 className="grid size-7 place-items-center rounded-full bg-[var(--relay-accent-blue)] text-[var(--relay-accent-blue-ink)] transition-opacity hover:bg-[var(--relay-accent-blue-hover)] disabled:opacity-40"
               >
@@ -540,7 +581,7 @@ export function ChatView({
                   : "text-[var(--relay-muted)]"
               )}
             >
-              {voiceStatusText}
+              {voice.listening ? "Listening - tap the microphone to stop" : voiceStatusText}
             </div>
           ) : null}
         </div>

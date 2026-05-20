@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   createRepositoryBundle: vi.fn(),
   executeAssistantTool: vi.fn(),
   runGeminiAgentStep: vi.fn(),
+  getDecryptedSourceObject: vi.fn(),
   logServerEvent: vi.fn()
 }))
 
@@ -24,6 +25,10 @@ vi.mock("@/app/api/mcp/stream/relay-http-mcp-client", () => ({
 
 vi.mock("@/server/logging/logger", () => ({
   logServerEvent: mocks.logServerEvent
+}))
+
+vi.mock("@/server/services/source-storage-service", () => ({
+  getDecryptedSourceObject: mocks.getDecryptedSourceObject
 }))
 
 vi.mock("./gemini-service", async (importActual) => {
@@ -52,6 +57,9 @@ function repoBundle() {
     assistantMessages: {
       listByChat: vi.fn(async () => []),
       create: vi.fn(async () => ({ id: `m${++n}` }))
+    },
+    assistantAttachments: {
+      listByIds: vi.fn(async () => [])
     }
   }
 }
@@ -75,6 +83,7 @@ describe("runAssistantTurn confirmation guard (A2 regression)", () => {
     mocks.createRepositoryBundle.mockReset().mockReturnValue(repoBundle())
     mocks.executeAssistantTool.mockReset()
     mocks.runGeminiAgentStep.mockReset()
+    mocks.getDecryptedSourceObject.mockReset()
   })
 
   it("a NEW destructive call during a confirmed continuation still requires confirmation", async () => {
@@ -204,23 +213,14 @@ describe("runAssistantTurn web search", () => {
   })
 
   it("runs grounding when paid users explicitly enable web search", async () => {
-    mocks.runGeminiAgentStep
-      .mockResolvedValueOnce({
-        text: "I'll check.",
-        functionCalls: [],
-        groundingUris: [],
-        groundingChunks: [],
-        finishReason: "STOP",
-        tokenUsage: { inputTokens: 4, outputTokens: 4, totalTokens: 8 }
-      })
-      .mockResolvedValueOnce({
-        text: "Alimkhan Yergebayev is associated with Relay.",
-        functionCalls: [],
-        groundingUris: ["https://example.com/alimkhan"],
-        groundingChunks: [{ uri: "https://example.com/alimkhan", title: "Alimkhan profile" }],
-        finishReason: "STOP",
-        tokenUsage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 }
-      })
+    mocks.runGeminiAgentStep.mockResolvedValueOnce({
+      text: "Alimkhan Yergebayev is associated with Relay.",
+      functionCalls: [],
+      groundingUris: ["https://example.com/alimkhan"],
+      groundingChunks: [{ uri: "https://example.com/alimkhan", title: "Alimkhan profile" }],
+      finishReason: "STOP",
+      tokenUsage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 }
+    })
 
     const events = await collect({
       message: "tell me about Alimkhan Yergebayev",
@@ -230,7 +230,7 @@ describe("runAssistantTurn web search", () => {
       webSearch: true
     } as SendAssistantMessageInput)
 
-    expect(mocks.runGeminiAgentStep).toHaveBeenCalledTimes(2)
+    expect(mocks.runGeminiAgentStep).toHaveBeenCalledTimes(1)
     expect(mocks.runGeminiAgentStep).toHaveBeenLastCalledWith(
       expect.objectContaining({ tools: [], webSearch: true })
     )
@@ -242,14 +242,6 @@ describe("runAssistantTurn web search", () => {
   it("falls back when the assistant model fails before explicit web grounding", async () => {
     mocks.runGeminiAgentStep
       .mockRejectedValueOnce(new GeminiRequestError("primary unavailable", 403, true, "generate"))
-      .mockResolvedValueOnce({
-        text: "I'll check.",
-        functionCalls: [],
-        groundingUris: [],
-        groundingChunks: [],
-        finishReason: "STOP",
-        tokenUsage: { inputTokens: 4, outputTokens: 4, totalTokens: 8 }
-      })
       .mockResolvedValueOnce({
         text: "A grounded answer.",
         functionCalls: [],
@@ -267,29 +259,20 @@ describe("runAssistantTurn web search", () => {
       webSearch: true
     } as SendAssistantMessageInput)
 
-    expect(mocks.runGeminiAgentStep).toHaveBeenCalledTimes(3)
+    expect(mocks.runGeminiAgentStep).toHaveBeenCalledTimes(2)
     expect(events.some((e) => e.type === "error")).toBe(false)
     expect(events.some((e) => e.type === "tool_result" && e.result.tool === "web_search")).toBe(true)
   })
 
   it("treats who's as web-search intent for paid users", async () => {
-    mocks.runGeminiAgentStep
-      .mockResolvedValueOnce({
-        text: "Let me check.",
-        functionCalls: [],
-        groundingUris: [],
-        groundingChunks: [],
-        finishReason: "STOP",
-        tokenUsage: { inputTokens: 4, outputTokens: 4, totalTokens: 8 }
-      })
-      .mockResolvedValueOnce({
-        text: "Alimkhan Yergebayev is a founder.",
-        functionCalls: [],
-        groundingUris: ["https://example.com/profile"],
-        groundingChunks: [{ uri: "https://example.com/profile", title: "Profile" }],
-        finishReason: "STOP",
-        tokenUsage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 }
-      })
+    mocks.runGeminiAgentStep.mockResolvedValueOnce({
+      text: "Alimkhan Yergebayev is a founder.",
+      functionCalls: [],
+      groundingUris: ["https://example.com/profile"],
+      groundingChunks: [{ uri: "https://example.com/profile", title: "Profile" }],
+      finishReason: "STOP",
+      tokenUsage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 }
+    })
 
     await collect({
       message: "who's Alimkhan Yergebayev?",
@@ -298,7 +281,7 @@ describe("runAssistantTurn web search", () => {
       projectId: null
     } as SendAssistantMessageInput)
 
-    expect(mocks.runGeminiAgentStep).toHaveBeenCalledTimes(2)
+    expect(mocks.runGeminiAgentStep).toHaveBeenCalledTimes(1)
     expect(mocks.runGeminiAgentStep).toHaveBeenLastCalledWith(
       expect.objectContaining({ tools: [], webSearch: true })
     )
@@ -327,5 +310,63 @@ describe("runAssistantTurn web search", () => {
     )
     expect(mocks.executeAssistantTool).not.toHaveBeenCalled()
     expect(events.some((e) => e.type === "tool_start" && e.tool === "web_search")).toBe(true)
+  })
+
+  it("persists attachment ids on the user message and sends image data to Gemini", async () => {
+    const bundle = repoBundle()
+    const createMessage = vi.fn(async () => ({ id: "m1" }))
+    bundle.assistantMessages.create = createMessage
+    bundle.assistantAttachments.listByIds = vi.fn(async () => [
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        chatId: "c1",
+        userId: "u1",
+        fileName: "note.png",
+        mime: "image/png",
+        byteSize: 12,
+        storageKey: "assistant/u1/c1/image-object.png",
+        extractedText: null,
+        savedToRelay: false,
+        createdAt: "2026-05-20T00:00:00Z"
+      }
+    ])
+    mocks.createRepositoryBundle.mockReturnValue(bundle)
+    mocks.getDecryptedSourceObject.mockResolvedValue(Buffer.from("png-bytes"))
+    mocks.runGeminiAgentStep.mockResolvedValueOnce({
+      text: "The image says hello.",
+      functionCalls: [],
+      groundingUris: [],
+      groundingChunks: [],
+      finishReason: "STOP",
+      tokenUsage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 }
+    })
+
+    await collect({
+      message: "what's written here?",
+      surface: "dashboard",
+      parentId: null,
+      projectId: null,
+      attachmentIds: ["11111111-1111-4111-8111-111111111111"]
+    } as SendAssistantMessageInput)
+
+    expect(createMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: "user",
+        toolPayload: { attachmentIds: ["11111111-1111-4111-8111-111111111111"] }
+      })
+    )
+    expect(mocks.runGeminiAgentStep).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contents: expect.arrayContaining([
+          expect.objectContaining({
+            parts: expect.arrayContaining([
+              expect.objectContaining({
+                inlineData: expect.objectContaining({ mimeType: "image/png" })
+              })
+            ])
+          })
+        ])
+      })
+    )
   })
 })

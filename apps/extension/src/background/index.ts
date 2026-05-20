@@ -145,6 +145,7 @@ interface RelayTabState {
   syncInFlight: boolean;
   syncQueued: boolean;
   syncRequestKey: string | null;
+  lastSyncedRequestKey: string | null;
   capturePending: boolean;
   capturePendingAt: number | null;
   captureTimer: ReturnType<typeof setTimeout> | null;
@@ -267,6 +268,7 @@ let sessionDataCache: {
 let authGraceUntil = 0;
 const SESSION_CACHE_TTL_MS = 15_000;
 const DASHBOARD_CACHE_TTL_MS = 20_000;
+const TAB_REMOTE_SYNC_FRESH_MS = 30_000;
 const REMOTE_RETRY_DELAY_MS = 300;
 // Exponential backoff schedule between retry attempts (3x growth).
 // 4 attempts total: initial + 3 retries at 300ms, 900ms, 2700ms.
@@ -736,6 +738,7 @@ function createTabState(tabId: number): RelayTabState {
     syncInFlight: false,
     syncQueued: false,
     syncRequestKey: null,
+    lastSyncedRequestKey: null,
     capturePending: false,
     capturePendingAt: null,
     captureTimer: null,
@@ -1719,11 +1722,20 @@ async function syncTabRemoteState(
     return;
   }
 
+  const reason = options.reason ?? "";
+  const forceBypassesFreshness =
+    Boolean(options.force) &&
+    reason !== "tab_complete" &&
+    reason !== "tab_focus" &&
+    reason !== "active_state_request" &&
+    reason !== "queued_refresh";
   const shouldSkip =
-    !options.force &&
+    !forceBypassesFreshness &&
     state.remoteStatus === "ready" &&
     state.lastSuccessfulSyncAt &&
-    Date.now() - new Date(state.lastSuccessfulSyncAt).getTime() < 4_000;
+    state.lastSyncedRequestKey === requestKey &&
+    Date.now() - new Date(state.lastSuccessfulSyncAt).getTime() <
+      TAB_REMOTE_SYNC_FRESH_MS;
 
   if (shouldSkip) {
     return;
@@ -1807,6 +1819,7 @@ async function syncTabRemoteState(
 
     state.remoteStatus = connected ? "ready" : "unavailable";
     state.lastSuccessfulSyncAt = new Date().toISOString();
+    state.lastSyncedRequestKey = requestKey;
     state.lastError = null;
     state.retryDelayMs = 0;
     clearRetryTimer(state);
@@ -1849,7 +1862,7 @@ async function syncTabRemoteState(
     await broadcastActiveProjectState(tabId);
     if (state.syncQueued) {
       state.syncQueued = false;
-      void syncTabRemoteState(tabId, { force: true, reason: "queued_refresh" });
+      void syncTabRemoteState(tabId, { reason: "queued_refresh" });
     }
   }
 }
@@ -3836,7 +3849,7 @@ chrome.tabs.onUpdated.addListener(
   (tabId: number, changeInfo: { status?: string }) => {
     if (changeInfo.status === "complete") {
       void requestPageStateFromTab(tabId);
-      void syncTabRemoteState(tabId, { force: true, reason: "tab_complete" });
+      void syncTabRemoteState(tabId, { reason: "tab_complete" });
     }
   },
 );
@@ -3849,7 +3862,6 @@ chrome.tabs.onActivated.addListener((activeInfo: { tabId: number }) => {
   void requestPageStateFromTab(activeInfo.tabId);
   const state = tabStates.get(activeInfo.tabId);
   void syncTabRemoteState(activeInfo.tabId, {
-    force: true,
     reason: "tab_focus",
   });
 

@@ -1,5 +1,7 @@
 import Link from "next/link"
 
+import { NotFoundGlobe } from "@/components/ui/not-found-globe"
+
 export const metadata = {
   title: "Not found · Relay",
 }
@@ -9,14 +11,9 @@ export default function NotFound() {
     <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[var(--relay-bg)] px-6 text-[var(--relay-ink)]">
       <div className="pointer-events-none absolute inset-0 relay-404-grid" aria-hidden />
       <div className="relative flex flex-col items-center gap-9">
-        <div className="relay-earth-wrap" aria-hidden>
-          <div className="relay-earth-shadow" />
-          <div className="relay-earth">
-            <div className="relay-earth-map" />
-            <span className="relay-earth-shine" />
-            <span className="relay-earth-ring relay-earth-ring-a" />
-            <span className="relay-earth-ring relay-earth-ring-b" />
-          </div>
+        <div className="relative h-[230px] w-[230px] overflow-hidden rounded-full border border-[var(--relay-line)] bg-[var(--relay-surface)]">
+          <NotFoundGlobe />
+          <div className="pointer-events-none absolute inset-0 rounded-full bg-[radial-gradient(circle_at_35%_25%,rgba(255,255,255,0.18),transparent_28%),linear-gradient(180deg,transparent,rgba(0,0,0,0.18))]" />
         </div>
 
         <div className="text-center">

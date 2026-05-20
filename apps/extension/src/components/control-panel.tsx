@@ -162,6 +162,9 @@ const hiddenFieldBySection = {
 const BILLING_UPGRADE_URL = "https://www.onrelay.app/settings?section=billing";
 const HTML_ONBOARDING_STEP_KEY = "relay.onboarding.htmlStep";
 const HTML_ONBOARDING_META_KEY = "relay.onboarding.htmlMeta";
+const PANEL_SETTINGS_REFRESH_MS = 60_000;
+const PANEL_BILLING_REFRESH_MS = 60_000;
+const PANEL_ACTIVE_STATE_REFRESH_MS = 1_500;
 
 async function readErrorMessage(response: Response, fallback: string) {
   try {
@@ -367,6 +370,9 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [showWalkthrough, setShowWalkthrough] = useState(false);
   const walkthroughChecked = useRef(false);
   const activeStateRequestInFlight = useRef(false);
+  const lastActiveStateRefreshAt = useRef(0);
+  const userSettingsLoadedAt = useRef(0);
+  const billingLoadedAt = useRef(0);
 
   useEffect(() => {
     if (!emailAuthAwaitingOtp || emailAuthResendSeconds <= 0) return undefined;
@@ -446,6 +452,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   useEffect(() => {
     if (!session?.connected) return;
     const onFocus = () => {
+      if (document.visibilityState === "hidden") return;
       void loadUserSettings();
     };
     window.addEventListener("focus", onFocus);
@@ -478,7 +485,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
   useEffect(() => {
     const handleTabActivated = () => {
-      void refreshActiveProjectState();
+      void refreshActiveProjectState({ throttle: true });
     };
 
     const handleTabUpdated = (
@@ -487,7 +494,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       tab: { active?: boolean },
     ) => {
       if (changeInfo.status === "complete" && tab.active) {
-        void refreshActiveProjectState();
+        void refreshActiveProjectState({ throttle: true });
       }
     };
 
@@ -686,6 +693,12 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
   async function loadUserSettings() {
     if (userSettingsBusy) return;
+    if (
+      userSettings &&
+      Date.now() - userSettingsLoadedAt.current < PANEL_SETTINGS_REFRESH_MS
+    ) {
+      return;
+    }
     try {
       const response = await relayFetch("/api/settings");
       if (!response.ok) return;
@@ -696,6 +709,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       if (!data.settings || typeof data.settings !== "object") return;
       if (userSettingsBusy) return;
       setUserSettings(data.settings);
+      userSettingsLoadedAt.current = Date.now();
       if (!walkthroughChecked.current) {
         walkthroughChecked.current = true;
         const completedVia = data.onboarding?.completedVia ?? null;
@@ -709,11 +723,17 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   }
 
   async function loadBilling() {
+    if (billing && Date.now() - billingLoadedAt.current < PANEL_BILLING_REFRESH_MS) {
+      return;
+    }
     try {
       const response = await relayFetch("/api/billing/status");
       if (!response.ok) return;
       const data = (await response.json()) as { billing?: BillingStatusDto };
-      if (data.billing) setBilling(data.billing);
+      if (data.billing) {
+        setBilling(data.billing);
+        billingLoadedAt.current = Date.now();
+      }
     } catch {
       // Best-effort; widget falls back to the daily budget line.
     }
@@ -901,8 +921,15 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
   }
 
-  async function refreshActiveProjectState() {
+  async function refreshActiveProjectState(options: { throttle?: boolean } = {}) {
     if (activeStateRequestInFlight.current) return;
+    if (
+      options.throttle &&
+      Date.now() - lastActiveStateRefreshAt.current < PANEL_ACTIVE_STATE_REFRESH_MS
+    ) {
+      return;
+    }
+    lastActiveStateRefreshAt.current = Date.now();
 
     const tab = await getActiveTab();
     if (!tab?.id) {

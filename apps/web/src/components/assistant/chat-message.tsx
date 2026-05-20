@@ -2,10 +2,24 @@
 
 import { useState } from "react"
 import { motion } from "motion/react"
-import { Check, ChevronLeft, ChevronRight, Copy, Pencil, ThumbsDown, ThumbsUp } from "lucide-react"
+import {
+  BookmarkCheck,
+  BookmarkPlus,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  FileText,
+  Loader2,
+  Pencil,
+  ThumbsDown,
+  ThumbsUp,
+  X
+} from "lucide-react"
 
 import type {
   AssistantActionResult,
+  AssistantAttachmentDto,
   AssistantMessageFeedback,
   AssistantPendingAction
 } from "@relay/shared"
@@ -43,6 +57,102 @@ function IconButton({
   )
 }
 
+function AttachmentChips({
+  attachments,
+  canSave,
+  onSave
+}: {
+  attachments: AssistantAttachmentDto[]
+  canSave: boolean
+  onSave: (id: string) => Promise<void>
+}) {
+  const [preview, setPreview] = useState<AssistantAttachmentDto | null>(null)
+  const [savingId, setSavingId] = useState<string | null>(null)
+  if (attachments.length === 0) return null
+
+  return (
+    <>
+      <div className="flex max-w-full flex-wrap justify-end gap-1.5">
+        {attachments.map((a) => {
+          const isImage = a.mime.startsWith("image/")
+          return (
+            <span
+              key={a.id}
+              className="flex max-w-[220px] items-center gap-1.5 rounded-[var(--relay-radius)] bg-[var(--relay-surface)] py-1 pl-1.5 pr-1 text-xs text-[var(--relay-ink)] ring-1 ring-[var(--relay-line)]"
+            >
+              {isImage ? (
+                <button
+                  type="button"
+                  onClick={() => setPreview(a)}
+                  className="h-8 w-8 overflow-hidden rounded-[var(--relay-radius-sm)] bg-[var(--relay-soft)]"
+                  aria-label={`Preview ${a.fileName}`}
+                >
+                  <img
+                    src={`/api/assistant/attachments/${a.id}/content`}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                </button>
+              ) : (
+                <span className="grid size-6 place-items-center rounded-[var(--relay-radius-sm)] bg-[var(--relay-soft)]">
+                  <FileText className="size-3.5 text-[var(--relay-muted)]" />
+                </span>
+              )}
+              <span className="truncate">{a.fileName}</span>
+              {canSave && !isImage ? (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (a.savedToRelay || savingId) return
+                    setSavingId(a.id)
+                    await onSave(a.id)
+                    setSavingId(null)
+                  }}
+                  disabled={a.savedToRelay || savingId === a.id}
+                  className="rounded-[var(--relay-radius-sm)] p-0.5 text-[var(--relay-muted)] hover:text-[var(--relay-accent-blue)] disabled:opacity-100"
+                  title={a.savedToRelay ? "Saved to Sources" : "Save to Sources"}
+                  aria-label={a.savedToRelay ? "Saved to Sources" : "Save to Sources"}
+                >
+                  {savingId === a.id ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : a.savedToRelay ? (
+                    <BookmarkCheck className="size-3.5 text-[var(--relay-accent-blue)]" />
+                  ) : (
+                    <BookmarkPlus className="size-3.5" />
+                  )}
+                </button>
+              ) : null}
+            </span>
+          )
+        })}
+      </div>
+      {preview ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4"
+          onClick={() => setPreview(null)}
+        >
+          <div className="max-h-[86vh] max-w-4xl" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setPreview(null)}
+              className="mb-2 ml-auto grid size-8 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20"
+              aria-label="Close preview"
+            >
+              <X className="size-4" />
+            </button>
+            <img
+              src={`/api/assistant/attachments/${preview.id}/content`}
+              alt={preview.fileName}
+              className="max-h-[80vh] rounded-[var(--relay-radius-lg)] object-contain"
+            />
+          </div>
+        </div>
+      ) : null}
+    </>
+  )
+}
+
 export function ChatMessage({
   message,
   onConfirm,
@@ -50,7 +160,9 @@ export function ChatMessage({
   onCopy,
   onFeedback,
   onEdit,
-  onSelectBranch
+  onSelectBranch,
+  onSaveAttachment,
+  canSaveAttachments
 }: {
   message: UiMessage
   onConfirm: (action: AssistantPendingAction) => void
@@ -59,6 +171,8 @@ export function ChatMessage({
   onFeedback: (id: string, value: AssistantMessageFeedback) => void
   onEdit: (message: UiMessage, text: string) => void
   onSelectBranch: (parentId: string | null, siblingId: string) => void
+  onSaveAttachment: (id: string) => Promise<void>
+  canSaveAttachments: boolean
 }) {
   const isUser = message.role === "user"
   const [editing, setEditing] = useState(false)
@@ -131,9 +245,16 @@ export function ChatMessage({
           </div>
         ) : message.content ? (
           isUser ? (
-            <div className="rounded-[var(--relay-radius-lg)] bg-[var(--relay-accent-blue)] px-3.5 py-2.5 text-sm text-[var(--relay-accent-blue-ink)]">
-              <span className="whitespace-pre-wrap">{message.content}</span>
-            </div>
+            <>
+              <AttachmentChips
+                attachments={message.attachments}
+                canSave={canSaveAttachments}
+                onSave={onSaveAttachment}
+              />
+              <div className="rounded-[var(--relay-radius-lg)] bg-[var(--relay-accent-blue)] px-3.5 py-2.5 text-sm text-[var(--relay-accent-blue-ink)]">
+                <span className="whitespace-pre-wrap">{message.content}</span>
+              </div>
+            </>
           ) : (
             <div className="w-full text-sm text-[var(--relay-ink)]">
               <Markdown content={message.content} className="text-sm" />

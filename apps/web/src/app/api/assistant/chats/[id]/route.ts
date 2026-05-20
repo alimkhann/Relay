@@ -4,6 +4,7 @@ import { createRepositoryBundle } from "@relay/db"
 import {
   renameAssistantChatSchema,
   type AssistantActionResult,
+  type AssistantAttachmentDto,
   type AssistantMessageDto
 } from "@relay/shared"
 
@@ -25,6 +26,8 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
   if (!chat) return NextResponse.json({ error: "Chat not found." }, { status: 404 })
 
   const rows = await repositories.assistantMessages.listByChat(chat.id)
+  const attachments = await repositories.assistantAttachments.listByChat(chat.id)
+  const attachmentsById = new Map(attachments.map((a) => [a.id, a]))
   const byId = new Map(rows.map((m) => [m.id, m]))
   const kept = (role: string) => role === "user" || role === "assistant"
 
@@ -47,9 +50,22 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
       const payload = m.toolPayload as {
         actionResult?: AssistantActionResult
         actionResults?: AssistantActionResult[]
+        attachmentIds?: string[]
       }
       const actionResults =
         payload?.actionResults ?? (payload?.actionResult ? [payload.actionResult] : [])
+      const messageAttachments: AssistantAttachmentDto[] = (payload?.attachmentIds ?? [])
+        .map((id) => attachmentsById.get(id))
+        .filter((a): a is (typeof attachments)[number] => Boolean(a))
+        .map((a) => ({
+          id: a.id,
+          fileName: a.fileName,
+          mime: a.mime,
+          byteSize: a.byteSize,
+          hasText: Boolean(a.extractedText),
+          savedToRelay: a.savedToRelay,
+          createdAt: a.createdAt
+        }))
       return {
         id: m.id,
         parentId: effectiveParent(m.parentId),
@@ -58,6 +74,7 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
         toolName: m.toolName,
         actionResult: actionResults[0] ?? null,
         actionResults,
+        attachments: messageAttachments,
         feedback: m.feedback,
         createdAt: m.createdAt
       }

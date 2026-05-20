@@ -1,5 +1,6 @@
 import type {
   AssistantActionResult,
+  AssistantAttachmentDto,
   AssistantMessageDto,
   AssistantMessageFeedback,
   AssistantPendingAction
@@ -16,6 +17,7 @@ export interface UiMessage {
   role: "user" | "assistant"
   content: string
   actionResults: AssistantActionResult[]
+  attachments: AssistantAttachmentDto[]
   feedback: AssistantMessageFeedback | null
   pending?: AssistantPendingAction
   streaming?: boolean
@@ -64,6 +66,7 @@ export function derivePath(
       content: chosen.content,
       actionResults:
         payload.actionResults ?? (payload.actionResult ? [payload.actionResult] : []),
+      attachments: chosen.attachments ?? [],
       feedback: chosen.feedback,
       branch:
         siblings.length > 1

@@ -20,6 +20,7 @@ function msg(
     toolName: null,
     actionResult: actionResults[0] ?? null,
     actionResults,
+    attachments: [],
     feedback: null,
     createdAt
   }
@@ -71,7 +72,7 @@ describe("derivePath branch reconstruction", () => {
 })
 
 function ui(id: string, parentId: string | null, role: "user" | "assistant"): UiMessage {
-  return { id, parentId, role, content: `${role}:${id}`, actionResults: [], feedback: null }
+  return { id, parentId, role, content: `${role}:${id}`, actionResults: [], attachments: [], feedback: null }
 }
 
 describe("derivePath action-result persistence (cards survive refresh)", () => {
