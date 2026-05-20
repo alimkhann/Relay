@@ -18,6 +18,9 @@ import { getDecryptedSourceObject } from "@/server/services/source-storage-servi
 
 const AGENT_MODEL = process.env.GEMINI_MODEL_ASSISTANT ?? "gemini-3-flash-preview"
 const MAX_OUTPUT_TOKENS = 1_400
+const MAX_ATTACHMENTS_PER_TURN = 8
+const MAX_TOTAL_ATTACHMENT_CHARS = 24_000
+const MAX_PER_ATTACHMENT_CHARS = 6_000
 
 function systemInstruction(defaultProjectId: string | null): string {
   return [
@@ -25,7 +28,8 @@ function systemInstruction(defaultProjectId: string | null): string {
     "You help the user act on their own Relay data: projects, memory items, sources, briefs, and continuity.",
     "Always prefer calling a tool to fetch real data over guessing. Call list_projects first if you need a projectId.",
     defaultProjectId ? `The active project id is ${defaultProjectId}; use it unless the user means another.` : "",
-    "Tool guidance: use search_memory/recall_context for saved memory; search_sources/read_source for the user's indexed documents; recall_past_chats when the user references an earlier conversation; web search only for current/external facts not in Relay, and cite the sources you were given.",
+    "Tool guidance: use relay_knowledge for product / how-to questions about Relay itself (features, plans, MCP, extension, getting started, billing); use search_memory/recall_context for the user's saved memory; search_sources/read_source for the user's indexed documents; recall_past_chats when the user references an earlier conversation; web search only for current/external facts not in Relay, and cite the sources you were given.",
+    "When the user asks how to use Relay, what Relay can do, or for setup help, call relay_knowledge first and answer from its result; do not invent features.",
     "Be concise. After acting, briefly state what you did. Never invent ids, URLs, citations, or data — if a tool returns nothing, say you couldn't find it rather than guessing.",
     "If there are no projects, or it is ambiguous which project the user means, ask one short clarifying question instead of picking arbitrarily.",
     "When a tool result is truncated, say so and offer to narrow the query; do not fabricate the omitted part.",
@@ -58,6 +62,9 @@ interface PendingActionPayload {
     // Echoed back when the confirmed action resumes the turn (Gemini 3).
     thoughtSignature?: string
   }
+  /** Set true once the pending action has been executed so a repeated
+   *  confirmActionId (double-click, retry) does not re-run it. */
+  consumed?: boolean
 }
 
 function describeToolCall(tool: string, args: Record<string, unknown>): string {
@@ -132,15 +139,24 @@ export async function* runAssistantTurn(
   // sent to Gemini as inline vision parts. Attachments are persisted at upload
   // time, so this only reads them back for the current turn.
   const imageParts: GeminiContent["parts"] = []
+  let totalAttachmentChars = 0
   if (input.attachmentIds && input.attachmentIds.length > 0) {
+    // Cap turn-level attachment count so a runaway client cannot blow up the
+    // prompt by re-using all of a chat's attachments.
+    const ids = input.attachmentIds.slice(0, MAX_ATTACHMENTS_PER_TURN)
     const attachments = await repositories.assistantAttachments.listByIds(
-      input.attachmentIds,
+      ids,
       viewer.userId
     )
     for (const att of attachments) {
       if (att.chatId !== chat.id) continue
       if (att.extractedText) {
-        userText += `\n\n[Attached file: ${att.fileName}]\n${att.extractedText.slice(0, 6000)}`
+        // Per-attachment cap + aggregate cap so N small docs can't bypass it.
+        const remaining = MAX_TOTAL_ATTACHMENT_CHARS - totalAttachmentChars
+        if (remaining <= 0) continue
+        const slice = att.extractedText.slice(0, Math.min(MAX_PER_ATTACHMENT_CHARS, remaining))
+        userText += `\n\n[Attached file: ${att.fileName}]\n${slice}`
+        totalAttachmentChars += slice.length
       } else if (att.mime.startsWith("image/")) {
         try {
           const objId = att.storageKey.split("/").pop()?.replace(/\.[^.]+$/, "") ?? ""
@@ -181,17 +197,33 @@ export async function* runAssistantTurn(
 
   // 4. Confirmed destructive action: execute the stored pending action first.
   if (input.confirmActionId) {
-    const pending = pathMessages
+    const pendingMessage = pathMessages
       .filter((m) => m.toolName === "pending_action")
-      .map((m) => (m.toolPayload as unknown as PendingActionPayload).pendingAction)
-      .find((p) => p?.id === input.confirmActionId)
-    if (pending) {
+      .find((m) => {
+        const payload = m.toolPayload as unknown as PendingActionPayload
+        return payload?.pendingAction?.id === input.confirmActionId
+      })
+    const pendingPayload = pendingMessage?.toolPayload as unknown as PendingActionPayload | undefined
+    const pending = pendingPayload?.pendingAction
+    if (pendingMessage && pending && pendingPayload?.consumed) {
+      // Idempotent replay: surface a friendly note instead of re-running. The
+      // model has already been told the result of the original execution.
+      yield {
+        type: "error",
+        message: "This action has already been confirmed and won't be repeated."
+      }
+      return
+    }
+    if (pendingMessage && pending) {
       yield { type: "tool_start", tool: pending.tool }
       try {
         const exec = await executeAssistantTool(client, pending.tool, pending.args, {
           plan: options.plan,
           chatId: chat.id
         })
+        // Mark consumed BEFORE yielding the result so a retry mid-stream still
+        // sees the flag on the next request.
+        await repositories.assistantMessages.markToolPayloadConsumed(pendingMessage.id)
         if (exec.actionResult) {
           turnActionResults.push(exec.actionResult)
           yield { type: "tool_result", result: exec.actionResult }
@@ -216,7 +248,9 @@ export async function* runAssistantTurn(
     }
   }
 
-  // 5. Bounded tool-call loop.
+  // 5. Bounded tool-call loop. Web grounding is paid-only — free plan never
+  //    incurs the (real) grounding cost.
+  const webSearchEnabled = options.plan !== "free"
   for (let step = 0; step < maxSteps; step += 1) {
     let stepResult
     try {
@@ -226,7 +260,7 @@ export async function* runAssistantTurn(
         contents,
         tools: ASSISTANT_TOOL_DECLARATIONS,
         maxOutputTokens: MAX_OUTPUT_TOKENS,
-        webSearch: true
+        webSearch: webSearchEnabled
       })
     } catch (error) {
       const message =
@@ -241,12 +275,31 @@ export async function* runAssistantTurn(
 
     totalTokens += stepResult.tokenUsage.totalTokens
 
+    // Post-hoc web_search surface: we only know grounding ran if the step
+    // returned chunks. Emit a tool_start + tool_result so the UI shows a
+    // globe indicator + "Searched the web" card with citations.
+    if (stepResult.groundingChunks.length > 0) {
+      yield { type: "tool_start", tool: "web_search" }
+      const items = stepResult.groundingChunks
+        .slice(0, 8)
+        .map((c) => ({ id: c.uri, label: c.title ?? c.uri }))
+      const webActionResult: AssistantActionResult = {
+        tool: "web_search",
+        action: "read",
+        entity: "web",
+        count: stepResult.groundingChunks.length,
+        items
+      }
+      turnActionResults.push(webActionResult)
+      yield { type: "tool_result", result: webActionResult }
+    }
+
     if (stepResult.functionCalls.length === 0) {
       let finalText = stepResult.text || "Done."
-      if (stepResult.groundingUris.length > 0) {
-        const sources = stepResult.groundingUris
+      if (stepResult.groundingChunks.length > 0) {
+        const sources = stepResult.groundingChunks
           .slice(0, 5)
-          .map((u, i) => `${i + 1}. ${u}`)
+          .map((c, i) => `${i + 1}. ${c.title ? `${c.title} — ${c.uri}` : c.uri}`)
           .join("\n")
         finalText += `\n\n**Sources**\n${sources}`
       }

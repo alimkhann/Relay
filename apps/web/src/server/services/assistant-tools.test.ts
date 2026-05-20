@@ -36,6 +36,17 @@ describe("assistant tool registry", () => {
     expect(String(result.modelResponse.error)).toMatch(/Free plan/i)
   })
 
+  it("also gates set_project_state on the Free plan", async () => {
+    const result = await executeAssistantTool(
+      stubClient,
+      "set_project_state",
+      { projectId: "p1", currentObjective: "x" },
+      { plan: "free" }
+    )
+    expect(result.actionResult).toBeNull()
+    expect(String(result.modelResponse.error)).toMatch(/Free plan/i)
+  })
+
   it("flags hard delete as irreversible and archive as reversible", async () => {
     const client = { manageMemory: async () => {} } as unknown as RelayHttpMcpClient
     const del = await executeAssistantTool(

@@ -225,6 +225,8 @@ export interface GeminiAgentStepResult {
   functionCalls: Array<{ name: string; args: Record<string, unknown>; thoughtSignature?: string }>
   /** Source URLs when Google Search grounding was used this step. */
   groundingUris: string[]
+  /** Source chunks (uri + optional title) from Google Search grounding. */
+  groundingChunks: Array<{ uri: string; title?: string }>
   finishReason: string | null
   tokenUsage: GeminiUsage
 }
@@ -332,13 +334,16 @@ export async function runGeminiAgentStep(input: {
       thoughtSignature: part.thoughtSignature
     }))
 
-  const groundingUris = Array.from(
-    new Set(
-      (candidate?.groundingMetadata?.groundingChunks ?? [])
-        .map((c) => c.web?.uri)
-        .filter((u): u is string => Boolean(u))
-    )
-  )
+  // De-duplicate by uri while keeping the first-seen title.
+  const seenUris = new Set<string>()
+  const groundingChunks: Array<{ uri: string; title?: string }> = []
+  for (const chunk of candidate?.groundingMetadata?.groundingChunks ?? []) {
+    const uri = chunk.web?.uri
+    if (!uri || seenUris.has(uri)) continue
+    seenUris.add(uri)
+    groundingChunks.push({ uri, title: chunk.web?.title })
+  }
+  const groundingUris = groundingChunks.map((c) => c.uri)
 
   // Gemini omits usageMetadata on some function-calling responses. Estimate
   // from the serialized request so the monthly token cap is never fed zeros.
@@ -350,6 +355,7 @@ export async function runGeminiAgentStep(input: {
     text,
     functionCalls,
     groundingUris,
+    groundingChunks,
     finishReason: candidate?.finishReason ?? null,
     tokenUsage: {
       inputTokens,

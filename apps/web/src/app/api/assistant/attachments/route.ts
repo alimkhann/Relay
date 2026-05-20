@@ -17,6 +17,30 @@ import {
 export const dynamic = "force-dynamic"
 
 const MAX_BYTES = 15 * 1024 * 1024
+const MAX_ATTACHMENTS_PER_CHAT = 24
+
+// Document MIMEs match the source-ingestion allowlist; image MIMEs cover what
+// Gemini's vision input accepts. Anything else is refused at the boundary so
+// the agent never sees an unreadable blob.
+const DOCUMENT_MIME_ALLOWLIST = new Set<string>([
+  "text/plain",
+  "text/markdown",
+  "text/csv",
+  "text/tab-separated-values",
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+])
+const IMAGE_MIME_ALLOWLIST = new Set<string>([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif"
+])
+
+function isAllowedMime(mime: string): boolean {
+  return DOCUMENT_MIME_ALLOWLIST.has(mime) || IMAGE_MIME_ALLOWLIST.has(mime)
+}
 
 function extensionOf(fileName: string, mime: string) {
   const fromName = fileName.includes(".") ? fileName.split(".").pop() ?? "" : ""
@@ -54,6 +78,25 @@ export const POST = withApiAuth(async (request: Request) => {
 
   const fileName = upload.name || "attachment"
   const mime = upload.type || "application/octet-stream"
+
+  if (!isAllowedMime(mime)) {
+    // 415 Unsupported Media Type — keeps a runaway client from feeding the
+    // agent arbitrary bytes (and matches what the source-upload path enforces).
+    return NextResponse.json(
+      { error: `Attachments of type "${mime}" are not supported.` },
+      { status: 415 }
+    )
+  }
+
+  // Per-chat cap so a runaway client cannot fill the agent's prompt budget
+  // by uploading dozens of files into one conversation.
+  const existing = await repositories.assistantAttachments.listByChat(chat.id)
+  if (existing.length >= MAX_ATTACHMENTS_PER_CHAT) {
+    return NextResponse.json(
+      { error: `This chat already has the maximum of ${MAX_ATTACHMENTS_PER_CHAT} attachments.` },
+      { status: 409 }
+    )
+  }
 
   // Documents → extracted text folded into the prompt. Images keep no text and
   // are sent to the model as inline vision parts at turn time.

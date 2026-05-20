@@ -74,6 +74,8 @@ describe("runAssistantTurn confirmation guard (A2 regression)", () => {
     mocks.runGeminiAgentStep.mockResolvedValueOnce({
       text: "",
       functionCalls: [{ name: "manage_memory", args: { action: "delete", memoryId: ["x9"] } }],
+      groundingUris: [],
+      groundingChunks: [],
       finishReason: null,
       tokenUsage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 }
     })
@@ -98,12 +100,16 @@ describe("runAssistantTurn confirmation guard (A2 regression)", () => {
       .mockResolvedValueOnce({
         text: "",
         functionCalls: [{ name: "list_projects", args: {} }],
+        groundingUris: [],
+        groundingChunks: [],
         finishReason: null,
         tokenUsage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 }
       })
       .mockResolvedValueOnce({
         text: "Here are your projects.",
         functionCalls: [],
+        groundingUris: [],
+        groundingChunks: [],
         finishReason: "STOP",
         tokenUsage: { inputTokens: 3, outputTokens: 3, totalTokens: 6 }
       })
@@ -119,5 +125,66 @@ describe("runAssistantTurn confirmation guard (A2 regression)", () => {
     expect(events.some((e) => e.type === "pending_action")).toBe(false)
     expect(mocks.executeAssistantTool).toHaveBeenCalledTimes(1)
     expect(events.some((e) => e.type === "done")).toBe(true)
+  })
+
+  it("replaying a consumed confirmActionId is an idempotent no-op (no double-run)", async () => {
+    const markConsumed = vi.fn(async () => {})
+    const pendingMessage = {
+      id: "pm1",
+      chatId: "c1",
+      userId: "u1",
+      role: "assistant",
+      parentId: null,
+      content: "Awaiting confirmation to delete 1 memory item(s).",
+      toolName: "pending_action",
+      toolPayload: {
+        pendingAction: {
+          id: "pending-1",
+          tool: "manage_memory",
+          summary: "delete 1 memory item(s)",
+          args: { action: "delete", memoryId: ["m9"] }
+        },
+        consumed: true
+      },
+      createdAt: "2026-05-20T00:00:00Z"
+    }
+    mocks.createRepositoryBundle.mockReset().mockReturnValue({
+      assistantChats: {
+        getById: vi.fn(async () => ({
+          id: "c1",
+          userId: "u1",
+          projectId: null,
+          surface: "dashboard",
+          title: "t"
+        })),
+        create: vi.fn(async () => ({
+          id: "c1",
+          userId: "u1",
+          projectId: null,
+          surface: "dashboard",
+          title: "t"
+        })),
+        touch: vi.fn(async () => {})
+      },
+      assistantMessages: {
+        listByChat: vi.fn(async () => [pendingMessage]),
+        create: vi.fn(async () => ({ id: "m1" })),
+        markToolPayloadConsumed: markConsumed
+      }
+    })
+
+    const events = await collect({
+      message: "go ahead",
+      surface: "dashboard",
+      chatId: "c1",
+      confirmActionId: "pending-1",
+      parentId: "pm1",
+      projectId: null
+    } as unknown as SendAssistantMessageInput)
+
+    expect(mocks.executeAssistantTool).not.toHaveBeenCalled()
+    expect(markConsumed).not.toHaveBeenCalled()
+    const err = events.find((e) => e.type === "error")
+    expect(err && err.type === "error" && err.message).toMatch(/already been confirmed/i)
   })
 })

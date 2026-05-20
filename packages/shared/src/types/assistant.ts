@@ -36,6 +36,12 @@ export interface AssistantPendingAction {
   args: Record<string, unknown>
 }
 
+/** One web result the model used to ground its answer. */
+export interface AssistantGroundingChunk {
+  uri: string
+  title?: string
+}
+
 export interface AssistantChatRow {
   id: string
   userId: string
