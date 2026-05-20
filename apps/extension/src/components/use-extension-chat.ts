@@ -329,14 +329,20 @@ export function useExtensionChat(opts?: {
           fd.append("chatId", chat)
           fd.append("file", file)
           const res = await api("/api/assistant/attachments", { method: "POST", body: fd })
-          if (!res.ok) throw new Error("upload failed")
+          if (!res.ok) {
+            // Surface the server's reason so unsupported types / chat-full
+            // hit the user instead of failing silently.
+            const body = (await res.json().catch(() => ({}))) as { error?: string }
+            throw new Error(body?.error || `upload failed (${res.status})`)
+          }
           const data = (await res.json()) as ExtAttachment
           setAttachments((prev) =>
             prev.map((a) => (a.id === localId ? { ...data, uploading: false } : a))
           )
-        } catch {
+        } catch (err) {
           setAttachments((prev) => prev.filter((a) => a.id !== localId))
-          setError(`Couldn't attach ${file.name}.`)
+          const reason = err instanceof Error ? err.message : "unknown error"
+          setError(`Couldn't attach ${file.name}: ${reason}`)
         }
       }
     },
@@ -346,6 +352,22 @@ export function useExtensionChat(opts?: {
   const removeAttachment = useCallback((id: string) => {
     setAttachments((prev) => prev.filter((a) => a.id !== id))
   }, [])
+
+  const setFeedback = useCallback(
+    async (messageId: string, value: "like" | "dislike" | null) => {
+      // Optimistic — the server persists asynchronously and we don't want the
+      // thumb to flicker while the PATCH is in flight.
+      setServerNodes((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, feedback: value } : m))
+      )
+      await api(`/api/assistant/messages/${messageId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ feedback: value })
+      }).catch(() => {})
+    },
+    []
+  )
 
   const saveAttachmentToSources = useCallback(async (id: string, projectId: string) => {
     setAttachments((prev) => prev.map((a) => (a.id === id ? { ...a, saving: true } : a)))
@@ -445,6 +467,7 @@ export function useExtensionChat(opts?: {
     addFiles,
     removeAttachment,
     saveAttachmentToSources,
+    setFeedback,
     listProjects,
     listChats,
     renameChat,
