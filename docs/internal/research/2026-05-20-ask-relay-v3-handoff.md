@@ -22,13 +22,77 @@ Verification done here: `pnpm typecheck` (12/12), `pnpm lint` (all),
 `pnpm test:stable` 75/75, web unit 11/11, extension 127/127,
 `pnpm --filter @relay/web build` compiles (`/chat` present).
 
-## Why the live e2e did not run in the build environment
+## Live e2e: PASS (against a disposable Neon prod-replica branch)
 
-Not a code issue: the Docker daemon is unavailable in the build sandbox, so
-the local Postgres (`docker-compose.local.yml`, `127.0.0.1:54329`,
-`relay_local`) can't start, so `next dev` has no backend. `LOCAL_DATABASE_URL`
-points at that **local docker pg** (safe/disposable — never prod). All static
-checks pass; the steps below are scripted and one-shot on a machine with Docker.
+Run on 2026-05-20, branch `feat/ask-relay-v2`, `tests/e2e/ask-relay.spec.ts`
+headless chromium, **5 passed / 1 fixme-skipped** (branch-cycle, per the v1
+handoff — covered by `use-assistant-chat.test.ts`). Configuration:
+
+- Neon branch off `shiny-term-32281581` (created + deleted via MCP).
+- `apps/web/.env.local` composed from root `.env.local` (AUTH/LOCAL_AUTH/
+  GEMINI/posthog/secrets) with `DATABASE_URL` + `LOCAL_DATABASE_URL` overridden
+  to the branch and `RELAY_CONTENT_ENCRYPTION_KEY` appended from
+  `.env.vercel-prod` (so prod-replica encrypted rows decrypt).
+- Auth = fresh `POST /api/auth/local` as the real account email →
+  `isNewUser:false` (resolved to the actual prod profile on the branch).
+- Writes pinned to a fresh "Ask Relay E2E Smoke" project via
+  `ASK_RELAY_SMOKE_PROJECT_ID`.
+
+What it proved live: panel open + empty state, send → finalized Gemini reply,
+copy, like-feedback persist (DB write on the branch).
+
+Pre-existing unrelated failures in the full suite (NOT touched this round):
+`landing.spec.ts` (marketing heading copy drift) and `extension-inline-chip.
+spec.ts` (needs a built unpacked-extension chrome context).
+
+## Reproduce the e2e (one-shot recipe)
+
+```bash
+# 0. prereq: gh, neon mcp (or console), the user's local .env.local + .env.vercel-prod
+
+# A. Disposable Neon branch off prod (via MCP create_branch + get_connection_string).
+#    BRANCH_URL=postgresql://...@...neon.tech/neondb?sslmode=require
+
+# B. Compose apps/web/.env.local (gitignored)
+cp .env.local apps/web/.env.local
+sed -i '' "s#^DATABASE_URL=.*#DATABASE_URL=$BRANCH_URL#" apps/web/.env.local
+sed -i '' "s#^LOCAL_DATABASE_URL=.*#LOCAL_DATABASE_URL=$BRANCH_URL#" apps/web/.env.local
+grep '^RELAY_CONTENT_ENCRYPTION_KEY=' .env.vercel-prod | tr -d '"' >> apps/web/.env.local
+
+# C. Dev server (Playwright reuses it via reuseExistingServer when non-CI)
+pnpm --filter @relay/web dev &
+until curl -sf http://127.0.0.1:3000 > /dev/null; do sleep 2; done
+
+# D. Mint a real-account session + smoke project (storageState for the spec)
+node - <<'JS'
+import { request } from "@playwright/test"
+const ctx = await request.newContext({ baseURL: "http://127.0.0.1:3000" })
+await ctx.post("/api/auth/local", { data: { email: "<your-email>", intent: "sign-in" } })
+const list = await ctx.get("/api/projects"); const { projects = [] } = await list.json()
+let smoke = projects.find(p => p.name === "Ask Relay E2E Smoke")
+if (!smoke) {
+  const r = await ctx.post("/api/projects", { data: { name: "Ask Relay E2E Smoke" } })
+  smoke = (await r.json()).project
+}
+await ctx.storageState({ path: ".tmp/ask-relay-auth.json" })
+console.log("SMOKE_ID=" + smoke.id)
+JS
+
+# E. Headless e2e (chromium)
+ASK_RELAY_STORAGE_STATE="$PWD/.tmp/ask-relay-auth.json" \
+ASK_RELAY_SMOKE_PROJECT_ID="<id-from-D>" \
+pnpm exec playwright test tests/e2e/ask-relay.spec.ts --reporter=list
+
+# F. Teardown (always do this — branch contains a prod replica)
+lsof -ti tcp:3000 | xargs -r kill -9
+rm -f apps/web/.env.local .tmp/ask-relay-auth.json
+# delete the Neon branch via MCP delete_branch
+```
+
+(For machines with Docker, the all-local path also works:
+`pnpm db:local:start && pnpm db:local:migrate && pnpm db:local:seed:user`, then
+the same dev + mint + playwright commands against `LOCAL_DATABASE_URL` left
+pointing at `127.0.0.1:54329`.)
 
 ## Pre-merge gate — exact recipe (run on a machine with Docker)
 
