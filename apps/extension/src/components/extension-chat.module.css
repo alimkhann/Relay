@@ -898,6 +898,10 @@
   animation-play-state: paused;
   height: 25%;
 }
+.waveReactive span {
+  animation: none;
+  transition: height 75ms ease-out;
+}
 
 /* ── Mic denied pill ───────────────────────────────────────────────────────
  * Red-tinted compact bar shown above the composer when the user has blocked

@@ -155,10 +155,18 @@ function ActionCard({ r }: { r: AssistantActionResult }) {
   )
 }
 
-function Waveform({ still = false }: { still?: boolean }) {
+function Waveform({ still = false, levels }: { still?: boolean; levels?: number[] }) {
+  const bars = levels && levels.length > 0 ? levels : new Array(9).fill(0.22)
   return (
-    <span className={`${styles.wave} ${still ? styles.waveStill : ""}`} aria-hidden>
-      <span /><span /><span /><span /><span /><span /><span /><span /><span />
+    <span className={`${styles.wave} ${styles.waveReactive} ${still ? styles.waveStill : ""}`} aria-hidden>
+      {bars.map((level, i) => (
+        <span
+          key={i}
+          style={{
+            height: still ? "22%" : `${Math.max(12, Math.min(100, level * 100))}%`
+          }}
+        />
+      ))}
     </span>
   )
 }
@@ -889,7 +897,7 @@ export function ExtensionChat() {
             <X size={14} />
           </button>
           <div className={styles.voiceCore}>
-            <Waveform still={voice.status === "requesting"} />
+            <Waveform still={voice.status === "requesting"} levels={voice.levels} />
             <span
               className={`${styles.voiceTranscript} ${draft ? "" : styles.voiceTranscriptMuted}`}
             >

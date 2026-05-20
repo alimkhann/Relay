@@ -38,22 +38,19 @@ import { useAssistantChat } from "./use-assistant-chat"
  * the voice composer overlay. Accent stays neutral (no green) so it matches the
  * rest of the assistant UI.
  */
-function Waveform({ still = false }: { still?: boolean }) {
+function Waveform({ still = false, levels }: { still?: boolean; levels?: number[] }) {
+  const bars = levels && levels.length > 0 ? levels : new Array(9).fill(0.22)
   return (
     <span
       aria-hidden
-      className={cn(
-        "inline-flex h-4 items-center gap-[2px] text-[var(--relay-ink)]",
-        still && "[&>span]:!animation-play-state-paused"
-      )}
+      className="inline-flex h-4 items-center gap-[2px] text-[var(--relay-ink)]"
     >
-      {Array.from({ length: 9 }).map((_, i) => (
+      {bars.map((level, i) => (
         <span
           key={i}
-          className="block w-[2px] rounded-[1px] bg-current"
+          className="block w-[2px] rounded-[1px] bg-current transition-[height] duration-75 ease-out"
           style={{
-            height: still ? "30%" : "30%",
-            animation: still ? "none" : `relay-wave 1.05s ease-in-out -${1.05 - i * 0.1}s infinite`
+            height: still ? "22%" : `${Math.max(12, Math.min(100, level * 100))}%`
           }}
         />
       ))}
@@ -476,7 +473,7 @@ export function ChatView({
               <X className="size-3.5" />
             </button>
             <div className="flex min-w-0 flex-1 items-center gap-2.5 px-1">
-              <Waveform still={voice.status === "requesting"} />
+              <Waveform still={voice.status === "requesting"} levels={voice.levels} />
               <span
                 className={cn(
                   "min-w-0 flex-1 truncate text-sm",
@@ -501,7 +498,7 @@ export function ChatView({
         ) : (
         <div
           className={cn(
-            "rounded-[var(--relay-radius-lg)] bg-[var(--relay-soft)] px-3 py-2 ring-1 ring-transparent transition-[box-shadow,border-color,background] duration-150",
+            "rounded-3xl bg-[var(--relay-soft)] px-3 py-2 ring-1 ring-transparent transition-[box-shadow,border-color,background] duration-150",
             "focus-within:ring-2 focus-within:ring-[var(--relay-line-strong)] focus-within:bg-[var(--relay-soft-hover)]",
             constrain && "mx-auto w-full max-w-3xl"
           )}
