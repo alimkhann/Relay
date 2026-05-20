@@ -11,6 +11,7 @@ import {
   ImageIcon,
   Maximize,
   Mic,
+  MicOff,
   Minimize,
   Paperclip,
   Pencil,
@@ -151,6 +152,14 @@ function ActionCard({ r }: { r: AssistantActionResult }) {
         </ul>
       ) : null}
     </div>
+  )
+}
+
+function Waveform({ still = false }: { still?: boolean }) {
+  return (
+    <span className={`${styles.wave} ${still ? styles.waveStill : ""}`} aria-hidden>
+      <span /><span /><span /><span /><span /><span /><span /><span /><span />
+    </span>
   )
 }
 
@@ -498,12 +507,19 @@ export function ExtensionChat() {
   const [webSearch, setWebSearch] = useState(false)
   const [historyRefreshTick, setHistoryRefreshTick] = useState(0)
   const [previewAttachment, setPreviewAttachment] = useState<{ id: string; fileName: string } | null>(null)
+  const [voiceDeniedDismissed, setVoiceDeniedDismissed] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const theme = useResolvedTheme()
 
   const voice = useVoiceInput((text) => setDraft((d) => (d ? `${d} ${text}` : text)))
+
+  // Reset dismissal whenever the user tries again, so a fresh failure surfaces
+  // the pill again instead of silently leaving the user stuck.
+  useEffect(() => {
+    if (voice.status !== "denied") setVoiceDeniedDismissed(false)
+  }, [voice.status])
 
   const chat = useExtensionChat({
     onMutation: () => {
@@ -838,6 +854,62 @@ export function ExtensionChat() {
         {chat.error ? <div className={styles.error}>{chat.error}</div> : null}
       </div>
 
+      {voice.status === "denied" && !voiceDeniedDismissed ? (
+        <div className={styles.deniedBar} role="alert">
+          <span className={styles.deniedIcon}>
+            <MicOff size={14} />
+          </span>
+          <span className={styles.deniedLabel}>Microphone access denied</span>
+          <button
+            type="button"
+            className={styles.deniedAllow}
+            onClick={() => openMicrophonePermissionTab()}
+          >
+            Allow
+          </button>
+          <button
+            type="button"
+            className={styles.deniedClose}
+            aria-label="Dismiss microphone notice"
+            onClick={() => setVoiceDeniedDismissed(true)}
+          >
+            <X size={12} />
+          </button>
+        </div>
+      ) : null}
+
+      {voice.listening || voice.status === "requesting" ? (
+        <div className={styles.voiceBar} role="status">
+          <button
+            type="button"
+            className={styles.voiceCancel}
+            aria-label="Cancel voice input"
+            onClick={() => voice.stop()}
+          >
+            <X size={14} />
+          </button>
+          <div className={styles.voiceCore}>
+            <Waveform still={voice.status === "requesting"} />
+            <span
+              className={`${styles.voiceTranscript} ${draft ? "" : styles.voiceTranscriptMuted}`}
+            >
+              {voice.status === "requesting"
+                ? "Requesting microphone…"
+                : draft || "Listening…"}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={!draft.trim() || chat.hasUploadingAttachments}
+            className={styles.sendBtn}
+            aria-label="Send"
+            title="Send"
+          >
+            <ArrowUp size={14} />
+          </button>
+        </div>
+      ) : (
       <div className={styles.composer}>
         <input
           ref={fileInputRef}
@@ -964,21 +1036,14 @@ export function ExtensionChat() {
         </div>
         <button
           type="button"
-          onClick={() => (voice.listening ? voice.stop() : void voice.start())}
-          disabled={!voice.supported || voice.status === "requesting"}
-          className={`${styles.attachBtn} ${voice.listening ? styles.voiceActive : ""} ${
+          onClick={() => void voice.start()}
+          disabled={!voice.supported}
+          className={`${styles.attachBtn} ${
             voice.status === "denied" || voice.status === "error" ? styles.voiceError : ""
           }`}
-          aria-label={
-            voice.status === "requesting"
-              ? "Requesting microphone"
-              : voice.listening
-                ? "Stop voice input"
-                : "Voice input"
-          }
+          aria-label="Voice input"
           title={voiceStatusText ?? "Voice input"}
         >
-          {voice.listening ? <span className={styles.voiceDot} /> : null}
           <Mic size={14} />
         </button>
         {chat.streaming ? (
@@ -1004,25 +1069,10 @@ export function ExtensionChat() {
           </button>
         )}
       </div>
-      {voiceStatusText && voice.status !== "unsupported" ? (
-        <div
-          className={`${styles.voiceStatus} ${
-            voice.status === "denied" || voice.status === "error" ? styles.voiceStatusError : ""
-          }`}
-        >
-          {voice.listening ? "Listening - tap the microphone to stop" : voiceStatusText}
-          {voice.status === "denied" ? (
-            <>
-              {" "}
-              <button
-                type="button"
-                className={styles.linkBtn}
-                onClick={() => openMicrophonePermissionTab()}
-              >
-                Allow microphone
-              </button>
-            </>
-          ) : null}
+      )}
+      {voice.status === "error" && voiceStatusText ? (
+        <div className={`${styles.voiceStatus} ${styles.voiceStatusError}`}>
+          {voiceStatusText}
         </div>
       ) : null}
     </div>

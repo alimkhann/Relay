@@ -796,3 +796,182 @@
   font-size: 12px;
   font-family: inherit;
 }
+
+/* ── Voice composer (listening state) ─────────────────────────────────────
+ * Replaces the normal composer while the mic is live. X to cancel, animated
+ * waveform that breathes in sync with WebSpeech results, live transcript /
+ * interim text, accent send button. Accent stays the product's neutral ink
+ * (white-on-dark / near-black-on-light) — never the inspo green. */
+.voiceBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--ec-line);
+  border-radius: 999px;
+  margin: 6px 10px 10px;
+  background: var(--ec-surface);
+  box-shadow: 0 0 0 4px var(--ec-accent-soft);
+  animation: voiceBarIn 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes voiceBarIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.voiceCancel {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--ec-line);
+  background: transparent;
+  color: var(--ec-ink-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease, color 120ms ease;
+}
+.voiceCancel:hover {
+  background: var(--ec-soft);
+  color: var(--ec-ink);
+}
+.voiceCancel:active { transform: scale(0.94); }
+
+.voiceCore {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0 4px;
+}
+.voiceTranscript {
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--ec-ink-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.voiceTranscriptMuted {
+  color: var(--ec-muted);
+}
+
+/* Pure-CSS waveform: 9 bars, staggered animation. Uses ink color so it never
+ * conflicts with the no-green palette guidance. */
+.wave {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 18px;
+}
+.wave span {
+  display: block;
+  width: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  animation: waveBar 1.05s ease-in-out infinite;
+  transform-origin: center;
+}
+.wave span:nth-child(1) { animation-delay: -1.05s; }
+.wave span:nth-child(2) { animation-delay: -0.95s; }
+.wave span:nth-child(3) { animation-delay: -0.85s; }
+.wave span:nth-child(4) { animation-delay: -0.75s; }
+.wave span:nth-child(5) { animation-delay: -0.65s; }
+.wave span:nth-child(6) { animation-delay: -0.55s; }
+.wave span:nth-child(7) { animation-delay: -0.45s; }
+.wave span:nth-child(8) { animation-delay: -0.35s; }
+.wave span:nth-child(9) { animation-delay: -0.25s; }
+@keyframes waveBar {
+  0%,  100% { height: 30%; }
+  50%       { height: 100%; }
+}
+.waveStill span {
+  animation-play-state: paused;
+  height: 25%;
+}
+
+/* ── Mic denied pill ───────────────────────────────────────────────────────
+ * Red-tinted compact bar shown above the composer when the user has blocked
+ * mic access. "Allow" deep-links to the standalone permission tab; X clears
+ * the status until the user re-taps the mic. */
+.deniedBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 10px 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: var(--ec-danger-soft);
+  border: 1px solid color-mix(in srgb, var(--ec-danger) 28%, transparent);
+  color: var(--ec-danger);
+  font-size: 12.5px;
+  animation: voiceBarIn 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.deniedIcon {
+  display: inline-flex;
+}
+.deniedLabel {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.deniedAllow {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+.deniedClose {
+  background: transparent;
+  border: none;
+  padding: 2px;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 120ms ease;
+}
+.deniedClose:hover {
+  background: color-mix(in srgb, var(--ec-danger) 18%, transparent);
+}
+
+/* ── Micro motion ──────────────────────────────────────────────────────── */
+.msgRow {
+  animation: msgIn 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.sendBtn, .stopBtn {
+  transition: transform 120ms ease, background 120ms ease;
+}
+.sendBtn:active, .stopBtn:active {
+  transform: scale(0.94);
+}
+.attachBtn {
+  transition: transform 120ms ease, background 120ms ease, color 120ms ease;
+}
+.attachBtn:active { transform: scale(0.94); }
+.chip {
+  animation: chipIn 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes chipIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.thinkingDot {
+  animation: breathe 1600ms ease-in-out infinite;
+}
+@keyframes breathe {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50%      { opacity: 1;   transform: scale(1.08); }
+}

@@ -448,3 +448,23 @@ h1, h2, h3 {
   --sidebar-border: var(--relay-line);
   --sidebar-ring: var(--relay-accent);
 }
+
+/* Voice composer waveform — neutral ink, breathes while listening. */
+@keyframes relay-wave {
+  0%, 100% { height: 30%; }
+  50%      { height: 100%; }
+}
+
+/* Agent micro motion shared keyframes. */
+@keyframes relay-msg-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes relay-chip-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes relay-breathe {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50%      { opacity: 1;   transform: scale(1.08); }
+}

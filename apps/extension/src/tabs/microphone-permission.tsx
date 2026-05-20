@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react"
+import { Check, Mic, MicOff } from "lucide-react"
+
+import styles from "./microphone-permission.module.css"
 
 type Status = "idle" | "requesting" | "granted" | "denied" | "error"
 
@@ -45,58 +48,48 @@ export default function MicrophonePermissionPage() {
     void request()
   }, [])
 
+  const ringClass =
+    status === "granted"
+      ? `${styles.iconRing} ${styles.iconRingGranted}`
+      : status === "denied" || status === "error"
+        ? `${styles.iconRing} ${styles.iconRingDenied}`
+        : styles.iconRing
+
   return (
-    <main
-      style={{
-        fontFamily:
-          "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-        background: "#0b0b0c",
-        color: "#f5f5f7",
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24
-      }}
-    >
-      <div
-        style={{
-          maxWidth: 480,
-          background: "#16161a",
-          border: "1px solid #2a2a30",
-          borderRadius: 12,
-          padding: 24,
-          textAlign: "center"
-        }}
-      >
-        <h1 style={{ fontSize: 18, margin: "0 0 8px" }}>Microphone access for Relay</h1>
-        <p style={{ color: "#a1a1aa", fontSize: 14, lineHeight: 1.5, margin: "0 0 16px" }}>
-          Relay uses your microphone to dictate into the chat. Allow access here once and the side
-          panel will work for the rest of the session.
+    <main className={styles.root}>
+      <div className={styles.card}>
+        <div className={ringClass}>
+          {status === "granted" ? (
+            <Check size={22} />
+          ) : status === "denied" || status === "error" ? (
+            <MicOff size={22} />
+          ) : (
+            <Mic size={22} />
+          )}
+        </div>
+        <h1 className={styles.title}>
+          {status === "granted" ? "Microphone ready" : "Microphone access for Relay"}
+        </h1>
+        <p className={styles.subtitle}>
+          {status === "granted"
+            ? "You're all set. Close this tab and tap the mic in the Relay side panel."
+            : "Relay uses your microphone to dictate into the chat. Allow access once and the side panel will keep working."}
         </p>
         {status === "granted" ? (
-          <p style={{ color: "#34d399" }}>Microphone access granted. You can close this tab.</p>
+          <p className={styles.success}>
+            <span className={styles.successAccent}>All set.</span> You can close this tab.
+          </p>
         ) : (
           <>
             <button
               type="button"
               onClick={() => void request()}
               disabled={status === "requesting"}
-              style={{
-                background: "#fff",
-                color: "#000",
-                border: "none",
-                borderRadius: 8,
-                padding: "10px 16px",
-                cursor: "pointer",
-                fontSize: 14
-              }}
+              className={styles.button}
             >
               {status === "requesting" ? "Requesting…" : "Allow microphone"}
             </button>
-            {error ? (
-              <p style={{ color: "#f87171", marginTop: 12, fontSize: 13 }}>{error}</p>
-            ) : null}
+            {error ? <p className={styles.error}>{error}</p> : null}
           </>
         )}
       </div>

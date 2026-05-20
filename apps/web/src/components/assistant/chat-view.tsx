@@ -13,6 +13,7 @@ import {
   Maximize2,
   Minimize2,
   Mic,
+  MicOff,
   Paperclip,
   Plus,
   Search,
@@ -31,6 +32,34 @@ import { ChatMessage } from "./chat-message"
 import { ThinkingIndicator } from "./thinking-indicator"
 import { toolLabel } from "./tool-icons"
 import { useAssistantChat } from "./use-assistant-chat"
+
+/**
+ * Animated mic waveform — 9 ink-colored bars with staggered breathing. Used in
+ * the voice composer overlay. Accent stays neutral (no green) so it matches the
+ * rest of the assistant UI.
+ */
+function Waveform({ still = false }: { still?: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "inline-flex h-4 items-center gap-[2px] text-[var(--relay-ink)]",
+        still && "[&>span]:!animation-play-state-paused"
+      )}
+    >
+      {Array.from({ length: 9 }).map((_, i) => (
+        <span
+          key={i}
+          className="block w-[2px] rounded-[1px] bg-current"
+          style={{
+            height: still ? "30%" : "30%",
+            animation: still ? "none" : `relay-wave 1.05s ease-in-out -${1.05 - i * 0.1}s infinite`
+          }}
+        />
+      ))}
+    </span>
+  )
+}
 
 /**
  * The entire Ask Relay chat surface (history, messages, composer, attachments).
@@ -116,10 +145,15 @@ export function ChatView({
   const [webSearch, setWebSearch] = useState(false)
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0)
   const [previewAttachment, setPreviewAttachment] = useState<{ id: string; fileName: string } | null>(null)
+  const [voiceDeniedDismissed, setVoiceDeniedDismissed] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const voice = useVoiceInput((text) => setDraft((d) => (d ? `${d} ${text}` : text)))
+
+  useEffect(() => {
+    if (voice.status !== "denied") setVoiceDeniedDismissed(false)
+  }, [voice.status])
 
   useEffect(
     () => () => {
@@ -381,6 +415,90 @@ export function ChatView({
             e.target.value = ""
           }}
         />
+        {voice.status === "denied" && !voiceDeniedDismissed ? (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            role="alert"
+            className={cn(
+              "mb-2 flex items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--relay-danger)_28%,transparent)] bg-[var(--relay-danger-soft)] px-3 py-2 text-xs text-[var(--relay-danger)]",
+              constrain && "mx-auto w-full max-w-3xl"
+            )}
+          >
+            <MicOff className="size-3.5" />
+            <span className="flex-1 truncate">Microphone access denied</span>
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== "undefined") {
+                  window.open(
+                    "chrome://settings/content/microphone",
+                    "_blank",
+                    "noopener,noreferrer"
+                  )
+                }
+              }}
+              className="underline underline-offset-2 hover:opacity-80"
+            >
+              Allow
+            </button>
+            <button
+              type="button"
+              aria-label="Dismiss microphone notice"
+              onClick={() => setVoiceDeniedDismissed(true)}
+              className="grid size-5 place-items-center rounded-full hover:bg-[color:color-mix(in_srgb,var(--relay-danger)_18%,transparent)]"
+            >
+              <X className="size-3" />
+            </button>
+          </motion.div>
+        ) : null}
+
+        {voice.listening || voice.status === "requesting" ? (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            role="status"
+            className={cn(
+              "flex items-center gap-2 rounded-full bg-[var(--relay-soft)] px-2 py-1.5 ring-1 ring-[var(--relay-line)]",
+              "shadow-[0_0_0_4px_var(--relay-accent-blue-soft)]",
+              constrain && "mx-auto w-full max-w-3xl"
+            )}
+          >
+            <button
+              type="button"
+              aria-label="Cancel voice input"
+              onClick={() => voice.stop()}
+              className="grid size-7 place-items-center rounded-full border border-[var(--relay-line)] text-[var(--relay-muted)] transition-colors hover:bg-[var(--relay-soft-hover)] hover:text-[var(--relay-ink)] active:scale-95"
+            >
+              <X className="size-3.5" />
+            </button>
+            <div className="flex min-w-0 flex-1 items-center gap-2.5 px-1">
+              <Waveform still={voice.status === "requesting"} />
+              <span
+                className={cn(
+                  "min-w-0 flex-1 truncate text-sm",
+                  draft ? "text-[var(--relay-ink-secondary)]" : "text-[var(--relay-muted)]"
+                )}
+              >
+                {voice.status === "requesting"
+                  ? "Requesting microphone…"
+                  : draft || "Listening…"}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={!draft.trim() || hasUploadingAttachments}
+              aria-label="Send"
+              className="grid size-7 place-items-center rounded-full bg-[var(--relay-accent-blue)] text-[var(--relay-accent-blue-ink)] transition-transform hover:bg-[var(--relay-accent-blue-hover)] active:scale-95 disabled:opacity-40"
+            >
+              <ArrowUp className="size-4" />
+            </button>
+          </motion.div>
+        ) : (
         <div
           className={cn(
             "rounded-[var(--relay-radius-lg)] bg-[var(--relay-soft)] px-3 py-2",
@@ -532,35 +650,18 @@ export function ChatView({
             />
             <button
               type="button"
-              onClick={() => (voice.listening ? voice.stop() : void voice.start())}
-              disabled={!voice.supported || voice.status === "requesting"}
-              aria-label={
-                voice.status === "requesting"
-                  ? "Requesting microphone"
-                  : voice.listening
-                    ? "Stop voice input"
-                    : "Voice input"
-              }
+              onClick={() => void voice.start()}
+              disabled={!voice.supported}
+              aria-label="Voice input"
               title={voiceStatusText ?? "Voice input"}
               className={cn(
-                "relative grid size-7 place-items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-                voice.listening
-                  ? "bg-[var(--relay-accent-blue)] text-[var(--relay-accent-blue-ink)] shadow-[0_0_0_4px_var(--relay-accent-blue-soft)]"
-                  : voice.status === "denied" || voice.status === "error"
-                    ? "text-[var(--relay-danger)] hover:bg-[var(--relay-danger-soft)]"
-                    : "text-[var(--relay-muted)] hover:bg-[var(--relay-soft-hover)] hover:text-[var(--relay-ink)]"
+                "relative grid size-7 place-items-center rounded-full transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-50",
+                voice.status === "denied" || voice.status === "error"
+                  ? "text-[var(--relay-danger)] hover:bg-[var(--relay-danger-soft)]"
+                  : "text-[var(--relay-muted)] hover:bg-[var(--relay-soft-hover)] hover:text-[var(--relay-ink)]"
               )}
             >
-              {voice.status === "requesting" ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <>
-                  {voice.listening ? (
-                    <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-[var(--relay-danger)] animate-pulse" />
-                  ) : null}
-                  <Mic className="size-4" />
-                </>
-              )}
+              <Mic className="size-4" />
             </button>
             {streaming ? (
               <button
@@ -583,19 +684,13 @@ export function ChatView({
               </button>
             )}
           </div>
-          {voiceStatusText && voice.status !== "unsupported" ? (
-            <div
-              className={cn(
-                "mt-2 text-xs",
-                voice.status === "denied" || voice.status === "error"
-                  ? "text-[var(--relay-danger)]"
-                  : "text-[var(--relay-muted)]"
-              )}
-            >
-              {voice.listening ? "Listening - tap the microphone to stop" : voiceStatusText}
-            </div>
-          ) : null}
         </div>
+        )}
+        {voice.status === "error" && voiceStatusText ? (
+          <div className={cn("mt-2 text-xs text-[var(--relay-danger)]", constrain && "mx-auto w-full max-w-3xl")}>
+            {voiceStatusText}
+          </div>
+        ) : null}
       </div>
     </div>
   )
