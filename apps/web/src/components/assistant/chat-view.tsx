@@ -192,22 +192,28 @@ export function ChatView({
           Relay
         </div>
         <div className="flex items-center gap-0.5">
-          <button
-            type="button"
-            onClick={reset}
-            className="rounded-[var(--relay-radius-sm)] px-2 py-1 text-xs text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
-          >
-            New
-          </button>
-          <button
-            type="button"
-            onClick={() => setHistoryOpen(true)}
-            aria-label="Chat history"
-            title="Chat history"
-            className="rounded-[var(--relay-radius-sm)] p-1.5 text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
-          >
-            <History className="size-4" />
-          </button>
+          {/* New + History live in the /chat page's left sidebar already.
+              Only render them inside ChatView when it's the floating panel. */}
+          {variant !== "page" ? (
+            <>
+              <button
+                type="button"
+                onClick={reset}
+                className="rounded-[var(--relay-radius-sm)] px-2 py-1 text-xs text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
+              >
+                New
+              </button>
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(true)}
+                aria-label="Chat history"
+                title="Chat history"
+                className="rounded-[var(--relay-radius-sm)] p-1.5 text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
+              >
+                <History className="size-4" />
+              </button>
+            </>
+          ) : null}
           {onToggleExpand ? (
             <button
               type="button"

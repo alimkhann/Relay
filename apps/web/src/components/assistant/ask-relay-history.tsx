@@ -58,7 +58,11 @@ export function AskRelayHistory({
     }).catch(() => {})
   }
 
-  const remove = async (id: string) => {
+  const remove = async (id: string, title: string) => {
+    const ok = typeof window !== "undefined"
+      ? window.confirm(`Delete chat "${title || "Untitled"}"? This can't be undone.`)
+      : false
+    if (!ok) return
     setChats((prev) => prev.filter((c) => c.id !== id))
     await fetch(`/api/assistant/chats/${id}`, { method: "DELETE" }).catch(() => {})
   }
@@ -145,7 +149,7 @@ export function AskRelayHistory({
                   </button>
                   <button
                     type="button"
-                    onClick={() => void remove(c.id)}
+                    onClick={() => void remove(c.id, c.title)}
                     aria-label="Delete chat"
                     className="p-1 text-[var(--relay-muted)] opacity-0 transition-opacity hover:text-[var(--relay-danger)] group-hover:opacity-100"
                   >

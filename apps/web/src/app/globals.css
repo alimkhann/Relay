@@ -146,6 +146,25 @@
   --relay-accent-blue-ink: var(--relay-accent-text);
 }
 
+/* Nuke browser + Tailwind focus rings inside the assistant surface — the
+ * outer pill already signals focus, so textareas/inputs do not need their
+ * own ring. Tailwind v4's `outline-none` no longer removes the native
+ * outline; this rule does. */
+[data-relay-surface="assistant"] textarea,
+[data-relay-surface="assistant"] input[type="text"],
+[data-relay-surface="assistant"] input:not([type]) {
+  outline: none !important;
+  box-shadow: none !important;
+}
+[data-relay-surface="assistant"] textarea:focus,
+[data-relay-surface="assistant"] textarea:focus-visible,
+[data-relay-surface="assistant"] input:focus,
+[data-relay-surface="assistant"] input:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+}
+
 @keyframes relay-shimmer {
   to {
     background-position: -200% center;
