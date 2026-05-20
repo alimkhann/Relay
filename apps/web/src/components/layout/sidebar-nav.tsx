@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Activity, Brain, FileDown, BookOpen, Network, Files, MessageSquare } from "lucide-react";
+import { LayoutDashboard, Activity, ArrowUpRight, Brain, FileDown, BookOpen, Network, Files, MessageSquare } from "lucide-react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { cn } from "@/lib/cn";
 
@@ -11,6 +11,9 @@ interface NavItem {
   label: string;
   icon: React.ReactNode;
   requiresProject?: boolean;
+  /** When true, render an anchor with target=_blank and show an external
+   *  hint icon on hover. */
+  external?: boolean;
 }
 
 export function SidebarNav({
@@ -93,6 +96,7 @@ export function SidebarNav({
       href: docsHref,
       label: "Docs",
       icon: <BookOpen className="h-4 w-4" />,
+      external: true,
     },
   ];
 
@@ -159,7 +163,24 @@ export function SidebarNav({
           return disabledContent;
         }
 
-        const linkContent = (
+        const linkContent = item.external ? (
+          <a
+            key={item.href}
+            href={item.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={onNavigate}
+            className={cn(sharedClassName, "group")}
+          >
+            <span className={iconClassName}>{item.icon}</span>
+            {!collapsed && (
+              <>
+                <span>{item.label}</span>
+                <ArrowUpRight className="ml-auto h-3.5 w-3.5 shrink-0 text-[var(--relay-faint)] opacity-0 transition-opacity group-hover:opacity-100" />
+              </>
+            )}
+          </a>
+        ) : (
           <Link
             key={item.href}
             href={item.href}

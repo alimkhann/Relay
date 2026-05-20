@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react"
 import { Sparkles } from "lucide-react"
+import { usePathname } from "next/navigation"
 
 import type { AssistantSurface } from "@relay/shared"
 
@@ -18,7 +19,12 @@ export function AskRelayLauncher({
   surface?: AssistantSurface
   projectId?: string | null
 }) {
+  const pathname = usePathname()
   const [open, setOpen] = useState(false)
+
+  // /chat is itself an Ask Relay surface — hiding the floating launcher on
+  // that route avoids the redundant widget over the page.
+  if (pathname === "/chat") return null
 
   const openPanel = useCallback(() => {
     setOpen(true)

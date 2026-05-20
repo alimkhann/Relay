@@ -232,18 +232,47 @@ function summarizeForModel(value: unknown, max = 4000): Record<string, unknown> 
   return { result: text }
 }
 
+// Stopwords that drag every doc to the same score; dropping them lets a
+// query like "how do I use the extension" actually rank /docs/extension.
+const KNOWLEDGE_STOPWORDS = new Set([
+  "and", "the", "are", "for", "you", "your", "with", "what", "how", "use",
+  "using", "can", "have", "this", "that", "does", "any", "from", "about",
+  "into", "out", "off", "all", "one", "two", "but", "not", "set", "get",
+  "relay", "ask"
+])
+
 function searchRelayKnowledge(query: string): string {
-  const terms = query.toLowerCase().split(/\s+/).filter((t) => t.length > 2)
-  let best: { path: string; content: string; score: number } | null = null
-  for (const [path, content] of Object.entries(PUBLIC_MARKDOWN_PAGES)) {
+  const terms = query
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length > 2 && !KNOWLEDGE_STOPWORDS.has(t))
+  const scored = Object.entries(PUBLIC_MARKDOWN_PAGES).map(([path, content]) => {
     const haystack = content.toLowerCase()
-    const score = terms.reduce((acc, t) => acc + (haystack.includes(t) ? 1 : 0), 0)
-    if (!best || score > best.score) best = { path, content, score }
+    const pathHay = path.toLowerCase()
+    // Each match counts once; a hit in the path is worth 3 to bias toward
+    // the canonical doc for a topic (e.g. "extension" → /docs/extension).
+    const score = terms.reduce((acc, t) => {
+      let s = 0
+      if (haystack.includes(t)) s += 1
+      if (pathHay.includes(t)) s += 3
+      return acc + s
+    }, 0)
+    return { path, content, score }
+  })
+  scored.sort((a, b) => b.score - a.score)
+
+  const fallback = PUBLIC_MARKDOWN_PAGES["/docs/getting-started"] ?? PUBLIC_MARKDOWN_PAGES["/docs"] ?? ""
+  if (!scored[0] || scored[0].score === 0) {
+    return `Source: /docs/getting-started\n\n${fallback.slice(0, 6000)}`
   }
-  if (!best || best.score === 0) {
-    return PUBLIC_MARKDOWN_PAGES["/docs"] ?? "No Relay documentation matched."
-  }
-  return `Source: ${best.path}\n\n${best.content.slice(0, 6000)}`
+
+  // Concatenate the top two so a "how to use" question gets both the
+  // overview and the matching deep doc (each capped tightly to keep prompt
+  // budget sane).
+  const picks = scored.filter((s) => s.score > 0).slice(0, 2)
+  return picks
+    .map((p) => `Source: ${p.path}\n\n${p.content.slice(0, 4000)}`)
+    .join("\n\n---\n\n")
 }
 
 export interface ToolExecutionResult {

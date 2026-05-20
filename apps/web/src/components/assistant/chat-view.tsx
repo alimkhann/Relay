@@ -152,7 +152,10 @@ export function ChatView({
   }
 
   const empty = messages.length === 0
-  const messagesWidth = variant === "page" ? "mx-auto w-full max-w-3xl" : ""
+  // Constrain the message rail + composer when the panel is wider than ~500px
+  // (page variant or expanded panel) so users don't have to look ear to ear.
+  const constrain = variant === "page" || expanded
+  const messagesWidth = constrain ? "mx-auto w-full max-w-3xl" : ""
 
   return (
     <div
@@ -309,8 +312,8 @@ export function ChatView({
         />
         <div
           className={cn(
-            "rounded-[var(--relay-radius-lg)] bg-[var(--relay-soft)] px-3 py-2 ring-1 ring-transparent transition-shadow focus-within:ring-[var(--relay-accent-blue)]/50",
-            variant === "page" && "mx-auto w-full max-w-3xl"
+            "rounded-[var(--relay-radius-lg)] bg-[var(--relay-soft)] px-3 py-2",
+            constrain && "mx-auto w-full max-w-3xl"
           )}
         >
           {attachments.length > 0 ? (
@@ -359,6 +362,14 @@ export function ChatView({
             </div>
           ) : null}
           <div className="flex items-end gap-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Attach files"
+              className="rounded-full p-1.5 text-[var(--relay-muted)] transition-colors hover:bg-[var(--relay-soft-hover)] hover:text-[var(--relay-ink)]"
+            >
+              <Paperclip className="size-4" />
+            </button>
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -371,16 +382,8 @@ export function ChatView({
               }}
               rows={1}
               placeholder="Ask anything…"
-              className="max-h-32 flex-1 resize-none border-0 bg-transparent text-sm text-[var(--relay-ink)] outline-none focus:ring-0 placeholder:text-[var(--relay-muted)]"
+              className="max-h-32 flex-1 resize-none border-0 bg-transparent text-sm text-[var(--relay-ink)] outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 placeholder:text-[var(--relay-muted)]"
             />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              aria-label="Attach files"
-              className="rounded-full p-1.5 text-[var(--relay-muted)] transition-colors hover:bg-[var(--relay-soft-hover)] hover:text-[var(--relay-ink)]"
-            >
-              <Paperclip className="size-4" />
-            </button>
             {voice.supported ? (
               <button
                 type="button"

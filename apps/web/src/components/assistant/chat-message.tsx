@@ -96,13 +96,13 @@ export function ChatMessage({
         )}
       >
         {editing ? (
-          <div className="w-full min-w-[260px] rounded-[var(--relay-radius-lg)] bg-[var(--relay-soft)] p-2 ring-1 ring-[var(--relay-accent-blue)]/40 focus-within:ring-2 focus-within:ring-[var(--relay-accent-blue)]">
+          <div className="w-full min-w-[260px] rounded-[var(--relay-radius-lg)] bg-[var(--relay-soft)] p-2">
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               rows={3}
               autoFocus
-              className="w-full resize-none border-0 bg-transparent text-sm text-[var(--relay-ink)] outline-none focus:ring-0"
+              className="w-full resize-none border-0 bg-transparent text-sm text-[var(--relay-ink)] outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
             />
             <div className="mt-2 flex justify-end gap-2">
               <button
