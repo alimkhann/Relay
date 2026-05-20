@@ -77,38 +77,50 @@ export function useVoiceInput(onFinal: (text: string) => void) {
     if (!Ctx) return
     const ctx = new Ctx()
     const analyser = ctx.createAnalyser()
-    analyser.fftSize = 64
-    analyser.smoothingTimeConstant = 0.55
+    analyser.fftSize = 512
+    analyser.smoothingTimeConstant = 0.6
     const source = ctx.createMediaStreamSource(stream)
     source.connect(analyser)
     audioCtxRef.current = ctx
     analyserRef.current = analyser
 
-    const bins = analyser.frequencyBinCount
-    const data = new Uint8Array(bins)
-    // Map BAR_COUNT bars across the lowest ~70% of bins (voice sits there) and
-    // log-scale so the small high-frequency tail doesn't always look dead.
-    const range = Math.max(1, Math.floor(bins * 0.7))
-    const slot = Math.max(1, Math.floor(range / BAR_COUNT))
+    // Time-domain RMS gives a single overall volume that's far more useful for
+    // a "respond to sound" waveform than per-bin frequency data — speech sits
+    // mostly in bin 0 at small fftSize, which is why earlier per-bar mapping
+    // only animated the leftmost bar.
+    const data = new Uint8Array(analyser.fftSize)
+    // Center-heavy bar shape: tallest in the middle, taper to the edges, so
+    // the waveform breathes outward from the centerline as the user speaks.
+    const center = (BAR_COUNT - 1) / 2
+    const shape = new Array(BAR_COUNT).fill(0).map((_, i) => {
+      const d = Math.abs(i - center) / center
+      return 0.45 + 0.55 * (1 - d * d)
+    })
+    let prevLevel = 0
 
     const tick = () => {
       if (!analyserRef.current) return
-      analyserRef.current.getByteFrequencyData(data)
-      const next = new Array(BAR_COUNT).fill(0)
-      for (let i = 0; i < BAR_COUNT; i += 1) {
-        const start = i * slot
-        const end = Math.min(range, start + slot)
-        let sum = 0
-        for (let j = start; j < end; j += 1) sum += data[j] ?? 0
-        const avg = sum / Math.max(1, end - start) / 255
-        // Lift the floor so idle still shows a small wave, ceiling stays at 1.
-        next[i] = Math.max(0.18, Math.min(1, avg * 1.6))
+      analyserRef.current.getByteTimeDomainData(data)
+      // 128 is the silent midpoint for byte time-domain samples.
+      let sumSq = 0
+      for (let i = 0; i < data.length; i += 1) {
+        const v = ((data[i] ?? 128) - 128) / 128
+        sumSq += v * v
       }
-      // Light low-pass smoothing toward previous to avoid jitter.
-      const prev = levelsRef.current
-      const smoothed = next.map((v, i) => prev[i]! * 0.55 + v * 0.45)
-      levelsRef.current = smoothed
-      setLevels(smoothed)
+      const rms = Math.sqrt(sumSq / data.length)
+      // Soft compression so loud speech hits ~1.0 without clipping the bars.
+      const normalized = Math.min(1, Math.pow(rms * 4, 0.7))
+      const smoothed = prevLevel * 0.6 + normalized * 0.4
+      prevLevel = smoothed
+      // Slight per-bar phase noise driven by time so adjacent bars don't move
+      // in lockstep; keeps it feeling organic.
+      const t = performance.now() / 280
+      const next = shape.map((s, i) => {
+        const wobble = 1 + 0.18 * Math.sin(t + i * 0.7)
+        return Math.max(0.16, Math.min(1, 0.16 + smoothed * s * wobble))
+      })
+      levelsRef.current = next
+      setLevels(next)
       rafRef.current = requestAnimationFrame(tick)
     }
     rafRef.current = requestAnimationFrame(tick)
