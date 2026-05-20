@@ -269,52 +269,87 @@ h1, h2, h3 {
   letter-spacing: -0.011em;
 }
 
-/* ─── 404 wireframe globe (CSS-only, no deps) ─── */
-.relay-globe {
-  position: relative;
-  width: 132px;
-  height: 132px;
-  border-radius: 50%;
-  border: 1px solid var(--relay-line-strong);
-  transform-style: preserve-3d;
+/* ─── 404 earth globe (CSS-only, no deps) ─── */
+.relay-404-grid {
+  background:
+    linear-gradient(var(--relay-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--relay-line) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(circle at 50% 45%, black, transparent 68%);
+  opacity: 0.32;
 }
-.relay-globe::before,
-.relay-globe::after,
-.relay-globe span {
-  content: "";
+.relay-earth-wrap {
+  position: relative;
+  width: 190px;
+  height: 190px;
+  display: grid;
+  place-items: center;
+  perspective: 900px;
+}
+.relay-earth {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.34), transparent 22%),
+    radial-gradient(circle at 72% 75%, rgba(0, 0, 0, 0.34), transparent 38%),
+    linear-gradient(135deg, #2dd4bf, #2563eb 52%, #0f172a);
+  box-shadow:
+    inset -22px -18px 34px rgba(0, 0, 0, 0.38),
+    inset 10px 8px 20px rgba(255, 255, 255, 0.14),
+    0 24px 70px rgba(37, 99, 235, 0.25);
+}
+.relay-earth-map {
+  position: absolute;
+  inset: 0;
+  width: 360%;
+  background:
+    radial-gradient(ellipse at 8% 38%, #c6d58a 0 4%, transparent 4.4%),
+    radial-gradient(ellipse at 17% 45%, #9fbd6d 0 6%, transparent 6.5%),
+    radial-gradient(ellipse at 30% 30%, #d9c986 0 7%, transparent 7.5%),
+    radial-gradient(ellipse at 38% 55%, #95b66b 0 5%, transparent 5.5%),
+    radial-gradient(ellipse at 54% 42%, #d8c47e 0 8%, transparent 8.5%),
+    radial-gradient(ellipse at 66% 62%, #8fb66b 0 4%, transparent 4.5%),
+    radial-gradient(ellipse at 78% 33%, #c8d28a 0 6%, transparent 6.5%),
+    radial-gradient(ellipse at 89% 52%, #a7bd72 0 5%, transparent 5.5%);
+  filter: saturate(0.9) contrast(1.06);
+  opacity: 0.92;
+  animation: relay-earth-pan 16s linear infinite;
+}
+.relay-earth-shine {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 1px solid var(--relay-line-strong);
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.42), transparent 20%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.16), transparent 48%);
 }
-/* Longitude rings — rotate the sphere */
-.relay-globe::before {
-  transform: rotateY(60deg);
-}
-.relay-globe::after {
-  transform: rotateY(120deg);
-}
-.relay-globe span {
-  transform: rotateY(0deg);
-}
-/* Latitude bands */
-.relay-globe i {
+.relay-earth-ring {
   position: absolute;
-  left: 0;
-  right: 0;
-  height: 0;
-  border-top: 1px solid var(--relay-line);
+  inset: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
 }
-.relay-globe i:nth-child(1) { top: 28%; }
-.relay-globe i:nth-child(2) { top: 50%; border-color: var(--relay-line-strong); }
-.relay-globe i:nth-child(3) { top: 72%; }
-.relay-globe-spin {
-  animation: relay-globe-rotate 14s linear infinite;
-  transform-style: preserve-3d;
+.relay-earth-ring-a {
+  transform: rotateX(64deg);
 }
-@keyframes relay-globe-rotate {
-  from { transform: rotateY(0deg) rotateX(8deg); }
-  to { transform: rotateY(360deg) rotateX(8deg); }
+.relay-earth-ring-b {
+  transform: rotateY(58deg);
+}
+.relay-earth-shadow {
+  position: absolute;
+  bottom: 8px;
+  width: 120px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.18);
+  filter: blur(10px);
+}
+@keyframes relay-earth-pan {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
 }
 
 /* ─── Respect reduced motion ─── */

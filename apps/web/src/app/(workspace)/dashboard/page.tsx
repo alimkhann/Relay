@@ -8,10 +8,11 @@ import { PageTelemetry } from "@/components/telemetry/page-telemetry"
 import { DashboardContent } from "@/features/projects/dashboard-content"
 import { logServerEvent } from "@/server/logging/logger"
 import { requirePageViewer } from "@/server/policies/viewer"
+import { getDefaultEntitlements } from "@/server/services/billing-config"
 import { getResolvedOnboardingStateForUser } from "@/server/services/onboarding-service"
 import { listProjectsForUser } from "@/server/services/project-service"
 import { resolveViewerEntitlements } from "@/server/services/entitlement-service"
-import { getUserSettings } from "@/server/services/settings-service"
+import { defaultSettings, getUserSettings, normalizeSettings } from "@/server/services/settings-service"
 
 export const dynamic = "force-dynamic"
 
@@ -23,8 +24,47 @@ export default async function DashboardPage({
   const viewer = await requirePageViewer("/dashboard")
   const projects = await listProjectsForUser(viewer.userId)
   const [onboarding, settings] = await Promise.all([
-    getResolvedOnboardingStateForUser(viewer.userId, { projects }),
-    getUserSettings(viewer.userId),
+    getResolvedOnboardingStateForUser(viewer.userId, { projects }).catch((error) => {
+      void logServerEvent({
+        level: "warn",
+        surface: "web-dashboard",
+        area: "onboarding",
+        event: "dashboard.onboarding_fallback",
+        message: "Dashboard rendered with derived onboarding state after lookup failed.",
+        userId: viewer.userId,
+        context: { reason: error instanceof Error ? error.message : "unknown" }
+      })
+      return projects.length > 0
+        ? {
+            status: "completed" as const,
+            completedProjectId: projects[0]?.id ?? null,
+            completedVia: null,
+            completedAt: null
+          }
+        : {
+            status: "pending" as const,
+            completedProjectId: null,
+            completedVia: null,
+            completedAt: null
+          }
+    }),
+    getUserSettings(viewer.userId).catch((error) => {
+      void logServerEvent({
+        level: "warn",
+        surface: "web-dashboard",
+        area: "settings",
+        event: "dashboard.settings_fallback",
+        message: "Dashboard rendered with default settings after settings lookup failed.",
+        userId: viewer.userId,
+        context: { reason: error instanceof Error ? error.message : "unknown" }
+      })
+      return {
+        userId: viewer.userId,
+        settings: normalizeSettings(defaultSettings),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+    }),
   ])
 
   const repositories = createRepositoryBundle(viewer.userId)
@@ -92,7 +132,18 @@ export default async function DashboardPage({
     redirect(`/dashboard?project=${currentProject.id}`)
   }
 
-  const entitlements = await resolveViewerEntitlements(viewer.userId)
+  const entitlements = await resolveViewerEntitlements(viewer.userId).catch((error) => {
+    void logServerEvent({
+      level: "warn",
+      surface: "web-dashboard",
+      area: "billing",
+      event: "dashboard.entitlements_fallback",
+      message: "Dashboard rendered with free entitlements after entitlement lookup failed.",
+      userId: viewer.userId,
+      context: { reason: error instanceof Error ? error.message : "unknown" }
+    })
+    return getDefaultEntitlements()
+  })
 
   return (
     <>

@@ -36,6 +36,7 @@ vi.mock("./assistant-tools", async (importActual) => {
   return { ...actual, executeAssistantTool: mocks.executeAssistantTool }
 })
 
+import { GeminiRequestError } from "./gemini-service"
 import { runAssistantTurn } from "./assistant-agent-service"
 
 const viewer = { userId: "u1" } as unknown as Viewer
@@ -236,6 +237,39 @@ describe("runAssistantTurn web search", () => {
     expect(events.some((e) => e.type === "tool_start" && e.tool === "web_search")).toBe(true)
     expect(events.some((e) => e.type === "tool_result" && e.result.tool === "web_search")).toBe(true)
     expect(events.filter((e) => e.type === "text").map((e) => e.delta).join("")).toContain("Sources")
+  })
+
+  it("falls back when the assistant model fails before explicit web grounding", async () => {
+    mocks.runGeminiAgentStep
+      .mockRejectedValueOnce(new GeminiRequestError("primary unavailable", 403, true, "generate"))
+      .mockResolvedValueOnce({
+        text: "I'll check.",
+        functionCalls: [],
+        groundingUris: [],
+        groundingChunks: [],
+        finishReason: "STOP",
+        tokenUsage: { inputTokens: 4, outputTokens: 4, totalTokens: 8 }
+      })
+      .mockResolvedValueOnce({
+        text: "A grounded answer.",
+        functionCalls: [],
+        groundingUris: ["https://example.com/source"],
+        groundingChunks: [{ uri: "https://example.com/source", title: "Source" }],
+        finishReason: "STOP",
+        tokenUsage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 }
+      })
+
+    const events = await collect({
+      message: "try again, i enabled web search for you",
+      surface: "dashboard",
+      parentId: null,
+      projectId: null,
+      webSearch: true
+    } as SendAssistantMessageInput)
+
+    expect(mocks.runGeminiAgentStep).toHaveBeenCalledTimes(3)
+    expect(events.some((e) => e.type === "error")).toBe(false)
+    expect(events.some((e) => e.type === "tool_result" && e.result.tool === "web_search")).toBe(true)
   })
 
   it("treats who's as web-search intent for paid users", async () => {

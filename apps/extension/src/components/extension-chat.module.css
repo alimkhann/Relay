@@ -411,7 +411,7 @@
 /* Composer. */
 .composer {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 6px;
   padding: 8px;
   border-top: 1px solid var(--ec-line);
@@ -524,9 +524,12 @@
   background: var(--ec-soft);
   color: var(--ec-ink);
   font-size: 12px;
+  line-height: 18px;
   padding: 8px 10px;
   border-radius: 10px;
-  max-height: 120px;
+  min-height: 34px;
+  max-height: 70px;
+  overflow-y: hidden;
   font-family: inherit;
   box-sizing: border-box;
 }

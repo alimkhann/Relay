@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react"
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import {
   ArrowUp,
   Check,
@@ -12,6 +12,7 @@ import {
   Maximize,
   Mic,
   Minimize,
+  Paperclip,
   Pencil,
   PencilLine,
   Plus,
@@ -359,6 +360,7 @@ export function ExtensionChat() {
   const [webSearch, setWebSearch] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const theme = useResolvedTheme()
 
   const voice = useVoiceInput((text) => setDraft((d) => (d ? `${d} ${text}` : text)))
@@ -383,6 +385,16 @@ export function ExtensionChat() {
       behavior: "smooth"
     })
   }, [chat.messages, chat.streaming, chat.activeTool])
+
+  useLayoutEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    const maxHeight = 18 * 3 + 16
+    el.style.height = "auto"
+    const nextHeight = Math.min(el.scrollHeight, maxHeight)
+    el.style.height = `${nextHeight}px`
+    el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden"
+  }, [draft])
 
   // Recompute height bounds when the side panel resizes.
   useEffect(() => {
@@ -694,7 +706,7 @@ export function ExtensionChat() {
                   setComposerMenuOpen(false)
                 }}
               >
-                <Plus size={13} />
+                <Paperclip size={13} />
                 <span>Upload files or images</span>
               </button>
               <button
@@ -764,6 +776,7 @@ export function ExtensionChat() {
             </button>
           ) : null}
           <textarea
+            ref={textareaRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onPaste={onPaste}

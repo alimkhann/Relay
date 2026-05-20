@@ -1,6 +1,6 @@
 "use client"
 
-import { type ClipboardEvent, type DragEvent, useEffect, useRef, useState } from "react"
+import { type ClipboardEvent, type DragEvent, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "motion/react"
 import {
@@ -14,6 +14,7 @@ import {
   Maximize2,
   Minimize2,
   Mic,
+  Paperclip,
   Plus,
   Search,
   Sparkles,
@@ -109,6 +110,7 @@ export function ChatView({
   const [webSearch, setWebSearch] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const voice = useVoiceInput((text) => setDraft((d) => (d ? `${d} ${text}` : text)))
 
   useEffect(
@@ -126,6 +128,16 @@ export function ChatView({
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" })
   }, [messages, streaming, activeTool])
+
+  useLayoutEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    const maxHeight = 20 * 3 + 8
+    el.style.height = "auto"
+    const nextHeight = Math.min(el.scrollHeight, maxHeight)
+    el.style.height = `${nextHeight}px`
+    el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden"
+  }, [draft])
 
   const capturePageContext = () => {
     if (typeof window === "undefined") return undefined
@@ -399,7 +411,7 @@ export function ChatView({
               </button>
             </div>
           ) : null}
-          <div className="flex items-end gap-2">
+          <div className="flex items-center gap-2">
             <div className="relative">
               <button
                 type="button"
@@ -407,7 +419,7 @@ export function ChatView({
                 aria-label="Add context"
                 title="Add context"
                 className={cn(
-                  "rounded-full p-1.5 text-[var(--relay-muted)] transition-colors hover:bg-[var(--relay-soft-hover)] hover:text-[var(--relay-ink)]",
+                  "grid size-7 place-items-center rounded-full text-[var(--relay-muted)] transition-colors hover:bg-[var(--relay-soft-hover)] hover:text-[var(--relay-ink)]",
                   composerMenuOpen && "bg-[var(--relay-soft-hover)] text-[var(--relay-ink)]"
                 )}
               >
@@ -423,7 +435,7 @@ export function ChatView({
                     }}
                     className="flex w-full items-center gap-2 rounded-[var(--relay-radius-sm)] px-2.5 py-2 text-left text-sm text-[var(--relay-ink)] hover:bg-[var(--relay-soft)]"
                   >
-                    <Plus className="size-4 text-[var(--relay-muted)]" />
+                    <Paperclip className="size-4 text-[var(--relay-muted)]" />
                     Upload files or images
                   </button>
                   <button
@@ -457,6 +469,7 @@ export function ChatView({
               ) : null}
             </div>
             <textarea
+              ref={textareaRef}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onPaste={onPaste}
@@ -468,7 +481,7 @@ export function ChatView({
               }}
               rows={1}
               placeholder="Ask anything…"
-              className="max-h-32 flex-1 resize-none border-0 bg-transparent text-sm text-[var(--relay-ink)] outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 placeholder:text-[var(--relay-muted)]"
+              className="max-h-32 min-h-7 flex-1 resize-none border-0 bg-transparent py-1 text-sm leading-5 text-[var(--relay-ink)] outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 placeholder:text-[var(--relay-muted)]"
             />
             <button
               type="button"
@@ -483,7 +496,7 @@ export function ChatView({
               }
               title={voiceStatusText ?? "Voice input"}
               className={cn(
-                "rounded-full p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                "grid size-7 place-items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                 voice.listening
                   ? "bg-[var(--relay-accent-blue)] text-[var(--relay-accent-blue-ink)]"
                   : voice.status === "denied" || voice.status === "error"
@@ -502,7 +515,7 @@ export function ChatView({
                 type="button"
                 onClick={stop}
                 aria-label="Stop"
-                className="rounded-full bg-[var(--relay-accent-blue)] p-1.5 text-[var(--relay-accent-blue-ink)] transition-colors hover:bg-[var(--relay-accent-blue-hover)]"
+                className="grid size-7 place-items-center rounded-full bg-[var(--relay-accent-blue)] text-[var(--relay-accent-blue-ink)] transition-colors hover:bg-[var(--relay-accent-blue-hover)]"
               >
                 <Square className="size-4 fill-current" />
               </button>
@@ -512,7 +525,7 @@ export function ChatView({
                 onClick={submit}
                 disabled={!draft.trim()}
                 aria-label="Send"
-                className="rounded-full bg-[var(--relay-accent-blue)] p-1.5 text-[var(--relay-accent-blue-ink)] transition-opacity hover:bg-[var(--relay-accent-blue-hover)] disabled:opacity-40"
+                className="grid size-7 place-items-center rounded-full bg-[var(--relay-accent-blue)] text-[var(--relay-accent-blue-ink)] transition-opacity hover:bg-[var(--relay-accent-blue-hover)] disabled:opacity-40"
               >
                 <ArrowUp className="size-4" />
               </button>

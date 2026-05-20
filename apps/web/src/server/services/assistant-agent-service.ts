@@ -13,10 +13,18 @@ import {
   executeAssistantTool,
   type AssistantPlan
 } from "@/server/services/assistant-tools"
-import { GeminiRequestError, runGeminiAgentStep, type GeminiContent } from "@/server/services/gemini-service"
+import {
+  GEMINI_MODELS,
+  GeminiRequestError,
+  runGeminiAgentStep,
+  type GeminiContent,
+  type GeminiFunctionDeclaration
+} from "@/server/services/gemini-service"
 import { getDecryptedSourceObject } from "@/server/services/source-storage-service"
 
 const AGENT_MODEL = process.env.GEMINI_MODEL_ASSISTANT ?? "gemini-3-flash-preview"
+const AGENT_FALLBACK_MODEL =
+  process.env.GEMINI_MODEL_ASSISTANT_FALLBACK ?? GEMINI_MODELS.bootstrap.fallback
 const MAX_OUTPUT_TOKENS = 1_400
 const MAX_ATTACHMENTS_PER_TURN = 8
 const MAX_TOTAL_ATTACHMENT_CHARS = 24_000
@@ -114,6 +122,34 @@ function appendWebSources(text: string, groundingChunks: Array<{ uri: string; ti
     .map((c, i) => `${i + 1}. ${c.title ? `${c.title} — ${c.uri}` : c.uri}`)
     .join("\n")
   return `${text}\n\n**Sources**\n${sources}`
+}
+
+async function runAssistantGeminiStep(input: {
+  systemInstruction: string
+  contents: GeminiContent[]
+  tools: GeminiFunctionDeclaration[]
+  maxOutputTokens: number
+  webSearch?: boolean
+}) {
+  try {
+    return await runGeminiAgentStep({
+      model: AGENT_MODEL,
+      ...input
+    })
+  } catch (error) {
+    if (
+      !(error instanceof GeminiRequestError) ||
+      !error.retryable ||
+      AGENT_FALLBACK_MODEL === AGENT_MODEL
+    ) {
+      throw error
+    }
+  }
+
+  return runGeminiAgentStep({
+    model: AGENT_FALLBACK_MODEL,
+    ...input
+  })
 }
 
 export async function* runAssistantTurn(
@@ -314,8 +350,7 @@ export async function* runAssistantTurn(
   if (webSearchEnabled && onlyWebSearch) {
     yield { type: "tool_start", tool: "web_search" }
     try {
-      const grounded = await runGeminiAgentStep({
-        model: AGENT_MODEL,
+      const grounded = await runAssistantGeminiStep({
         systemInstruction: systemInstruction(defaultProjectId),
         contents,
         tools: [],
@@ -360,8 +395,7 @@ export async function* runAssistantTurn(
   for (let step = 0; step < maxSteps; step += 1) {
     let stepResult
     try {
-      stepResult = await runGeminiAgentStep({
-        model: AGENT_MODEL,
+      stepResult = await runAssistantGeminiStep({
         systemInstruction: systemInstruction(defaultProjectId),
         contents,
         tools: ASSISTANT_TOOL_DECLARATIONS,
@@ -394,8 +428,7 @@ export async function* runAssistantTurn(
       if (shouldRunWebSearch) {
         yield { type: "tool_start", tool: "web_search" }
         try {
-          const grounded = await runGeminiAgentStep({
-            model: AGENT_MODEL,
+          const grounded = await runAssistantGeminiStep({
             systemInstruction: systemInstruction(defaultProjectId),
             // Same conversation context, but no function tools — grounding-only.
             contents,
