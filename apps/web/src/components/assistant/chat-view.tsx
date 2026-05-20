@@ -156,6 +156,7 @@ export function ChatView({
 
   return (
     <div
+      data-relay-surface="assistant"
       className="relative flex h-full min-h-0 flex-col bg-[var(--relay-bg)]"
       onDragOver={(e) => {
         e.preventDefault()

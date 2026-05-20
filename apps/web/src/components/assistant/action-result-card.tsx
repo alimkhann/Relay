@@ -67,15 +67,32 @@ export function ActionResultCard({
       </div>
       {result.items.length > 0 ? (
         <ul className="mt-2 space-y-1">
-          {result.items.slice(0, 5).map((item, i) => (
-            <li
-              key={item.id ?? i}
-              className="flex gap-2 text-xs text-[var(--relay-ink-secondary)]"
-            >
-              <span className="text-[var(--relay-muted)]">—</span>
-              <span className="truncate">{item.label}</span>
-            </li>
-          ))}
+          {result.items.slice(0, 5).map((item, i) => {
+            // web_search items carry the cited URL in `id`; render those as
+            // external links so users can verify what the agent grounded on.
+            const isUrl =
+              typeof item.id === "string" && /^https?:\/\//i.test(item.id)
+            return (
+              <li
+                key={item.id ?? i}
+                className="flex gap-2 text-xs text-[var(--relay-ink-secondary)]"
+              >
+                <span className="text-[var(--relay-muted)]">—</span>
+                {isUrl ? (
+                  <a
+                    href={item.id}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="truncate text-[var(--relay-accent-blue)] hover:underline"
+                  >
+                    {item.label}
+                  </a>
+                ) : (
+                  <span className="truncate">{item.label}</span>
+                )}
+              </li>
+            )
+          })}
         </ul>
       ) : null}
     </motion.div>

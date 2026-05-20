@@ -133,6 +133,19 @@
   }
 }
 
+/* ─── Ask Relay assistant accent override ───
+ * Repoints the sky-blue accent family to the neutral `--relay-accent` token
+ * so the assistant surface reads as ink-on-surface (auto-inverting per theme)
+ * instead of branded blue. Scoped via [data-relay-surface="assistant"] so the
+ * rest of the app keeps the original blue.
+ */
+[data-relay-surface="assistant"] {
+  --relay-accent-blue: var(--relay-accent);
+  --relay-accent-blue-hover: var(--relay-accent-hover);
+  --relay-accent-blue-soft: var(--relay-soft);
+  --relay-accent-blue-ink: var(--relay-accent-text);
+}
+
 @keyframes relay-shimmer {
   to {
     background-position: -200% center;
