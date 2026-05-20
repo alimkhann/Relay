@@ -10,8 +10,8 @@ import {
   History,
   ImageIcon,
   Maximize,
-  Maximize2,
-  Minimize2,
+  Mic,
+  Minimize,
   Paperclip,
   Pencil,
   PencilLine,
@@ -33,11 +33,14 @@ import { MiniMarkdown } from "../utils/mini-markdown"
 import styles from "./extension-chat.module.css"
 import { useExtensionChat, type ExtChatSummary } from "./use-extension-chat"
 import { useResolvedTheme } from "./use-resolved-theme"
+import { useVoiceInput } from "./use-voice-input"
 
 const MUTATION_CHANNEL = "relay-mutations"
-const MIN_H = 160
+const MIN_H = 200
 
-type SizeMode = "half" | "tall" | "full"
+// Two visible modes: tall (default, ~80% vh, drag-resizable) and full
+// (absolute overlay over ControlPanel). No more 50% / 80% cycle button.
+type SizeMode = "tall" | "full"
 
 const ICON_BY_TOOL: Record<string, LucideIcon> = {
   add_memory: Sparkles,
@@ -156,7 +159,9 @@ function ThinkingChip({ tool }: { tool: string | null }) {
       <span className={styles.thinkingDot}>
         <Icon size={11} />
       </span>
-      <span>{tool ? `${toolLabelFor(tool)}…` : "Thinking…"}</span>
+      <span className={styles.thinkingText}>
+        {tool ? `${toolLabelFor(tool)}…` : "Thinking…"}
+      </span>
     </div>
   )
 }
@@ -340,9 +345,9 @@ function MessageRow({
 
 export function ExtensionChat() {
   const [collapsed, setCollapsed] = useState(true)
-  const [mode, setMode] = useState<SizeMode>("half")
+  const [mode, setMode] = useState<SizeMode>("tall")
   const [height, setHeight] = useState(() =>
-    typeof window === "undefined" ? 340 : Math.round(window.innerHeight * 0.5)
+    typeof window === "undefined" ? 600 : Math.round(window.innerHeight * 0.8)
   )
   const [draft, setDraft] = useState("")
   const [dragOver, setDragOver] = useState(false)
@@ -353,6 +358,8 @@ export function ExtensionChat() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const theme = useResolvedTheme()
+
+  const voice = useVoiceInput((text) => setDraft((d) => (d ? `${d} ${text}` : text)))
 
   const chat = useExtensionChat({
     onMutation: () => {
@@ -382,11 +389,10 @@ export function ExtensionChat() {
     return () => window.removeEventListener("resize", onResize)
   }, [mode])
 
-  // Snap to the new mode's natural height when switching.
+  // Snap to the default tall height when leaving full-screen.
   useEffect(() => {
-    if (mode === "full") return
-    const target = mode === "tall" ? Math.round(window.innerHeight * 0.8) : Math.round(window.innerHeight * 0.5)
-    setHeight(Math.max(MIN_H, target))
+    if (mode !== "tall") return
+    setHeight(Math.max(MIN_H, Math.round(window.innerHeight * 0.8)))
   }, [mode])
 
   // Only enable Save-to-Sources when the target is unambiguous (exactly one
@@ -440,18 +446,12 @@ export function ExtensionChat() {
     }
   }
 
-  const cycleMode = useCallback(() => {
-    setMode((prev) => (prev === "half" ? "tall" : prev === "tall" ? "half" : "half"))
-  }, [])
-
   const toggleFull = useCallback(() => {
-    setMode((prev) => (prev === "full" ? "half" : "full"))
+    setMode((prev) => (prev === "full" ? "tall" : "full"))
   }, [])
 
-  const modeClass =
-    mode === "full" ? styles.modeFull : mode === "tall" ? styles.modeTall : styles.modeHalf
-  const computedStyle =
-    mode === "full" ? undefined : { height }
+  const modeClass = mode === "full" ? styles.modeFull : styles.modeTall
+  const computedStyle = mode === "full" ? undefined : { height }
 
   const wrapperRef = useRef<HTMLDivElement>(null)
 
@@ -597,20 +597,11 @@ export function ExtensionChat() {
           <button
             type="button"
             className={styles.headBtn}
-            onClick={cycleMode}
-            aria-label={mode === "tall" ? "Shrink chat" : "Expand chat"}
-            title={mode === "tall" ? "Shrink chat (50%)" : "Expand chat (80%)"}
-          >
-            {mode === "tall" ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-          </button>
-          <button
-            type="button"
-            className={styles.headBtn}
             onClick={toggleFull}
             aria-label={mode === "full" ? "Exit full screen" : "Full screen"}
             title={mode === "full" ? "Exit full screen" : "Full screen"}
           >
-            <Maximize size={14} />
+            {mode === "full" ? <Minimize size={14} /> : <Maximize size={14} />}
           </button>
           <button
             type="button"
@@ -726,6 +717,17 @@ export function ExtensionChat() {
             className={styles.input}
           />
         </div>
+        {voice.supported ? (
+          <button
+            type="button"
+            onClick={() => (voice.listening ? voice.stop() : voice.start())}
+            className={`${styles.attachBtn} ${voice.listening ? styles.iconBtnActive : ""}`}
+            aria-label="Voice input"
+            title={voice.listening ? "Stop voice input" : "Voice input"}
+          >
+            <Mic size={14} />
+          </button>
+        ) : null}
         {chat.streaming ? (
           <button
             type="button"
@@ -756,6 +758,5 @@ export function ExtensionChat() {
 function modeMaxHeight(mode: SizeMode): number {
   if (typeof window === "undefined") return 600
   if (mode === "full") return window.innerHeight
-  if (mode === "tall") return Math.round(window.innerHeight * 0.8)
-  return Math.round(window.innerHeight * 0.5)
+  return Math.round(window.innerHeight * 0.8)
 }
