@@ -43,6 +43,10 @@ export function ChatPageShell({
     }
   }, [])
 
+  const refreshChats = useCallback(() => {
+    void loadChats(query.trim())
+  }, [loadChats, query])
+
   useEffect(() => {
     const t = setTimeout(() => void loadChats(query.trim()), query ? 250 : 0)
     return () => clearTimeout(t)
@@ -183,6 +187,7 @@ export function ChatPageShell({
           plan={plan}
           variant="page"
           initialChatId={selectedChatId}
+          onChatListChanged={refreshChats}
         />
       </div>
     </div>

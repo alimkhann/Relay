@@ -88,7 +88,7 @@ function AttachmentChips({
                   aria-label={`Preview ${a.fileName}`}
                 >
                   <img
-                    src={`/api/assistant/attachments/${a.id}/content`}
+                    src={a.previewUrl ?? `/api/assistant/attachments/${a.id}/content`}
                     alt=""
                     className="h-full w-full object-cover"
                     loading="lazy"
@@ -142,7 +142,7 @@ function AttachmentChips({
               <X className="size-4" />
             </button>
             <img
-              src={`/api/assistant/attachments/${preview.id}/content`}
+              src={preview.previewUrl ?? `/api/assistant/attachments/${preview.id}/content`}
               alt={preview.fileName}
               className="max-h-[80vh] rounded-[var(--relay-radius-lg)] object-contain"
             />

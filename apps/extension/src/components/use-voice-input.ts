@@ -19,6 +19,19 @@ interface SpeechRecognitionLike {
 type VoiceStatus = "idle" | "requesting" | "listening" | "denied" | "error" | "unsupported"
 type VoicePermissionState = PermissionState | "unknown"
 
+async function ensureExtensionAudioPermission(): Promise<boolean> {
+  const permissions = typeof chrome !== "undefined" ? chrome.permissions : undefined
+  if (!permissions?.contains || !permissions.request) return true
+  try {
+    const request = { permissions: ["audioCapture"] }
+    const alreadyGranted = await permissions.contains(request)
+    if (alreadyGranted) return true
+    return await permissions.request(request)
+  } catch {
+    return true
+  }
+}
+
 /**
  * Web Speech API wrapper, copy of the web hook. Kept here rather than imported
  * from the web app so the extension's Plasmo bundler doesn't reach into a
@@ -113,6 +126,14 @@ export function useVoiceInput(onFinal: (text: string) => void) {
     desiredListeningRef.current = true
     setError(null)
     setStatus("requesting")
+    const extensionAudioGranted = await ensureExtensionAudioPermission()
+    if (!extensionAudioGranted) {
+      desiredListeningRef.current = false
+      setPermissionState("denied")
+      setStatus("denied")
+      setError("Microphone permission is blocked. Allow microphone access for Relay in Chrome extension settings.")
+      return
+    }
     if (navigator.permissions?.query) {
       try {
         const permission = await navigator.permissions.query({ name: "microphone" as PermissionName })
@@ -133,7 +154,7 @@ export function useVoiceInput(onFinal: (text: string) => void) {
         setStatus(denied ? "denied" : "error")
         setError(
           denied
-            ? "Microphone permission is blocked."
+            ? "Microphone permission is blocked. Open Chrome extension settings for Relay and allow microphone access."
             : "Couldn't access the microphone."
         )
         return

@@ -29,12 +29,28 @@ const MAX_OUTPUT_TOKENS = 1_400
 const MAX_ATTACHMENTS_PER_TURN = 8
 const MAX_TOTAL_ATTACHMENT_CHARS = 24_000
 const MAX_PER_ATTACHMENT_CHARS = 6_000
+const READ_ONLY_TOOL_NAMES = new Set([
+  "list_projects",
+  "recall_context",
+  "search_memory",
+  "list_recent_activity",
+  "get_brief",
+  "relay_knowledge",
+  "recall_past_chats",
+  "list_sources",
+  "search_sources",
+  "read_source",
+  "explore_sources",
+  "grep_sources",
+  "get_project_state",
+  "trace_context"
+])
 
 function systemInstruction(defaultProjectId: string | null): string {
   return [
     "You are Ask Relay, an agent embedded in the Relay product (a cross-AI context manager).",
     "You help the user act on their own Relay data: projects, memory items, sources, briefs, and continuity.",
-    "Always prefer calling a tool to fetch real data over guessing. Call list_projects first if you need a projectId.",
+    "Use tools only when the user asks about Relay workspace data, Relay product docs, saved memory, sources, past chats, or asks you to save/change something. For simple writing, reasoning, OCR/image questions, or direct answers from the current message/attachments, answer directly without tools.",
     defaultProjectId ? `The active project id is ${defaultProjectId}; use it unless the user means another.` : "",
     "Tool guidance: use relay_knowledge for product / how-to questions about Relay itself (features, plans, MCP, extension, getting started, billing); use search_memory/recall_context for the user's saved memory; search_sources/read_source for the user's indexed documents; recall_past_chats when the user references an earlier conversation. Web search is available through a dedicated grounding pass when enabled; never say you lack web search. For current/external facts, rely on grounded web results and cite the sources you were given.",
     "When the user asks how to use Relay, what Relay can do, or for setup help, call relay_knowledge first and answer from its result; do not invent features.",
@@ -104,9 +120,33 @@ function wantsOnlyWebSearch(message: string): boolean {
 }
 
 function wantsRelayTools(message: string): boolean {
-  return /\b(memory|remember|save|delete|project|brief|source|sources|doc|docs|file|attachment|relay|mcp|chat history|past chat|what was i|summarize my project)\b/i.test(
+  return /\b(memory|remember|save|delete|project|brief|source|sources|doc|docs|relay|mcp|chat history|past chat|what was i|what did we|where were we|continue that|task|tasks|decision|decisions|constraint|constraints|objective|status|summarize my project)\b/i.test(
     message
   )
+}
+
+function isSimpleAttachmentQuestion(message: string, hasAttachments: boolean): boolean {
+  return (
+    hasAttachments &&
+    /\b(what(?:'s| is)|read|ocr|written|say|showing|in (?:this|the) image|this image|the image|screenshot)\b/i.test(
+      message
+    ) &&
+    !wantsRelayTools(message)
+  )
+}
+
+function selectAssistantTools(input: {
+  message: string
+  hasAttachments: boolean
+  confirmActionId?: string
+}): GeminiFunctionDeclaration[] {
+  if (input.confirmActionId) return ASSISTANT_TOOL_DECLARATIONS
+  if (isSimpleAttachmentQuestion(input.message, input.hasAttachments)) return []
+  if (!wantsRelayTools(input.message)) return []
+  if (/\b(save|remember|delete|archive|update|change|set|rename|refresh|import)\b/i.test(input.message)) {
+    return ASSISTANT_TOOL_DECLARATIONS
+  }
+  return ASSISTANT_TOOL_DECLARATIONS.filter((tool) => READ_ONLY_TOOL_NAMES.has(tool.name))
 }
 
 function webSearchActionResult(
@@ -379,6 +419,11 @@ export async function* runAssistantTurn(
   const userWantsWeb = wantsWebSearch(input.message)
   const onlyWebSearch = wantsOnlyWebSearch(input.message)
   const shouldRunWebSearch = webSearchEnabled && (explicitWebSearch || userWantsWeb)
+  const selectedTools = selectAssistantTools({
+    message: input.message,
+    hasAttachments: Boolean(input.attachmentIds?.length),
+    confirmActionId: input.confirmActionId
+  })
   const shouldDirectWebSearch =
     shouldRunWebSearch &&
     !wantsRelayTools(input.message) &&
@@ -449,7 +494,7 @@ export async function* runAssistantTurn(
       stepResult = await runAssistantGeminiStep({
         systemInstruction: systemInstruction(defaultProjectId),
         contents,
-        tools: ASSISTANT_TOOL_DECLARATIONS,
+        tools: selectedTools,
         maxOutputTokens: MAX_OUTPUT_TOKENS,
         // Tool-calling steps never include grounding — see comment above.
         webSearch: false

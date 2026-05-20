@@ -31,7 +31,9 @@
       "sidePanel",
       "identity",
       "scripting",
-      "contextMenus",
+      "contextMenus"
+    ],
+    "optional_permissions": [
       "audioCapture"
     ],
     "host_permissions": [

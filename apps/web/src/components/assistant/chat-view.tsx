@@ -45,7 +45,8 @@ export function ChatView({
   onClose,
   expanded = false,
   onToggleExpand,
-  initialChatId
+  initialChatId,
+  onChatListChanged
 }: {
   surface: AssistantSurface
   projectId: string | null
@@ -55,6 +56,7 @@ export function ChatView({
   expanded?: boolean
   onToggleExpand?: () => void
   initialChatId?: string | null
+  onChatListChanged?: () => void
 }) {
   const router = useRouter()
   const lastRefreshRef = useRef(0)
@@ -101,6 +103,10 @@ export function ChatView({
           router.refresh()
         }, 1500)
       }
+    },
+    onChatChanged: () => {
+      onChatListChanged?.()
+      setHistoryRefreshKey((key) => key + 1)
     }
   })
   const [draft, setDraft] = useState("")
@@ -108,6 +114,7 @@ export function ChatView({
   const [historyOpen, setHistoryOpen] = useState(false)
   const [composerMenuOpen, setComposerMenuOpen] = useState(false)
   const [webSearch, setWebSearch] = useState(false)
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0)
   const [previewAttachment, setPreviewAttachment] = useState<{ id: string; fileName: string } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -210,6 +217,7 @@ export function ChatView({
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
         currentChatId={chatId}
+        refreshKey={historyRefreshKey}
         onSelect={(id) => {
           void loadChat(id)
           setHistoryOpen(false)
@@ -230,7 +238,10 @@ export function ChatView({
               <X className="size-4" />
             </button>
             <img
-              src={`/api/assistant/attachments/${previewAttachment.id}/content`}
+              src={
+                attachments.find((a) => a.id === previewAttachment.id)?.previewUrl ??
+                `/api/assistant/attachments/${previewAttachment.id}/content`
+              }
               alt={previewAttachment.fileName}
               className="max-h-[80vh] rounded-[var(--relay-radius-lg)] object-contain"
             />
@@ -393,7 +404,7 @@ export function ChatView({
                       aria-label={`Preview ${a.fileName}`}
                     >
                       <img
-                        src={`/api/assistant/attachments/${a.id}/content`}
+                        src={a.previewUrl ?? `/api/assistant/attachments/${a.id}/content`}
                         alt=""
                         className="h-full w-full object-cover"
                       />

@@ -18,6 +18,7 @@ export const dynamic = "force-dynamic"
 
 const MAX_BYTES = 15 * 1024 * 1024
 const MAX_ATTACHMENTS_PER_CHAT = 24
+const MAX_ATTACHMENTS_PER_MESSAGE = 8
 
 // Document MIMEs match the source-ingestion allowlist; image MIMEs cover what
 // Gemini's vision input accepts. Anything else is refused at the boundary so
@@ -97,7 +98,6 @@ export const POST = withApiAuth(async (request: Request) => {
       { status: 409 }
     )
   }
-
   // Documents → extracted text folded into the prompt. Images keep no text and
   // are sent to the model as inline vision parts at turn time.
   let extractedText: string | null = null
@@ -126,21 +126,22 @@ export const POST = withApiAuth(async (request: Request) => {
       crypto: { projectId: chat.id, sourceId: objectId, versionId: "v1" }
     })
   } catch (error) {
-    // Storage unconfigured (local/memory mode): still persist the row + text so
-    // document context works; only image vision needs the blob. Logged so a
-    // misconfigured R2 in prod is visible instead of silently dropping images.
     void logServerEvent({
-      level: "warn",
+      level: "error",
       surface: "web-api",
       area: "assistant",
       event: "assistant.attachment_store_failed",
-      message: "attachment blob upload failed; row persisted without blob",
+      message: "attachment blob upload failed",
       context: {
         userId: viewer.userId,
         mime,
         reason: error instanceof Error ? error.message : "unknown"
       }
     })
+    return NextResponse.json(
+      { error: "Relay could not store this attachment for preview or AI reading. Please try again." },
+      { status: 503 }
+    )
   }
 
   const row = await repositories.assistantAttachments.create({
@@ -160,7 +161,11 @@ export const POST = withApiAuth(async (request: Request) => {
       mime: row.mime,
       byteSize: row.byteSize,
       hasText: Boolean(extractedText),
-      savedToRelay: false
+      savedToRelay: false,
+      limits: {
+        perMessage: MAX_ATTACHMENTS_PER_MESSAGE,
+        perChat: MAX_ATTACHMENTS_PER_CHAT
+      }
     },
     { status: 201 }
   )

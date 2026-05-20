@@ -171,15 +171,21 @@ function ThinkingChip({ tool }: { tool: string | null }) {
 function AttachmentImage({
   id,
   fileName,
-  className
+  className,
+  previewUrl
 }: {
   id: string
   fileName: string
   className?: string
+  previewUrl?: string
 }) {
   const [url, setUrl] = useState<string | null>(null)
 
   useEffect(() => {
+    if (previewUrl) {
+      setUrl(previewUrl)
+      return
+    }
     let alive = true
     let objectUrl: string | null = null
     void getRelaySession()
@@ -199,7 +205,7 @@ function AttachmentImage({
       alive = false
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [id])
+  }, [id, previewUrl])
 
   if (!url) {
     return (
@@ -239,7 +245,7 @@ function AttachmentStrip({
                   onClick={() => setPreview(a)}
                   aria-label={`Preview ${a.fileName}`}
                 >
-                  <AttachmentImage id={a.id} fileName={a.fileName} className={styles.thumbImg} />
+                  <AttachmentImage id={a.id} fileName={a.fileName} className={styles.thumbImg} previewUrl={a.previewUrl} />
                 </button>
               ) : (
                 <FileText size={11} />
@@ -279,6 +285,7 @@ function AttachmentStrip({
               id={preview.id}
               fileName={preview.fileName}
               className={styles.previewImage}
+              previewUrl={preview.previewUrl}
             />
           </div>
         </div>
@@ -489,6 +496,7 @@ export function ExtensionChat() {
   const [projectId, setProjectId] = useState<string | null>(null)
   const [composerMenuOpen, setComposerMenuOpen] = useState(false)
   const [webSearch, setWebSearch] = useState(false)
+  const [historyRefreshTick, setHistoryRefreshTick] = useState(0)
   const [previewAttachment, setPreviewAttachment] = useState<{ id: string; fileName: string } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -507,7 +515,8 @@ export function ExtensionChat() {
         /* BroadcastChannel unavailable */
       }
       window.dispatchEvent(new CustomEvent("relay:memory-mutated"))
-    }
+    },
+    onChatChanged: () => setHistoryRefreshTick((tick) => tick + 1)
   })
 
   // Auto-scroll on new content and active-tool transitions.
@@ -553,7 +562,7 @@ export function ExtensionChat() {
       void chat.listChats(chatQuery.trim() || undefined).then(setChats)
     }, chatQuery ? 250 : 0)
     return () => clearTimeout(t)
-  }, [historyOpen, chatQuery, chat])
+  }, [historyOpen, chatQuery, chat, historyRefreshTick])
 
   const startDrag = (e: React.MouseEvent) => {
     if (mode === "full") return
@@ -723,6 +732,7 @@ export function ExtensionChat() {
                       if (!ok) return
                       void chat.deleteChat(c.id)
                       setChats((prev) => prev.filter((x) => x.id !== c.id))
+                      if (c.id === chat.chatId) chat.reset()
                     }}
                   >
                     <Trash2 size={12} />
@@ -748,6 +758,7 @@ export function ExtensionChat() {
               id={previewAttachment.id}
               fileName={previewAttachment.fileName}
               className={styles.previewImage}
+              previewUrl={chat.attachments.find((a) => a.id === previewAttachment.id)?.previewUrl}
             />
           </div>
         </div>
@@ -892,7 +903,7 @@ export function ExtensionChat() {
                         onClick={() => setPreviewAttachment({ id: a.id, fileName: a.fileName })}
                         aria-label={`Preview ${a.fileName}`}
                       >
-                        <AttachmentImage id={a.id} fileName={a.fileName} className={styles.thumbImg} />
+                        <AttachmentImage id={a.id} fileName={a.fileName} className={styles.thumbImg} previewUrl={a.previewUrl} />
                       </button>
                     ) : (
                       <FileText size={11} />

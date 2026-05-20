@@ -357,6 +357,7 @@ describe("runAssistantTurn web search", () => {
     )
     expect(mocks.runGeminiAgentStep).toHaveBeenCalledWith(
       expect.objectContaining({
+        tools: [],
         contents: expect.arrayContaining([
           expect.objectContaining({
             parts: expect.arrayContaining([
@@ -367,6 +368,28 @@ describe("runAssistantTurn web search", () => {
           })
         ])
       })
+    )
+  })
+
+  it("answers simple prompts without Relay tools", async () => {
+    mocks.runGeminiAgentStep.mockResolvedValueOnce({
+      text: "Hello.",
+      functionCalls: [],
+      groundingUris: [],
+      groundingChunks: [],
+      finishReason: "STOP",
+      tokenUsage: { inputTokens: 2, outputTokens: 2, totalTokens: 4 }
+    })
+
+    await collect({
+      message: "say hello",
+      surface: "dashboard",
+      parentId: null,
+      projectId: null
+    } as SendAssistantMessageInput)
+
+    expect(mocks.runGeminiAgentStep).toHaveBeenCalledWith(
+      expect.objectContaining({ tools: [] })
     )
   })
 })

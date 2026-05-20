@@ -87,6 +87,8 @@ export interface AssistantAttachmentDto {
   byteSize: number
   hasText: boolean
   savedToRelay: boolean
+  /** Client-only preview URL used before an uploaded image can be refetched. */
+  previewUrl?: string
   createdAt?: string
 }
 

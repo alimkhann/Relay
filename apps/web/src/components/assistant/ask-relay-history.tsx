@@ -11,12 +11,14 @@ export function AskRelayHistory({
   open,
   onClose,
   onSelect,
-  currentChatId
+  currentChatId,
+  refreshKey = 0
 }: {
   open: boolean
   onClose: () => void
   onSelect: (id: string) => void
   currentChatId: string | null
+  refreshKey?: number
 }) {
   const [chats, setChats] = useState<AssistantChatSummaryDto[]>([])
   const [query, setQuery] = useState("")
@@ -42,7 +44,7 @@ export function AskRelayHistory({
     if (!open) return
     const t = setTimeout(() => void load(query.trim()), query ? 250 : 0)
     return () => clearTimeout(t)
-  }, [open, query, load])
+  }, [open, query, load, refreshKey])
 
   if (!open) return null
 

@@ -24,10 +24,13 @@ export interface ExtAttachment {
   mime: string
   byteSize: number
   hasText: boolean
+  previewUrl?: string
   uploading?: boolean
   saving?: boolean
   savedToRelay?: boolean
 }
+
+const MAX_ATTACHMENTS_PER_MESSAGE = 8
 
 function toAttachmentDto(a: ExtAttachment): AssistantAttachmentDto {
   return {
@@ -36,7 +39,8 @@ function toAttachmentDto(a: ExtAttachment): AssistantAttachmentDto {
     mime: a.mime,
     byteSize: a.byteSize,
     hasText: a.hasText,
-    savedToRelay: Boolean(a.savedToRelay)
+    savedToRelay: Boolean(a.savedToRelay),
+    previewUrl: a.previewUrl
   }
 }
 
@@ -72,9 +76,12 @@ async function api(path: string, init?: RequestInit) {
 
 export function useExtensionChat(opts?: {
   onMutation?: (r: AssistantActionResult) => void
+  onChatChanged?: () => void
 }) {
   const onMutationRef = useRef(opts?.onMutation)
   onMutationRef.current = opts?.onMutation
+  const onChatChangedRef = useRef(opts?.onChatChanged)
+  onChatChangedRef.current = opts?.onChatChanged
 
   const [serverNodes, setServerNodes] = useState<AssistantMessageDto[]>([])
   const [optimistic, setOptimistic] = useState<UiMessage[]>([])
@@ -85,8 +92,23 @@ export function useExtensionChat(opts?: {
   const [activeTool, setActiveTool] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [attachments, setAttachments] = useState<ExtAttachment[]>([])
+  const attachmentsRef = useRef<ExtAttachment[]>([])
   const chatIdRef = useRef<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+
+  const updateAttachments = useCallback((updater: (prev: ExtAttachment[]) => ExtAttachment[]) => {
+    setAttachments((prev) => {
+      const next = updater(prev)
+      attachmentsRef.current = next
+      return next
+    })
+  }, [])
+
+  const revokePreviewUrls = useCallback((items: ExtAttachment[]) => {
+    for (const item of items) {
+      if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
+    }
+  }, [])
 
   const refresh = useCallback(async (): Promise<AssistantMessageDto[]> => {
     const id = chatIdRef.current
@@ -205,6 +227,7 @@ export function useExtensionChat(opts?: {
             if (ev.type === "chat") {
               chatIdRef.current = ev.chatId
               setChatId(ev.chatId)
+              onChatChangedRef.current?.()
             } else if (ev.type === "text") {
               const delta = ev.delta
               patch((m) => ({ ...m, content: m.content + delta }))
@@ -224,6 +247,8 @@ export function useExtensionChat(opts?: {
               }))
             } else if (ev.type === "error") {
               setError(ev.message)
+            } else if (ev.type === "done") {
+              onChatChangedRef.current?.()
             }
           }
         }
@@ -281,7 +306,8 @@ export function useExtensionChat(opts?: {
         text.trim(),
         leafId
       )
-      setAttachments([])
+      revokePreviewUrls(attachmentsRef.current)
+      updateAttachments(() => [])
     },
     [runStream, streaming, hasUploadingAttachments, leafId, readyAttachmentIds]
   )
@@ -299,7 +325,8 @@ export function useExtensionChat(opts?: {
         text.trim(),
         message.parentId
       )
-      setAttachments([])
+      revokePreviewUrls(attachmentsRef.current)
+      updateAttachments(() => [])
     },
     [runStream, streaming, hasUploadingAttachments, readyAttachmentIds]
   )
@@ -341,14 +368,24 @@ export function useExtensionChat(opts?: {
   const addFiles = useCallback(
     async (files: File[]) => {
       if (files.length === 0) return
+      const slotsLeft = MAX_ATTACHMENTS_PER_MESSAGE - attachmentsRef.current.length
+      if (slotsLeft <= 0) {
+        setError(`You can attach up to ${MAX_ATTACHMENTS_PER_MESSAGE} files per message.`)
+        return
+      }
+      const acceptedFiles = files.slice(0, slotsLeft)
+      if (acceptedFiles.length < files.length) {
+        setError(`Only ${MAX_ATTACHMENTS_PER_MESSAGE} attachments can be sent in one message.`)
+      }
       const chat = await ensureChat()
       if (!chat) {
         setError("Couldn't start a chat for the attachment.")
         return
       }
-      for (const file of files) {
+      for (const file of acceptedFiles) {
         const localId = tmp()
-        setAttachments((prev) => [
+        const previewUrl = file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined
+        updateAttachments((prev) => [
           ...prev,
           {
             id: localId,
@@ -356,6 +393,7 @@ export function useExtensionChat(opts?: {
             mime: file.type,
             byteSize: file.size,
             hasText: false,
+            previewUrl,
             uploading: true
           }
         ])
@@ -371,22 +409,32 @@ export function useExtensionChat(opts?: {
             throw new Error(body?.error || `upload failed (${res.status})`)
           }
           const data = (await res.json()) as ExtAttachment
-          setAttachments((prev) =>
-            prev.map((a) => (a.id === localId ? { ...data, uploading: false } : a))
+          updateAttachments((prev) =>
+            prev.map((a) =>
+              a.id === localId ? { ...data, previewUrl: a.previewUrl, uploading: false } : a
+            )
           )
         } catch (err) {
-          setAttachments((prev) => prev.filter((a) => a.id !== localId))
+          updateAttachments((prev) => {
+            const removed = prev.filter((a) => a.id === localId)
+            revokePreviewUrls(removed)
+            return prev.filter((a) => a.id !== localId)
+          })
           const reason = err instanceof Error ? err.message : "unknown error"
           setError(`Couldn't attach ${file.name}: ${reason}`)
         }
       }
     },
-    [ensureChat]
+    [ensureChat, revokePreviewUrls, updateAttachments]
   )
 
   const removeAttachment = useCallback((id: string) => {
-    setAttachments((prev) => prev.filter((a) => a.id !== id))
-  }, [])
+    updateAttachments((prev) => {
+      const removed = prev.filter((a) => a.id === id)
+      revokePreviewUrls(removed)
+      return prev.filter((a) => a.id !== id)
+    })
+  }, [revokePreviewUrls, updateAttachments])
 
   const setFeedback = useCallback(
     async (messageId: string, value: "like" | "dislike" | null) => {
@@ -405,7 +453,7 @@ export function useExtensionChat(opts?: {
   )
 
   const saveAttachmentToSources = useCallback(async (id: string, projectId: string) => {
-    setAttachments((prev) => prev.map((a) => (a.id === id ? { ...a, saving: true } : a)))
+    updateAttachments((prev) => prev.map((a) => (a.id === id ? { ...a, saving: true } : a)))
     try {
       const res = await api(`/api/assistant/attachments/${id}/save-to-source`, {
         method: "POST",
@@ -413,7 +461,7 @@ export function useExtensionChat(opts?: {
         body: JSON.stringify({ projectId })
       })
       if (!res.ok) throw new Error("save failed")
-      setAttachments((prev) =>
+      updateAttachments((prev) =>
         prev.map((a) => (a.id === id ? { ...a, saving: false, savedToRelay: true } : a))
       )
       setServerNodes((prev) =>
@@ -423,10 +471,10 @@ export function useExtensionChat(opts?: {
         }))
       )
     } catch {
-      setAttachments((prev) => prev.map((a) => (a.id === id ? { ...a, saving: false } : a)))
+      updateAttachments((prev) => prev.map((a) => (a.id === id ? { ...a, saving: false } : a)))
       setError("Couldn't save the attachment to Sources.")
     }
-  }, [])
+  }, [updateAttachments])
 
   const listProjects = useCallback(async (): Promise<{ id: string; name: string }[]> => {
     try {
@@ -458,10 +506,12 @@ export function useExtensionChat(opts?: {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title })
     }).catch(() => {})
+    onChatChangedRef.current?.()
   }, [])
 
   const deleteChat = useCallback(async (id: string) => {
     await api(`/api/assistant/chats/${id}`, { method: "DELETE" }).catch(() => {})
+    onChatChangedRef.current?.()
   }, [])
 
   const loadChat = useCallback(
@@ -471,7 +521,8 @@ export function useExtensionChat(opts?: {
       chatIdRef.current = id
       setChatId(id)
       setOptimistic([])
-      setAttachments([])
+      revokePreviewUrls(attachmentsRef.current)
+      updateAttachments(() => [])
       setSelections({})
       setBranchParentId(null)
       setError(null)
@@ -487,11 +538,12 @@ export function useExtensionChat(opts?: {
     setOptimistic([])
     setSelections({})
     setBranchParentId(null)
-    setAttachments([])
+    revokePreviewUrls(attachmentsRef.current)
+    updateAttachments(() => [])
     setChatId(null)
     chatIdRef.current = null
     setError(null)
-  }, [])
+  }, [revokePreviewUrls, updateAttachments])
 
   return {
     messages: path,
