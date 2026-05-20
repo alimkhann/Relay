@@ -501,7 +501,8 @@ export function ChatView({
         ) : (
         <div
           className={cn(
-            "rounded-[var(--relay-radius-lg)] bg-[var(--relay-soft)] px-3 py-2",
+            "rounded-[var(--relay-radius-lg)] bg-[var(--relay-soft)] px-3 py-2 ring-1 ring-transparent transition-[box-shadow,border-color,background] duration-150",
+            "focus-within:ring-2 focus-within:ring-[var(--relay-line-strong)] focus-within:bg-[var(--relay-soft-hover)]",
             constrain && "mx-auto w-full max-w-3xl"
           )}
         >
