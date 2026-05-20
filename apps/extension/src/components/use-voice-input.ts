@@ -12,9 +12,12 @@ interface SpeechRecognitionLike {
         results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>
       }) => void)
     | null
-  onerror: (() => void) | null
+  onerror: ((event: { error?: string; message?: string }) => void) | null
   onend: (() => void) | null
 }
+
+type VoiceStatus = "idle" | "requesting" | "listening" | "denied" | "error" | "unsupported"
+type VoicePermissionState = PermissionState | "unknown"
 
 /**
  * Web Speech API wrapper, copy of the web hook. Kept here rather than imported
@@ -24,6 +27,9 @@ interface SpeechRecognitionLike {
 export function useVoiceInput(onFinal: (text: string) => void) {
   const [supported, setSupported] = useState(false)
   const [listening, setListening] = useState(false)
+  const [status, setStatus] = useState<VoiceStatus>("unsupported")
+  const [error, setError] = useState<string | null>(null)
+  const [permissionState, setPermissionState] = useState<VoicePermissionState>("unknown")
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const onFinalRef = useRef(onFinal)
 
@@ -37,9 +43,13 @@ export function useVoiceInput(onFinal: (text: string) => void) {
       (window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike }).SpeechRecognition ??
       (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognitionLike })
         .webkitSpeechRecognition
-    if (!Ctor) return
+    if (!Ctor) {
+      setStatus("unsupported")
+      return
+    }
 
     setSupported(true)
+    setStatus("idle")
     const recognition = new Ctor()
     recognition.lang = "en-US"
     recognition.continuous = false
@@ -53,8 +63,24 @@ export function useVoiceInput(onFinal: (text: string) => void) {
       finalText = finalText.trim()
       if (finalText) onFinalRef.current(finalText)
     }
-    recognition.onend = () => setListening(false)
-    recognition.onerror = () => setListening(false)
+    recognition.onend = () => {
+      setListening(false)
+      setStatus((current) =>
+        current === "denied" || current === "error" || current === "unsupported" ? current : "idle"
+      )
+    }
+    recognition.onerror = (event) => {
+      setListening(false)
+      const code = event?.error ?? "unknown"
+      if (code === "not-allowed" || code === "service-not-allowed") {
+        setPermissionState("denied")
+        setStatus("denied")
+        setError("Microphone permission is blocked.")
+      } else {
+        setStatus("error")
+        setError(event?.message || "Voice input failed.")
+      }
+    }
     recognitionRef.current = recognition
 
     return () => {
@@ -70,20 +96,52 @@ export function useVoiceInput(onFinal: (text: string) => void) {
     }
   }, [])
 
-  const start = useCallback(() => {
-    if (!recognitionRef.current || listening) return
+  const start = useCallback(async () => {
+    if (!recognitionRef.current || listening || status === "requesting") return
+    setError(null)
+    setStatus("requesting")
+    if (navigator.permissions?.query) {
+      try {
+        const permission = await navigator.permissions.query({ name: "microphone" as PermissionName })
+        setPermissionState(permission.state)
+      } catch {
+        setPermissionState("unknown")
+      }
+    }
+    if (navigator.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        stream.getTracks().forEach((track) => track.stop())
+        setPermissionState("granted")
+      } catch (err) {
+        const name = err instanceof DOMException ? err.name : ""
+        const denied = name === "NotAllowedError" || name === "SecurityError"
+        setPermissionState(denied ? "denied" : "unknown")
+        setStatus(denied ? "denied" : "error")
+        setError(
+          denied
+            ? "Microphone permission is blocked."
+            : "Couldn't access the microphone."
+        )
+        return
+      }
+    }
     try {
       recognitionRef.current.start()
       setListening(true)
+      setStatus("listening")
     } catch {
       setListening(false)
+      setStatus("error")
+      setError("Voice input could not start.")
     }
-  }, [listening])
+  }, [listening, status])
 
   const stop = useCallback(() => {
     recognitionRef.current?.stop()
     setListening(false)
+    setStatus("idle")
   }, [])
 
-  return { supported, listening, start, stop }
+  return { supported, listening, status, error, permissionState, start, stop }
 }

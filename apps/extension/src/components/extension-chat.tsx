@@ -12,7 +12,6 @@ import {
   Maximize,
   Mic,
   Minimize,
-  Paperclip,
   Pencil,
   PencilLine,
   Plus,
@@ -37,9 +36,10 @@ import { useVoiceInput } from "./use-voice-input"
 
 const MUTATION_CHANNEL = "relay-mutations"
 const MIN_H = 200
+const TALL_HEIGHT_RATIO = 0.7
 
-// Two visible modes: tall (default, ~80% vh, drag-resizable) and full
-// (absolute overlay over ControlPanel). No more 50% / 80% cycle button.
+// Two visible modes: tall (default, drag-resizable) and full
+// (absolute overlay over ControlPanel).
 type SizeMode = "tall" | "full"
 
 const ICON_BY_TOOL: Record<string, LucideIcon> = {
@@ -347,7 +347,7 @@ export function ExtensionChat() {
   const [collapsed, setCollapsed] = useState(true)
   const [mode, setMode] = useState<SizeMode>("tall")
   const [height, setHeight] = useState(() =>
-    typeof window === "undefined" ? 600 : Math.round(window.innerHeight * 0.8)
+    typeof window === "undefined" ? 600 : Math.round(window.innerHeight * TALL_HEIGHT_RATIO)
   )
   const [draft, setDraft] = useState("")
   const [dragOver, setDragOver] = useState(false)
@@ -355,6 +355,8 @@ export function ExtensionChat() {
   const [chats, setChats] = useState<ExtChatSummary[]>([])
   const [chatQuery, setChatQuery] = useState("")
   const [projectId, setProjectId] = useState<string | null>(null)
+  const [composerMenuOpen, setComposerMenuOpen] = useState(false)
+  const [webSearch, setWebSearch] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const theme = useResolvedTheme()
@@ -392,7 +394,7 @@ export function ExtensionChat() {
   // Snap to the default tall height when leaving full-screen.
   useEffect(() => {
     if (mode !== "tall") return
-    setHeight(Math.max(MIN_H, Math.round(window.innerHeight * 0.8)))
+    setHeight(Math.max(MIN_H, Math.round(window.innerHeight * TALL_HEIGHT_RATIO)))
   }, [mode])
 
   // Only enable Save-to-Sources when the target is unambiguous (exactly one
@@ -427,9 +429,11 @@ export function ExtensionChat() {
 
   const submit = useCallback(() => {
     if (!draft.trim() || chat.streaming) return
-    chat.send(draft)
+    chat.send(draft, { webSearch })
     setDraft("")
-  }, [draft, chat])
+    setWebSearch(false)
+    setComposerMenuOpen(false)
+  }, [draft, chat, webSearch])
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault()
@@ -452,6 +456,18 @@ export function ExtensionChat() {
 
   const modeClass = mode === "full" ? styles.modeFull : styles.modeTall
   const computedStyle = mode === "full" ? undefined : { height }
+  const voiceStatusText =
+    voice.status === "requesting"
+      ? "Requesting microphone…"
+      : voice.status === "listening"
+        ? "Listening…"
+        : voice.status === "denied"
+          ? voice.error ?? "Microphone permission is blocked."
+          : voice.status === "error"
+            ? voice.error ?? "Voice input failed."
+            : voice.status === "unsupported"
+              ? "Voice input is not available here."
+              : null
 
   const wrapperRef = useRef<HTMLDivElement>(null)
 
@@ -658,15 +674,43 @@ export function ExtensionChat() {
             e.target.value = ""
           }}
         />
-        <button
-          type="button"
-          className={styles.attachBtn}
-          aria-label="Attach files"
-          title="Attach files"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <Paperclip size={14} />
-        </button>
+        <div className={styles.menuWrap}>
+          <button
+            type="button"
+            className={`${styles.attachBtn} ${composerMenuOpen ? styles.iconBtnActive : ""}`}
+            aria-label="Add context"
+            title="Add context"
+            onClick={() => setComposerMenuOpen((open) => !open)}
+          >
+            <Plus size={14} />
+          </button>
+          {composerMenuOpen ? (
+            <div className={styles.composerMenu}>
+              <button
+                type="button"
+                className={styles.menuItem}
+                onClick={() => {
+                  fileInputRef.current?.click()
+                  setComposerMenuOpen(false)
+                }}
+              >
+                <Plus size={13} />
+                <span>Upload files or images</span>
+              </button>
+              <button
+                type="button"
+                className={`${styles.menuItem} ${webSearch ? styles.menuItemActive : ""}`}
+                onClick={() => setWebSearch((value) => !value)}
+              >
+                <Search size={13} />
+                <span>Web search</span>
+                <span className={`${styles.toggle} ${webSearch ? styles.toggleOn : ""}`} aria-hidden>
+                  <span />
+                </span>
+              </button>
+            </div>
+          ) : null}
+        </div>
         <div className={styles.inputColumn}>
           {chat.attachments.length > 0 ? (
             <div className={styles.chips}>
@@ -706,6 +750,19 @@ export function ExtensionChat() {
               })}
             </div>
           ) : null}
+          {webSearch ? (
+            <button
+              type="button"
+              className={styles.searchPill}
+              onClick={() => setWebSearch(false)}
+              aria-label="Disable web search"
+              title="Disable web search"
+            >
+              <Search size={11} />
+              Search
+              <X size={10} />
+            </button>
+          ) : null}
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -721,17 +778,24 @@ export function ExtensionChat() {
             className={styles.input}
           />
         </div>
-        {voice.supported ? (
-          <button
-            type="button"
-            onClick={() => (voice.listening ? voice.stop() : voice.start())}
-            className={`${styles.attachBtn} ${voice.listening ? styles.iconBtnActive : ""}`}
-            aria-label="Voice input"
-            title={voice.listening ? "Stop voice input" : "Voice input"}
-          >
-            <Mic size={14} />
-          </button>
-        ) : null}
+        <button
+          type="button"
+          onClick={() => (voice.listening ? voice.stop() : void voice.start())}
+          disabled={!voice.supported || voice.status === "requesting"}
+          className={`${styles.attachBtn} ${voice.listening ? styles.iconBtnActive : ""} ${
+            voice.status === "denied" || voice.status === "error" ? styles.voiceError : ""
+          }`}
+          aria-label={
+            voice.status === "requesting"
+              ? "Requesting microphone"
+              : voice.listening
+                ? "Stop voice input"
+                : "Voice input"
+          }
+          title={voiceStatusText ?? "Voice input"}
+        >
+          <Mic size={14} />
+        </button>
         {chat.streaming ? (
           <button
             type="button"
@@ -755,6 +819,15 @@ export function ExtensionChat() {
           </button>
         )}
       </div>
+      {voiceStatusText && voice.status !== "unsupported" ? (
+        <div
+          className={`${styles.voiceStatus} ${
+            voice.status === "denied" || voice.status === "error" ? styles.voiceStatusError : ""
+          }`}
+        >
+          {voiceStatusText}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -762,5 +835,5 @@ export function ExtensionChat() {
 function modeMaxHeight(mode: SizeMode): number {
   if (typeof window === "undefined") return 600
   if (mode === "full") return window.innerHeight
-  return Math.round(window.innerHeight * 0.8)
+  return Math.round(window.innerHeight * TALL_HEIGHT_RATIO)
 }

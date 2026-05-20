@@ -33,7 +33,7 @@ export const POST = withApiAuth(async (request: Request) => {
   captureServerEvent({
     event: "assistant_message_sent",
     distinctId: viewer.userId,
-    properties: { surface: input.surface, plan }
+    properties: { surface: input.surface, plan, webSearch: input.webSearch === true }
   })
 
   const encoder = new TextEncoder()

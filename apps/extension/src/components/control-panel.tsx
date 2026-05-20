@@ -117,6 +117,9 @@ import {
 } from "../utils/telemetry";
 import relayIconUrl from "../../assets/icon.png";
 import { PlatformIcon, prettyPlatformName } from "./platform-icon";
+
+const EXTENSION_DISPLAY_VERSION = "0.5.0";
+
 // Lazy: the walkthrough only renders for first-time users, so it should not
 // sit in the popup/sidepanel critical bundle.
 const WalkthroughModal = lazy(() =>
@@ -2216,7 +2219,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             </button>
           </div>
 
-          <p className={styles.settingsVersion}>Relay · v{chrome?.runtime?.getManifest?.()?.version ?? "0.4.1"}</p>
+          <p className={styles.settingsVersion}>Relay · v{EXTENSION_DISPLAY_VERSION}</p>
         </section>
       ) : authenticating ? (
         <section className={styles.panel}>

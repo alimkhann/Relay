@@ -55,9 +55,15 @@ function repoBundle() {
   }
 }
 
-async function collect(input: SendAssistantMessageInput): Promise<AssistantStreamEvent[]> {
+async function collect(
+  input: SendAssistantMessageInput,
+  options: { plan?: "free" | "pro"; maxSteps?: number } = {}
+): Promise<AssistantStreamEvent[]> {
   const events: AssistantStreamEvent[] = []
-  for await (const e of runAssistantTurn(viewer, input, { plan: "pro", maxSteps: 3 })) {
+  for await (const e of runAssistantTurn(viewer, input, {
+    plan: options.plan ?? "pro",
+    maxSteps: options.maxSteps ?? 3
+  })) {
     events.push(e)
   }
   return events
@@ -186,5 +192,106 @@ describe("runAssistantTurn confirmation guard (A2 regression)", () => {
     expect(markConsumed).not.toHaveBeenCalled()
     const err = events.find((e) => e.type === "error")
     expect(err && err.type === "error" && err.message).toMatch(/already been confirmed/i)
+  })
+})
+
+describe("runAssistantTurn web search", () => {
+  beforeEach(() => {
+    mocks.createRepositoryBundle.mockReset().mockReturnValue(repoBundle())
+    mocks.executeAssistantTool.mockReset()
+    mocks.runGeminiAgentStep.mockReset()
+  })
+
+  it("runs grounding when paid users explicitly enable web search", async () => {
+    mocks.runGeminiAgentStep
+      .mockResolvedValueOnce({
+        text: "I'll check.",
+        functionCalls: [],
+        groundingUris: [],
+        groundingChunks: [],
+        finishReason: "STOP",
+        tokenUsage: { inputTokens: 4, outputTokens: 4, totalTokens: 8 }
+      })
+      .mockResolvedValueOnce({
+        text: "Alimkhan Yergebayev is associated with Relay.",
+        functionCalls: [],
+        groundingUris: ["https://example.com/alimkhan"],
+        groundingChunks: [{ uri: "https://example.com/alimkhan", title: "Alimkhan profile" }],
+        finishReason: "STOP",
+        tokenUsage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 }
+      })
+
+    const events = await collect({
+      message: "tell me about Alimkhan Yergebayev",
+      surface: "dashboard",
+      parentId: null,
+      projectId: null,
+      webSearch: true
+    } as SendAssistantMessageInput)
+
+    expect(mocks.runGeminiAgentStep).toHaveBeenCalledTimes(2)
+    expect(mocks.runGeminiAgentStep).toHaveBeenLastCalledWith(
+      expect.objectContaining({ tools: [], webSearch: true })
+    )
+    expect(events.some((e) => e.type === "tool_start" && e.tool === "web_search")).toBe(true)
+    expect(events.some((e) => e.type === "tool_result" && e.result.tool === "web_search")).toBe(true)
+    expect(events.filter((e) => e.type === "text").map((e) => e.delta).join("")).toContain("Sources")
+  })
+
+  it("treats who's as web-search intent for paid users", async () => {
+    mocks.runGeminiAgentStep
+      .mockResolvedValueOnce({
+        text: "Let me check.",
+        functionCalls: [],
+        groundingUris: [],
+        groundingChunks: [],
+        finishReason: "STOP",
+        tokenUsage: { inputTokens: 4, outputTokens: 4, totalTokens: 8 }
+      })
+      .mockResolvedValueOnce({
+        text: "Alimkhan Yergebayev is a founder.",
+        functionCalls: [],
+        groundingUris: ["https://example.com/profile"],
+        groundingChunks: [{ uri: "https://example.com/profile", title: "Profile" }],
+        finishReason: "STOP",
+        tokenUsage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 }
+      })
+
+    await collect({
+      message: "who's Alimkhan Yergebayev?",
+      surface: "dashboard",
+      parentId: null,
+      projectId: null
+    } as SendAssistantMessageInput)
+
+    expect(mocks.runGeminiAgentStep).toHaveBeenCalledTimes(2)
+    expect(mocks.runGeminiAgentStep).toHaveBeenLastCalledWith(
+      expect.objectContaining({ tools: [], webSearch: true })
+    )
+  })
+
+  it("bypasses Relay tools when the user asks for only web search", async () => {
+    mocks.runGeminiAgentStep.mockResolvedValueOnce({
+      text: "Alimkhan Yergebayev is associated with Relay.",
+      functionCalls: [],
+      groundingUris: ["https://example.com/alimkhan"],
+      groundingChunks: [{ uri: "https://example.com/alimkhan", title: "Alimkhan profile" }],
+      finishReason: "STOP",
+      tokenUsage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 }
+    })
+
+    const events = await collect({
+      message: "only web search: who's Alimkhan Yergebayev?",
+      surface: "dashboard",
+      parentId: null,
+      projectId: null
+    } as SendAssistantMessageInput)
+
+    expect(mocks.runGeminiAgentStep).toHaveBeenCalledTimes(1)
+    expect(mocks.runGeminiAgentStep).toHaveBeenCalledWith(
+      expect.objectContaining({ tools: [], webSearch: true })
+    )
+    expect(mocks.executeAssistantTool).not.toHaveBeenCalled()
+    expect(events.some((e) => e.type === "tool_start" && e.tool === "web_search")).toBe(true)
   })
 })

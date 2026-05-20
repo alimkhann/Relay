@@ -23,6 +23,8 @@ export const sendAssistantMessageSchema = z.object({
   confirmActionId: z.string().min(1).optional(),
   /** Attachments (already uploaded to this chat) to feed into the turn. */
   attachmentIds: z.array(z.string().uuid()).max(8).optional(),
+  /** Force a paid web-grounded answer for this turn. */
+  webSearch: z.boolean().optional(),
   /** Page/extension context the agent can use without a tool call. */
   pageContext: z
     .object({

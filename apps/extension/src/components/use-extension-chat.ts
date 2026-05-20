@@ -34,6 +34,10 @@ export interface ExtChatSummary {
   updatedAt: string
 }
 
+export interface ExtSendOptions {
+  webSearch?: boolean
+}
+
 interface PageContext {
   url?: string
   title?: string
@@ -244,10 +248,15 @@ export function useExtensionChat(opts?: {
   )
 
   const send = useCallback(
-    (text: string) => {
+    (text: string, options?: ExtSendOptions) => {
       if (!text.trim() || streaming) return
       void runStream(
-        { message: text.trim(), parentId: leafId, attachmentIds: readyAttachmentIds() },
+        {
+          message: text.trim(),
+          parentId: leafId,
+          attachmentIds: readyAttachmentIds(),
+          webSearch: options?.webSearch || undefined
+        },
         text.trim(),
         leafId
       )
@@ -257,10 +266,15 @@ export function useExtensionChat(opts?: {
   )
 
   const editMessage = useCallback(
-    (message: UiMessage, text: string) => {
+    (message: UiMessage, text: string, options?: ExtSendOptions) => {
       if (!text.trim() || streaming) return
       void runStream(
-        { message: text.trim(), parentId: message.parentId, attachmentIds: readyAttachmentIds() },
+        {
+          message: text.trim(),
+          parentId: message.parentId,
+          attachmentIds: readyAttachmentIds(),
+          webSearch: options?.webSearch || undefined
+        },
         text.trim(),
         message.parentId
       )

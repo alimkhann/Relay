@@ -44,6 +44,10 @@ export interface UiAttachment {
   savedToRelay?: boolean
 }
 
+export interface AssistantSendOptions {
+  webSearch?: boolean
+}
+
 let localSeq = 0
 const tmp = () => `tmp-${(localSeq += 1)}`
 
@@ -263,10 +267,16 @@ export function useAssistantChat(
   )
 
   const send = useCallback(
-    (text: string, pageContext?: PageContext) => {
+    (text: string, pageContext?: PageContext, options?: AssistantSendOptions) => {
       if (!text.trim() || streaming) return
       void runStream(
-        { message: text.trim(), parentId: leafId, attachmentIds: readyAttachmentIds(), pageContext },
+        {
+          message: text.trim(),
+          parentId: leafId,
+          attachmentIds: readyAttachmentIds(),
+          pageContext,
+          webSearch: options?.webSearch || undefined
+        },
         text.trim(),
         leafId
       )
@@ -276,7 +286,7 @@ export function useAssistantChat(
   )
 
   const editMessage = useCallback(
-    (message: UiMessage, text: string, pageContext?: PageContext) => {
+    (message: UiMessage, text: string, pageContext?: PageContext, options?: AssistantSendOptions) => {
       if (!text.trim() || streaming) return
       // Branch as a new sibling under the same parent as the edited message.
       void runStream(
@@ -284,7 +294,8 @@ export function useAssistantChat(
           message: text.trim(),
           parentId: message.parentId,
           attachmentIds: readyAttachmentIds(),
-          pageContext
+          pageContext,
+          webSearch: options?.webSearch || undefined
         },
         text.trim(),
         message.parentId

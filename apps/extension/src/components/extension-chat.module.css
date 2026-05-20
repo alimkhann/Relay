@@ -50,9 +50,9 @@
   --ec-warn: #fbbf24;
 }
 
-/* Size modes — tall ≈ 80% vh (drag-resizable), full overlays ControlPanel. */
+/* Size modes — tall ≈ 70% vh (drag-resizable), full overlays ControlPanel. */
 .modeTall {
-  max-height: 90vh;
+  max-height: 70vh;
 }
 .modeFull {
   position: absolute;
@@ -408,7 +408,7 @@
   padding: 6px 8px;
 }
 
-/* Composer — paperclip on the left end, like ChatGPT. */
+/* Composer. */
 .composer {
   display: flex;
   align-items: flex-end;
@@ -430,12 +430,91 @@
   background: var(--ec-soft);
   color: var(--ec-ink);
 }
+.attachBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.menuWrap {
+  position: relative;
+  flex: none;
+}
+.composerMenu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  z-index: 10;
+  width: 210px;
+  padding: 5px;
+  border: 1px solid var(--ec-line);
+  border-radius: 8px;
+  background: var(--ec-bg);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+}
+.menuItem {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--ec-ink);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 12px;
+  font-family: inherit;
+  text-align: left;
+}
+.menuItem:hover {
+  background: var(--ec-soft);
+}
+.menuItemActive {
+  color: var(--ec-accent);
+  background: var(--ec-accent-soft);
+}
+.toggle {
+  margin-left: auto;
+  width: 26px;
+  height: 15px;
+  border-radius: 999px;
+  background: var(--ec-line-strong);
+  padding: 2px;
+  transition: background 120ms ease;
+}
+.toggle span {
+  display: block;
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  background: var(--ec-bg);
+  transition: transform 120ms ease;
+}
+.toggleOn {
+  background: var(--ec-accent);
+}
+.toggleOn span {
+  transform: translateX(11px);
+}
 .inputColumn {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+}
+.searchPill {
+  align-self: flex-start;
+  border: 0;
+  background: var(--ec-accent-soft);
+  color: var(--ec-accent);
+  border-radius: 999px;
+  padding: 3px 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
 }
 .input {
   width: 100%;
@@ -473,6 +552,23 @@
 .sendBtn:disabled {
   opacity: 0.4;
   cursor: default;
+}
+.voiceError {
+  color: var(--ec-danger);
+}
+.voiceError:hover {
+  background: var(--ec-danger-soft);
+  color: var(--ec-danger);
+}
+.voiceStatus {
+  border-top: 1px solid var(--ec-line);
+  padding: 0 10px 8px 42px;
+  margin-top: -2px;
+  font-size: 11px;
+  color: var(--ec-muted);
+}
+.voiceStatusError {
+  color: var(--ec-danger);
 }
 
 /* Launcher button — prominent: accent surface, ink-on-accent text, theme-aware

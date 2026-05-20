@@ -14,7 +14,8 @@ import {
   Maximize2,
   Minimize2,
   Mic,
-  Paperclip,
+  Plus,
+  Search,
   Sparkles,
   Square,
   X
@@ -104,6 +105,8 @@ export function ChatView({
   const [draft, setDraft] = useState("")
   const [dragOver, setDragOver] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [composerMenuOpen, setComposerMenuOpen] = useState(false)
+  const [webSearch, setWebSearch] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const voice = useVoiceInput((text) => setDraft((d) => (d ? `${d} ${text}` : text)))
@@ -132,8 +135,10 @@ export function ChatView({
 
   const submit = () => {
     if (!draft.trim() || streaming) return
-    send(draft, capturePageContext())
+    send(draft, capturePageContext(), { webSearch })
     setDraft("")
+    setWebSearch(false)
+    setComposerMenuOpen(false)
   }
 
   const onDrop = (e: DragEvent) => {
@@ -156,6 +161,18 @@ export function ChatView({
   // (page variant or expanded panel) so users don't have to look ear to ear.
   const constrain = variant === "page" || expanded
   const messagesWidth = constrain ? "mx-auto w-full max-w-3xl" : ""
+  const voiceStatusText =
+    voice.status === "requesting"
+      ? "Requesting microphone…"
+      : voice.status === "listening"
+        ? "Listening…"
+        : voice.status === "denied"
+          ? voice.error ?? "Microphone permission is blocked."
+          : voice.status === "error"
+            ? voice.error ?? "Voice input failed."
+            : voice.status === "unsupported"
+              ? "Voice input is not available in this browser."
+              : null
 
   return (
     <div
@@ -367,15 +384,78 @@ export function ChatView({
               ))}
             </div>
           ) : null}
+          {webSearch ? (
+            <div className="mb-2 flex">
+              <button
+                type="button"
+                onClick={() => setWebSearch(false)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-[var(--relay-accent-blue-soft)] px-2 py-1 text-xs font-medium text-[var(--relay-accent-blue)]"
+                aria-label="Disable web search"
+                title="Disable web search"
+              >
+                <Search className="size-3.5" />
+                Search
+                <X className="size-3" />
+              </button>
+            </div>
+          ) : null}
           <div className="flex items-end gap-2">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              aria-label="Attach files"
-              className="rounded-full p-1.5 text-[var(--relay-muted)] transition-colors hover:bg-[var(--relay-soft-hover)] hover:text-[var(--relay-ink)]"
-            >
-              <Paperclip className="size-4" />
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setComposerMenuOpen((open) => !open)}
+                aria-label="Add context"
+                title="Add context"
+                className={cn(
+                  "rounded-full p-1.5 text-[var(--relay-muted)] transition-colors hover:bg-[var(--relay-soft-hover)] hover:text-[var(--relay-ink)]",
+                  composerMenuOpen && "bg-[var(--relay-soft-hover)] text-[var(--relay-ink)]"
+                )}
+              >
+                <Plus className="size-4" />
+              </button>
+              {composerMenuOpen ? (
+                <div className="absolute bottom-full left-0 z-20 mb-2 min-w-52 rounded-[var(--relay-radius-lg)] border border-[var(--relay-line)] bg-[var(--relay-bg)] p-1.5 shadow-lg">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      fileInputRef.current?.click()
+                      setComposerMenuOpen(false)
+                    }}
+                    className="flex w-full items-center gap-2 rounded-[var(--relay-radius-sm)] px-2.5 py-2 text-left text-sm text-[var(--relay-ink)] hover:bg-[var(--relay-soft)]"
+                  >
+                    <Plus className="size-4 text-[var(--relay-muted)]" />
+                    Upload files or images
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWebSearch((value) => !value)}
+                    className={cn(
+                      "flex w-full items-center justify-between gap-3 rounded-[var(--relay-radius-sm)] px-2.5 py-2 text-left text-sm hover:bg-[var(--relay-soft)]",
+                      webSearch ? "text-[var(--relay-accent-blue)]" : "text-[var(--relay-ink)]"
+                    )}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Search className="size-4 text-current" />
+                      Web search
+                    </span>
+                    <span
+                      className={cn(
+                        "h-4 w-7 rounded-full p-0.5 transition-colors",
+                        webSearch ? "bg-[var(--relay-accent-blue)]" : "bg-[var(--relay-line-strong)]"
+                      )}
+                      aria-hidden
+                    >
+                      <span
+                        className={cn(
+                          "block size-3 rounded-full bg-[var(--relay-bg)] transition-transform",
+                          webSearch && "translate-x-3"
+                        )}
+                      />
+                    </span>
+                  </button>
+                </div>
+              ) : null}
+            </div>
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -390,21 +470,33 @@ export function ChatView({
               placeholder="Ask anything…"
               className="max-h-32 flex-1 resize-none border-0 bg-transparent text-sm text-[var(--relay-ink)] outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 placeholder:text-[var(--relay-muted)]"
             />
-            {voice.supported ? (
-              <button
-                type="button"
-                onClick={() => (voice.listening ? voice.stop() : voice.start())}
-                aria-label="Voice input"
-                className={cn(
-                  "rounded-full p-1.5 transition-colors",
-                  voice.listening
-                    ? "bg-[var(--relay-accent-blue)] text-[var(--relay-accent-blue-ink)]"
+            <button
+              type="button"
+              onClick={() => (voice.listening ? voice.stop() : void voice.start())}
+              disabled={!voice.supported || voice.status === "requesting"}
+              aria-label={
+                voice.status === "requesting"
+                  ? "Requesting microphone"
+                  : voice.listening
+                    ? "Stop voice input"
+                    : "Voice input"
+              }
+              title={voiceStatusText ?? "Voice input"}
+              className={cn(
+                "rounded-full p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                voice.listening
+                  ? "bg-[var(--relay-accent-blue)] text-[var(--relay-accent-blue-ink)]"
+                  : voice.status === "denied" || voice.status === "error"
+                    ? "text-[var(--relay-danger)] hover:bg-[var(--relay-danger-soft)]"
                     : "text-[var(--relay-muted)] hover:bg-[var(--relay-soft-hover)] hover:text-[var(--relay-ink)]"
-                )}
-              >
+              )}
+            >
+              {voice.status === "requesting" ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
                 <Mic className="size-4" />
-              </button>
-            ) : null}
+              )}
+            </button>
             {streaming ? (
               <button
                 type="button"
@@ -426,6 +518,18 @@ export function ChatView({
               </button>
             )}
           </div>
+          {voiceStatusText && voice.status !== "unsupported" ? (
+            <div
+              className={cn(
+                "mt-2 text-xs",
+                voice.status === "denied" || voice.status === "error"
+                  ? "text-[var(--relay-danger)]"
+                  : "text-[var(--relay-muted)]"
+              )}
+            >
+              {voiceStatusText}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

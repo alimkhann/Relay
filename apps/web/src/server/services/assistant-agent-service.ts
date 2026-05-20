@@ -28,7 +28,7 @@ function systemInstruction(defaultProjectId: string | null): string {
     "You help the user act on their own Relay data: projects, memory items, sources, briefs, and continuity.",
     "Always prefer calling a tool to fetch real data over guessing. Call list_projects first if you need a projectId.",
     defaultProjectId ? `The active project id is ${defaultProjectId}; use it unless the user means another.` : "",
-    "Tool guidance: use relay_knowledge for product / how-to questions about Relay itself (features, plans, MCP, extension, getting started, billing); use search_memory/recall_context for the user's saved memory; search_sources/read_source for the user's indexed documents; recall_past_chats when the user references an earlier conversation; web search only for current/external facts not in Relay, and cite the sources you were given.",
+    "Tool guidance: use relay_knowledge for product / how-to questions about Relay itself (features, plans, MCP, extension, getting started, billing); use search_memory/recall_context for the user's saved memory; search_sources/read_source for the user's indexed documents; recall_past_chats when the user references an earlier conversation. Web search is available through a dedicated grounding pass when enabled; never say you lack web search. For current/external facts, rely on grounded web results and cite the sources you were given.",
     "When the user asks how to use Relay, what Relay can do, or for setup help, call relay_knowledge first and answer from its result; do not invent features.",
     "Be concise. After acting, briefly state what you did. Never invent ids, URLs, citations, or data — if a tool returns nothing, say you couldn't find it rather than guessing.",
     "If there are no projects, or it is ambiguous which project the user means, ask one short clarifying question instead of picking arbitrarily.",
@@ -75,6 +75,45 @@ function describeToolCall(tool: string, args: Record<string, unknown>): string {
   }
   if (tool === "set_project_state") return "update project state"
   return `run ${tool}`
+}
+
+function wantsWebSearch(message: string): boolean {
+  return (
+    /\b(latest|current|today|tonight|tomorrow|this (week|month|year)|news|price|release|version|update|launch|2025|2026|stock|weather|score|live)\b/i.test(
+      message
+    ) ||
+    /\b(who(?:'s| is)|what(?:'s| is)|use web search|search the web|google(?: this)?|look up|browse the web|web search)\b/i.test(
+      message
+    ) ||
+    /https?:\/\//i.test(message)
+  )
+}
+
+function wantsOnlyWebSearch(message: string): boolean {
+  return /\b(?:only|just)\s+(?:use\s+)?web search\b|\b(?:use\s+)?web search\s+only\b/i.test(
+    message
+  )
+}
+
+function webSearchActionResult(
+  groundingChunks: Array<{ uri: string; title?: string }>
+): AssistantActionResult {
+  return {
+    tool: "web_search",
+    action: "read",
+    entity: "web",
+    count: groundingChunks.length,
+    items: groundingChunks.slice(0, 8).map((c) => ({ id: c.uri, label: c.title ?? c.uri }))
+  }
+}
+
+function appendWebSources(text: string, groundingChunks: Array<{ uri: string; title?: string }>): string {
+  if (groundingChunks.length === 0) return text
+  const sources = groundingChunks
+    .slice(0, 5)
+    .map((c, i) => `${i + 1}. ${c.title ? `${c.title} — ${c.uri}` : c.uri}`)
+    .join("\n")
+  return `${text}\n\n**Sources**\n${sources}`
 }
 
 export async function* runAssistantTurn(
@@ -248,9 +287,76 @@ export async function* runAssistantTurn(
     }
   }
 
-  // 5. Bounded tool-call loop. Web grounding is paid-only — free plan never
-  //    incurs the (real) grounding cost.
+  // 5. Bounded tool-call loop. Web grounding is paid-only and runs as a
+  //    DEDICATED final pass — never combined with functionDeclarations in the
+  //    same request (most Gemini preview models silently drop one or the
+  //    other when combined, which is why grounding looked broken).
   const webSearchEnabled = options.plan !== "free"
+  const explicitWebSearch = input.webSearch === true
+  const userWantsWeb = wantsWebSearch(input.message)
+  const onlyWebSearch = wantsOnlyWebSearch(input.message)
+  const shouldRunWebSearch = webSearchEnabled && (explicitWebSearch || userWantsWeb)
+  if (!webSearchEnabled && (explicitWebSearch || onlyWebSearch)) {
+    const upgradeText = "Web search is available on paid Relay plans. Turn off Web search or upgrade to use grounded web answers."
+    for (const delta of chunkText(upgradeText)) yield { type: "text", delta }
+    const saved = await repositories.assistantMessages.create({
+      chatId: chat.id,
+      userId: viewer.userId,
+      parentId: tailId,
+      role: "assistant",
+      content: upgradeText
+    })
+    await repositories.assistantChats.touch(chat.id)
+    yield { type: "usage", totalTokens }
+    yield { type: "done", messageId: saved.id }
+    return
+  }
+  if (webSearchEnabled && onlyWebSearch) {
+    yield { type: "tool_start", tool: "web_search" }
+    try {
+      const grounded = await runGeminiAgentStep({
+        model: AGENT_MODEL,
+        systemInstruction: systemInstruction(defaultProjectId),
+        contents,
+        tools: [],
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
+        webSearch: true
+      })
+      totalTokens += grounded.tokenUsage.totalTokens
+      let finalText = grounded.text || "I couldn't find a grounded web answer."
+      if (grounded.groundingChunks.length > 0) {
+        const webActionResult = webSearchActionResult(grounded.groundingChunks)
+        turnActionResults.push(webActionResult)
+        yield { type: "tool_result", result: webActionResult }
+        finalText = appendWebSources(finalText, grounded.groundingChunks)
+      }
+      for (const delta of chunkText(finalText)) yield { type: "text", delta }
+      const saved = await repositories.assistantMessages.create({
+        chatId: chat.id,
+        userId: viewer.userId,
+        parentId: tailId,
+        role: "assistant",
+        content: finalText,
+        tokenOutput: grounded.tokenUsage.outputTokens,
+        tokenInput: grounded.tokenUsage.inputTokens,
+        toolPayload:
+          turnActionResults.length > 0 ? { actionResults: turnActionResults } : undefined
+      })
+      await repositories.assistantChats.touch(chat.id)
+      yield { type: "usage", totalTokens }
+      yield { type: "done", messageId: saved.id }
+      return
+    } catch (error) {
+      const message =
+        error instanceof GeminiRequestError
+          ? "Web search is temporarily unavailable. Please try again."
+          : error instanceof Error
+            ? error.message
+            : "Web search failed."
+      yield { type: "error", message }
+      return
+    }
+  }
   for (let step = 0; step < maxSteps; step += 1) {
     let stepResult
     try {
@@ -260,7 +366,8 @@ export async function* runAssistantTurn(
         contents,
         tools: ASSISTANT_TOOL_DECLARATIONS,
         maxOutputTokens: MAX_OUTPUT_TOKENS,
-        webSearch: webSearchEnabled
+        // Tool-calling steps never include grounding — see comment above.
+        webSearch: false
       })
     } catch (error) {
       const message =
@@ -275,33 +382,44 @@ export async function* runAssistantTurn(
 
     totalTokens += stepResult.tokenUsage.totalTokens
 
-    // Post-hoc web_search surface: we only know grounding ran if the step
-    // returned chunks. Emit a tool_start + tool_result so the UI shows a
-    // globe indicator + "Searched the web" card with citations.
-    if (stepResult.groundingChunks.length > 0) {
-      yield { type: "tool_start", tool: "web_search" }
-      const items = stepResult.groundingChunks
-        .slice(0, 8)
-        .map((c) => ({ id: c.uri, label: c.title ?? c.uri }))
-      const webActionResult: AssistantActionResult = {
-        tool: "web_search",
-        action: "read",
-        entity: "web",
-        count: stepResult.groundingChunks.length,
-        items
-      }
-      turnActionResults.push(webActionResult)
-      yield { type: "tool_result", result: webActionResult }
-    }
-
     if (stepResult.functionCalls.length === 0) {
       let finalText = stepResult.text || "Done."
-      if (stepResult.groundingChunks.length > 0) {
-        const sources = stepResult.groundingChunks
-          .slice(0, 5)
-          .map((c, i) => `${i + 1}. ${c.title ? `${c.title} — ${c.uri}` : c.uri}`)
-          .join("\n")
-        finalText += `\n\n**Sources**\n${sources}`
+      let groundingChunks = stepResult.groundingChunks
+      let tokenInput = stepResult.tokenUsage.inputTokens
+      let tokenOutput = stepResult.tokenUsage.outputTokens
+
+      // Dedicated grounding pass on the final step. Only fires when the user
+      // asks for or appears to need current/external info — keeps cost down
+      // for routine memory/source questions while honoring the explicit UI.
+      if (shouldRunWebSearch) {
+        yield { type: "tool_start", tool: "web_search" }
+        try {
+          const grounded = await runGeminiAgentStep({
+            model: AGENT_MODEL,
+            systemInstruction: systemInstruction(defaultProjectId),
+            // Same conversation context, but no function tools — grounding-only.
+            contents,
+            tools: [],
+            maxOutputTokens: MAX_OUTPUT_TOKENS,
+            webSearch: true
+          })
+          totalTokens += grounded.tokenUsage.totalTokens
+          if (grounded.groundingChunks.length > 0) {
+            finalText = grounded.text || finalText
+            groundingChunks = grounded.groundingChunks
+            tokenInput = grounded.tokenUsage.inputTokens
+            tokenOutput = grounded.tokenUsage.outputTokens
+          }
+        } catch {
+          // Grounding pass failed — fall through with the original answer.
+        }
+      }
+
+      if (groundingChunks.length > 0) {
+        const webActionResult = webSearchActionResult(groundingChunks)
+        turnActionResults.push(webActionResult)
+        yield { type: "tool_result", result: webActionResult }
+        finalText = appendWebSources(finalText, groundingChunks)
       }
       for (const delta of chunkText(finalText)) {
         yield { type: "text", delta }
@@ -312,8 +430,8 @@ export async function* runAssistantTurn(
         parentId: tailId,
         role: "assistant",
         content: finalText,
-        tokenOutput: stepResult.tokenUsage.outputTokens,
-        tokenInput: stepResult.tokenUsage.inputTokens,
+        tokenOutput,
+        tokenInput,
         toolPayload:
           turnActionResults.length > 0 ? { actionResults: turnActionResults } : undefined
       })

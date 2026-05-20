@@ -69,7 +69,8 @@ export default function PrivacyPage() {
                 supported platforms (ChatGPT, Claude, Gemini, Grok, Codex,
                 Perplexity, and DeepSeek). This includes your messages, the
                 AI&apos;s responses, and associated HTML markup from the chat
-                interface.
+                interface. Relay uses this website content only to provide the
+                product&apos;s project-memory and context-sync features.
               </p>
               <p>
                 <strong className="text-gray-900">Derived Data:</strong> Relay
@@ -84,7 +85,7 @@ export default function PrivacyPage() {
               </p>
               <p>
                 <strong className="text-gray-900">Extension Data:</strong>{" "}
-                Relay Chrome extension 0.4.1 collects and stores only the
+                Relay Chrome extension 0.5.0 collects and stores only the
                 extension data needed to connect your browser to your Relay
                 account: device tokens, connection status, capture state, and
                 extension preferences. This data is stored locally in your
@@ -236,6 +237,14 @@ export default function PrivacyPage() {
                 extension, and MCP tools.
               </p>
               <p>
+                Relay does not allow humans to read your captured chat content
+                or derived project memory except when you explicitly ask us to
+                review specific data for support, when access is necessary for
+                security or abuse investigation, when access is required to
+                comply with applicable law, or when the data has been
+                aggregated or anonymized for internal operations.
+              </p>
+              <p>
                 We do <strong className="text-gray-900">not</strong> sell,
                 rent, or share your data with third parties for advertising or
                 marketing purposes.
@@ -331,6 +340,13 @@ export default function PrivacyPage() {
                 for advertising, credit, lending, or resale.
               </p>
               <p>
+                We do not share captured chat content or AI responses with
+                PostHog. We share only the minimum data needed for each service
+                provider to perform its role: hosting and database operations
+                with Vercel and Neon, authentication with Google OAuth, and
+                product analytics and error reporting with PostHog.
+              </p>
+              <p>
                 We are not responsible for the privacy practices of the AI
                 tools you use (such as ChatGPT, Claude, Gemini, Grok, Codex,
                 Perplexity, and DeepSeek). We recommend reviewing their
@@ -371,6 +387,23 @@ export default function PrivacyPage() {
                   single-purpose features.
                 </li>
               </ul>
+              <p>
+                For the Chrome Web Store privacy disclosure, Relay may collect
+                the following categories when you use the extension: personally
+                identifiable information (name, email address, and profile
+                picture for account sign-in), authentication information
+                (session and device tokens), website content (supported AI chat
+                text and relevant chat markup), user activity and analytics
+                events (feature usage, errors, browser type, operating system,
+                approximate country-level region, and extension version), and
+                extension settings (connection state, capture preferences,
+                project selection, and enabled platforms).
+              </p>
+              <p>
+                Relay&apos;s use of information received from Google APIs will
+                adhere to the Chrome Web Store User Data Policy, including the
+                Limited Use requirements.
+              </p>
             </div>
           </section>
 
