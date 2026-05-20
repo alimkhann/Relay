@@ -1,5 +1,5 @@
 import { PageTelemetry } from "@/components/telemetry/page-telemetry"
-import { ChatView } from "@/components/assistant/chat-view"
+import { ChatPageShell } from "@/components/assistant/chat-page-shell"
 import { requirePageViewer } from "@/server/policies/viewer"
 import { resolveViewerEntitlements } from "@/server/services/entitlement-service"
 import { listProjectsForUser } from "@/server/services/project-service"
@@ -32,15 +32,11 @@ export default async function ChatPage({
         message="Rendered the chat page."
         context={{ projectId: currentProject?.id ?? null }}
       />
-      <div className="h-[80vh] overflow-hidden rounded-[var(--relay-radius-lg)] border border-[var(--relay-line)] bg-[var(--relay-bg)] shadow-[var(--relay-shadow)]">
-        <ChatView
-          surface="dashboard"
-          projectId={currentProject?.id ?? null}
-          plan={entitlements.plan}
-          variant="page"
-          initialChatId={chatId ?? null}
-        />
-      </div>
+      <ChatPageShell
+        projectId={currentProject?.id ?? null}
+        plan={entitlements.plan}
+        initialChatId={chatId ?? null}
+      />
     </>
   )
 }

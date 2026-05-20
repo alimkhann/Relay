@@ -31,7 +31,7 @@ export function AskRelayPanel({
         <DialogPrimitive.Content
           className={cn(
             "fixed top-0 right-0 z-50 flex h-full w-full flex-col border-l border-[var(--relay-line)] bg-[var(--relay-bg)] shadow-[var(--relay-shadow-lg)] transition-[max-width] duration-200",
-            expanded ? "max-w-[min(1100px,100vw)]" : "max-w-[440px]",
+            expanded ? "max-w-full" : "max-w-[440px]",
             "data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:animate-in data-[state=open]:slide-in-from-right"
           )}
         >

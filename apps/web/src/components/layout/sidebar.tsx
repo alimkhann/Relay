@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { PanelLeftClose, PanelLeft, X, MessageSquareText } from "lucide-react";
+import { ArrowUpRight, PanelLeftClose, PanelLeft, X, MessageSquareText } from "lucide-react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import * as Dialog from "@radix-ui/react-dialog";
 import { motion } from "motion/react";
@@ -169,10 +169,11 @@ function SidebarContent({
             href="https://relay.featurebase.app"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-2.5 py-1.5 text-[13px] font-medium text-[var(--relay-muted)] transition-colors hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
+            className="group flex items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-2.5 py-1.5 text-[13px] font-medium text-[var(--relay-muted)] transition-colors hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
           >
-            <MessageSquareText className="h-4 w-4 shrink-0" />
+            <MessageSquareText className="h-4 w-4 shrink-0 text-[var(--relay-faint)] group-hover:text-[var(--relay-ink)]" />
             <span>Feedback</span>
+            <ArrowUpRight className="ml-auto h-3.5 w-3.5 shrink-0 text-[var(--relay-faint)] opacity-0 transition-opacity group-hover:opacity-100" />
           </a>
         )}
       </div>
