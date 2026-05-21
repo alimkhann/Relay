@@ -40,6 +40,7 @@ export function useVoiceInput(onFinal: (text: string) => void) {
   const [error, setError] = useState<string | null>(null)
   const [permissionState, setPermissionState] = useState<VoicePermissionState>("unknown")
   const [levels, setLevels] = useState<number[]>(() => new Array(BAR_COUNT).fill(0.18))
+  const [volume, setVolume] = useState(0)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const onFinalRef = useRef(onFinal)
   const desiredListeningRef = useRef(false)
@@ -48,6 +49,7 @@ export function useVoiceInput(onFinal: (text: string) => void) {
   const analyserRef = useRef<AnalyserNode | null>(null)
   const rafRef = useRef<number | null>(null)
   const levelsRef = useRef<number[]>(new Array(BAR_COUNT).fill(0.18))
+  const volumeRef = useRef(0)
 
   const stopAudio = useCallback(() => {
     if (rafRef.current !== null) {
@@ -68,14 +70,28 @@ export function useVoiceInput(onFinal: (text: string) => void) {
     streamRef.current = null
     levelsRef.current = new Array(BAR_COUNT).fill(0.18)
     setLevels(levelsRef.current)
+    volumeRef.current = 0
+    setVolume(0)
   }, [])
 
-  const startAudioMeter = useCallback((stream: MediaStream) => {
+  const startAudioMeter = useCallback(async (stream: MediaStream) => {
     const Ctx =
       (window as unknown as { AudioContext?: typeof AudioContext }).AudioContext ??
       (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
     if (!Ctx) return
     const ctx = new Ctx()
+    // Chrome/Safari hand back a suspended AudioContext when it's constructed
+    // after an awaited getUserMedia() — the user-gesture token from the mic
+    // click no longer applies. Without resume() the analyser reads a constant
+    // 128 (silent midpoint), the bars never move, and the breathing ring
+    // collapses to a flat line.
+    if (ctx.state === "suspended") {
+      try {
+        await ctx.resume()
+      } catch {
+        /* fall through — tick will skip frames until state flips to running */
+      }
+    }
     const analyser = ctx.createAnalyser()
     analyser.fftSize = 512
     analyser.smoothingTimeConstant = 0.6
@@ -99,7 +115,10 @@ export function useVoiceInput(onFinal: (text: string) => void) {
     let prevLevel = 0
 
     const tick = () => {
-      if (!analyserRef.current) return
+      if (!analyserRef.current || audioCtxRef.current?.state !== "running") {
+        rafRef.current = requestAnimationFrame(tick)
+        return
+      }
       analyserRef.current.getByteTimeDomainData(data)
       // 128 is the silent midpoint for byte time-domain samples.
       let sumSq = 0
@@ -112,6 +131,8 @@ export function useVoiceInput(onFinal: (text: string) => void) {
       const normalized = Math.min(1, Math.pow(rms * 4, 0.7))
       const smoothed = prevLevel * 0.6 + normalized * 0.4
       prevLevel = smoothed
+      volumeRef.current = smoothed
+      setVolume(smoothed)
       // Slight per-bar phase noise driven by time so adjacent bars don't move
       // in lockstep; keeps it feeling organic.
       const t = performance.now() / 280
@@ -221,7 +242,7 @@ export function useVoiceInput(onFinal: (text: string) => void) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
         streamRef.current = stream
-        startAudioMeter(stream)
+        await startAudioMeter(stream)
         setPermissionState("granted")
       } catch (err) {
         const name = err instanceof DOMException ? err.name : ""
@@ -258,5 +279,5 @@ export function useVoiceInput(onFinal: (text: string) => void) {
 
   useEffect(() => stopAudio, [stopAudio])
 
-  return { supported, listening, status, error, permissionState, levels, start, stop }
+  return { supported, listening, status, error, permissionState, levels, volume, start, stop }
 }

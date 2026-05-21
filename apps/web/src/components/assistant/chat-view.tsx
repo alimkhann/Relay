@@ -459,20 +459,42 @@ export function ChatView({
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             role="status"
             className={cn(
-              "flex items-center gap-2 rounded-full bg-[var(--relay-soft)] px-2 py-1.5 ring-1 ring-[var(--relay-line)]",
-              "shadow-[0_0_0_4px_var(--relay-accent-blue-soft)]",
+              "relative flex items-center gap-2 rounded-full bg-[var(--relay-soft)] px-2 py-1.5 ring-1 ring-[var(--relay-line)]",
               constrain && "mx-auto w-full max-w-3xl"
             )}
           >
+            {/* Two breathing rings driven by mic volume. Back layer sits a hair
+                outside the pill border (slow spring, low opacity floor); front
+                layer hugs the border itself (snappier spring, sharper). Same
+                amplitude source, different spring shapes → reads as two
+                distinct waves with the same intensity. */}
+            <motion.span
+              aria-hidden
+              className="pointer-events-none absolute -inset-1 rounded-full ring-1 ring-[var(--relay-accent-blue)]"
+              animate={{
+                scale: 1 + voice.volume * 0.08,
+                opacity: 0.18 + voice.volume * 0.42
+              }}
+              transition={{ type: "spring", stiffness: 110, damping: 18, mass: 0.6 }}
+            />
+            <motion.span
+              aria-hidden
+              className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-[var(--relay-accent-blue)]"
+              animate={{
+                scale: 1 + voice.volume * 0.04,
+                opacity: 0.1 + voice.volume * 0.55
+              }}
+              transition={{ type: "spring", stiffness: 240, damping: 14, mass: 0.4 }}
+            />
             <button
               type="button"
               aria-label="Cancel voice input"
               onClick={() => voice.stop()}
-              className="grid size-7 place-items-center rounded-full border border-[var(--relay-line)] text-[var(--relay-muted)] transition-colors hover:bg-[var(--relay-soft-hover)] hover:text-[var(--relay-ink)] active:scale-95"
+              className="relative grid size-7 place-items-center rounded-full border border-[var(--relay-line)] text-[var(--relay-muted)] transition-colors hover:bg-[var(--relay-soft-hover)] hover:text-[var(--relay-ink)] active:scale-95"
             >
               <X className="size-3.5" />
             </button>
-            <div className="flex min-w-0 flex-1 items-center gap-2.5 px-1">
+            <div className="relative flex min-w-0 flex-1 items-center gap-2.5 px-1">
               <Waveform still={voice.status === "requesting"} levels={voice.levels} />
               <span
                 className={cn(
@@ -490,7 +512,7 @@ export function ChatView({
               onClick={submit}
               disabled={!draft.trim() || hasUploadingAttachments}
               aria-label="Send"
-              className="grid size-7 place-items-center rounded-full bg-[var(--relay-accent-blue)] text-[var(--relay-accent-blue-ink)] transition-transform hover:bg-[var(--relay-accent-blue-hover)] active:scale-95 disabled:opacity-40"
+              className="relative grid size-7 place-items-center rounded-full bg-[var(--relay-accent-blue)] text-[var(--relay-accent-blue-ink)] transition-transform hover:bg-[var(--relay-accent-blue-hover)] active:scale-95 disabled:opacity-40"
             >
               <ArrowUp className="size-4" />
             </button>

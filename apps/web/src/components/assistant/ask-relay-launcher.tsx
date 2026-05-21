@@ -22,10 +22,6 @@ export function AskRelayLauncher({
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
 
-  // /chat is itself an Ask Relay surface — hiding the floating launcher on
-  // that route avoids the redundant widget over the page.
-  if (pathname === "/chat") return null
-
   const openPanel = useCallback(() => {
     setOpen(true)
     logClientEvent({
@@ -36,6 +32,14 @@ export function AskRelayLauncher({
       projectId
     })
   }, [surface, plan, projectId])
+
+  // /chat is itself an Ask Relay surface — hiding the floating launcher on
+  // that route avoids the redundant widget over the page. Early-returning
+  // ABOVE the useCallback above used to violate Rules of Hooks: navigating
+  // in or out of /chat changed the hook count between renders, and React
+  // bailed with error #300 ("Rendered fewer hooks than expected"), which
+  // surfaced as the brief error flash on chat tab switches.
+  if (pathname === "/chat") return null
 
   return (
     <>

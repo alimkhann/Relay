@@ -887,7 +887,13 @@ export function ExtensionChat() {
       ) : null}
 
       {voice.listening || voice.status === "requesting" ? (
-        <div className={styles.voiceBar} role="status">
+        <div
+          className={styles.voiceBar}
+          role="status"
+          style={{ ["--ec-vol" as never]: voice.volume }}
+        >
+          <span className={styles.voiceRingBack} aria-hidden />
+          <span className={styles.voiceRingFront} aria-hidden />
           <button
             type="button"
             className={styles.voiceCancel}

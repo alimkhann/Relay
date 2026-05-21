@@ -1,11 +1,18 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 
 /**
  * Shared error surface. Minimal, flat, consistent with the design system —
  * structure from a hairline border, not shadow. Used by every route error
  * boundary so failures look intentional, not broken.
+ *
+ * Auto-retry-then-reveal: when an `onRetry` is provided we silently retry
+ * once after a tiny delay and refuse to paint anything for the first 600ms.
+ * If the retry resolves the error, the boundary unmounts before reveal time
+ * and the user never sees the flash — the right behaviour for transient RSC
+ * fetch races. If the retry also fails, the full surface paints with a
+ * manual Try Again button.
  */
 export function ErrorView({
   kicker = "Relay",
@@ -21,13 +28,25 @@ export function ErrorView({
   fullScreen?: boolean
 }) {
   const autoRetriedRef = useRef(false)
+  const [revealed, setRevealed] = useState(false)
 
   useEffect(() => {
     if (!onRetry || autoRetriedRef.current) return
     autoRetriedRef.current = true
-    const id = window.setTimeout(() => onRetry(), 220)
+    const id = window.setTimeout(() => onRetry(), 200)
     return () => window.clearTimeout(id)
   }, [onRetry])
+
+  useEffect(() => {
+    if (!onRetry) {
+      setRevealed(true)
+      return
+    }
+    const id = window.setTimeout(() => setRevealed(true), 600)
+    return () => window.clearTimeout(id)
+  }, [onRetry])
+
+  if (!revealed) return null
 
   return (
     <div

@@ -811,6 +811,7 @@
  * interim text, accent send button. Accent stays the product's neutral ink
  * (white-on-dark / near-black-on-light) — never the inspo green. */
 .voiceBar {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -819,13 +820,41 @@
   border-radius: 999px;
   margin: 6px 10px 10px;
   background: var(--ec-surface);
-  box-shadow: 0 0 0 4px var(--ec-accent-soft);
   animation: voiceBarIn 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 @keyframes voiceBarIn {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* Two breathing rings around the voice pill, driven entirely by the
+ * --ec-vol CSS variable (smoothed mic RMS, 0–1) set inline on .voiceBar.
+ * Back ring sits a hair outside the border, slower transition; front ring
+ * hugs the border, snappier — same amplitude source, different shapes. */
+.voiceRingBack,
+.voiceRingFront {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 1px solid var(--ec-accent);
+  pointer-events: none;
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+.voiceRingBack {
+  inset: -4px;
+  opacity: calc(0.14 + var(--ec-vol, 0) * 0.42);
+  transform: scale(calc(1 + var(--ec-vol, 0) * 0.06));
+  transition: transform 140ms ease-out, opacity 140ms ease-out;
+}
+.voiceRingFront {
+  opacity: calc(0.08 + var(--ec-vol, 0) * 0.55);
+  transform: scale(calc(1 + var(--ec-vol, 0) * 0.025));
+  transition: transform 80ms ease-out, opacity 80ms ease-out;
+}
+.voiceBar > .voiceCancel,
+.voiceBar > .voiceCore,
+.voiceBar > .sendBtn { position: relative; }
 .voiceCancel {
   width: 28px;
   height: 28px;
