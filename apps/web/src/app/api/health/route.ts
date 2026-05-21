@@ -5,7 +5,7 @@ import { createRepositoryBundle } from "@relay/db"
 import { withApiRoute } from "@/server/http/api-route"
 
 function hasDeepHealthAccess(request: Request) {
-  const secret = process.env.RELAY_INTERNAL_API_SECRET ?? process.env.CRON_SECRET
+  const secret = (process.env.RELAY_INTERNAL_API_SECRET ?? process.env.CRON_SECRET)?.trim()
   if (!secret) return false
 
   const internalSecret = request.headers.get("x-relay-internal-secret")?.trim()
