@@ -32,6 +32,7 @@ import { ChatMessage } from "./chat-message"
 import { ThinkingIndicator } from "./thinking-indicator"
 import { toolLabel } from "./tool-icons"
 import { useAssistantChat } from "./use-assistant-chat"
+import { VoiceRing } from "./voice-ring"
 
 /**
  * Animated mic waveform — 9 ink-colored bars with staggered breathing. Used in
@@ -146,31 +147,13 @@ export function ChatView({
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const voiceRingHostRef = useRef<HTMLDivElement>(null)
   const voice = useVoiceInput((text) => setDraft((d) => (d ? `${d} ${text}` : text)))
 
   useEffect(() => {
     if (voice.status !== "denied") setVoiceDeniedDismissed(false)
   }, [voice.status])
 
-  // Drive the breathing ring amplitude (--voice-vol) directly from the
-  // voice hook's ref via rAF. This bypasses React entirely: the chat
-  // surface tree is heavy enough that pushing volume through useState
-  // every frame made the dashboard composer hitch, while the lighter
-  // extension stayed smooth. Only runs while listening so we don't burn
-  // a RAF loop during normal typing.
   const isVoiceActive = voice.listening || voice.status === "requesting"
-  useEffect(() => {
-    if (!isVoiceActive) return
-    let raf = 0
-    const paint = () => {
-      const host = voiceRingHostRef.current
-      if (host) host.style.setProperty("--voice-vol", String(voice.volumeRef.current))
-      raf = requestAnimationFrame(paint)
-    }
-    raf = requestAnimationFrame(paint)
-    return () => cancelAnimationFrame(raf)
-  }, [isVoiceActive, voice.volumeRef])
 
   useEffect(
     () => () => {
@@ -472,53 +455,18 @@ export function ChatView({
           </motion.div>
         ) : null}
 
-        {voice.listening || voice.status === "requesting" ? (
+        {isVoiceActive ? (
           <motion.div
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             role="status"
-            ref={voiceRingHostRef}
             className={cn(
               "relative flex items-center gap-2 rounded-full bg-[var(--relay-soft)] px-2 py-1.5 ring-1 ring-[var(--relay-line)]",
               constrain && "mx-auto w-full max-w-3xl"
             )}
           >
-            {/* Two SVG stroke layers whose dashes orbit the pill at different
-                speeds — same amplitude source (mic RMS, fed via the
-                --voice-vol CSS custom property in a self-contained rAF
-                loop), different orbit frequencies, so the rings read as two
-                distinct waves circling the composer. Pure CSS keyframes
-                keep the motion on the compositor; React never re-renders
-                this subtree on each frame. */}
-            <svg
-              aria-hidden
-              className="relay-voice-ring relay-voice-ring--back"
-              preserveAspectRatio="none"
-            >
-              <rect
-                className="relay-voice-orbit-back"
-                width="100%"
-                height="100%"
-                rx="9999"
-                ry="9999"
-                pathLength={100}
-              />
-            </svg>
-            <svg
-              aria-hidden
-              className="relay-voice-ring relay-voice-ring--front"
-              preserveAspectRatio="none"
-            >
-              <rect
-                className="relay-voice-orbit-front"
-                width="100%"
-                height="100%"
-                rx="9999"
-                ry="9999"
-                pathLength={100}
-              />
-            </svg>
+            <VoiceRing active={isVoiceActive} volumeRef={voice.volumeRef} />
             <button
               type="button"
               aria-label="Cancel voice input"

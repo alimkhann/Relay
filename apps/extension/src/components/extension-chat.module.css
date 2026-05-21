@@ -827,34 +827,13 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Two breathing rings around the voice pill, driven entirely by the
- * --ec-vol CSS variable (smoothed mic RMS, 0–1) set inline on .voiceBar.
- * Back ring sits a hair outside the border, slower transition; front ring
- * hugs the border, snappier — same amplitude source, different shapes. */
-.voiceRingBack,
-.voiceRingFront {
-  position: absolute;
-  inset: 0;
-  border-radius: 999px;
-  border: 1px solid var(--ec-accent);
-  pointer-events: none;
-  transform-origin: center;
-  will-change: transform, opacity;
-}
-.voiceRingBack {
-  inset: -4px;
-  opacity: calc(0.14 + var(--ec-vol, 0) * 0.42);
-  transform: scale(calc(1 + var(--ec-vol, 0) * 0.06));
-  transition: transform 140ms ease-out, opacity 140ms ease-out;
-}
-.voiceRingFront {
-  opacity: calc(0.08 + var(--ec-vol, 0) * 0.55);
-  transform: scale(calc(1 + var(--ec-vol, 0) * 0.025));
-  transition: transform 80ms ease-out, opacity 80ms ease-out;
-}
+/* The two breathing-ring layers now live in the <VoiceRing /> React
+ * component (apps/extension/src/components/voice-ring.tsx). Keeping
+ * position: relative on .voiceBar above so the absolutely-positioned
+ * SVG host inside the component anchors to the pill. */
 .voiceBar > .voiceCancel,
 .voiceBar > .voiceCore,
-.voiceBar > .sendBtn { position: relative; }
+.voiceBar > .sendBtn { position: relative; z-index: 1; }
 .voiceCancel {
   width: 28px;
   height: 28px;

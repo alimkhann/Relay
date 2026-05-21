@@ -36,6 +36,7 @@ import styles from "./extension-chat.module.css"
 import { useExtensionChat, type ExtChatSummary } from "./use-extension-chat"
 import { useResolvedTheme } from "./use-resolved-theme"
 import { openMicrophonePermissionTab, useVoiceInput } from "./use-voice-input"
+import { VoiceRing } from "./voice-ring"
 
 const MUTATION_CHANNEL = "relay-mutations"
 const MIN_H = 200
@@ -887,13 +888,11 @@ export function ExtensionChat() {
       ) : null}
 
       {voice.listening || voice.status === "requesting" ? (
-        <div
-          className={styles.voiceBar}
-          role="status"
-          style={{ ["--ec-vol" as never]: voice.volume }}
-        >
-          <span className={styles.voiceRingBack} aria-hidden />
-          <span className={styles.voiceRingFront} aria-hidden />
+        <div className={styles.voiceBar} role="status">
+          <VoiceRing
+            active={voice.listening || voice.status === "requesting"}
+            volumeRef={voice.volumeRef}
+          />
           <button
             type="button"
             className={styles.voiceCancel}

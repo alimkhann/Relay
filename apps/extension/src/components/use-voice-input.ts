@@ -71,7 +71,6 @@ export function useVoiceInput(onFinal: (text: string) => void) {
   const [error, setError] = useState<string | null>(null)
   const [permissionState, setPermissionState] = useState<VoicePermissionState>("unknown")
   const [levels, setLevels] = useState<number[]>(() => new Array(BAR_COUNT).fill(0.18))
-  const [volume, setVolume] = useState(0)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const onFinalRef = useRef(onFinal)
   const desiredListeningRef = useRef(false)
@@ -80,6 +79,9 @@ export function useVoiceInput(onFinal: (text: string) => void) {
   const analyserRef = useRef<AnalyserNode | null>(null)
   const rafRef = useRef<number | null>(null)
   const levelsRef = useRef<number[]>(new Array(BAR_COUNT).fill(0.18))
+  // Volume is read every frame by the breathing ring's path generator
+  // (DOM, bypasses React) so we don't re-render the entire composer tree
+  // on each RAF tick — see the web hook for the full note.
   const volumeRef = useRef(0)
 
   const stopAudio = useCallback(() => {
@@ -102,7 +104,6 @@ export function useVoiceInput(onFinal: (text: string) => void) {
     levelsRef.current = new Array(BAR_COUNT).fill(0.18)
     setLevels(levelsRef.current)
     volumeRef.current = 0
-    setVolume(0)
   }, [])
 
   const startAudioMeter = useCallback(async (stream: MediaStream) => {
@@ -136,6 +137,7 @@ export function useVoiceInput(onFinal: (text: string) => void) {
       return 0.45 + 0.55 * (1 - d * d)
     })
     let prevLevel = 0
+    let frame = 0
 
     const tick = () => {
       if (!analyserRef.current || audioCtxRef.current?.state !== "running") {
@@ -153,14 +155,18 @@ export function useVoiceInput(onFinal: (text: string) => void) {
       const smoothed = prevLevel * 0.6 + normalized * 0.4
       prevLevel = smoothed
       volumeRef.current = smoothed
-      setVolume(smoothed)
       const t = performance.now() / 280
       const next = shape.map((s, i) => {
         const wobble = 1 + 0.18 * Math.sin(t + i * 0.7)
         return Math.max(0.16, Math.min(1, 0.16 + smoothed * s * wobble))
       })
       levelsRef.current = next
-      setLevels(next)
+      // Throttle to ~30 Hz; bars use a 75 ms CSS transition so the eye
+      // still reads it as continuous.
+      frame += 1
+      if (frame % 2 === 0) {
+        setLevels(next)
+      }
       rafRef.current = requestAnimationFrame(tick)
     }
     rafRef.current = requestAnimationFrame(tick)
@@ -304,5 +310,5 @@ export function useVoiceInput(onFinal: (text: string) => void) {
 
   useEffect(() => stopAudio, [stopAudio])
 
-  return { supported, listening, status, error, permissionState, levels, volume, start, stop }
+  return { supported, listening, status, error, permissionState, levels, volumeRef, start, stop }
 }
