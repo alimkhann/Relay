@@ -2,8 +2,26 @@ import { z } from "zod"
 import type { RelayClient } from "../client.js"
 
 export const manageMemorySchema = z.object({
-  action: z.enum(["update", "delete", "archive"]).describe("Action to perform on the memory item(s)"),
-  memoryId: z.union([z.string(), z.array(z.string())]).describe("ID or array of IDs of memory items to manage"),
+  action: z
+    .enum([
+      "update",
+      "delete",
+      "archive",
+      "restore",
+      "forget",
+      "mark_obsolete",
+      "reaffirm",
+    ])
+    .describe(
+      "Action to perform on the memory item(s). " +
+        "archive=move to archived, restore=move back to active, " +
+        "forget=tombstone (requires confirm=true), " +
+        "mark_obsolete=close validity + cooling, " +
+        "reaffirm=reset decay clock.",
+    ),
+  memoryId: z
+    .union([z.string(), z.array(z.string())])
+    .describe("ID or array of IDs of memory items to manage"),
   content: z.string().optional().describe("Updated content (for update action)"),
   title: z.string().optional().describe("Updated title (for update action)"),
   type: z
@@ -11,7 +29,11 @@ export const manageMemorySchema = z.object({
     .optional()
     .describe("Updated type (for update action)"),
   pinned: z.boolean().optional().describe("Whether to pin/unpin (for update action)"),
-  tags: z.array(z.string()).optional().describe("Updated tags (for update action)")
+  tags: z.array(z.string()).optional().describe("Updated tags (for update action)"),
+  confirm: z
+    .boolean()
+    .optional()
+    .describe("Confirmation flag required for the 'forget' action (destructive)."),
 })
 
 interface UpdateMemoryResponse {
@@ -25,9 +47,36 @@ interface UpdateMemoryResponse {
   }
 }
 
+async function patchMany(
+  client: RelayClient,
+  ids: string[],
+  body: Record<string, unknown>,
+  verb: string,
+): Promise<{ ok: string[]; errors: string[] }> {
+  const ok: string[] = []
+  const errors: string[] = []
+  for (const id of ids) {
+    try {
+      await client.patch<UpdateMemoryResponse>(`/api/memory/${id}`, body)
+      ok.push(id)
+    } catch (err) {
+      errors.push(`${id}: ${err instanceof Error ? err.message : "unknown error"}`)
+    }
+  }
+  return { ok, errors }
+}
+
+function summarize(verb: string, ok: string[], errors: string[]) {
+  const lines: string[] = []
+  if (ok.length > 0) lines.push(`${verb} ${ok.length} memory item(s): ${ok.join(", ")}`)
+  if (errors.length > 0)
+    lines.push(`Failed to ${verb.toLowerCase()} ${errors.length} item(s):\n${errors.map((e) => `  - ${e}`).join("\n")}`)
+  return { content: [{ type: "text" as const, text: lines.join("\n") }] }
+}
+
 export async function manageMemory(
   client: RelayClient,
-  args: z.infer<typeof manageMemorySchema>
+  args: z.infer<typeof manageMemorySchema>,
 ) {
   const ids = Array.isArray(args.memoryId) ? args.memoryId : [args.memoryId]
 
@@ -44,40 +93,79 @@ export async function manageMemory(
       }
     }
 
-    const lines: string[] = []
-    if (results.length > 0) lines.push(`Deleted ${results.length} memory item(s): ${results.join(", ")}`)
-    if (errors.length > 0) lines.push(`Failed to delete ${errors.length} item(s):\n${errors.map((e) => `  - ${e}`).join("\n")}`)
-
-    return { content: [{ type: "text" as const, text: lines.join("\n") }] }
+    return summarize("Deleted", results, errors)
   }
 
   if (args.action === "archive") {
-    const results: string[] = []
-    const errors: string[] = []
+    const { ok, errors } = await patchMany(
+      client,
+      ids,
+      { lifecycleState: "archived", isArchived: true },
+      "Archived",
+    )
+    return summarize("Archived", ok, errors)
+  }
 
-    for (const id of ids) {
-      try {
-        await client.patch<UpdateMemoryResponse>(`/api/memory/${id}`, { isArchived: true })
-        results.push(id)
-      } catch (err) {
-        errors.push(`${id}: ${err instanceof Error ? err.message : "unknown error"}`)
+  if (args.action === "restore") {
+    const { ok, errors } = await patchMany(
+      client,
+      ids,
+      { lifecycleState: "active", isArchived: false },
+      "Restored",
+    )
+    return summarize("Restored", ok, errors)
+  }
+
+  if (args.action === "forget") {
+    if (!args.confirm) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text:
+              "The 'forget' action is destructive (nulls content). Re-call with confirm:true to proceed.",
+          },
+        ],
       }
     }
+    const { ok, errors } = await patchMany(
+      client,
+      ids,
+      { lifecycleState: "forgotten", confirm: true },
+      "Forgot",
+    )
+    return summarize("Forgot", ok, errors)
+  }
 
-    const lines: string[] = []
-    if (results.length > 0) lines.push(`Archived ${results.length} memory item(s): ${results.join(", ")}`)
-    if (errors.length > 0) lines.push(`Failed to archive ${errors.length} item(s):\n${errors.map((e) => `  - ${e}`).join("\n")}`)
+  if (args.action === "mark_obsolete") {
+    const { ok, errors } = await patchMany(
+      client,
+      ids,
+      { lifecycleState: "cooling", validUntil: new Date().toISOString() },
+      "Marked obsolete",
+    )
+    return summarize("Marked obsolete", ok, errors)
+  }
 
-    return { content: [{ type: "text" as const, text: lines.join("\n") }] }
+  if (args.action === "reaffirm") {
+    const { ok, errors } = await patchMany(
+      client,
+      ids,
+      { lastReaffirmedAt: new Date().toISOString() },
+      "Reaffirmed",
+    )
+    return summarize("Reaffirmed", ok, errors)
   }
 
   // Update action
   if (ids.length !== 1) {
     return {
-      content: [{
-        type: "text" as const,
-        text: "Update action requires exactly one memory ID."
-      }]
+      content: [
+        {
+          type: "text" as const,
+          text: "Update action requires exactly one memory ID.",
+        },
+      ],
     }
   }
 
@@ -94,8 +182,8 @@ export async function manageMemory(
     content: [
       {
         type: "text" as const,
-        text: `Memory item updated: ${data.item.type}${data.item.title ? ` — "${data.item.title}"` : ""} (id: ${data.item.id})`
-      }
-    ]
+        text: `Memory item updated: ${data.item.type}${data.item.title ? ` — "${data.item.title}"` : ""} (id: ${data.item.id})`,
+      },
+    ],
   }
 }

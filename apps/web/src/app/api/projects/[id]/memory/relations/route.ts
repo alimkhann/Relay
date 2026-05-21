@@ -99,6 +99,62 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
     // Entity graph tables may not exist yet during migration rollout.
   }
 
+  // Memory v2: resolve this project's space_id so we can pull entity_relations
+  // + observations summary. Failures are non-fatal — the dashboard renders
+  // its current payload even if the v2 tables are missing in a stale env.
+  let entityRelations: Array<{
+    id: string;
+    sourceEntityId: string;
+    targetEntityId: string;
+    relationType: string;
+    confidence: number;
+  }> = [];
+  let observationsSummary: { total: number; recent: Array<{ id: string; content: string; subjectEntityId: string | null; predicate: string | null; validFrom: string }> } = {
+    total: 0,
+    recent: [],
+  };
+
+  try {
+    const space = await repositories.spaces.resolveSpaceForProject(id);
+    if (space) {
+      const snapshot = await repositories.graph.getSpaceGraphSnapshot(space.id, 200);
+      entityRelations = snapshot.relations;
+      const rows = await repositories.provider.query(
+        `SELECT id, content, subject_entity_id, predicate, valid_from
+         FROM observations
+         WHERE space_id = $1
+           AND lifecycle_state IN ('active','cooling')
+           AND valid_until IS NULL
+         ORDER BY valid_from DESC
+         LIMIT 25`,
+        [space.id],
+      );
+      const totalRows = await repositories.provider.query(
+        `SELECT count(*)::int AS c
+         FROM observations
+         WHERE space_id = $1
+           AND lifecycle_state IN ('active','cooling')
+           AND valid_until IS NULL`,
+        [space.id],
+      );
+      observationsSummary = {
+        total: Number((totalRows[0] as Record<string, unknown>)?.c ?? 0),
+        recent: rows.map((row) => {
+          const r = row as Record<string, unknown>;
+          return {
+            id: String(r.id),
+            content: String(r.content),
+            subjectEntityId: r.subject_entity_id ? String(r.subject_entity_id) : null,
+            predicate: r.predicate ? String(r.predicate) : null,
+            validFrom: String(r.valid_from),
+          };
+        }),
+      };
+    }
+  } catch {
+    // v2 tables not present in this env yet.
+  }
+
   return NextResponse.json({
     relations: relations.map((relation) => ({
       sourceId: relation.sourceId,
@@ -111,5 +167,7 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
     sourceMemoryLinks,
     entities: entityDetails,
     entityMemoryLinks,
+    entityRelations,
+    observationsSummary,
   });
 });

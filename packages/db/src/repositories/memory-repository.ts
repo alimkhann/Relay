@@ -108,11 +108,12 @@ export class MemoryRepository {
     const encryptedContent = encryptTextIfConfigured(plaintextContent)
 
     const rows = await this.provider.query(
-      `insert into memory_items (project_id, source_turn_id, type, title, content, pinned, tags, metadata, created_by, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector, forget_after)
-       values ($1, $2, $3, $4, $5, $6, $7::text[], $8::jsonb, $9, $10, $11, $12, coalesce($13::timestamptz, now()), $14::text[], to_tsvector('english', coalesce($4, '') || ' ' || $15), $16::timestamptz)
+      `insert into memory_items (project_id, space_id, source_turn_id, type, title, content, pinned, tags, metadata, created_by, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector, forget_after, valid_from)
+       values ($1, $2, $3, $4, $5, $6, $7, $8::text[], $9::jsonb, $10, $11, $12, $13, coalesce($14::timestamptz, now()), $15::text[], to_tsvector('english', coalesce($5, '') || ' ' || $16), $17::timestamptz, coalesce($14::timestamptz, now()))
        returning ${MEMORY_COLS}`,
       [
-        input.projectId,
+        input.projectId ?? null,
+        input.spaceId ?? null,
         input.sourceTurnId ?? null,
         input.type,
         input.title ?? null,

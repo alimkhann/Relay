@@ -1,6 +1,6 @@
 import { createRepositoryBundle, type RepositoryBundle } from "@relay/db"
 import type { CreateMemoryItemInput, MemoryEventType, MemoryItemRow } from "@relay/shared"
-import { computeDecayScore, createMemoryItemSchema, DECAY_VISIBILITY_THRESHOLD, hasReplacementSignal, isSameTopic, updateMemoryItemSchema } from "@relay/shared"
+import { computeDecayScore, createMemoryItemSchema, DECAY_VISIBILITY_THRESHOLD, updateMemoryItemSchema } from "@relay/shared"
 
 import { embedMemoryItem, embedMemoryItems, generateEmbedding } from "./embedding-service"
 import { extractAndLinkEntities } from "./entity-extraction-service"
@@ -77,38 +77,40 @@ export async function createMemoryItem(userId: string, input: unknown) {
   const repositories = createRepositoryBundle(userId)
   const parsed = createMemoryItemSchema.parse(input)
 
-  // Dedup: check for existing items with same topic
-  const existing = await repositories.memory.listByProject(parsed.projectId)
-  const match = existing
-    .filter((m) => m.type === parsed.type && !m.isArchived)
-    .find((m) => isSameTopic(m.content, parsed.content))
-  if (match) {
-    if (match.content.trim().toLowerCase() === parsed.content.trim().toLowerCase()) {
-      return match
-    }
-    if (hasReplacementSignal(parsed.content)) {
-      await repositories.memory.update(match.id, {
-        isArchived: true,
-        metadata: { ...(match.metadata ?? {}), archivedBy: "replaced" },
-      })
-    } else {
-      parsed.metadata = { ...(parsed.metadata ?? {}), potentialDuplicate: match.id }
-    }
-  }
+  // Memory v2: dedup is async. The synchronous in-memory dedup scan (which
+  // pulled every active item via listByProject and walked them with
+  // isSameTopic) lived here previously. It made capture latency O(project
+  // size) and blocked the extension + MCP write path. The memory-pipeline
+  // worker now handles dedup via resolveMemoryConflict + bi-temporal
+  // supersession (closes loser's valid_until, moves it to 'cooling') after
+  // the row lands.
+  //
+  // The web write path remains fast and stateless: insert row, emit event,
+  // kick off the legacy postCreateHook for back-compat embeddings, return.
+  // The worker tick reconciles afterwards. Reads tolerate this because the
+  // default lifecycle_state is 'active' and recall filters cooling out of
+  // the top channels.
 
   const item = await repositories.memory.create(userId, parsed)
-  await repositories.projectState.markDirty(parsed.projectId)
+  if (parsed.projectId) {
+    await repositories.projectState.markDirty(parsed.projectId)
+  }
 
-  void emitMemoryEvent(repositories, {
-    projectId: item.projectId,
-    memoryItemId: item.id,
-    eventType: "created",
-    sourceSurface: item.sourceSurface,
-    userId,
-    payload: { type: item.type },
-  })
+  if (item.projectId) {
+    void emitMemoryEvent(repositories, {
+      projectId: item.projectId,
+      memoryItemId: item.id,
+      eventType: "created",
+      sourceSurface: item.sourceSurface,
+      userId,
+      payload: { type: item.type },
+    })
+  }
 
-  // Async: generate embedding + detect relations (don't block response)
+  // Async: generate embedding + detect relations (don't block response).
+  // The new memory-pipeline worker eventually supersedes this hook; until
+  // the worker is deployed, keep the inline best-effort enrichment so
+  // dashboards don't see empty embedding columns for a tick or two.
   void postCreateHook(item, repositories)
 
   return item
@@ -237,19 +239,70 @@ export async function updateMemoryItem(userId: string, memoryId: string, input: 
   if (projectId && existing?.projectId && existing.projectId !== projectId) {
     throw new Error("This MCP token cannot update memory from another project.")
   }
-  const item = await repositories.memory.update(memoryId, parsed)
+
+  // Memory v2 lifecycle controls are handled here as a direct UPDATE on the
+  // new columns; the legacy repo.update() doesn't know about them yet. The
+  // trigger installed in migration 0041 keeps is_archived in sync with
+  // lifecycle_state, so we don't need to touch both.
+  const lifecycleState = parsed.lifecycleState ?? null
+  const validUntil = parsed.validUntil === null ? null : parsed.validUntil ?? undefined
+  const lastReaffirmedAt = parsed.lastReaffirmedAt === null ? null : parsed.lastReaffirmedAt ?? undefined
+  const isForgetting = lifecycleState === "forgotten"
+  if (isForgetting && !parsed.confirm) {
+    throw new Error("Forgetting a memory requires confirm:true.")
+  }
+
+  // Strip v2 fields from the patch passed to the legacy repo.update so its
+  // input typing still matches.
+  const legacyPatch = { ...parsed }
+  delete (legacyPatch as Record<string, unknown>).lifecycleState
+  delete (legacyPatch as Record<string, unknown>).validUntil
+  delete (legacyPatch as Record<string, unknown>).lastReaffirmedAt
+  delete (legacyPatch as Record<string, unknown>).confirm
+
+  const item = await repositories.memory.update(memoryId, legacyPatch)
+
+  if (lifecycleState || validUntil !== undefined || lastReaffirmedAt !== undefined || isForgetting) {
+    await repositories.provider.query(
+      `UPDATE memory_items
+       SET lifecycle_state = COALESCE($2, lifecycle_state),
+           valid_until = CASE WHEN $3::boolean THEN NULL ELSE COALESCE($4::timestamptz, valid_until) END,
+           last_reaffirmed_at = CASE WHEN $5::boolean THEN NULL ELSE COALESCE($6::timestamptz, last_reaffirmed_at) END,
+           content = CASE WHEN $7::boolean THEN '' ELSE content END
+       WHERE id = $1`,
+      [
+        memoryId,
+        lifecycleState,
+        parsed.validUntil === null,
+        parsed.validUntil ?? null,
+        parsed.lastReaffirmedAt === null,
+        parsed.lastReaffirmedAt ?? null,
+        isForgetting,
+      ],
+    )
+  }
+
   await repositories.projectState.markDirty(existing?.projectId ?? item.projectId)
 
+  let eventType: MemoryEventType = "updated"
   const becameArchived = !existing?.isArchived && item.isArchived
+  if (lifecycleState === "archived") eventType = "archived"
+  else if (lifecycleState === "active" && existing?.isArchived) eventType = "restored"
+  else if (lifecycleState === "forgotten") eventType = "forgotten"
+  else if (lifecycleState === "cooling") eventType = "cooled"
+  else if (parsed.lastReaffirmedAt !== undefined) eventType = "reaffirmed"
+  else if (becameArchived) eventType = "archived"
+
   void emitMemoryEvent(repositories, {
     projectId: item.projectId,
     memoryItemId: item.id,
-    eventType: becameArchived ? "archived" : "updated",
+    eventType,
     sourceSurface: item.sourceSurface,
     userId,
     payload: {
       type: item.type,
       fieldsChanged: Object.keys(parsed),
+      lifecycleState: lifecycleState ?? null,
     },
   })
 

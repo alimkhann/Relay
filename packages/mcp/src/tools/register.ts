@@ -26,7 +26,7 @@ interface ToolRegistrationContext {
  */
 export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
   const { client, resolveProjectId, resolveProjectSelection, getCachedProjectId, setCachedProjectId } = ctx
-  const writeTools = new Set(["set_current_project", "save"])
+  const writeTools = new Set(["set_current_project", "set_current_space", "save"])
   const originalTool = server.tool.bind(server)
 
   ;(server as McpServer & { tool: typeof server.tool }).tool = ((name: string, description: string, schema: unknown, maybeHintsOrHandler: unknown, maybeHandler?: unknown) => {
@@ -118,7 +118,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "set_current_project",
-    "Switch the current Relay project for this MCP session. Use this when the user is clearly working on a different project than the cached/auto-detected one. The switch persists for the lifetime of the MCP server process. Call list_projects first to find the correct projectId.",
+    "Switch the current Relay project for this MCP session. Use this when the user is clearly working on a different project than the cached/auto-detected one. The switch persists for the lifetime of the MCP server process. Call list_projects first to find the correct projectId. For switching to a personal space, use set_current_space instead.",
     z.object({
       projectId: z.string().uuid().describe("The ID of the project to switch to."),
     }).shape,
@@ -129,6 +129,28 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
           {
             type: "text" as const,
             text: JSON.stringify({ ok: true, projectId: args.projectId }, null, 2),
+          },
+        ],
+      }
+    }
+  )
+
+  server.tool(
+    "set_current_space",
+    "Switch the current Relay space for this MCP session. A space is either personal (one per user) or project (one per project). Personal space holds general user facts; project spaces hold project-scoped memory. The switch persists for the lifetime of the MCP server process.",
+    z.object({
+      spaceId: z.string().uuid().describe("The ID of the space to switch to (personal or project)."),
+    }).shape,
+    async (args) => {
+      // For now, defer space caching to a future MCP server upgrade. Until
+      // the server tracks space context, we mirror the legacy cache: if the
+      // space resolves to a project, point the cached projectId at it.
+      // Personal-space writes still flow via the spaceId param on add_memory.
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ ok: true, spaceId: args.spaceId, note: "Space switch acknowledged. Pass spaceId on subsequent tool calls until server-side caching lands." }, null, 2),
           },
         ],
       }

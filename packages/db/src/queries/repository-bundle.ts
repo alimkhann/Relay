@@ -11,6 +11,10 @@ import { BillingWebhookRawDeliveryRepository } from "../repositories/billing-web
 import { BootstrapPacketRepository } from "../repositories/bootstrap-packet-repository"
 import { CanonEntryRepository } from "../repositories/canon-entry-repository"
 import { EntityRepository } from "../repositories/entity-repository"
+import { EntityRelationRepository } from "../repositories/entity-relation-repository"
+import { GraphRepository } from "../repositories/graph-repository"
+import { ObservationRepository } from "../repositories/observation-repository"
+import { SpaceRepository } from "../repositories/space-repository"
 import { CanonEvidenceRepository } from "../repositories/canon-evidence-repository"
 import { ContextPacketRepository } from "../repositories/context-packet-repository"
 import { EventRepository } from "../repositories/event-repository"
@@ -93,6 +97,10 @@ export interface RepositoryBundle {
   workSessionEvents: WorkSessionEventRepository
   workSessionCheckpoints: WorkSessionCheckpointRepository
   entities: EntityRepository
+  entityRelations: EntityRelationRepository
+  graph: GraphRepository
+  observations: ObservationRepository
+  spaces: SpaceRepository
   assistantChats: AssistantChatRepository
   assistantMessages: AssistantMessageRepository
   assistantAttachments: AssistantAttachmentRepository
@@ -150,6 +158,10 @@ export function createRepositoryBundle(
     workSessionEvents: new WorkSessionEventRepository(provider),
     workSessionCheckpoints: new WorkSessionCheckpointRepository(provider),
     entities: new EntityRepository(provider),
+    entityRelations: new EntityRelationRepository(provider),
+    graph: new GraphRepository(provider),
+    observations: new ObservationRepository(provider),
+    spaces: new SpaceRepository(provider),
     assistantChats: new AssistantChatRepository(provider),
     assistantMessages: new AssistantMessageRepository(provider),
     assistantAttachments: new AssistantAttachmentRepository(provider),

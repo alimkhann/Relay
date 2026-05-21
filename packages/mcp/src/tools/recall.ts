@@ -12,18 +12,27 @@ import { searchContext } from "./search-context.js"
 
 export const recallSchema = z.object({
   projectId: z.string().optional().describe("Project ID. Auto-detected if not provided."),
-  query: z.string().optional().describe("Search query — triggers hybrid search across memory items and canon entries."),
+  spaceId: z.string().optional().describe("Space ID (personal or project). Overrides projectId when provided."),
+  query: z.string().optional().describe("Search query — triggers hybrid search across memory items, observations, and canon entries."),
   memoryId: z.string().optional().describe("Get a specific memory item by ID."),
   include: z
-    .array(z.enum(["state", "sessions", "activity", "briefs", "trace"]))
+    .array(z.enum(["state", "sessions", "activity", "briefs", "trace", "observations", "entities"]))
     .optional()
     .describe("Additional data to include in the response."),
+  includeArchived: z
+    .boolean()
+    .optional()
+    .describe("When true, archived items are included in search results (presented as visually distinct). Forgotten items are always excluded."),
   filters: z
     .object({
       types: z.array(z.string()).optional(),
       tags: z.array(z.string()).optional(),
       pinned: z.boolean().optional(),
       archived: z.boolean().optional(),
+      lifecycleStates: z
+        .array(z.enum(["active", "cooling", "archived"]))
+        .optional()
+        .describe("Filter by lifecycle state. Defaults to ['active'] when omitted."),
     })
     .optional()
     .describe("Filters for memory listing/search."),

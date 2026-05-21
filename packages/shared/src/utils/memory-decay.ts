@@ -5,6 +5,7 @@ export const DECAY_HALF_LIFE_DAYS: Record<string, number> = {
   note: 30,
   task: 21,
   artifact: 14,
+  observation: 45,
 }
 
 export const DEFAULT_HALF_LIFE_DAYS = 30

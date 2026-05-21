@@ -334,29 +334,43 @@ export function buildGraphLinks(
   const hubNodes = nodes.filter((n) => n.hub === "type-hub");
   const sourceNodes = nodes.filter((n) => n.kind === "source-file");
 
-  for (const hub of hubNodes) {
-    links.push({
-      source: ROOT_NODE_ID,
-      target: hub.id,
-      relationType: "extends",
-      confidence: 1,
-      fallback: true,
-      hubLink: "root-to-hub",
-    });
-    seen.add(linkKey(ROOT_NODE_ID, hub.id, "extends"));
+  // Memory v2: only emit the synthetic root → type-hub → item fallback when
+  // there are too few real edges (DB relations + similarity + source/entity
+  // links). Otherwise the hub-and-spoke "fake top-down" pattern dominates
+  // the rendering even when meaningful structure exists.
+  const REAL_EDGE_MIN = 8;
+  const realEdgeCount =
+    relations.length +
+    similarityEdges.length +
+    sourceMemoryLinks.length +
+    entityMemoryLinks.length;
+  const renderSyntheticHubs = realEdgeCount < REAL_EDGE_MIN;
 
-    for (const item of itemNodes) {
-      if (item.type === hub.type && !sourceLinkedMemoryIds.has(item.id) && !entityLinkedMemoryIds.has(item.id)) {
-        const key = linkKey(hub.id, item.id, "extends");
-        links.push({
-          source: hub.id,
-          target: item.id,
-          relationType: "extends",
-          confidence: 0.8,
-          fallback: true,
-          hubLink: "hub-to-item",
-        });
-        seen.add(key);
+  if (renderSyntheticHubs) {
+    for (const hub of hubNodes) {
+      links.push({
+        source: ROOT_NODE_ID,
+        target: hub.id,
+        relationType: "extends",
+        confidence: 1,
+        fallback: true,
+        hubLink: "root-to-hub",
+      });
+      seen.add(linkKey(ROOT_NODE_ID, hub.id, "extends"));
+
+      for (const item of itemNodes) {
+        if (item.type === hub.type && !sourceLinkedMemoryIds.has(item.id) && !entityLinkedMemoryIds.has(item.id)) {
+          const key = linkKey(hub.id, item.id, "extends");
+          links.push({
+            source: hub.id,
+            target: item.id,
+            relationType: "extends",
+            confidence: 0.8,
+            fallback: true,
+            hubLink: "hub-to-item",
+          });
+          seen.add(key);
+        }
       }
     }
   }

@@ -319,6 +319,16 @@ export type MemoryEventType =
   | "superseded"
   | "disputed"
   | "restored"
+  // Memory v2 lifecycle + hygiene events (see migration 0042 + 0046)
+  | "observation_created"
+  | "observation_expired"
+  | "entity_relation_created"
+  | "entity_relation_invalidated"
+  | "cooled"
+  | "restored_auto"
+  | "forgotten"
+  | "obsoleted"
+  | "decay_proposed"
 
 export interface MemoryEventRow {
   id: string

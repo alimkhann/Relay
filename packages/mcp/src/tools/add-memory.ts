@@ -3,6 +3,7 @@ import type { RelayClient } from "../client.js"
 
 export const addMemorySchema = z.object({
   projectId: z.string().optional().describe("Project ID. Auto-detected if not provided."),
+  spaceId: z.string().optional().describe("Space ID (personal or project). If omitted, falls back to projectId resolution."),
   type: z
     .enum(["note", "decision", "constraint", "requirement", "task", "artifact"])
     .describe("Memory item type"),
@@ -29,10 +30,19 @@ export async function addMemory(
   args: z.infer<typeof addMemorySchema>,
   resolvedProjectId: string
 ) {
+  // Personal-space writes use the space-scoped endpoint. Project writes
+  // continue to hit the legacy project endpoint so existing routing stays
+  // unaffected during the cutover.
+  const isPersonalSpace = Boolean(args.spaceId && !args.projectId)
+  const endpoint = isPersonalSpace
+    ? `/api/spaces/${args.spaceId}/memory`
+    : `/api/projects/${resolvedProjectId}/memory`
+
   const data = await client.post<CreateMemoryResponse>(
-    `/api/projects/${resolvedProjectId}/memory`,
+    endpoint,
     {
       projectId: resolvedProjectId,
+      spaceId: args.spaceId ?? null,
       type: args.type,
       content: args.content,
       title: args.title ?? null,
