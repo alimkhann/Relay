@@ -6,9 +6,10 @@ import { decryptTextIfNeeded, encryptTextIfConfigured } from "../utils/encrypted
 
 const SOURCE_COLS = `id, project_id, kind, status, display_name, original_file_name, mime_type, byte_size, storage_object_key, content_hash, source_uri, last_seen_hash, stale_reason, metadata, created_by, created_at, updated_at, archived_at`
 const VERSION_COLS = `id, source_id, project_id, status, storage_object_key, content_hash, byte_size, extracted_text_hash, extracted_text_bytes, chunk_count, token_estimate, metadata, error_message, created_by, created_at`
-const CHUNK_COLS = `id, source_id, version_id, project_id, chunk_index, content, token_estimate, locator, metadata, embedding, embedding_model, created_at`
+const CHUNK_COLS = `id, source_id, version_id, project_id, chunk_index, content, token_estimate, locator, metadata, embedding_model, created_at`
 const CANDIDATE_COLS = `id, project_id, source_id, version_id, chunk_id, memory_item_id, type, title, content, confidence, status, metadata, created_at, updated_at`
 const PAGE_COLS = `id, source_id, version_id, project_id, url, canonical_url, title, heading_path, content, content_hash, content_type, etag, last_modified, metadata, created_at, updated_at`
+const PAGE_SUMMARY_COLS = `id, source_id, version_id, project_id, url, canonical_url, title, heading_path, content_hash, content_type, etag, last_modified, metadata, created_at, updated_at`
 const INDEX_JOB_COLS = `id, source_id, project_id, status, kind, progress, pages_total, pages_indexed, error_message, metadata, created_by, created_at, updated_at, finished_at`
 const GLOBAL_SOURCE_COLS = `id, source_type, canonical_url, display_name, trust_score, metadata, created_at, updated_at`
 
@@ -563,7 +564,7 @@ export class SourceRepository {
     }
     params.push(options.limit ?? 100)
     const rows = await this.provider.query(
-      `select ${PAGE_COLS}
+      `select ${PAGE_SUMMARY_COLS}
        from source_pages
        where ${filters.join(" and ")}
        order by title nulls last, url asc
@@ -676,8 +677,8 @@ export class SourceRepository {
     if (options.queryEmbedding?.length) {
       params.push(JSON.stringify(options.queryEmbedding))
       const embeddingParam = params.length
-      vectorExpr = `case when embedding is not null then 1 - (embedding <=> $${embeddingParam}::vector) else 0 end`
-      matchFilter = `(lexical_score > 0 or ${vectorExpr} >= 0.45)`
+      vectorExpr = `case when c.embedding is not null then 1 - (c.embedding <=> $${embeddingParam}::vector) else 0 end`
+      matchFilter = "(lexical_score > 0 or vector_score >= 0.45)"
     }
 
     params.push(options.limit ?? 10)
@@ -697,9 +698,9 @@ export class SourceRepository {
            c.content,
            c.locator,
            c.metadata,
-           c.embedding,
            c.chunk_index,
            ts_rank_cd(c.search_vector, websearch_to_tsquery('english', $2)) as lexical_score,
+           ${vectorExpr} as vector_score,
            v.created_at as indexed_at
          from source_chunks c
          join project_sources s on s.id = c.source_id
@@ -707,7 +708,6 @@ export class SourceRepository {
        ),
        ranked as (
          select *,
-           ${vectorExpr} as vector_score,
            case
              when lower(source_title) = lower($2) then 0.2
              when lower(source_title) like '%' || lower($2) || '%' then 0.1
@@ -716,7 +716,22 @@ export class SourceRepository {
          from base
          where ${filters.join("\n           and ")}
        )
-       select *,
+       select
+         source_id,
+         source_kind,
+         source_title,
+         source_url,
+         source_metadata,
+         chunk_id,
+         version_id,
+         content,
+         locator,
+         metadata,
+         chunk_index,
+         lexical_score,
+         indexed_at,
+         vector_score,
+         title_boost,
          greatest(lexical_score, vector_score) + title_boost as score
        from ranked
        where ${matchFilter}

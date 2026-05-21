@@ -2,10 +2,10 @@ import type { CreateMemoryItemInput, MemoryItemRow, MemoryItemType, MemoryRelati
 
 import { toMemoryRelationRow, toMemoryRow } from "../mappers/memory-mapper"
 import type { DatabaseProvider } from "../store/provider"
-import { encryptTextIfConfigured } from "../utils/encrypted-text"
+import { decryptTextIfNeeded, encryptTextIfConfigured } from "../utils/encrypted-text"
 
-/** Columns to select for general memory queries — excludes the large `embedding` vector column */
-const MEMORY_COLS = `id, project_id, source_turn_id, type, title, content, pinned, is_archived, sort_order, tags, metadata, created_by, created_at, updated_at, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector, embedding_model, forget_after, last_reaffirmed_at`
+/** Columns to select for general memory queries — excludes large/internal index columns. */
+const MEMORY_COLS = `id, project_id, source_turn_id, type, title, content, pinned, is_archived, sort_order, tags, metadata, created_by, created_at, updated_at, source_surface, source_conversation_id, source_url, captured_at, derived_from, embedding_model, forget_after, last_reaffirmed_at`
 
 const compactionPenaltyExpr = (alias = "m") => `case ${alias}.metadata->>'compactionState'
   when 'covered_by_canon' then 0.45
@@ -31,6 +31,38 @@ export interface SemanticSearchResult extends MemoryItemRow {
 
 export class MemoryRepository {
   constructor(private readonly provider: DatabaseProvider) {}
+
+  async countByProject(projectId: string, options: { includeArchived?: boolean } = {}): Promise<number> {
+    const rows = await this.provider.query(
+      `select count(*)::int as count
+       from memory_items
+       where project_id = $1
+         and ($2::boolean or is_archived = false)`,
+      [projectId, options.includeArchived ?? false]
+    )
+
+    return Number((rows[0] as Record<string, unknown> | undefined)?.count ?? 0)
+  }
+
+  async listRoutingSamplesByProject(projectId: string, limit = 3): Promise<Array<{ title: string | null; content: string }>> {
+    const rows = await this.provider.query(
+      `select title, content
+       from memory_items
+       where project_id = $1
+         and is_archived = false
+       order by pinned desc, updated_at desc
+       limit $2`,
+      [projectId, limit]
+    )
+
+    return rows.map((row) => {
+      const record = row as Record<string, unknown>
+      return {
+        title: record.title ? String(record.title) : null,
+        content: decryptTextIfNeeded(String(record.content ?? "")),
+      }
+    })
+  }
 
   async getById(id: string): Promise<MemoryItemRow | null> {
     const rows = await this.provider.query(

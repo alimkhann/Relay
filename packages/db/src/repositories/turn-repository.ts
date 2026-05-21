@@ -5,12 +5,33 @@ import { toTurnRow } from "../mappers/session-mapper"
 import type { DatabaseProvider } from "../store/provider"
 import { encryptTextIfConfigured } from "../utils/encrypted-text"
 
+const TURN_TEXT_COLS = `id, session_id, role, turn_index, content, content_hash, metadata, created_at`
+
 export class TurnRepository {
   constructor(private readonly provider: DatabaseProvider) {}
 
+  async countBySessionIds(sessionIds: string[]): Promise<Map<string, number>> {
+    if (sessionIds.length === 0) return new Map()
+
+    const rows = await this.provider.query(
+      `select session_id, count(*)::int as turn_count
+       from source_turns
+       where session_id = ANY($1::uuid[])
+       group by session_id`,
+      [sessionIds]
+    )
+
+    const counts = new Map(sessionIds.map((sessionId) => [sessionId, 0]))
+    for (const row of rows) {
+      const record = row as Record<string, unknown>
+      counts.set(String(record.session_id), Number(record.turn_count ?? 0))
+    }
+    return counts
+  }
+
   async listBySession(sessionId: string): Promise<SourceTurnRow[]> {
     const rows = await this.provider.query(
-      `select *
+      `select ${TURN_TEXT_COLS}
        from source_turns
        where session_id = $1
        order by turn_index asc`,
@@ -26,13 +47,12 @@ export class TurnRepository {
     for (const turn of turns) {
       const content = normalizeText(turn.content)
       const encryptedContent = encryptTextIfConfigured(content)
-      const encryptedRawHtml = turn.rawHtml ? encryptTextIfConfigured(turn.rawHtml) : null
       const rows = await this.provider.query(
         `insert into source_turns (session_id, role, turn_index, content, content_hash, raw_html, metadata)
          values ($1, $2, $3, $4, $5, $6, '{}'::jsonb)
          on conflict (session_id, content_hash) do nothing
          returning *`,
-        [sessionId, turn.role, turn.turnIndex, encryptedContent, hashContent(content), encryptedRawHtml]
+        [sessionId, turn.role, turn.turnIndex, encryptedContent, hashContent(content), null]
       )
 
       if (rows[0]) {

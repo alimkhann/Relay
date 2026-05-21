@@ -64,9 +64,9 @@ export async function getProjectSummaries(repositories: RepositoryBundle, ownerI
 
   return Promise.all(
     projects.map(async (project) => {
-      const [memoryItems, sessions, projectState, conversationCount] = await Promise.all([
-        repositories.memory.listByProject(project.id),
-        repositories.sessions.listByProject(project.id, { includeArchived: false }),
+      const [memoryCount, memorySamples, projectState, conversationCount] = await Promise.all([
+        repositories.memory.countByProject(project.id),
+        repositories.memory.listRoutingSamplesByProject(project.id, 3),
         repositories.projectState.getByProject(project.id),
         repositories.sessions.countDistinctConversations(project.id, { includeArchived: false })
       ])
@@ -82,7 +82,7 @@ export async function getProjectSummaries(repositories: RepositoryBundle, ownerI
         ...(projectState?.constraints ?? []).slice(0, 3),
         ...(projectState?.openTasks ?? []).slice(0, 3),
         ...(projectState?.relevantTools ?? []).slice(0, 3),
-        ...memoryItems.slice(0, 3).flatMap((item) => [item.title, item.content.slice(0, 240)])
+        ...memorySamples.flatMap((item) => [item.title, item.content.slice(0, 240)])
       ])
 
       return {
@@ -91,10 +91,10 @@ export async function getProjectSummaries(repositories: RepositoryBundle, ownerI
         slug: project.slug,
         description: project.description,
         projectUrl: project.projectUrl,
-        memoryCount: memoryItems.length,
+        memoryCount,
         sessionCount: conversationCount,
         routingContext: {
-          hasMeaningfulContext: memoryItems.length > 0 || sessions.length > 0,
+          hasMeaningfulContext: memoryCount > 0 || conversationCount > 0,
           keywords: routingKeywords
         },
         updatedAt: project.updatedAt

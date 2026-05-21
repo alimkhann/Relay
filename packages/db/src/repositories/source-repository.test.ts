@@ -59,6 +59,21 @@ describe("SourceRepository external source helpers", () => {
     expect(calls[0]!.values).toContain(7)
   })
 
+  it("searches source chunks without returning stored embeddings", async () => {
+    const { provider, calls } = makeFakeProvider([])
+    const repo = new SourceRepository(provider)
+
+    await repo.searchChunks("project-1", {
+      query: "attention mechanisms",
+      queryEmbedding: [0.1, 0.2, 0.3],
+      limit: 7,
+    })
+
+    const sql = calls[0]!.text
+    expect(sql).toContain("embedding <=>")
+    expect(sql).not.toMatch(/c\.embedding\s*,/)
+  })
+
   it("greps ready source chunks with literal matching and citation joins", async () => {
     const { provider, calls } = makeFakeProvider([])
     const repo = new SourceRepository(provider)
@@ -153,6 +168,19 @@ describe("SourceRepository external source helpers", () => {
     expect(calls[0]!.text).toContain("on conflict (source_id, url)")
     expect(calls[0]!.values).toContain("https://example.com/docs/webhooks")
     expect(calls[0]!.values).toContain("hash-1")
+  })
+
+  it("lists source page metadata without returning page content", async () => {
+    const { provider, calls } = makeFakeProvider([])
+    const repo = new SourceRepository(provider)
+
+    await repo.listSourcePages("project-1", { sourceId: "source-1", limit: 25 })
+
+    const sql = calls[0]!.text
+    expect(sql).toContain("from source_pages")
+    expect(sql).toContain("content_hash")
+    expect(sql).not.toMatch(/select[\s\S]*\bcontent,/i)
+    expect(calls[0]!.values).toEqual(["project-1", "source-1", 25])
   })
 
   it("upserts global sources for project-shared public docs", async () => {
