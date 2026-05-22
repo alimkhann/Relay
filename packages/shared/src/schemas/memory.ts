@@ -62,4 +62,7 @@ export const updateMemoryItemSchema = z.object({
    * `content` and refuses the call without this flag.
    */
   confirm: z.boolean().optional()
-})
+}).refine(
+  (v) => v.lifecycleState !== "forgotten" || v.confirm === true,
+  { message: "Forgetting a memory requires confirm:true.", path: ["confirm"] },
+)

@@ -39,4 +39,11 @@ export interface UpdateMemoryItemInput {
   capturedAt?: string | null
   derivedFrom?: string[] | null
   forgetAfter?: string | null
+  // Memory v2 lifecycle controls — applied in the same UPDATE so a partial
+  // patch never clobbers unspecified columns and lifecycle changes are atomic.
+  lifecycleState?: "active" | "cooling" | "archived" | "forgotten"
+  validUntil?: string | null
+  lastReaffirmedAt?: string | null
+  /** When true, blanks `content` (used by the irreversible `forget` action). */
+  nullContent?: boolean
 }

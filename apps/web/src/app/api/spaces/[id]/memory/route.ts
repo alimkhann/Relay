@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 
-import { createRepositoryBundle } from "@relay/db"
+import { createRepositoryBundle, type RepositoryBundle } from "@relay/db"
 import { withApiAuth } from "@/server/http/api-route"
 import { resolveViewer, requireViewerScope } from "@/server/policies/viewer"
 import {
@@ -18,10 +18,10 @@ import { createMemoryItem } from "@/server/services/memory-service"
  */
 
 async function resolveSpaceForViewer(
+  repositories: RepositoryBundle,
   viewerUserId: string,
   spaceId: string,
 ): Promise<{ id: string; kind: "personal" | "project"; ownerId: string; projectId: string | null } | null> {
-  const repositories = createRepositoryBundle(viewerUserId)
   const rows = await repositories.provider.query(
     `SELECT s.id, s.kind, s.owner_id, s.project_id
      FROM spaces s
@@ -49,26 +49,17 @@ export const GET = withApiAuth(
       await consumeMcpReadQuota(viewer.userId)
     }
     const { id } = await params
-    const space = await resolveSpaceForViewer(viewer.userId, id)
+    const repositories = createRepositoryBundle(viewer.userId)
+    const space = await resolveSpaceForViewer(repositories, viewer.userId, id)
     if (!space) {
       return NextResponse.json({ error: "Space not found or not accessible." }, { status: 404 })
     }
 
-    const repositories = createRepositoryBundle(viewer.userId)
-    const rows = await repositories.provider.query(
-      `SELECT id, project_id, space_id, source_turn_id, type, title, content, pinned, is_archived,
-              sort_order, tags, metadata, created_by, created_at, updated_at, source_surface,
-              source_conversation_id, source_url, captured_at, derived_from, search_vector,
-              embedding_model, forget_after, last_reaffirmed_at, valid_from, valid_until,
-              expired_at, lifecycle_state
-       FROM memory_items
-       WHERE space_id = $1
-         AND lifecycle_state IN ('active','cooling')
-       ORDER BY pinned DESC, updated_at DESC
-       LIMIT 200`,
-      [id],
-    )
-    return NextResponse.json({ memory: rows })
+    const memory = await repositories.memory.listBySpace(id, {
+      lifecycleStates: ["active", "cooling"],
+      limit: 200,
+    })
+    return NextResponse.json({ memory })
   },
 )
 
@@ -82,7 +73,8 @@ export const POST = withApiAuth(
       await consumeExtensionMemoryWriteQuota(viewer.userId)
     }
     const { id } = await params
-    const space = await resolveSpaceForViewer(viewer.userId, id)
+    const repositories = createRepositoryBundle(viewer.userId)
+    const space = await resolveSpaceForViewer(repositories, viewer.userId, id)
     if (!space) {
       return NextResponse.json({ error: "Space not found or not accessible." }, { status: 404 })
     }

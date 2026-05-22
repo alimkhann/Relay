@@ -1,10 +1,14 @@
+// Single source of truth, mirrors the memory_half_lives seed in migration
+// 0046. The hygiene worker reads the DB table at runtime; this map is the
+// in-process fallback + drives the legacy write-path computeDecayScore. Keep
+// these in sync with 0046 (and the decay.ts doc comment).
 export const DECAY_HALF_LIFE_DAYS: Record<string, number> = {
-  requirement: 120,
-  decision: 90,
-  constraint: 60,
-  note: 30,
-  task: 21,
-  artifact: 14,
+  decision: 180,
+  constraint: 120,
+  requirement: 90,
+  note: 60,
+  task: 14,
+  artifact: 365,
   observation: 45,
 }
 

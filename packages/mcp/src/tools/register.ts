@@ -14,6 +14,9 @@ interface ToolRegistrationContext {
   resolveProjectSelection?: (explicitId?: string) => Promise<RelayProjectResolutionResult>
   getCachedProjectId: () => string | null
   setCachedProjectId: (projectId: string) => void
+  /** Memory v2: per-session space cache. Optional so existing callers/tests need no change. */
+  getCachedSpaceId?: () => string | null
+  setCachedSpaceId?: (spaceId: string) => void
 }
 
 /**
@@ -25,7 +28,7 @@ interface ToolRegistrationContext {
  * agents so the MCP prompt footprint stays low.
  */
 export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
-  const { client, resolveProjectId, resolveProjectSelection, getCachedProjectId, setCachedProjectId } = ctx
+  const { client, resolveProjectId, resolveProjectSelection, getCachedProjectId, setCachedProjectId, getCachedSpaceId, setCachedSpaceId } = ctx
   const writeTools = new Set(["set_current_project", "set_current_space", "save"])
   const originalTool = server.tool.bind(server)
 
@@ -142,15 +145,28 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
       spaceId: z.string().uuid().describe("The ID of the space to switch to (personal or project)."),
     }).shape,
     async (args) => {
-      // For now, defer space caching to a future MCP server upgrade. Until
-      // the server tracks space context, we mirror the legacy cache: if the
-      // space resolves to a project, point the cached projectId at it.
-      // Personal-space writes still flow via the spaceId param on add_memory.
+      // Persist the space for the lifetime of this MCP session. recall + save
+      // (add_memory) fall back to this when no explicit spaceId is passed.
+      if (!setCachedSpaceId) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                { ok: false, spaceId: args.spaceId, note: "This MCP server build does not support session space caching. Pass spaceId explicitly on each call." },
+                null,
+                2,
+              ),
+            },
+          ],
+        }
+      }
+      setCachedSpaceId(args.spaceId)
       return {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify({ ok: true, spaceId: args.spaceId, note: "Space switch acknowledged. Pass spaceId on subsequent tool calls until server-side caching lands." }, null, 2),
+            text: JSON.stringify({ ok: true, spaceId: args.spaceId }, null, 2),
           },
         ],
       }
@@ -207,6 +223,10 @@ If a query returns no useful memory, investigate locally and save only confirmed
 If returned context is stale, completed, contradicted, or superseded, clean it up with save action: "manage_memory" or correct project state with save action: "set_state".`,
     recallSchema.shape,
     async (args) => {
+      // Fall back to the session's cached space when none is passed explicitly.
+      if (!args.spaceId && getCachedSpaceId?.()) {
+        args.spaceId = getCachedSpaceId() ?? undefined
+      }
       const projectId = await resolveProjectId(args.projectId)
       const result = await recall(client, args, projectId)
       if (args.query) {
@@ -256,6 +276,14 @@ Pass action-specific fields in payload. Examples:
 Use manage_memory whenever get_brief or recall shows stale, completed, contradicted, or superseded context. Prefer archiving old facts over adding corrections that leave obsolete memory active.`,
     saveSchema.shape,
     async (args) => {
+      // add_memory falls back to the session's cached space when the payload
+      // omits an explicit spaceId — mirrors recall's behavior.
+      if (args.action === "add_memory" && getCachedSpaceId?.()) {
+        const payload = (args.payload ?? {}) as Record<string, unknown>
+        if (!payload.spaceId) {
+          args.payload = { ...payload, spaceId: getCachedSpaceId() }
+        }
+      }
       const projectId = await resolveProjectId(args.projectId)
       const recordMutation: Parameters<typeof save>[3] = async (pid, mutation) => {
         await client.recordSessionMutation(pid, mutation).catch(() => {})

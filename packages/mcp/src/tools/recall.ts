@@ -45,6 +45,12 @@ export async function recall(
   projectId: string,
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
   const sections: string[] = []
+  const include = args.include ?? []
+  const spaceId = args.spaceId
+  const wantObservations = include.includes("observations")
+  const wantEntities = include.includes("entities")
+  const lifecycleStates = args.filters?.lifecycleStates
+  const includeArchived = args.includeArchived
 
   if (args.memoryId) {
     const result = await getMemory(client, { memoryId: args.memoryId })
@@ -52,11 +58,33 @@ export async function recall(
   }
 
   if (args.query) {
-    const result = await recallContext(client, { query: args.query, projectId }, projectId)
+    const result = await recallContext(
+      client,
+      {
+        query: args.query,
+        projectId,
+        spaceId,
+        lifecycleStates,
+        includeArchived,
+        includeObservations: wantObservations,
+        includeEntities: wantEntities,
+      },
+      projectId,
+    )
     sections.push(extractText(result))
-  } else if (!args.memoryId && !args.include?.length && !args.tracePhrase) {
-    const result = await getProjectState(client, projectId)
-    sections.push(extractText(result))
+  } else if (!args.memoryId && !include.length && !args.tracePhrase) {
+    // No query: list the space's memory when space-scoped; otherwise the
+    // project-state snapshot.
+    if (spaceId) {
+      const result = await listMemory(client, { projectId, spaceId }, projectId)
+      sections.push(extractText(result))
+    } else {
+      const result = await getProjectState(client, projectId)
+      sections.push(extractText(result))
+    }
+  } else if (!args.query && (wantObservations || wantEntities)) {
+    // observations/entities are search-scoped channels — they need a query.
+    sections.push("Provide a `query` to retrieve observations/entities.")
   }
 
   if (args.filters && !args.query) {
@@ -64,6 +92,7 @@ export async function recall(
       client,
       {
         projectId,
+        spaceId,
         types: args.filters.types as ("note" | "decision" | "constraint" | "requirement" | "task" | "artifact")[],
         // listMemory accepts singular `tag`; pass the first if any provided
         tag: args.filters.tags?.[0],
@@ -78,13 +107,19 @@ export async function recall(
   if (args.query && args.filters) {
     const result = await searchContext(
       client,
-      { query: args.query, projectId, types: args.filters.types as ("note" | "decision" | "constraint" | "requirement" | "task" | "artifact")[], tags: args.filters.tags },
+      {
+        query: args.query,
+        projectId,
+        spaceId,
+        types: args.filters.types as ("note" | "decision" | "constraint" | "requirement" | "task" | "artifact")[],
+        tags: args.filters.tags,
+        lifecycleStates,
+        includeArchived,
+      },
       projectId,
     )
     sections.push(extractText(result))
   }
-
-  const include = args.include ?? []
 
   // Skip when args.query is set — recallContext already emits a project-state block
   if (include.includes("state") && !args.query) {

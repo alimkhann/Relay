@@ -28,10 +28,6 @@ import { DECAY_HALF_LIFE_DAYS } from "./memory-decay"
  */
 export const LIFECYCLE_HALF_LIFE_DAYS: Record<string, number> = DECAY_HALF_LIFE_DAYS
 
-/** Internal alias kept for the hygiene worker; not re-exported at the package root. */
-const _LIFECYCLE_HALF_LIFE_DAYS_INTERNAL: Record<string, number> = LIFECYCLE_HALF_LIFE_DAYS
-export { _LIFECYCLE_HALF_LIFE_DAYS_INTERNAL as LIFECYCLE_HALF_LIFE_DAYS_MAP }
-
 export const DECAY_COOL_THRESHOLD = 0.2
 /** Already exported by memory-decay.ts at the same numeric value; we use that as the source of truth in callers. */
 export const LIFECYCLE_DECAY_ARCHIVE_THRESHOLD = 0.05

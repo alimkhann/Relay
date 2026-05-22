@@ -5,7 +5,8 @@ export type LifecycleState = "active" | "cooling" | "archived" | "forgotten"
 const OBSERVATION_COLS = `id, space_id, source_episode_id, source_memory_item_id, content,
   subject_entity_id, predicate, object_entity_id, object_literal,
   valid_from, valid_until, expired_at, lifecycle_state, embedding_model,
-  confidence, metadata, created_at, enrichment_status, enrichment_version, enriched_at`
+  confidence, metadata, created_at, enrichment_status, enrichment_version, enriched_at,
+  (embedding is not null) as has_embedding`
 
 export interface ObservationRow {
   id: string
@@ -27,6 +28,8 @@ export interface ObservationRow {
   enrichmentStatus: "pending" | "running" | "done" | "failed"
   enrichmentVersion: number
   enrichedAt: string | null
+  /** True when the embedding vector is populated — lets the worker skip re-embed. */
+  hasEmbedding: boolean
 }
 
 export interface CreateObservationInput {
@@ -70,6 +73,7 @@ function toRow(row: Record<string, unknown>): ObservationRow {
     enrichmentStatus: String(row.enrichment_status ?? "pending") as ObservationRow["enrichmentStatus"],
     enrichmentVersion: Number(row.enrichment_version ?? 0),
     enrichedAt: row.enriched_at ? String(row.enriched_at) : null,
+    hasEmbedding: Boolean(row.has_embedding),
   }
 }
 
@@ -206,7 +210,10 @@ export class ObservationRepository {
   }
 
   /**
-   * Hybrid search: semantic (pgvector) + lexical (tsvector) with RRF.
+   * Hybrid search: semantic (pgvector) + lexical (tsvector) fused with
+   * Reciprocal Rank Fusion. RRF avoids mixing incomparable score scales
+   * (cosine [0,1] vs unbounded ts_rank) by ranking each channel independently
+   * and summing 1/(k + rank). `similarity` on the result is the RRF score.
    * Returns currently-valid active observations by default.
    */
   async hybridSearch(
@@ -222,40 +229,60 @@ export class ObservationRepository {
     const limit = Math.min(Math.max(options.limit ?? 20, 1), 100)
     const states = options.lifecycleStates ?? ["active"]
     const historicalFilter = options.includeHistorical ? "" : "AND valid_until IS NULL"
+    const RRF_K = 60
     const params: unknown[] = [spaceId, states, limit]
+
+    let semanticCte = ""
     let semanticUnion = ""
     if (queryEmbedding) {
       params.push(JSON.stringify(queryEmbedding))
+      const vecIdx = params.length
+      semanticCte = `,
+        semantic AS (
+          SELECT id, row_number() OVER (ORDER BY embedding <=> $${vecIdx}::vector) AS rank
+          FROM observations
+          WHERE space_id = $1
+            AND embedding IS NOT NULL
+            AND lifecycle_state = ANY($2::text[])
+            ${historicalFilter}
+          ORDER BY embedding <=> $${vecIdx}::vector
+          LIMIT $3 * 2
+        )`
       semanticUnion = `
         UNION ALL
-        SELECT ${OBSERVATION_COLS},
-               1 - (embedding <=> $${params.length}::vector) AS similarity,
-               'semantic' AS match_type
-        FROM observations
-        WHERE space_id = $1
-          AND embedding IS NOT NULL
-          AND lifecycle_state = ANY($2::text[])
-          ${historicalFilter}
-        ORDER BY embedding <=> $${params.length}::vector
-        LIMIT $3 * 2`
+        SELECT id, 1.0 / (${RRF_K} + rank) AS rrf, 'semantic' AS match_type FROM semantic`
     }
+
     params.push(queryText)
-    const lexicalIdx = params.length
+    const lexIdx = params.length
     const rows = await this.provider.query(
-      `WITH base AS (
-        SELECT ${OBSERVATION_COLS},
-               ts_rank(search_vector, plainto_tsquery('english', $${lexicalIdx})) AS similarity,
-               'lexical' AS match_type
+      `WITH lexical AS (
+        SELECT id, row_number() OVER (
+                 ORDER BY ts_rank(search_vector, plainto_tsquery('english', $${lexIdx})) DESC
+               ) AS rank
         FROM observations
         WHERE space_id = $1
-          AND search_vector @@ plainto_tsquery('english', $${lexicalIdx})
+          AND search_vector @@ plainto_tsquery('english', $${lexIdx})
           AND lifecycle_state = ANY($2::text[])
           ${historicalFilter}
+        ORDER BY ts_rank(search_vector, plainto_tsquery('english', $${lexIdx})) DESC
+        LIMIT $3 * 2
+      )${semanticCte},
+      ranked AS (
+        SELECT id, 1.0 / (${RRF_K} + rank) AS rrf, 'lexical' AS match_type FROM lexical
         ${semanticUnion}
+      ),
+      fused AS (
+        SELECT id AS fid,
+               SUM(rrf) AS score,
+               CASE WHEN bool_or(match_type = 'semantic') THEN 'semantic' ELSE 'lexical' END AS match_type
+        FROM ranked
+        GROUP BY id
       )
-      SELECT *
-      FROM base
-      ORDER BY similarity DESC
+      SELECT ${OBSERVATION_COLS}, f.score AS similarity, f.match_type
+      FROM observations
+      JOIN fused f ON f.fid = observations.id
+      ORDER BY f.score DESC
       LIMIT $3`,
       params,
     )

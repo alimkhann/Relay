@@ -57,6 +57,39 @@ export class EntityRepository {
     return toEntityRow(rows[0] as Record<string, unknown>)
   }
 
+  /**
+   * Space-scoped find-or-create. Used by the memory-pipeline worker, which
+   * operates per space (personal spaces have no backing project, so
+   * `findOrCreateByName` with a project id can't be used). Resolves the
+   * owning project_id from `spaces` (NULL for personal) so the legacy
+   * project-scoped readers keep working during the cutover.
+   *
+   * There is no `(space_id, lower(name))` unique index, so this does a
+   * SELECT-then-INSERT. The worker serializes per item via the enrichment
+   * claim guard, so the race window is negligible.
+   */
+  async findOrCreateBySpace(spaceId: string, name: string, kind = "unknown"): Promise<CanonicalEntityRow> {
+    const existing = await this.provider.query(
+      `SELECT * FROM canonical_entities
+       WHERE space_id = $1 AND lower(name) = lower($2) AND merged_into_id IS NULL
+       LIMIT 1`,
+      [spaceId, name],
+    )
+    if (existing.length > 0) {
+      return toEntityRow(existing[0] as Record<string, unknown>)
+    }
+    const rows = await this.provider.query(
+      `INSERT INTO canonical_entities (project_id, space_id, name, kind)
+       SELECT s.project_id, s.id, $2, $3 FROM spaces s WHERE s.id = $1
+       RETURNING *`,
+      [spaceId, name, kind],
+    )
+    if (rows.length === 0) {
+      throw new Error(`Space ${spaceId} not found when creating entity`)
+    }
+    return toEntityRow(rows[0] as Record<string, unknown>)
+  }
+
   async listByProject(projectId: string): Promise<CanonicalEntityRow[]> {
     const rows = await this.provider.query(
       `SELECT * FROM canonical_entities WHERE project_id = $1 AND merged_into_id IS NULL ORDER BY updated_at DESC LIMIT 200`,
@@ -65,13 +98,21 @@ export class EntityRepository {
     return rows.map((r) => toEntityRow(r as Record<string, unknown>))
   }
 
-  async addMention(memoryItemId: string, entityId: string, mentionText: string): Promise<EntityMentionRow> {
+  async addMention(
+    memoryItemId: string,
+    entityId: string,
+    mentionText: string,
+    spaceId?: string | null,
+  ): Promise<EntityMentionRow> {
+    // space_id is set when known (memory v2 worker path) so the row satisfies
+    // the space-scoped RLS policy. Legacy callers omit it; the dual-path RLS
+    // (migration 0048) authorizes those via the owning memory item's project.
     const rows = await this.provider.query(
-      `INSERT INTO entity_mentions (memory_item_id, entity_id, mention_text)
-       VALUES ($1, $2, $3)
+      `INSERT INTO entity_mentions (memory_item_id, entity_id, mention_text, space_id)
+       VALUES ($1, $2, $3, $4)
        ON CONFLICT (memory_item_id, entity_id) DO UPDATE SET mention_text = EXCLUDED.mention_text
        RETURNING *`,
-      [memoryItemId, entityId, mentionText],
+      [memoryItemId, entityId, mentionText, spaceId ?? null],
     )
     return toMentionRow(rows[0] as Record<string, unknown>)
   }

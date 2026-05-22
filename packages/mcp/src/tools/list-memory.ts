@@ -3,6 +3,7 @@ import type { RelayClient } from "../client.js"
 
 export const listMemorySchema = z.object({
   projectId: z.string().optional().describe("Project ID. Auto-detected if not provided."),
+  spaceId: z.string().optional().describe("Space ID (personal or project). Lists that space's memory instead of the project's."),
   archived: z.boolean().optional().describe("Include archived memory items."),
   pinned: z.boolean().optional().describe("Filter by pinned status."),
   tag: z.string().optional().describe("Filter by a specific tag."),
@@ -27,9 +28,14 @@ export async function listMemory(
   }
 
   const suffix = params.toString()
+  // Personal/project space listing routes through the space endpoint; project
+  // listing keeps the legacy project endpoint.
+  const base = args.spaceId
+    ? `/api/spaces/${args.spaceId}/memory`
+    : `/api/projects/${resolvedProjectId}/memory`
   try {
     const data = await client.get<{ memory: unknown[] }>(
-      `/api/projects/${resolvedProjectId}/memory${suffix ? `?${suffix}` : ""}`
+      `${base}${suffix ? `?${suffix}` : ""}`
     )
 
     return {
@@ -41,6 +47,13 @@ export async function listMemory(
       console.warn(
         `[relay-mcp] list_memory primary path failed, falling back to dashboard: ${message}`,
       )
+    }
+    // The dashboard fallback is project-only; for space listing surface the
+    // error rather than returning unrelated project items.
+    if (args.spaceId) {
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify([], null, 2) }],
+      }
     }
     const dashboard = await client.get<{
       dashboard?: {

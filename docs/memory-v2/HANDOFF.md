@@ -18,6 +18,7 @@
 | `0045_integration_surfaces.sql` | `ALTER TYPE platform_type ADD VALUE` for gmail / slack / github / linear / calendar / telegram / whatsapp. Schema-ready only — no adapters yet. |
 | `0046_memory_hygiene.sql` | `enrichment_status` + `enrichment_version` + `enrichment_error` + `enriched_at` on `memory_items` + `observations`. Backfills the 604 existing rows to `done`/`v1` so the worker won't re-extract. New `memory_half_lives` lookup table seeded with type→days. |
 | `0047_nullable_project_id.sql` | Drops `NOT NULL` on `project_id` for the 6 affected tables + adds `*_scope_check` CHECK ensuring space_id OR project_id is set. Required for personal-space writes (personal spaces have no backing project). |
+| `0048_post_review_fixes.sql` | **Post-review.** Recreates the HNSW indexes on `observations.embedding` + `memory_items.embedding` as **partial** (`WHERE embedding IS NOT NULL`) so they don't walk un-embedded rows. Relaxes `entity_mentions` RLS to **dual-path** (space-OR-project via the owning memory item) so legacy writers that don't set `space_id` aren't silently blocked. |
 
 Applied + verified on the dev branch. Verification snapshot:
 
@@ -36,6 +37,16 @@ Applied + verified on the dev branch. Verification snapshot:
 | Trigger sanity | `lifecycle_state` ↔ `is_archived` round-trips clean |
 | Personal-space write with NULL `project_id` | works |
 
+**Post-review verification (this branch):**
+
+| Check | Result |
+|---|---|
+| `pnpm -r typecheck` | clean across all 12 workspaces |
+| `pnpm test:stable` | 75 passed |
+| New unit tests (`decay`, SVO conflict, worker `processItem`, `hygiene`, recall wiring) | 85 passed (`npx vitest run packages/shared/src/utils/decay.test.ts packages/shared/src/utils/merge-governed.test.ts packages/workers/memory-pipeline/src/*.test.ts packages/mcp/src/tools/recall-context.test.ts packages/mcp/src/tools/tools.test.ts packages/mcp/src/tools/register.test.ts`) |
+| Migration `0048` | **applied + verified on the dev branch** — partial HNSW indexes confirmed (`WHERE (embedding IS NOT NULL)`); `entity_mentions` dual-path read/write policies confirmed |
+| RLS enforcement audit | prod app role `neondb_owner` is `bypassrls=true`, owns all tables, **0 tables FORCE RLS** → RLS does **not** bind the prod first-party connection (see Risks) |
+
 ### Code
 
 **New packages / dirs:**
@@ -52,7 +63,7 @@ Applied + verified on the dev branch. Verification snapshot:
 - `set_current_space` tool added; `set_current_project` kept as a shim (the user's global CLAUDE.md still references it).
 - `manage_memory` action enum: `update | delete | archive | restore | forget | mark_obsolete | reaffirm`. `forget` requires `confirm: true`.
 - `add_memory` accepts optional `spaceId`. Personal-space writes route to `/api/spaces/[id]/memory`.
-- `recall` accepts optional `spaceId`, `includeArchived`, `filters.lifecycleStates`.
+- `recall` is **fully wired** (second review pass): `spaceId` routes the query/list/search sub-tools to the space endpoints; `includeArchived` + `filters.lifecycleStates` flow to the server filter; `include:[observations,entities]` returns the observation hybrid-search hits + entity-graph snapshot. `recall-context`/`search-context`/`list-memory` all take `spaceId` + lifecycle params now (not just the schema).
 
 **Web service path** (`apps/web/src/server/services/memory-service.ts`):
 
@@ -76,15 +87,69 @@ Applied + verified on the dev branch. Verification snapshot:
 - `MemoryEventType` extended with all v2 event types.
 - `CreateMemoryItemInput.projectId` now nullable, `.spaceId` added.
 
-## What's deferred (next PR)
+## Post-review fixes (applied in this PR)
 
-| Area | Why deferred | Where to land |
+Review of the first cut surfaced 6 high / 9 medium / 6 low issues + missing test
+coverage. All addressed on this branch:
+
+| # | Fix | Where |
 |---|---|---|
-| Extension space picker UI + auto-route to personal | Extension capture flow is tightly coupled; needs a sidepanel UI pass to expose a "Personal" target alongside the project picker. MCP path already supports personal capture from Claude Code, Cursor, etc. — so personal memory is reachable today via agents, just not the extension. | `apps/extension/src/components/control-panel.tsx`, `apps/extension/src/background/index.ts` around line 4060. |
-| Agent chat hygiene hints | UI integration in `components/assistant/chat-view.tsx`. MCP `recall` already returns `lifecycleState`, so the assistant can be prompted to surface stale items today. | `apps/web/src/components/assistant/chat-view.tsx`, `chat-message.tsx`. |
-| Archived view: restore button + "Recently resurfaced" tile | Existing memory page has an archived tab; lifecycle-state UX (restore + auto-resurrect explainer) hasn't been bolted on yet. | `apps/web/src/features/memory/*` archived tab + dashboard tile component. |
-| Decay multiplier wired into recall ranking | Pure function ready in `decay.ts`; needs hook in the search-path fusion. | `apps/web/src/server/services/memory-service.ts` `searchProjectMemory` and the MCP recall context fusion. |
-| Worker full extraction (entities + observations via Gemini) | Cron route currently embeds + sweeps hygiene only. Entity/observation extractor prompts are TBD — design pass + cost gating before flipping `RELAY_MEMORY_PIPELINE_FULL=true`. | `apps/web/src/server/services/entity-extraction-service.ts` (extend or new). Wire callbacks in `/api/cron/memory-pipeline/route.ts`. |
+| A1 | Cron route now **fails closed in production** when `CRON_SECRET` is unset (warns in dev). | `apps/web/src/app/api/cron/memory-pipeline/route.ts` |
+| A2 | Removed the no-op `extractEntities/extractObservations` ternary; worker is honestly embed-only until the extractor PR. | same route |
+| A3 | Worker entity creation uses new `EntityRepository.findOrCreateBySpace` (personal items have NULL `project_id`). | `packages/db/.../entity-repository.ts`, worker `index.ts` |
+| A4 | Hygiene no longer coerces NULL `project_id` to the string `"null"`; `memory_events.project_id` is real NULL for personal-space rows. | `packages/workers/memory-pipeline/src/hygiene.ts` |
+| A5 | `observation_expired` audit rows carry the real superseding observation id (was `"(pending)"`). | worker `index.ts` |
+| A6 | `GET /api/spaces/[id]/memory` returns typed `MemoryItemRow[]` via new `MemoryRepository.listBySpace` — no raw `search_vector`/snake_case leak. | spaces route, `memory-repository.ts` |
+| A7 | `updateMemoryItem` is one atomic `UPDATE` (legacy + v2 lifecycle columns); forget also blanks `search_vector`. | `memory-service.ts`, `memory-repository.ts` |
+| A8 | Lifecycle + reaffirm now emit **separate** events (no single-pick ladder dropping a signal). | `memory-service.ts` |
+| A9 | `updateMemoryItemSchema` enforces `confirm:true` when `lifecycleState="forgotten"` at the schema boundary. | `packages/shared/src/schemas/memory.ts` |
+| A10 | HNSW indexes made partial (migration 0048). | `0048_post_review_fixes.sql` |
+| A12 | `observation.hybridSearch` implements **true RRF** (k=60) instead of mixing cosine + ts_rank scales. | `observation-repository.ts` |
+| A13 | MCP `manage_memory` bulk verbs run concurrently (`Promise.allSettled`). Also fixed "Failed to **deleted**" → "Failed to **delete**" grammar. | `packages/mcp/src/tools/manage-memory.ts` |
+| A14 | `set_current_space` now actually caches per-session; `recall` + `save(add_memory)` fall back to it. | `register.ts`, `server.ts` |
+| A15 | Relations route folds the observations count + recent-25 into one CTE query. | relations route |
+| A16 | Removed the duplicate `LIFECYCLE_HALF_LIFE_DAYS` alias export. | `decay.ts`, hygiene |
+| A17 | `listAllSpaceIds` is bounded (`ORDER BY updated_at DESC LIMIT 500`). | hygiene |
+| A18 | `entity_mentions` RLS is dual-path (migration 0048). | `0048_post_review_fixes.sql` |
+| A19 | Spaces route reuses one repository bundle per request. | spaces route |
+| A20 | `ObservationRow.hasEmbedding` exposed so the worker can skip re-embeds. | `observation-repository.ts` |
+| A21 | `processItem` claim is atomic (`WHERE enrichment_status IN ('pending','failed') RETURNING id`); double-claim returns `skipped`. | worker `index.ts` |
+| A22 | New unit tests (see verification). | `decay.test.ts`, `merge-governed.test.ts`, worker `index.test.ts` + `hygiene.test.ts` |
+
+**Known dormant item (deferred to the extractor PR):** `MemoryItemRow.projectId`
+is typed `string` but the DB column is nullable post-0047; the mapper still
+coerces a NULL `project_id` to the literal string `"null"`. This path is only
+reached when the worker's entity/observation **extractors** run, which are not
+wired in this PR (embed-only). It will be fixed when follow-up PR #4 exercises
+the path. `spaceId` was added to `MemoryItemRow` (optional) + `MEMORY_COLS` so
+the worker can resolve a usable scope today.
+
+## Second review pass (recall wiring + correctness)
+
+A second review of the post-review branch found the `recall` surface advertised
+params it never honored, plus two correctness gaps. All fixed in commit `8f4fc92`:
+
+| # | Fix | Where |
+|---|---|---|
+| B1 | **`recall` fully wired** (was: schema-only). `searchMemoryItems` + `memory-repository.search`/`hybridSearch` take `spaceId` / `lifecycleStates` / `includeArchived` (default active+cooling, never `forgotten`). New `getSpaceContext` powers `include:[observations,entities]` (reuses `ObservationRepository.hybridSearch` + `GraphRepository.getSpaceGraphSnapshot`). New `GET /api/spaces/[id]/memory/search`; project search route gains the same lifecycle + channel params. MCP `recall`/`recall-context`/`search-context`/`list-memory` route by `spaceId`. | `memory-service.ts`, `memory-repository.ts`, both search routes, 4 MCP tools |
+| B2 | **Half-lives single source of truth.** `memory-decay.ts` `DECAY_HALF_LIFE_DAYS` now matches the `0046` `memory_half_lives` seed (was a third, disagreeing set). Shifts legacy `computeDecayScore` to the longer half-lives — intended. | `packages/shared/src/utils/memory-decay.ts` |
+| B3 | **Stale `entity_relation` superseded on SVO object change.** `EntityRelationRepository.invalidateCurrentForSubjectPredicate` closes the prior current edge (different target dodges the partial-unique index) before the worker upserts the new one — one current edge per `(subject, predicate)`. | `entity-relation-repository.ts`, worker `index.ts` |
+| B4 | **RLS enforcement verified, not a worker blocker.** Audited the prod role: `neondb_owner` has `bypassrls=true` + owns the tables + no FORCE RLS, so the worker's no-viewer writes succeed in prod. No worker scoping change needed. (Security caveat in Risks.) | n/a (verification) |
+
+New tests: `packages/mcp/src/tools/recall-context.test.ts` (space routing + channels)
+and a B3 case in worker `index.test.ts` (SVO object-change supersession).
+
+## What's deferred — follow-up PR roadmap
+
+Four separate PRs, each branched from updated `main`. Only **production cutover**
+remains outside these.
+
+| PR | Scope | Key files |
+|---|---|---|
+| #1 Extension space picker | New `GET /api/spaces`; extension two-level picker (Personal + projects); personal capture routes to `/api/spaces/[id]/memory`. | `apps/extension/src/components/control-panel.tsx` (~2570), `apps/extension/src/background/index.ts` (~120 state, ~4118 write) |
+| #2 Agent chat hygiene hints + command parser | Render `cooling`/`archived` pills on recall hits; new `command-parser.ts` for `/reaffirm`, `/forget`, `/obsolete`, `/archive`, `/restore` (forget confirms first). | `apps/web/src/components/assistant/action-result-card.tsx`, `use-assistant-chat.ts`, `packages/shared/src/utils/assistant-chat-path.ts` |
+| #3 Decay into recall ranking | Scope + lifecycle filtering already wired (B1). Remaining: multiply final scores by `computeDecayMultiplier`; load `memory_half_lives` once/req (60s cache); same in MCP fusion. | `apps/web/src/server/services/memory-service.ts` (`searchMemoryItems`), `packages/mcp/src/tools/recall-context.ts`, `search-context.ts`, `bootstrap-service.ts` (~380) |
+| #4 Worker full extraction (Gemini) | New `memory-pipeline-providers.ts` with `buildEntityExtractor`/`buildObservationExtractor` via `runGeminiJsonWithFallback`; cost gate via `ai-budget-service.ts` (`RELAY_PIPELINE_DAILY_USD_CAP`, default `$5`); wire behind `RELAY_MEMORY_PIPELINE_FULL=true`. Also fixes the dormant `projectId` NULL→"null" mapper item above. | `apps/web/src/server/services/memory-pipeline-providers.ts` (new), `entity-extraction-service.ts`, cron route |
 
 ## How to review + test on the dev branch
 
@@ -117,12 +182,57 @@ Applied + verified on the dev branch. Verification snapshot:
    Returns `{ tick: { processed: 0, ... }, hygiene: { spacesProcessed: 115, ... } }` because no pending rows + dry-run hygiene by default.
 8. **(Optional) Try the SQL verification snippets in `/docs/memory-v2/VERIFICATION.sql`** for hand-checks.
 
+### Post-review test steps (this branch)
+
+9. **Migration 0048 is already applied to the dev branch** (idempotent DDL run
+   directly + verified). Partial HNSW indexes (`WHERE (embedding IS NOT NULL)`)
+   on `observations.embedding` + `memory_items.embedding`, and the dual-path
+   `entity_mentions` read/write policies are confirmed present. The repo
+   migration runner will re-apply it harmlessly on the next `migrate` (every
+   statement is `if exists`/`if not exists`).
+10. **Cron auth fail-closed.** With `NODE_ENV=production` and no `CRON_SECRET`,
+    `curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/cron/memory-pipeline`
+    returns `401`. In dev (no secret) it returns `200` and logs a warning.
+11. **Personal-space hygiene.** Insert a personal-space `memory_item` with
+    `last_reaffirmed_at` ~200 days ago, run the cron with
+    `RELAY_HYGIENE_DRY_RUN=false`, and confirm the emitted `memory_events` row
+    has `project_id IS NULL` (not the string `"null"`).
+12. **Forget schema gate.** `save({ action: "manage_memory", payload: { action: "update", memoryId: "<id>", lifecycleState: "forgotten" } })` without `confirm` → 400 at the route boundary.
+13. **Space cache.** `set_current_space({ spaceId })` then `save({ action: "add_memory", payload: { type: "note", content: "x" } })` (no `spaceId`) → row lands in the cached space.
+14. **Unit tests.** `pnpm test:stable` (75) and the new files (50) both green.
+
 ## Risks (open)
 
-- **Worker entity/observation extraction is stubbed.** Until the Gemini prompts + cost gates land, the new `observations` and `entity_relations` tables stay empty. Old `postCreateHook` still runs inline so legacy entity_mentions + embeddings keep working — no regression vs prod today.
-- **Extension capture still hits `/api/projects/[id]/memory` only.** Personal memory captured via extension would 404 if forced to the new endpoint — that's why the extension path is unchanged in this PR.
-- **Dual-path RLS on `canonical_entities` / `entity_mentions` is permissive by design.** A row with non-null `project_id` AND non-null `space_id` authorizes if EITHER predicate passes. Once one stable week confirms nothing reads `project_members` directly anymore, drop the legacy path in a follow-up migration.
-- **`forgetting` policy is irreversible after content null.** The MCP `forget` action requires `confirm: true`, but downstream callers (extension, dashboard quick actions) must enforce the same in their UI.
+- **RLS is non-enforcing for the prod first-party connection.** Prod `DATABASE_URL` connects as `neondb_owner`, which has `rolbypassrls=true`, owns every table, and no table has `FORCE ROW LEVEL SECURITY`. So all the `is_project_member` / `is_space_member` / dual-path policies provide **zero runtime enforcement** in prod — they are decorative for the app's own connection. Local dev (`relay` role) is non-owner, so RLS binds there. This is broader than Memory v2 (predates it) but was surfaced by the v2 review. Decide intentionally: either run the app under a least-privilege non-owner role (then RLS actually protects), or accept that isolation is enforced only in app code + accept the policies as defense-in-depth for any future restricted role. **Not blocking the worker** (writes succeed precisely because of this), but worth a deliberate call.
+- **Worker entity/observation extraction is not wired (embed-only).** The cron embeds new rows + sweeps decay; it does **not** populate `observations` / `entity_relations` yet (follow-up PR #4). Old `postCreateHook` still runs inline so legacy entity_mentions + embeddings keep working — no regression vs prod today.
+- **Dual-path RLS on `canonical_entities` / `entity_mentions` is permissive by design.** A row authorizes if EITHER the space or the project predicate passes. Once one stable week confirms nothing reads `project_members` directly anymore, drop the legacy path in a follow-up migration.
+- **`forgetting` is irreversible after content null.** Enforced (`confirm:true`) at both the MCP tool and the Zod schema now. Any future UI caller (extension, dashboard quick actions) must still confirm before calling.
+- **Dormant `projectId` mapper coercion.** `toMemoryRow` maps a NULL `project_id` to the string `"null"` (type says `string`). Only reached by the worker extractor path, which is off in this PR. Fixed in follow-up PR #4.
+- **Harmless residue in 0040.** `spaces_personal_unique_per_owner` is created and immediately dropped in the same migration (replaced by a partial unique index). Already applied to the dev branch; left as-is for migration-history integrity.
+- **0048 is applied on the dev branch (resolved there).** The legacy async `entity_mentions` INSERT in `entity-extraction-service.ts:19` doesn't set `space_id`; 0044's space-only write policy would have blocked it, but 0048's dual-path policy authorizes via the owning project. Applied + verified on dev. **Still must be applied to prod** as part of cutover (it's in the `0040`–`0048` set). Note: moot on prod anyway while the app connects as the bypassrls owner (see the RLS risk above) — but required the moment the app moves to a restricted role.
+
+## Merging with `main` (the branch is behind by the Neon-cost work)
+
+`feat/memory-v2-architecture` branched from `9d4ac22`; `main` has since added
+three caching/egress commits (`71d31db`, `ff482cd`, `6a81721`) not in this
+branch. Two files overlap and will need manual reconciliation on merge:
+
+- **`packages/db/src/repositories/memory-repository.ts`** — `main` dropped
+  `search_vector` from `MEMORY_COLS`; this branch added `space_id` to the same
+  line. Keep both edits (add `space_id`, drop `search_vector`). `main` also
+  added `countByProject` + `listRoutingSamplesByProject`; this branch added
+  `listBySpace` + v2 columns in `update`. They don't overlap textually beyond
+  the `MEMORY_COLS` line.
+- **`apps/web/src/server/services/memory-service.ts`** — `main` added
+  `invalidateProjectCache(userId, projectId)` calls in `createMemoryItem`,
+  `createMemoryItemBatch`, `updateMemoryItem`, and `deleteMemoryItem` (imports
+  from `@/server/cache/invalidation`, which is new in `main`). After merge,
+  re-add those four cache-invalidation calls — `updateMemoryItem` was
+  restructured here (atomic update + split events), so place the call after the
+  event emits, before `return item`.
+
+Everything else this PR touches (worker, observation/entity/space repos,
+migrations, MCP tools, schemas, decay) is untouched by `main` → conflict-free.
 
 ## Production cutover (when ready)
 
@@ -136,11 +246,21 @@ Migrations are additive; rollback is `-- DOWN` SQL in each file. Recommended seq
 
 1. Snapshot prod, or rely on Neon point-in-time recovery (history_retention_seconds=21600 on this project — 6h).
 2. Maintenance window: ~5–10 min (the largest backfill is `memory_items.space_id` over 604 rows on this branch; prod will be larger).
-3. Apply migrations.
+3. Apply migrations (now `0040`–`0048`).
 4. Deploy code from `feat/memory-v2-architecture` (or merged main).
-5. Hold off enabling `RELAY_MEMORY_PIPELINE_FULL` until the extractors are designed.
-6. Monitor `memory_events` for `cooled` / `restored_auto` activity from the hygiene tick.
-7. Decay multiplier hooks land in the next PR — until then recall behaviour is identical to today's.
+5. Set **`CRON_SECRET`** before the first cron tick (the route fails closed in production without it).
+6. Hold off enabling `RELAY_MEMORY_PIPELINE_FULL` until the extractors land (follow-up PR #4).
+7. Monitor `memory_events` for `cooled` / `restored_auto` activity from the hygiene tick.
+8. Decay multiplier hooks land in follow-up PR #3 — until then recall behaviour is identical to today's.
+
+### Environment variables
+
+| Var | Default | Effect |
+|---|---|---|
+| `CRON_SECRET` | unset | Required in production — `/api/cron/memory-pipeline` returns 401 without a matching `Authorization: Bearer <secret>`. Unset is allowed only in non-production (logs a warning). |
+| `RELAY_HYGIENE_DRY_RUN` | `true` | When `true`, the hygiene sweep logs proposed transitions without writing. Flip to `false` after a week of clean dry-run logs. |
+| `RELAY_MEMORY_PIPELINE_FULL` | `false` | Reserved. No effect until follow-up PR #4 wires the Gemini extractors. |
+| `RELAY_PIPELINE_DAILY_USD_CAP` | `5` (PR #4) | Daily Gemini spend cap for the extractor; circuit-breaker, not a usage ration. Watch `ai_budget` for 24h after enabling, then consider `1`. |
 
 ## Files touched (top-level summary)
 
@@ -153,6 +273,9 @@ packages/db/neon/migrations/0044_space_id_backfill.sql                        (n
 packages/db/neon/migrations/0045_integration_surfaces.sql                     (new)
 packages/db/neon/migrations/0046_memory_hygiene.sql                           (new)
 packages/db/neon/migrations/0047_nullable_project_id.sql                      (new)
+packages/db/neon/migrations/0048_post_review_fixes.sql                        (new: partial HNSW + entity_mentions dual-path RLS)
+packages/db/src/mappers/memory-mapper.ts                                      (modified: spaceId mapped)
+packages/db/src/repositories/entity-repository.ts                            (modified: findOrCreateBySpace + addMention spaceId)
 packages/db/src/repositories/space-repository.ts                              (new)
 packages/db/src/repositories/observation-repository.ts                        (new)
 packages/db/src/repositories/entity-relation-repository.ts                    (new)

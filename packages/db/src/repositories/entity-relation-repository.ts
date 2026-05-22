@@ -124,6 +124,36 @@ export class EntityRelationRepository {
     )
   }
 
+  /**
+   * Close every current edge that shares (space, source, relation_type) but
+   * points at a different target. Used when an SVO's object changes: the new
+   * `source → newTarget` edge from `upsertCurrent` does not collide with the
+   * old `source → oldTarget` edge (different target dodges the partial-unique
+   * index), so without this the old edge stays current forever.
+   * Returns the number of edges superseded.
+   */
+  async invalidateCurrentForSubjectPredicate(
+    spaceId: string,
+    sourceEntityId: string,
+    relationType: string,
+    exceptTargetId: string,
+    at: Date | string = new Date(),
+    nextLifecycle: LifecycleState = "cooling",
+  ): Promise<number> {
+    const rows = await this.provider.query(
+      `UPDATE entity_relations
+       SET valid_until = $5, lifecycle_state = $6
+       WHERE space_id = $1
+         AND source_entity_id = $2
+         AND relation_type = $3
+         AND target_entity_id <> $4
+         AND valid_until IS NULL
+       RETURNING id`,
+      [spaceId, sourceEntityId, relationType, exceptTargetId, at, nextLifecycle],
+    )
+    return rows.length
+  }
+
   async listBySpace(
     spaceId: string,
     options: { includeHistorical?: boolean; limit?: number } = {},

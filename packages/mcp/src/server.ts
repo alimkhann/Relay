@@ -26,6 +26,9 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
 
   // Cache for resolved project ID
   let cachedProjectId: string | null = config.projectId ?? null
+  // Memory v2: per-session cached space (personal or project). Set via
+  // set_current_space; recall + save(add_memory) fall back to it.
+  let cachedSpaceId: string | null = null
   let projectDetectionAttemptedAt = 0
   let lastDetectionCwd: string | null = null
   let explicitSwitch = false
@@ -113,6 +116,10 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
       explicitSwitch = true
       lastDetectionCwd = process.cwd()
       projectDetectionAttemptedAt = Date.now()
+    },
+    getCachedSpaceId: () => cachedSpaceId,
+    setCachedSpaceId: (spaceId: string) => {
+      cachedSpaceId = spaceId
     },
   })
 

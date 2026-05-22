@@ -6,9 +6,12 @@ import {
   hasCompletionSignal,
   isSameTopic,
   isLikelySameTopic,
+  isSvoConflict,
   mergeGovernedList,
+  resolveObservationConflict,
   TOPIC_MATCH_THRESHOLD,
   TOPIC_GREY_ZONE_MIN,
+  type ObservationForConflictResolution,
 } from "./merge-governed"
 
 describe("mergeGovernedList", () => {
@@ -191,5 +194,83 @@ describe("truth-weighted memory conflict resolution", () => {
     })
 
     expect(pinned).toBeGreaterThan(plain)
+  })
+})
+
+describe("isSvoConflict", () => {
+  function obs(overrides: Partial<ObservationForConflictResolution> = {}): ObservationForConflictResolution {
+    return {
+      id: "o1",
+      content: "Alim works at Relay",
+      capturedAt: "2026-01-01T00:00:00.000Z",
+      type: "observation",
+      subjectEntityId: "e-alim",
+      predicate: "works_at",
+      objectEntityId: "e-relay",
+      objectLiteral: null,
+      ...overrides,
+    }
+  }
+
+  it("flags same subject+predicate with a different object entity", () => {
+    expect(isSvoConflict(obs(), obs({ id: "o2", objectEntityId: "e-acme" }))).toBe(true)
+  })
+
+  it("treats the predicate match as case-insensitive", () => {
+    expect(
+      isSvoConflict(obs({ predicate: "Works_At" }), obs({ id: "o2", predicate: "works_at", objectEntityId: "e-acme" })),
+    ).toBe(true)
+  })
+
+  it("is not a conflict when the object is identical", () => {
+    expect(isSvoConflict(obs(), obs({ id: "o2" }))).toBe(false)
+  })
+
+  it("is not a conflict when subject differs", () => {
+    expect(isSvoConflict(obs(), obs({ id: "o2", subjectEntityId: "e-other", objectEntityId: "e-acme" }))).toBe(false)
+  })
+
+  it("is not a conflict when either side lacks subject or predicate", () => {
+    expect(isSvoConflict(obs({ predicate: null }), obs({ id: "o2", objectEntityId: "e-acme" }))).toBe(false)
+    expect(isSvoConflict(obs(), obs({ id: "o2", subjectEntityId: null, objectEntityId: "e-acme" }))).toBe(false)
+  })
+
+  it("compares object literals case-insensitively when no object entity", () => {
+    const a = obs({ objectEntityId: null, objectLiteral: "Remote" })
+    const b = obs({ id: "o2", objectEntityId: null, objectLiteral: "remote" })
+    expect(isSvoConflict(a, b)).toBe(false)
+  })
+})
+
+describe("resolveObservationConflict", () => {
+  function obs(overrides: Partial<ObservationForConflictResolution> = {}): ObservationForConflictResolution {
+    return {
+      id: "o1",
+      content: "Alim works at Relay",
+      capturedAt: "2026-01-01T00:00:00.000Z",
+      type: "observation",
+      subjectEntityId: "e-alim",
+      predicate: "works_at",
+      objectEntityId: "e-relay",
+      objectLiteral: null,
+      metadata: {},
+      ...overrides,
+    }
+  }
+
+  it("on an SVO conflict, the higher-truth observation wins", () => {
+    const existing = obs()
+    const incoming = obs({
+      id: "o2",
+      objectEntityId: "e-acme",
+      metadata: { authority: "human_explicit" },
+    })
+    expect(resolveObservationConflict(existing, incoming)?.id).toBe("o2")
+  })
+
+  it("on an SVO conflict tie, the newer observation wins", () => {
+    const existing = obs({ capturedAt: "2026-01-01T00:00:00.000Z" })
+    const incoming = obs({ id: "o2", objectEntityId: "e-acme", capturedAt: "2026-02-01T00:00:00.000Z" })
+    expect(resolveObservationConflict(existing, incoming)?.id).toBe("o2")
   })
 })

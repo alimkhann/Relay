@@ -148,9 +148,31 @@ export async function createMemoryItemBatch(userId: string, projectId: string, i
   return created
 }
 
-export async function searchMemoryItems(userId: string, projectId: string, query: string, options?: { types?: string[]; tags?: string[] }) {
+export async function searchMemoryItems(
+  userId: string,
+  projectId: string,
+  query: string,
+  options?: {
+    types?: string[]
+    tags?: string[]
+    /** Memory v2: scope by space (personal or project) instead of project_id. */
+    spaceId?: string
+    /** Memory v2: explicit lifecycle filter. Defaults to active+cooling; 'forgotten' never returned. */
+    lifecycleStates?: string[]
+    /** Memory v2: include archived items in results (presented as distinct). */
+    includeArchived?: boolean
+  },
+) {
   const repositories = createRepositoryBundle(userId)
   const decomposition = decomposeQuery(query)
+  const scope = {
+    spaceId: options?.spaceId,
+    lifecycleStates: options?.lifecycleStates,
+    includeArchived: options?.includeArchived,
+  }
+  // When the caller broadens the lifecycle set (archived/explicit states), don't
+  // also crush archived rows with the decay-visibility floor — they were asked for.
+  const lifecycleBroadened = Boolean(options?.includeArchived || options?.lifecycleStates?.length)
 
   let results: MemoryItemRow[]
   let hasSimilarityScores = false
@@ -161,21 +183,25 @@ export async function searchMemoryItems(userId: string, projectId: string, query
     if (queryEmbedding) {
       results = await repositories.memory.hybridSearch(projectId, decomposition.normalizedQuery, queryEmbedding, {
         ...options,
+        ...scope,
         dateRange: decomposition.sourceDateRange,
         includeSuperseded: decomposition.stateIntent === "historical",
       })
       hasSimilarityScores = true
     } else {
-      results = await repositories.memory.search(projectId, query, options)
+      results = await repositories.memory.search(projectId, query, { ...options, ...scope })
     }
   } catch {
-    results = await repositories.memory.search(projectId, query, options)
+    results = await repositories.memory.search(projectId, query, { ...options, ...scope })
   }
 
-  // Filter out fully decayed items
-  let memoryResults = results.filter((item) =>
-    computeDecayScore(item.type, item.updatedAt, item.lastReaffirmedAt, item.pinned) >= DECAY_VISIBILITY_THRESHOLD
-  )
+  // Filter out fully decayed items (skipped when the caller explicitly broadened
+  // the lifecycle set so archived items stay visible).
+  let memoryResults = lifecycleBroadened
+    ? results
+    : results.filter((item) =>
+        computeDecayScore(item.type, item.updatedAt, item.lastReaffirmedAt, item.pinned) >= DECAY_VISIBILITY_THRESHOLD
+      )
 
   // Conditional cross-encoder rerank when top results are ambiguous.
   // Built BEFORE entity boost so candidates[0] is the highest-similarity hit.
@@ -207,11 +233,14 @@ export async function searchMemoryItems(userId: string, projectId: string, query
     })
   }
 
-  const canonResults = await repositories.canonEntries.searchByProject(projectId, decomposition.normalizedQuery, {
-    kinds: decomposition.canonKinds.length > 0 ? decomposition.canonKinds : undefined,
-    currentOnly: decomposition.stateIntent === "current",
-    historicalAt: decomposition.historicalAt,
-  })
+  // Canon entries are project-scoped; skip them for personal/space-scoped recall.
+  const canonResults = options?.spaceId
+    ? []
+    : await repositories.canonEntries.searchByProject(projectId, decomposition.normalizedQuery, {
+        kinds: decomposition.canonKinds.length > 0 ? decomposition.canonKinds : undefined,
+        currentOnly: decomposition.stateIntent === "current",
+        historicalAt: decomposition.historicalAt,
+      })
 
   const currentPreviousHint = buildCurrentPreviousHint(canonResults)
   const evidenceTable = buildReasoningEvidenceTable({
@@ -232,6 +261,58 @@ export async function searchMemoryItems(userId: string, projectId: string, query
   }
 }
 
+/**
+ * Memory v2: space-scoped auxiliary context — observations + entity graph
+ * snapshot. Powers `recall include:[observations,entities]`. Reuses the
+ * observation hybrid search + graph snapshot already built in the db package.
+ */
+export async function getSpaceContext(
+  userId: string,
+  spaceId: string,
+  options: {
+    query?: string
+    includeObservations?: boolean
+    includeEntities?: boolean
+    lifecycleStates?: string[]
+    includeArchived?: boolean
+    limit?: number
+  },
+) {
+  const repositories = createRepositoryBundle(userId)
+  const limit = options.limit ?? 20
+  const lifecycleStates = (
+    options.lifecycleStates?.length
+      ? options.lifecycleStates
+      : options.includeArchived
+        ? ["active", "cooling", "archived"]
+        : ["active", "cooling"]
+  ).filter((s) => s !== "forgotten") as Array<"active" | "cooling" | "archived">
+
+  let observations: unknown[] = []
+  if (options.includeObservations) {
+    if (options.query) {
+      let embedding: number[] | null = null
+      try {
+        embedding = await generateEmbedding(options.query, "RETRIEVAL_QUERY")
+      } catch {
+        embedding = null
+      }
+      observations = await repositories.observations.hybridSearch(spaceId, embedding, options.query, {
+        limit,
+        lifecycleStates,
+      })
+    } else {
+      observations = await repositories.observations.listBySpace(spaceId, { lifecycleStates, limit })
+    }
+  }
+
+  const entities = options.includeEntities
+    ? await repositories.graph.getSpaceGraphSnapshot(spaceId, limit)
+    : null
+
+  return { observations, entities }
+}
+
 export async function updateMemoryItem(userId: string, memoryId: string, input: unknown, projectId?: string) {
   const repositories = createRepositoryBundle(userId)
   const parsed = updateMemoryItemSchema.parse(input)
@@ -240,71 +321,68 @@ export async function updateMemoryItem(userId: string, memoryId: string, input: 
     throw new Error("This MCP token cannot update memory from another project.")
   }
 
-  // Memory v2 lifecycle controls are handled here as a direct UPDATE on the
-  // new columns; the legacy repo.update() doesn't know about them yet. The
-  // trigger installed in migration 0041 keeps is_archived in sync with
-  // lifecycle_state, so we don't need to touch both.
   const lifecycleState = parsed.lifecycleState ?? null
-  const validUntil = parsed.validUntil === null ? null : parsed.validUntil ?? undefined
-  const lastReaffirmedAt = parsed.lastReaffirmedAt === null ? null : parsed.lastReaffirmedAt ?? undefined
   const isForgetting = lifecycleState === "forgotten"
   if (isForgetting && !parsed.confirm) {
     throw new Error("Forgetting a memory requires confirm:true.")
   }
 
-  // Strip v2 fields from the patch passed to the legacy repo.update so its
-  // input typing still matches.
-  const legacyPatch = { ...parsed }
-  delete (legacyPatch as Record<string, unknown>).lifecycleState
-  delete (legacyPatch as Record<string, unknown>).validUntil
-  delete (legacyPatch as Record<string, unknown>).lastReaffirmedAt
-  delete (legacyPatch as Record<string, unknown>).confirm
-
-  const item = await repositories.memory.update(memoryId, legacyPatch)
-
-  if (lifecycleState || validUntil !== undefined || lastReaffirmedAt !== undefined || isForgetting) {
-    await repositories.provider.query(
-      `UPDATE memory_items
-       SET lifecycle_state = COALESCE($2, lifecycle_state),
-           valid_until = CASE WHEN $3::boolean THEN NULL ELSE COALESCE($4::timestamptz, valid_until) END,
-           last_reaffirmed_at = CASE WHEN $5::boolean THEN NULL ELSE COALESCE($6::timestamptz, last_reaffirmed_at) END,
-           content = CASE WHEN $7::boolean THEN '' ELSE content END
-       WHERE id = $1`,
-      [
-        memoryId,
-        lifecycleState,
-        parsed.validUntil === null,
-        parsed.validUntil ?? null,
-        parsed.lastReaffirmedAt === null,
-        parsed.lastReaffirmedAt ?? null,
-        isForgetting,
-      ],
-    )
-  }
+  // One atomic UPDATE. The repo handles every column (legacy + v2 lifecycle)
+  // in a single statement, so a partial patch can't leave content and the
+  // event log disagreeing. The trigger from migration 0041 keeps is_archived
+  // in sync with lifecycle_state. `confirm` is control-only — not persisted.
+  const { confirm: _confirm, ...patch } = parsed
+  const item = await repositories.memory.update(memoryId, {
+    ...patch,
+    nullContent: isForgetting,
+  })
 
   await repositories.projectState.markDirty(existing?.projectId ?? item.projectId)
 
-  let eventType: MemoryEventType = "updated"
+  // Emit one event for the lifecycle transition (if any) AND a separate
+  // `reaffirmed` event when the decay clock was reset — the two signals are
+  // independent and a single-pick ladder would silently drop one.
+  let lifecycleEvent: MemoryEventType | null = null
   const becameArchived = !existing?.isArchived && item.isArchived
-  if (lifecycleState === "archived") eventType = "archived"
-  else if (lifecycleState === "active" && existing?.isArchived) eventType = "restored"
-  else if (lifecycleState === "forgotten") eventType = "forgotten"
-  else if (lifecycleState === "cooling") eventType = "cooled"
-  else if (parsed.lastReaffirmedAt !== undefined) eventType = "reaffirmed"
-  else if (becameArchived) eventType = "archived"
+  if (lifecycleState === "archived") lifecycleEvent = "archived"
+  else if (lifecycleState === "active" && existing?.isArchived) lifecycleEvent = "restored"
+  else if (lifecycleState === "forgotten") lifecycleEvent = "forgotten"
+  else if (lifecycleState === "cooling") lifecycleEvent = "cooled"
+  else if (becameArchived) lifecycleEvent = "archived"
 
-  void emitMemoryEvent(repositories, {
-    projectId: item.projectId,
-    memoryItemId: item.id,
-    eventType,
-    sourceSurface: item.sourceSurface,
-    userId,
-    payload: {
-      type: item.type,
-      fieldsChanged: Object.keys(parsed),
-      lifecycleState: lifecycleState ?? null,
-    },
-  })
+  const reaffirmed = parsed.lastReaffirmedAt !== undefined
+  const fieldsChanged = Object.keys(parsed)
+
+  if (lifecycleEvent) {
+    void emitMemoryEvent(repositories, {
+      projectId: item.projectId,
+      memoryItemId: item.id,
+      eventType: lifecycleEvent,
+      sourceSurface: item.sourceSurface,
+      userId,
+      payload: { type: item.type, fieldsChanged, lifecycleState: lifecycleState ?? null },
+    })
+  }
+  if (reaffirmed) {
+    void emitMemoryEvent(repositories, {
+      projectId: item.projectId,
+      memoryItemId: item.id,
+      eventType: "reaffirmed",
+      sourceSurface: item.sourceSurface,
+      userId,
+      payload: { type: item.type, fieldsChanged },
+    })
+  }
+  if (!lifecycleEvent && !reaffirmed) {
+    void emitMemoryEvent(repositories, {
+      projectId: item.projectId,
+      memoryItemId: item.id,
+      eventType: "updated",
+      sourceSurface: item.sourceSurface,
+      userId,
+      payload: { type: item.type, fieldsChanged },
+    })
+  }
 
   return item
 }

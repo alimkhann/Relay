@@ -119,36 +119,34 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
     if (space) {
       const snapshot = await repositories.graph.getSpaceGraphSnapshot(space.id, 200);
       entityRelations = snapshot.relations;
-      const rows = await repositories.provider.query(
-        `SELECT id, content, subject_entity_id, predicate, valid_from
-         FROM observations
-         WHERE space_id = $1
-           AND lifecycle_state IN ('active','cooling')
-           AND valid_until IS NULL
-         ORDER BY valid_from DESC
-         LIMIT 25`,
+      // Single round-trip: total count + recent 25 in one CTE.
+      const summaryRows = await repositories.provider.query(
+        `WITH active AS (
+           SELECT id, content, subject_entity_id, predicate, valid_from
+           FROM observations
+           WHERE space_id = $1
+             AND lifecycle_state IN ('active','cooling')
+             AND valid_until IS NULL
+         )
+         SELECT
+           (SELECT count(*)::int FROM active) AS total,
+           (SELECT json_agg(t.*) FROM (
+              SELECT id, content, subject_entity_id, predicate, valid_from
+              FROM active ORDER BY valid_from DESC LIMIT 25
+            ) t) AS recent`,
         [space.id],
       );
-      const totalRows = await repositories.provider.query(
-        `SELECT count(*)::int AS c
-         FROM observations
-         WHERE space_id = $1
-           AND lifecycle_state IN ('active','cooling')
-           AND valid_until IS NULL`,
-        [space.id],
-      );
+      const summary = (summaryRows[0] as Record<string, unknown>) ?? {};
+      const recentRaw = (summary.recent as Array<Record<string, unknown>> | null) ?? [];
       observationsSummary = {
-        total: Number((totalRows[0] as Record<string, unknown>)?.c ?? 0),
-        recent: rows.map((row) => {
-          const r = row as Record<string, unknown>;
-          return {
-            id: String(r.id),
-            content: String(r.content),
-            subjectEntityId: r.subject_entity_id ? String(r.subject_entity_id) : null,
-            predicate: r.predicate ? String(r.predicate) : null,
-            validFrom: String(r.valid_from),
-          };
-        }),
+        total: Number(summary.total ?? 0),
+        recent: recentRaw.map((r) => ({
+          id: String(r.id),
+          content: String(r.content),
+          subjectEntityId: r.subject_entity_id ? String(r.subject_entity_id) : null,
+          predicate: r.predicate ? String(r.predicate) : null,
+          validFrom: String(r.valid_from),
+        })),
       };
     }
   } catch {

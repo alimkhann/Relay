@@ -124,11 +124,20 @@ export async function processItem(
     status: "done",
   }
 
-  // Best-effort: claim the row.
-  await repos.provider.query(
-    `UPDATE memory_items SET enrichment_status = 'running' WHERE id = $1`,
+  // Atomically claim the row. The WHERE guard means a concurrent worker
+  // invocation can't claim the same item twice — if RETURNING is empty,
+  // someone else already took it (or it's already done), so skip.
+  const claimed = await repos.provider.query(
+    `UPDATE memory_items SET enrichment_status = 'running'
+     WHERE id = $1 AND enrichment_status IN ('pending','failed')
+     RETURNING id`,
     [itemId],
   )
+  if (claimed.length === 0) {
+    result.status = "skipped"
+    result.error = "already claimed or not pending"
+    return result
+  }
 
   try {
     const spaceId = (item as { spaceId?: string }).spaceId ?? null
@@ -161,13 +170,14 @@ export async function processItem(
       : []
     const entityIdByName = new Map<string, string>()
     for (const extracted of extractedEntities) {
-      const entity = await repos.entity.findOrCreateByName(
-        item.projectId,
+      // Space-scoped so personal-space items (project_id NULL) work too.
+      const entity = await repos.entity.findOrCreateBySpace(
+        spaceId,
         extracted.name,
         extracted.kind ?? "unknown",
       )
       entityIdByName.set(extracted.name.toLowerCase(), entity.id)
-      await repos.entity.addMention(itemId, entity.id, extracted.mentionText)
+      await repos.entity.addMention(itemId, entity.id, extracted.mentionText, spaceId)
       result.entitiesCreated += 1
     }
 
@@ -183,7 +193,11 @@ export async function processItem(
         ? entityIdByName.get(obs.objectName.toLowerCase()) ?? null
         : null
 
-      // SVO conflict check
+      // Detect a conflicting prior SVO *before* inserting the new row — once
+      // the new observation lands it becomes the current SVO and would match
+      // itself. We invalidate + emit the audit event after the insert so the
+      // `superseded_by` field carries the new observation's real id.
+      let priorToSupersede: string | null = null
       if (subjectId && obs.predicate) {
         const prior = await repos.observation.findCurrentSvo(
           spaceId,
@@ -194,17 +208,7 @@ export async function processItem(
           const priorObject = prior.objectEntityId ?? prior.objectLiteral?.toLowerCase()
           const newObject = objectId ?? obs.objectLiteral?.toLowerCase()
           if (priorObject && newObject && priorObject !== newObject) {
-            await repos.observation.invalidate(prior.id, new Date(), "cooling")
-            result.conflictsResolved += 1
-            await repos.provider.query(
-              `INSERT INTO memory_events
-                (project_id, space_id, memory_item_id, event_type, source_surface, payload)
-               VALUES ($1, $2, NULL, 'observation_expired', 'worker',
-                       jsonb_build_object('observation_id', $3::text,
-                                          'reason', 'svo_superseded',
-                                          'superseded_by', $4::text))`,
-              [item.projectId, spaceId, prior.id, "(pending)"],
-            )
+            priorToSupersede = prior.id
           }
         }
       }
@@ -229,8 +233,31 @@ export async function processItem(
         // Non-fatal: observation row is still searchable via lexical channel.
       }
 
+      if (priorToSupersede) {
+        await repos.observation.invalidate(priorToSupersede, new Date(), "cooling")
+        result.conflictsResolved += 1
+        await repos.provider.query(
+          `INSERT INTO memory_events
+            (project_id, space_id, memory_item_id, event_type, source_surface, payload)
+           VALUES ($1, $2, NULL, 'observation_expired', 'worker',
+                   jsonb_build_object('observation_id', $3::text,
+                                      'reason', 'svo_superseded',
+                                      'superseded_by', $4::text))`,
+          [item.projectId, spaceId, priorToSupersede, created.id],
+        )
+      }
+
       // Step 4 — entity_relations from SVO
       if (subjectId && objectId && obs.predicate) {
+        // Object changed → close any prior current edge for this
+        // (subject, predicate) that points at a different target, so the SVO
+        // never has two "current" edges at once.
+        await repos.entityRelation.invalidateCurrentForSubjectPredicate(
+          spaceId,
+          subjectId,
+          obs.predicate,
+          objectId,
+        )
         await repos.entityRelation.upsertCurrent({
           spaceId,
           sourceEntityId: subjectId,

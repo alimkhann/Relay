@@ -62,6 +62,7 @@ describe("registerTools analytics wrapper", () => {
     expect(harness.registrations.map((tool) => tool.name)).toEqual([
       "list_projects",
       "set_current_project",
+      "set_current_space",
       "get_brief",
       "recall",
       "sources",

@@ -51,26 +51,34 @@ async function patchMany(
   client: RelayClient,
   ids: string[],
   body: Record<string, unknown>,
-  verb: string,
+  _verb: string,
 ): Promise<{ ok: string[]; errors: string[] }> {
+  // Fire all patches concurrently — N items was N serial round-trips before.
+  const settled = await Promise.allSettled(
+    ids.map((id) => client.patch<UpdateMemoryResponse>(`/api/memory/${id}`, body)),
+  )
   const ok: string[] = []
   const errors: string[] = []
-  for (const id of ids) {
-    try {
-      await client.patch<UpdateMemoryResponse>(`/api/memory/${id}`, body)
+  settled.forEach((result, i) => {
+    const id = ids[i] ?? "(unknown)"
+    if (result.status === "fulfilled") {
       ok.push(id)
-    } catch (err) {
-      errors.push(`${id}: ${err instanceof Error ? err.message : "unknown error"}`)
+    } else {
+      const reason = result.reason
+      errors.push(`${id}: ${reason instanceof Error ? reason.message : "unknown error"}`)
     }
-  }
+  })
   return { ok, errors }
 }
 
-function summarize(verb: string, ok: string[], errors: string[]) {
+// `pastVerb` labels the success line ("Archived 2 …"); `infinitive` keeps the
+// failure line grammatical ("Failed to archive …"), since lowercasing the past
+// tense would read "Failed to archived …".
+function summarize(pastVerb: string, infinitive: string, ok: string[], errors: string[]) {
   const lines: string[] = []
-  if (ok.length > 0) lines.push(`${verb} ${ok.length} memory item(s): ${ok.join(", ")}`)
+  if (ok.length > 0) lines.push(`${pastVerb} ${ok.length} memory item(s): ${ok.join(", ")}`)
   if (errors.length > 0)
-    lines.push(`Failed to ${verb.toLowerCase()} ${errors.length} item(s):\n${errors.map((e) => `  - ${e}`).join("\n")}`)
+    lines.push(`Failed to ${infinitive} ${errors.length} item(s):\n${errors.map((e) => `  - ${e}`).join("\n")}`)
   return { content: [{ type: "text" as const, text: lines.join("\n") }] }
 }
 
@@ -93,7 +101,7 @@ export async function manageMemory(
       }
     }
 
-    return summarize("Deleted", results, errors)
+    return summarize("Deleted", "delete", results, errors)
   }
 
   if (args.action === "archive") {
@@ -103,7 +111,7 @@ export async function manageMemory(
       { lifecycleState: "archived", isArchived: true },
       "Archived",
     )
-    return summarize("Archived", ok, errors)
+    return summarize("Archived", "archive", ok, errors)
   }
 
   if (args.action === "restore") {
@@ -113,7 +121,7 @@ export async function manageMemory(
       { lifecycleState: "active", isArchived: false },
       "Restored",
     )
-    return summarize("Restored", ok, errors)
+    return summarize("Restored", "restore", ok, errors)
   }
 
   if (args.action === "forget") {
@@ -134,7 +142,7 @@ export async function manageMemory(
       { lifecycleState: "forgotten", confirm: true },
       "Forgot",
     )
-    return summarize("Forgot", ok, errors)
+    return summarize("Forgot", "forget", ok, errors)
   }
 
   if (args.action === "mark_obsolete") {
@@ -144,7 +152,7 @@ export async function manageMemory(
       { lifecycleState: "cooling", validUntil: new Date().toISOString() },
       "Marked obsolete",
     )
-    return summarize("Marked obsolete", ok, errors)
+    return summarize("Marked obsolete", "mark obsolete", ok, errors)
   }
 
   if (args.action === "reaffirm") {
@@ -154,7 +162,7 @@ export async function manageMemory(
       { lastReaffirmedAt: new Date().toISOString() },
       "Reaffirmed",
     )
-    return summarize("Reaffirmed", ok, errors)
+    return summarize("Reaffirmed", "reaffirm", ok, errors)
   }
 
   // Update action

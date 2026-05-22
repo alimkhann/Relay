@@ -7,6 +7,7 @@ export function toMemoryRow(record: Record<string, unknown>): MemoryItemRow {
   return {
     id: String(record.id),
     projectId: String(record.project_id),
+    spaceId: record.space_id ? String(record.space_id) : null,
     sourceTurnId: record.source_turn_id ? String(record.source_turn_id) : null,
     type: record.type as MemoryItemRow["type"],
     title: record.title ? String(record.title) : null,

@@ -28,7 +28,15 @@ import { EMBEDDING_MODEL, generateEmbedding } from "@/server/services/embedding-
 
 function authorize(request: Request): boolean {
   const secret = process.env.CRON_SECRET
-  if (!secret) return true // local + dev — no secret configured
+  if (!secret) {
+    // Fail-closed in production: an unset secret must never expose the cron
+    // to the open internet. Local + dev allow unauthenticated runs.
+    if (process.env.NODE_ENV === "production") return false
+    console.warn(
+      "[memory-pipeline cron] CRON_SECRET unset — allowing unauthenticated run (non-production only).",
+    )
+    return true
+  }
   const auth = request.headers.get("authorization") ?? ""
   return auth === `Bearer ${secret}`
 }
@@ -49,17 +57,15 @@ async function handle(request: Request): Promise<Response> {
     space: repositories.spaces,
   }
 
+  // Entity + observation extractors land in a follow-up PR (worker full
+  // extraction, Gemini prompt design + cost gating). Until then the worker
+  // runs embed-only; RELAY_MEMORY_PIPELINE_FULL is reserved but inert.
   const fullExtraction = process.env.RELAY_MEMORY_PIPELINE_FULL === "true"
   const providers: PipelineProviders = {
     embed: async (text: string) => ({
       vector: await generateEmbedding(text),
       model: EMBEDDING_MODEL,
     }),
-    // Stubbed until prompt-design pass + cost gating land. Worker handles
-    // the missing callbacks gracefully (entitiesCreated / observationsCreated
-    // stay at 0).
-    extractEntities: fullExtraction ? undefined : undefined,
-    extractObservations: fullExtraction ? undefined : undefined,
   }
 
   const dryRunHygiene = process.env.RELAY_HYGIENE_DRY_RUN !== "false"

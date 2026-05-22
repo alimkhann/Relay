@@ -21,7 +21,7 @@ import type {
   SpaceRepository,
 } from "@relay/db"
 import {
-  LIFECYCLE_HALF_LIFE_DAYS_MAP,
+  LIFECYCLE_HALF_LIFE_DAYS,
   proposeLifecycleTransition,
   type DecayableItem,
 } from "@relay/shared"
@@ -60,19 +60,19 @@ async function loadHalfLives(
   provider: DatabaseProvider,
   override?: Record<string, number>,
 ): Promise<Record<string, number>> {
-  if (override) return { ...LIFECYCLE_HALF_LIFE_DAYS_MAP, ...override }
+  if (override) return { ...LIFECYCLE_HALF_LIFE_DAYS, ...override }
   try {
     const rows = await provider.query(
       `SELECT item_type, half_life_days FROM memory_half_lives`,
     )
-    const out: Record<string, number> = { ...LIFECYCLE_HALF_LIFE_DAYS_MAP }
+    const out: Record<string, number> = { ...LIFECYCLE_HALF_LIFE_DAYS }
     for (const row of rows) {
       const r = row as Record<string, unknown>
       out[String(r.item_type)] = Number(r.half_life_days)
     }
     return out
   } catch {
-    return { ...LIFECYCLE_HALF_LIFE_DAYS_MAP }
+    return { ...LIFECYCLE_HALF_LIFE_DAYS }
   }
 }
 
@@ -114,9 +114,11 @@ export async function runHygieneTick(
 
     for (const row of itemRows) {
       const r = row as Record<string, unknown>
-      const item: DecayableItem & { id: string; projectId: string } = {
+      const item: DecayableItem & { id: string; projectId: string | null } = {
         id: String(r.id),
-        projectId: String(r.project_id),
+        // Personal-space rows have NULL project_id (migration 0047); never
+        // coerce to the literal string "null".
+        projectId: r.project_id ? String(r.project_id) : null,
         content: String(r.content),
         type: String(r.type),
         capturedAt: r.captured_at ? String(r.captured_at) : null,
@@ -234,7 +236,7 @@ export async function runHygieneTick(
     for (const row of resurrectRows) {
       const r = row as Record<string, unknown>
       const memoryItemId = String(r.memory_item_id)
-      const projectId = String(r.project_id)
+      const projectId = r.project_id ? String(r.project_id) : null
       const observationId = String(r.observation_id)
       if (dryRun) {
         out.itemsResurrected += 1
@@ -259,12 +261,17 @@ export async function runHygieneTick(
 }
 
 async function listAllSpaceIds(provider: DatabaseProvider): Promise<string[]> {
-  const rows = await provider.query(`SELECT id FROM spaces`)
+  // Bounded scan: most-recently-touched spaces first. At current scale (~100s)
+  // this covers every space; once space counts grow past the limit, switch to
+  // cursor-based pagination across ticks (tracked for a later PR).
+  const rows = await provider.query(
+    `SELECT id FROM spaces ORDER BY updated_at DESC NULLS LAST LIMIT 500`,
+  )
   return rows.map((r) => String((r as Record<string, unknown>).id))
 }
 
 interface EventInput {
-  projectId: string
+  projectId: string | null
   spaceId: string
   memoryItemId: string | null
   eventType: string
