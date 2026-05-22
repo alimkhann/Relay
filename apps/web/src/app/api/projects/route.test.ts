@@ -6,7 +6,7 @@ const {
   resolveViewerMock,
   requireViewerScopeMock,
   rejectMcpViewerMock,
-  listProjectsForUserMock,
+  listCachedProjectsForUserMock,
   createProjectForUserMock,
   getResolvedOnboardingStateForUserMock,
 } = vi.hoisted(() => ({
@@ -15,7 +15,7 @@ const {
   resolveViewerMock: vi.fn(),
   requireViewerScopeMock: vi.fn(),
   rejectMcpViewerMock: vi.fn(),
-  listProjectsForUserMock: vi.fn(),
+  listCachedProjectsForUserMock: vi.fn(),
   createProjectForUserMock: vi.fn(),
   getResolvedOnboardingStateForUserMock: vi.fn(),
 }))
@@ -34,8 +34,11 @@ vi.mock("@/server/policies/viewer", () => ({
   rejectMcpViewer: rejectMcpViewerMock,
 }))
 
+vi.mock("@/server/cache/read-model-cache", () => ({
+  listCachedProjectsForUser: listCachedProjectsForUserMock,
+}))
+
 vi.mock("@/server/services/project-service", () => ({
-  listProjectsForUser: listProjectsForUserMock,
   createProjectForUser: createProjectForUserMock,
 }))
 
@@ -51,7 +54,7 @@ describe("GET /api/projects", () => {
     resolveViewerMock.mockReset()
     requireViewerScopeMock.mockReset()
     rejectMcpViewerMock.mockReset()
-    listProjectsForUserMock.mockReset()
+    listCachedProjectsForUserMock.mockReset()
     createProjectForUserMock.mockReset()
     getResolvedOnboardingStateForUserMock.mockReset()
   })
@@ -63,7 +66,7 @@ describe("GET /api/projects", () => {
       projectId: "project-current",
       scopes: ["project:read"],
     })
-    listProjectsForUserMock.mockResolvedValue([
+    listCachedProjectsForUserMock.mockResolvedValue([
       { id: "project-current", name: "Relay", slug: "relay" },
       { id: "project-other", name: "Another Project", slug: "another-project" },
     ])
@@ -76,6 +79,7 @@ describe("GET /api/projects", () => {
       "project:read",
     )
     expect(consumeMcpReadQuotaMock).toHaveBeenCalledWith("user-1")
+    expect(listCachedProjectsForUserMock).toHaveBeenCalledWith("user-1")
     expect(payload).toEqual({
       projects: [
         { id: "project-current", name: "Relay", slug: "relay" },

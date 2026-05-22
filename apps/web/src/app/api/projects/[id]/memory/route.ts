@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
 
+import { listCachedMemoryForExplainability, type CachedMemoryListOptions } from "@/server/cache/read-model-cache"
 import { withApiAuth } from "@/server/http/api-route"
 import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
-import { listMemoryForExplainability } from "@/server/services/continuity-explainability-service"
 import {
   consumeExtensionMemoryWriteQuota,
   consumeMcpReadQuota,
@@ -20,14 +20,15 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
   const { searchParams } = new URL(request.url)
   const types = searchParams.getAll("type")
   try {
-    const memory = await listMemoryForExplainability(viewer.userId, id, {
+    const options: CachedMemoryListOptions = {
       archived: searchParams.get("archived") === "true",
       pinned: searchParams.has("pinned") ? searchParams.get("pinned") === "true" : undefined,
       tag: searchParams.get("tag") ?? undefined,
       limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : undefined,
       sort: searchParams.get("sort") === "created_desc" ? "created_desc" : "updated_desc",
-      types: types.length > 0 ? types as Array<"note" | "decision" | "constraint" | "requirement" | "task" | "artifact"> : undefined,
-    })
+      types: types.length > 0 ? [...types].sort() as CachedMemoryListOptions["types"] : undefined,
+    }
+    const memory = await listCachedMemoryForExplainability(viewer.userId, id, options)
     return NextResponse.json({ memory })
   } catch (error) {
     console.error(

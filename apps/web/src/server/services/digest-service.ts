@@ -22,6 +22,7 @@ import { mergeDigestIntoState } from "./project-state-service"
 import { resolveProjectAiBudget } from "./ai-budget-service"
 import { emitAiRequestCompleted } from "./ai-analytics-service"
 import { logServerEvent } from "@/server/logging/logger"
+import { invalidateProjectCache } from "@/server/cache/invalidation"
 
 interface DigestModelShape extends SessionDigestShape {
   confidence?: number
@@ -1365,26 +1366,33 @@ export async function runBatchDigestForProject(
 export async function drainDigestJobs(userId: string, limit = 4) {
   const repositories = createRepositoryBundle(userId)
   await repositories.aiJobs.markTimedOutOlderThan("session_digest", DIGEST_JOB_TIMEOUT_MINUTES)
+  const touchedProjectIds = new Set<string>()
 
   // Process pending/timed_out jobs individually (retries)
   const pending = await repositories.aiJobs.listByStatuses(["pending", "timed_out"], limit, "session_digest")
   for (const job of pending) {
     await runDigestJobInternal(repositories, userId, job)
+    touchedProjectIds.add(job.projectId)
   }
 
   // Process deferred jobs in batches by project
   const deferred = await repositories.aiJobs.listByStatuses(["deferred"], limit, "session_digest")
-  if (deferred.length === 0) return
+  if (deferred.length > 0) {
+    const byProject = new Map<string, AiJobRunRow[]>()
+    for (const job of deferred) {
+      const existing = byProject.get(job.projectId) ?? []
+      existing.push(job)
+      byProject.set(job.projectId, existing)
+    }
 
-  const byProject = new Map<string, AiJobRunRow[]>()
-  for (const job of deferred) {
-    const existing = byProject.get(job.projectId) ?? []
-    existing.push(job)
-    byProject.set(job.projectId, existing)
+    for (const [projectId, jobs] of byProject) {
+      await runBatchDigestForProject(repositories, userId, projectId, jobs)
+      touchedProjectIds.add(projectId)
+    }
   }
 
-  for (const [projectId, jobs] of byProject) {
-    await runBatchDigestForProject(repositories, userId, projectId, jobs)
+  for (const projectId of touchedProjectIds) {
+    invalidateProjectCache(userId, projectId)
   }
 }
 
@@ -1415,11 +1423,17 @@ export async function drainDigestJobsForProject(
     await runDigestJobInternal(repositories, userId, job)
   }
 
+  let deferredProcessed = false
   if (options.includeDeferred !== false) {
     const deferredJobs = await repositories.aiJobs.listDeferredByProject(projectId, limit)
     if (deferredJobs.length > 0) {
       await runBatchDigestForProject(repositories, userId, projectId, deferredJobs)
+      deferredProcessed = true
     }
+  }
+
+  if (priorityJobs.length > 0 || deferredProcessed) {
+    invalidateProjectCache(userId, projectId)
   }
 }
 

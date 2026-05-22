@@ -5,7 +5,7 @@ const {
   resolveViewerMock,
   requireViewerProjectMock,
   consumeMcpReadQuotaMock,
-  listProjectSourcesMock,
+  listCachedProjectSourcesMock,
   createSourceFromUploadMock,
   processUploadedSourceMock,
   runAfterResponseMock,
@@ -14,7 +14,7 @@ const {
   resolveViewerMock: vi.fn(),
   requireViewerProjectMock: vi.fn(),
   consumeMcpReadQuotaMock: vi.fn(),
-  listProjectSourcesMock: vi.fn(),
+  listCachedProjectSourcesMock: vi.fn(),
   createSourceFromUploadMock: vi.fn(),
   processUploadedSourceMock: vi.fn(),
   runAfterResponseMock: vi.fn((task: () => unknown) => { void task() }),
@@ -24,8 +24,10 @@ vi.mock("@/server/http/api-route", () => ({ withApiAuth: withApiAuthMock }))
 vi.mock("@/server/http/after", () => ({ runAfterResponse: runAfterResponseMock }))
 vi.mock("@/server/policies/viewer", () => ({ resolveViewer: resolveViewerMock, requireViewerProject: requireViewerProjectMock }))
 vi.mock("@/server/services/entitlement-service", () => ({ consumeMcpReadQuota: consumeMcpReadQuotaMock }))
+vi.mock("@/server/cache/read-model-cache", () => ({
+  listCachedProjectSources: listCachedProjectSourcesMock,
+}))
 vi.mock("@/server/services/source-service", () => ({
-  listProjectSources: listProjectSourcesMock,
   createSourceFromUpload: createSourceFromUploadMock,
   processUploadedSource: processUploadedSourceMock,
 }))
@@ -37,7 +39,7 @@ describe("/api/projects/[id]/sources", () => {
     resolveViewerMock.mockReset()
     requireViewerProjectMock.mockReset()
     consumeMcpReadQuotaMock.mockReset()
-    listProjectSourcesMock.mockReset()
+    listCachedProjectSourcesMock.mockReset()
     createSourceFromUploadMock.mockReset()
     processUploadedSourceMock.mockReset()
     runAfterResponseMock.mockClear()
@@ -45,13 +47,14 @@ describe("/api/projects/[id]/sources", () => {
   })
 
   it("lists project sources", async () => {
-    listProjectSourcesMock.mockResolvedValue([{ id: "source-1", displayName: "Spec.md" }])
+    listCachedProjectSourcesMock.mockResolvedValue([{ id: "source-1", displayName: "Spec.md" }])
 
     const response = await GET(new Request("http://relay.test/api/projects/project-1/sources"), {
       params: Promise.resolve({ id: "project-1" }),
     })
 
     expect(requireViewerProjectMock).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1" }), "project-1", "memory:read")
+    expect(listCachedProjectSourcesMock).toHaveBeenCalledWith("user-1", "project-1")
     expect(await response.json()).toEqual({ sources: [{ id: "source-1", displayName: "Spec.md" }] })
   })
 
