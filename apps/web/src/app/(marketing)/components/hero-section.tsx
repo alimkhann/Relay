@@ -122,20 +122,9 @@ export function HeroSection({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
             </Link>
           </motion.div>
 
-          {/* Microcopy */}
-          <motion.p
-            custom={0.4}
-            variants={fadeUp}
-            initial="hidden"
-            animate={ready ? "visible" : "hidden"}
-            className="mt-5 text-xs text-white/30"
-          >
-            Chrome extension · MCP for your IDE · Free to start
-          </motion.p>
-
           {/* Social proof badges */}
           <motion.div
-            custom={0.5}
+            custom={0.4}
             variants={fadeUp}
             initial="hidden"
             animate={ready ? "visible" : "hidden"}
@@ -149,10 +138,9 @@ export function HeroSection({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 alt="Relay - Stop repeating yourself to every AI | Product Hunt"
-                src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1126723&theme=neutral&t=1779706045958"
-                width={180}
-                height={39}
-                style={{ width: 180, height: 39 }}
+                src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1126723&theme=dark&t=1779707024093"
+                height={44}
+                style={{ height: 44, width: "auto" }}
               />
             </a>
             <a
@@ -164,10 +152,22 @@ export function HeroSection({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
               <img
                 src="https://peerlist.io/api/v1/projects/embed/PRJHNN7EKKAB8LBPNCOG6R9GR8LL68?showUpvote=true&theme=dark"
                 alt="Relay — AI Memory & Context Sync"
-                style={{ width: "auto", height: 39 }}
+                height={44}
+                style={{ height: 44, width: "auto" }}
               />
             </a>
           </motion.div>
+
+          {/* Microcopy */}
+          <motion.p
+            custom={0.5}
+            variants={fadeUp}
+            initial="hidden"
+            animate={ready ? "visible" : "hidden"}
+            className="mt-5 text-xs text-white/30"
+          >
+            Chrome extension · MCP for your IDE · Free to start
+          </motion.p>
 
           {/* Logo strip */}
           <LogoStrip ready={ready} />

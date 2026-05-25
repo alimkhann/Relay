@@ -123,12 +123,6 @@ export function LogoStrip({ ready = true }: { ready?: boolean }) {
         speed="slow"
         label="Works with"
       />
-      <LogoTicker
-        items={MCP_AGENTS}
-        direction="right"
-        speed="normal"
-        label="Via MCP"
-      />
     </motion.div>
   )
 }
