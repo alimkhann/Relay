@@ -133,6 +133,42 @@ export function HeroSection({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
             Chrome extension · MCP for your IDE · Free to start
           </motion.p>
 
+          {/* Social proof badges */}
+          <motion.div
+            custom={0.5}
+            variants={fadeUp}
+            initial="hidden"
+            animate={ready ? "visible" : "hidden"}
+            className="mt-6 flex items-center justify-center gap-4"
+          >
+            <a
+              href="https://www.producthunt.com/products/relay-15?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-relay-c81c15ad-0524-4b02-919c-eb965efc036c"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                alt="Relay - Stop repeating yourself to every AI | Product Hunt"
+                src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1126723&theme=neutral&t=1779706045958"
+                width={180}
+                height={39}
+                style={{ width: 180, height: 39 }}
+              />
+            </a>
+            <a
+              href="https://peerlist.io/alimkhan/project/relay--ai-memory--context-sync"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="https://peerlist.io/api/v1/projects/embed/PRJHNN7EKKAB8LBPNCOG6R9GR8LL68?showUpvote=true&theme=dark"
+                alt="Relay — AI Memory & Context Sync"
+                style={{ width: "auto", height: 39 }}
+              />
+            </a>
+          </motion.div>
+
           {/* Logo strip */}
           <LogoStrip ready={ready} />
         </div>
