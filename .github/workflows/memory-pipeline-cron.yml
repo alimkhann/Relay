@@ -1,0 +1,44 @@
+name: memory-pipeline-cron
+
+# GitHub Actions cron for the memory-pipeline worker.
+#
+# Vercel Hobby tier allows one cron/day total (used by the existing
+# /api/internal/jobs/cron daily drain). The memory-pipeline worker needs
+# finer-grained cadence, so we drive it from GitHub Actions instead.
+#
+# Required repo secrets:
+#   CRON_SECRET            shared with the Vercel env (cron route compares
+#                          it against Authorization: Bearer)
+#   MEMORY_PIPELINE_URL    base URL, e.g. https://www.onrelay.app
+#                          (no trailing slash; the route is appended below)
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: memory-pipeline-cron
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fire one tick
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          MEMORY_PIPELINE_URL: ${{ secrets.MEMORY_PIPELINE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MEMORY_PIPELINE_URL}" ] || [ -z "${CRON_SECRET}" ]; then
+            echo "::error::MEMORY_PIPELINE_URL or CRON_SECRET secret not set"
+            exit 1
+          fi
+          curl -fsS -X POST \
+            --max-time 240 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${MEMORY_PIPELINE_URL}/api/cron/memory-pipeline" \
+            | tee response.json
+          jq -e '.tick.processed >= 0' response.json > /dev/null

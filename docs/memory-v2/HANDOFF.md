@@ -308,6 +308,47 @@ apps/web/package.json                                                         (m
 pnpm-workspace.yaml                                                           (modified: packages/workers/*)
 ```
 
+## Third pass — bundle everything into PR #35 (2026-05-26)
+
+Direction changed: rather than ship 4 follow-up PRs after cutover, the user
+asked to fold everything into PR #35 and validate on a fresh dev Neon branch
+with real user data before any prod deploy. New work landed:
+
+| Item | Where |
+|---|---|
+| Merge `main` (3 caching + 3 landing commits) | conflict resolution in `memory-repository.ts` (`MEMORY_COLS` keeps `space_id`, drops `search_vector`) + `memory-service.ts` (4 `invalidateProjectCache` calls re-added + null-guarded for personal-space items) |
+| Worker role plumbing | new `createWorkerRepositoryProvider()` reads `WORKER_DATABASE_URL`; cron route uses it (falls back to `DATABASE_URL` when unset). `docs/memory-v2/roles.sql` documents the role-create SQL (manual apply via Neon SQL editor, not a tracked migration). App stays on `neondb_owner` for now — full app-role swap is a follow-up. |
+| Gemini extractors | new `apps/web/src/server/services/memory-pipeline-providers.ts` (`buildEntityExtractor`, `buildObservationExtractor`, `buildPipelineBudgetGate`). Cron route wires them when `RELAY_MEMORY_PIPELINE_FULL=true`. `PIPELINE_VERSION` bumped 1→2. `MemoryItemRow.projectId` widened to `string \| null` + `memoryEvents.create` accepts null `projectId` so personal-space writes don't crash. 7 new unit tests. |
+| Decay into recall ranking | `searchMemoryItems` multiplies `similarity * computeDecayMultiplier` on the final sort (tie-break inside entity-boost buckets; primary sort otherwise). New 60s module-scoped `loadHalfLives()` cache reads live values from `memory_half_lives`. MCP local fallback scorer untouched (server covers >95% of paths). |
+| `GET /api/spaces` | new route returns `[{id, kind, name, projectId}]` for the viewer + lazy-creates the personal space. Extension UI picker DEFERRED to a follow-up PR (control-panel.tsx is 2570+ lines + heavily coupled to project-specific chat association — out of scope for #35). |
+| Assistant chat command parser | new `packages/shared/src/utils/assistant-command-parser.ts` + 19 unit tests. Parses `/reaffirm`, `/forget`, `/obsolete`, `/archive`, `/restore` and maps to `/api/memory/[id]` PATCH payloads. Hook integration into `use-assistant-chat.ts` + cooling/archived pills in `action-result-card.tsx` DEFERRED to a follow-up UI PR. |
+| Graph CTE cycle guard | `expandFromEntities` recursive CTE now tracks visited entity IDs in a `visited` array column and excludes them on each iteration. Prevents infinite loops once the worker populates real edges. |
+| Spaces archived listing | `GET /api/spaces/[id]/memory?include=archived` returns active + cooling + archived (default still active + cooling). |
+| GitHub Actions cron | new `.github/workflows/memory-pipeline-cron.yml` fires every 15 min + supports manual `workflow_dispatch`. Vercel Hobby tier is 1 cron/day — out-of-band scheduling via GH Actions sidesteps the cap. Requires repo secrets `CRON_SECRET` + `MEMORY_PIPELINE_URL`. |
+| Backfill migration | new `packages/db/neon/migrations/0049_backfill_v1_to_v2_extraction.sql` flips legacy rows `enrichment_status='done' AND enrichment_version=1` back to `pending` so the v2 worker reprocesses them. Apply only after `RELAY_MEMORY_PIPELINE_FULL=true` has soaked on new writes. |
+| Docs | DEPLOYMENT.md + `.env.example` updated with the new env vars + GH Actions cron section. |
+
+### Deferred to follow-up PRs (small, contained)
+
+- **Extension UI picker** — touches `control-panel.tsx` + `background/index.ts` + needs chromium-load testing. Server-side `GET /api/spaces` ready for it.
+- **Chat hygiene UI** — wire `parseAssistantCommand` into `use-assistant-chat.ts` send() + render cooling/archived pills in `action-result-card.tsx`. Parser + tests ready.
+- **App-role RLS swap** — provision `relay_app` + audit 30+ pre-auth flows that legitimately have no viewer GUC. RLS exposure pre-dates v2 — not blocking.
+
+### Phase B (next session) — fresh Neon branch validation
+
+1. `mcp__Neon__create_branch` off prod `br-small-moon-agn70urq` → `memory-v2-bundle-test`.
+2. Apply migrations 0040–0049 against fresh branch via `scripts/db-admin.js migrate`.
+3. Apply `docs/memory-v2/roles.sql` manually for `relay_worker` provisioning.
+4. Verification SQL (re-use `docs/memory-v2/VERIFICATION.sql`).
+5. Local web pointed at fresh branch → smoke dashboard, MCP, personal page, embed-only cron, hygiene events.
+6. Flip `RELAY_MEMORY_PIPELINE_FULL=true` → write 5 fresh items → manual cron tick → confirm extractors populate observations + entity_relations + bump `enrichment_version` to 2.
+7. Apply 0049 backfill → run cron repeatedly → confirm `pending → 0` over time, observations + entity_relations climb, dashboard graph synthetic-hub fallback drops away for old projects.
+8. Sample 5 observations + 5 entity_relations — quality check Gemini output.
+9. Verify decay-in-ranking moves results (stale vs fresh same-cosine).
+10. Final `pnpm -r typecheck` + `pnpm test:stable` + all v2 suites + `pnpm build*`.
+11. Update this HANDOFF with snapshot + sample backfill output.
+12. Hand to user for `/review 35`.
+
 ## TL;DR for review
 
 - Schema is layered (episodes → mentions → observations → entity_relations → canon → brief) + bi-temporal + space-scoped.

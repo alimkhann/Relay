@@ -74,3 +74,34 @@ Recommended options:
 - Vercel Cron calling a small internal route wrapper
 - GitHub Actions scheduled workflow with a protected secret
 - External scheduler hitting the endpoint over HTTPS
+
+## Memory v2 — async pipeline cron
+
+`/api/cron/memory-pipeline` runs the embed + hygiene + (optionally) extractor tick.
+
+- **Vercel Hobby tier** allows one cron/day total. That slot is taken by the
+  existing `/api/internal/jobs/cron` daily drain.
+- The memory-pipeline cron is driven from **GitHub Actions** instead — see
+  `.github/workflows/memory-pipeline-cron.yml` (every 15 min, plus
+  `workflow_dispatch` for ad-hoc runs).
+
+Required env / secrets:
+
+| Where | Name | Notes |
+|---|---|---|
+| Vercel env | `CRON_SECRET` | Required in production. Cron returns 401 without `Authorization: Bearer <secret>`. |
+| Vercel env | `WORKER_DATABASE_URL` | Optional. Connection string used by the cron route only. Falls back to `DATABASE_URL` when unset. Point at `relay_worker` once that role is provisioned. |
+| Vercel env | `RELAY_MEMORY_PIPELINE_FULL` | `true` → Gemini extractors run. Default `false` (embed-only). Flip after a quality soak. |
+| Vercel env | `RELAY_HYGIENE_DRY_RUN` | `true` (default) logs proposed transitions; `false` writes. |
+| Vercel env | `RELAY_PIPELINE_DAILY_USD_CAP` | Default `5`. In-process circuit-breaker on extractor spend per UTC day. |
+| GH secret | `CRON_SECRET` | Same value as the Vercel env. |
+| GH secret | `MEMORY_PIPELINE_URL` | Base URL, e.g. `https://www.onrelay.app` (no trailing slash). |
+
+### Worker role provisioning (optional, future hardening)
+
+`docs/memory-v2/roles.sql` contains the idempotent SQL block that creates
+`relay_worker` + grants. Apply per Neon branch via the Neon SQL editor or
+`mcp__Neon__run_sql`, then point `WORKER_DATABASE_URL` at the new role.
+Today the app still connects as `neondb_owner` (RLS is decorative for the
+app conn — see Memory v2 HANDOFF "Risks"); moving the app to a non-owner
+role is a separate hardening PR.

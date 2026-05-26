@@ -55,8 +55,15 @@ export const GET = withApiAuth(
       return NextResponse.json({ error: "Space not found or not accessible." }, { status: 404 })
     }
 
+    // ?include=archived adds archived rows to the default active+cooling
+    // listing (the extension picker uses this for an archive view).
+    const url = new URL(request.url)
+    const includeArchived = url.searchParams.get("include") === "archived"
+    const lifecycleStates = includeArchived
+      ? ["active", "cooling", "archived"]
+      : ["active", "cooling"]
     const memory = await repositories.memory.listBySpace(id, {
-      lifecycleStates: ["active", "cooling"],
+      lifecycleStates,
       limit: 200,
     })
     return NextResponse.json({ memory })

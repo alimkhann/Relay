@@ -46,7 +46,8 @@ export class GraphRepository {
            ce.id AS entity_id,
            ce.name AS name,
            0 AS hops,
-           ARRAY[]::text[] AS via
+           ARRAY[]::text[] AS via,
+           ARRAY[ce.id::text]::text[] AS visited
          FROM canonical_entities ce
          WHERE ce.id = ANY($2::uuid[])
            AND ce.space_id = $1
@@ -55,7 +56,8 @@ export class GraphRepository {
            CASE WHEN er.source_entity_id = w.entity_id THEN er.target_entity_id ELSE er.source_entity_id END AS entity_id,
            ce2.name AS name,
            w.hops + 1 AS hops,
-           w.via || er.relation_type AS via
+           w.via || er.relation_type AS via,
+           w.visited || ce2.id::text AS visited
          FROM walk w
          JOIN entity_relations er
            ON (er.source_entity_id = w.entity_id OR er.target_entity_id = w.entity_id)
@@ -66,6 +68,7 @@ export class GraphRepository {
            ON ce2.id = CASE WHEN er.source_entity_id = w.entity_id THEN er.target_entity_id ELSE er.source_entity_id END
           AND ce2.space_id = $1
          WHERE w.hops < $3
+           AND NOT (ce2.id::text = ANY(w.visited))
        )
        SELECT entity_id, name, MIN(hops) AS hops, (array_agg(via))[1] AS via
        FROM walk
