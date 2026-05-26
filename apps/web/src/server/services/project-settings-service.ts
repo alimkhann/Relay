@@ -2,6 +2,8 @@ import { createRepositoryBundle } from "@relay/db"
 import type { ProjectSettingsDto, ProjectSettingsRow } from "@relay/shared"
 import { projectSettingsSchema, updateProjectSettingsSchema } from "@relay/shared"
 
+import { invalidateProjectCache } from "@/server/cache/invalidation"
+
 const defaultProjectSettings: ProjectSettingsRow["settings"] = {
   autonomyMode: "standard",
   showTentativeUpdates: true,
@@ -33,6 +35,7 @@ export async function updateProjectSettings(userId: string, projectId: string, i
     ...patch,
   })
   const row = await repositories.projectSettings.upsert(projectId, merged)
+  invalidateProjectCache(userId, projectId)
   return normalizeProjectSettings(row.settings)
 }
 

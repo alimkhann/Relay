@@ -57,9 +57,11 @@ function LogoTicker({
 
   return (
     <div className={cn("flex flex-col items-center gap-3", className)}>
-      <span className="text-[10px] tracking-[0.2em] font-medium text-white/30 uppercase">
-        {label}
-      </span>
+      {label && (
+        <span className="text-[10px] tracking-[0.2em] font-medium text-white/30 uppercase">
+          {label}
+        </span>
+      )}
       <div
         className="relative w-[calc(100vw-2.5rem)] sm:w-full max-w-2xl overflow-hidden"
         style={{
@@ -127,7 +129,7 @@ export function LogoStrip({ ready = true }: { ready?: boolean }) {
         items={MCP_AGENTS}
         direction="right"
         speed="normal"
-        label="Via MCP"
+        label=""
       />
     </motion.div>
   )

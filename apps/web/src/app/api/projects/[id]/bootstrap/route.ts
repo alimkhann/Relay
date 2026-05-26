@@ -3,6 +3,7 @@ import { bootstrapRequestSchema } from "@relay/shared"
 import { z } from "zod"
 
 import { withApiAuth } from "@/server/http/api-route"
+import { invalidateProjectCache } from "@/server/cache/invalidation"
 import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
 import { generateBootstrapForProject, listBootstrapPacketsForProject } from "@/server/services/bootstrap-service"
 import { consumeMcpReadQuota, consumeMcpWriteQuota } from "@/server/services/entitlement-service"
@@ -52,6 +53,9 @@ export const POST = withApiAuth(async (request: Request, { params }: { params: P
   const result = await generateBootstrapForProject(viewer.userId, id, input)
   if (result.status === "ready" && input && typeof input === "object" && "syncSurface" in input && typeof input.syncSurface === "string") {
     await recordSyncMarkForUser(viewer.userId, id, input.syncSurface)
+  }
+  if (result.status === "ready") {
+    invalidateProjectCache(viewer.userId, id)
   }
   return NextResponse.json(result, { status: result.status === "pending" ? 202 : 201 })
 })

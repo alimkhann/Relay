@@ -1,18 +1,19 @@
 import { NextResponse } from "next/server"
 
+import { listCachedProjectSources } from "@/server/cache/read-model-cache"
 import { withApiAuth } from "@/server/http/api-route"
 import { runAfterResponse } from "@/server/http/after"
 import { BadRequestError } from "@/server/http/errors"
 import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
 import { consumeMcpReadQuota } from "@/server/services/entitlement-service"
-import { createSourceFromUpload, listProjectSources, processUploadedSource } from "@/server/services/source-service"
+import { createSourceFromUpload, processUploadedSource } from "@/server/services/source-service"
 
 export const GET = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   const viewer = await resolveViewer(request.headers.get("authorization"))
   const { id } = await params
   requireViewerProject(viewer, id, "memory:read")
   if (viewer.mode === "mcp") await consumeMcpReadQuota(viewer.userId)
-  const sources = await listProjectSources(viewer.userId, id)
+  const sources = await listCachedProjectSources(viewer.userId, id)
   return NextResponse.json({ sources })
 })
 

@@ -8,6 +8,7 @@ import type {
 } from "@relay/shared"
 
 import { observeAndReflectDigestWithRepositories } from "./canon-autonomy-service"
+import { invalidateProjectCache } from "@/server/cache/invalidation"
 import { reconcileAfterDigest, type ReconciliationResult, type TruthMaintenanceArchiveDecision } from "./context-reconciliation-service"
 import { runTruthMaintenancePass } from "./digest-service"
 import { mergeDigestIntoState } from "./project-state-service"
@@ -175,7 +176,7 @@ export async function flushWorkSession(
     }
   }
 
-  return repositories.provider.transaction(async (provider) => {
+  const result = await repositories.provider.transaction(async (provider) => {
     const tx = createRepositoryBundle(userId, provider)
 
     const session = await tx.workSessions.getById(input.sessionId)
@@ -271,6 +272,8 @@ export async function flushWorkSession(
       nextState,
     }
   })
+  invalidateProjectCache(userId, projectId)
+  return result
 }
 
 export interface SweepOpenWorkSessionsInput {

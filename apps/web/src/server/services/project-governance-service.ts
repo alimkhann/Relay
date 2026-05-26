@@ -4,6 +4,7 @@ import { projectStateOverrideSchema, sessionArchiveSchema } from "@relay/shared"
 
 import { mergeDigestIntoState } from "./project-state-service"
 import { BadRequestError, NotFoundError } from "@/server/http/errors"
+import { invalidateProjectCache } from "@/server/cache/invalidation"
 import { logServerEvent } from "@/server/logging/logger"
 
 async function requireProjectAccess(userId: string, projectId: string) {
@@ -80,6 +81,7 @@ export async function rebuildProjectState(userId: string, projectId: string) {
     })
   }
 
+  invalidateProjectCache(userId, projectId)
 }
 
 export async function updateProjectStateOverrides(userId: string, projectId: string, input: unknown) {
@@ -109,6 +111,7 @@ export async function updateProjectStateOverrides(userId: string, projectId: str
     projectId,
   })
 
+  invalidateProjectCache(userId, projectId)
   return overrides
 }
 
@@ -149,12 +152,14 @@ export async function archiveProjectSession(
     },
   })
 
+  invalidateProjectCache(userId, projectId)
   return updated
 }
 
 export async function clearProjectBriefs(userId: string, projectId: string) {
   const { repositories } = await requireProjectAccess(userId, projectId)
   await repositories.bootstrapPackets.clearProject(projectId)
+  invalidateProjectCache(userId, projectId)
 }
 
 export async function deleteProjectBrief(userId: string, projectId: string, packetId: string) {
@@ -164,6 +169,7 @@ export async function deleteProjectBrief(userId: string, projectId: string, pack
   if (!deleted) {
     throw new NotFoundError("Brief not found.")
   }
+  invalidateProjectCache(userId, projectId)
 }
 
 export async function editProjectBrief(userId: string, projectId: string, packetId: string, content: string) {
@@ -188,5 +194,6 @@ export async function editProjectBrief(userId: string, projectId: string, packet
     throw new NotFoundError("Brief not found.")
   }
 
+  invalidateProjectCache(userId, projectId)
   return packet
 }

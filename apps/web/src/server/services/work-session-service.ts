@@ -14,6 +14,8 @@ import {
   workSessionOpenSchema,
 } from "@relay/shared"
 
+import { invalidateProjectCache } from "@/server/cache/invalidation"
+
 function isUniqueViolation(error: unknown) {
   return Boolean(
     error &&
@@ -128,7 +130,7 @@ export async function openWorkSession(
   const parsed = workSessionOpenSchema.parse(input) as WorkSessionOpenRequest
   const staleBefore = new Date(Date.now() - getWorkSessionReuseWindowMs(parsed.surface)).toISOString()
 
-  return repositories.provider.transaction(async (provider) => {
+  const result = await repositories.provider.transaction(async (provider) => {
     const tx = createRepositoryBundle(userId, provider)
 
     await tx.workSessions.markStaleOlderThan({
@@ -211,6 +213,8 @@ export async function openWorkSession(
 
     return session
   })
+  invalidateProjectCache(userId, projectId)
+  return result
 }
 
 export async function checkpointWorkSession(
@@ -221,7 +225,7 @@ export async function checkpointWorkSession(
   const repositories = createRepositoryBundle(userId)
   const parsed = workSessionCheckpointSchema.parse(input) as WorkSessionCheckpointRequest
 
-  return repositories.provider.transaction(async (provider) => {
+  const result = await repositories.provider.transaction(async (provider) => {
     const tx = createRepositoryBundle(userId, provider)
     const session = await tx.workSessions.getById(parsed.sessionId)
 
@@ -266,6 +270,8 @@ export async function checkpointWorkSession(
 
     return { session: await tx.workSessions.getById(session.id), checkpoint }
   })
+  invalidateProjectCache(userId, projectId)
+  return result
 }
 
 export async function closeWorkSession(
@@ -276,7 +282,7 @@ export async function closeWorkSession(
   const repositories = createRepositoryBundle(userId)
   const parsed = workSessionCloseSchema.parse(input) as WorkSessionCloseRequest
 
-  return repositories.provider.transaction(async (provider) => {
+  const result = await repositories.provider.transaction(async (provider) => {
     const tx = createRepositoryBundle(userId, provider)
     const session = await tx.workSessions.getById(parsed.sessionId)
 
@@ -341,6 +347,8 @@ export async function closeWorkSession(
 
     return { session: closed }
   })
+  invalidateProjectCache(userId, projectId)
+  return result
 }
 
 export async function getRecentWorkSessionContext(

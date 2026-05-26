@@ -14,6 +14,7 @@ import type {
 } from "@relay/shared"
 
 import { BadRequestError, ForbiddenError, NotFoundError } from "@/server/http/errors"
+import { invalidateProjectCache, invalidateProjectSourceCache } from "@/server/cache/invalidation"
 import type { DnsLookup } from "@/server/lib/safe-url"
 import { createMemoryItem } from "./memory-service"
 import { generateEmbedding, generateEmbeddings, EMBEDDING_MODEL } from "./embedding-service"
@@ -350,6 +351,7 @@ async function ingestExternalSourceText(userId: string, input: {
     await repos.sources.updateIndexJob(job.id, { status: "failed", errorMessage: message }).catch(() => undefined)
     await repos.sources.updateSourceStatus(source.id, "failed", { metadata: { ...metadata, error: message } })
   }
+  invalidateProjectSourceCache(userId, input.projectId, source.id)
   return getProjectSourceDetail(userId, input.projectId, source.id)
 }
 
@@ -650,6 +652,7 @@ export async function importSourceCitations(userId: string, projectId: string, i
     await repos.sources.updateIndexJob(job.id, { status: "failed", errorMessage: message }).catch(() => undefined)
     await repos.sources.updateSourceStatus(source.id, "failed", { metadata: { ...metadata, error: message } })
   }
+  invalidateProjectSourceCache(userId, projectId, source.id)
   return getProjectSourceDetail(userId, projectId, source.id)
 }
 
@@ -677,7 +680,9 @@ export async function archiveProjectSource(userId: string, projectId: string, so
   const repos = createRepositoryBundle(userId)
   const source = await repos.sources.getById(sourceId)
   if (!source || source.projectId !== projectId) throw new NotFoundError("Source not found.")
-  return repos.sources.updateSourceStatus(sourceId, "archived")
+  const archived = await repos.sources.updateSourceStatus(sourceId, "archived")
+  invalidateProjectSourceCache(userId, projectId, sourceId)
+  return archived
 }
 
 // Permanent, irreversible. Requires the source to already be archived so a
@@ -694,6 +699,7 @@ export async function hardDeleteProjectSource(userId: string, projectId: string,
     await deleteSourceObject({ key: source.storageObjectKey })
   }
   await repos.sources.hardDelete(sourceId)
+  invalidateProjectSourceCache(userId, projectId, sourceId)
   return { ok: true }
 }
 
@@ -789,8 +795,11 @@ export async function createSourceFromUpload(userId: string, input: {
     const message = error instanceof Error ? error.message : "Source file storage failed."
     await repos.sources.markVersionFailed(version.id, message)
     await repos.sources.updateSourceStatus(source.id, "failed", { metadata: { ...source.metadata, error: message } })
+    invalidateProjectSourceCache(userId, input.projectId, source.id)
     throw new BadRequestError(`Relay could not store this file: ${message}`)
   }
+
+  invalidateProjectSourceCache(userId, input.projectId, source.id)
 
   return {
     detail: await getProjectSourceDetail(userId, input.projectId, source.id),
@@ -839,10 +848,12 @@ export async function processUploadedSource(userId: string, handle: UploadProces
     })
     await embedSourceChunksIfConfigured(userId, chunks)
     await promoteHighConfidenceSourceFacts(userId, handle.sourceId)
+    invalidateProjectSourceCache(userId, handle.projectId, handle.sourceId)
   } catch (error) {
     const message = error instanceof Error ? error.message : "Source ingestion failed."
     await repos.sources.markVersionFailed(handle.versionId, message)
     await repos.sources.updateSourceStatus(handle.sourceId, "failed", { metadata: { ...handle.sourceMetadata, error: message } })
+    invalidateProjectSourceCache(userId, handle.projectId, handle.sourceId)
   }
 }
 
@@ -881,6 +892,7 @@ export async function reprocessUploadedSource(userId: string, projectId: string,
     sourceMetadata: source.metadata,
   })
 
+  invalidateProjectSourceCache(userId, projectId, sourceId)
   return getProjectSourceDetail(userId, projectId, sourceId)
 }
 
@@ -926,11 +938,13 @@ export async function sweepStaleProcessingSources(
           metadata: { ...metadata, reprocessAttempts: attempts + 1 },
         })
         await reprocessUploadedSource(userId, projectId, sourceId)
+        invalidateProjectSourceCache(userId, projectId, sourceId)
         results.push({ sourceId, action: "reprocessed" })
       } else {
         await repos.sources.updateSourceStatus(sourceId, "failed", {
           metadata: { ...metadata, error: "Ingestion did not complete; marked failed by sweep." },
         })
+        invalidateProjectSourceCache(userId, projectId, sourceId)
         results.push({ sourceId, action: "failed" })
       }
     } catch (error) {
@@ -938,6 +952,7 @@ export async function sweepStaleProcessingSources(
       await repos.sources.updateSourceStatus(sourceId, "failed", {
         metadata: { ...metadata, reprocessAttempts: attempts + 1, error: message },
       })
+      invalidateProjectSourceCache(userId, projectId, sourceId)
       results.push({ sourceId, action: "failed", error: message })
     }
   }
@@ -979,6 +994,10 @@ export async function promoteHighConfidenceSourceFacts(userId: string, sourceId:
     promoted += 1
   }
 
+  if (candidates[0]) {
+    invalidateProjectCache(userId, candidates[0].projectId)
+  }
+
   return { promoted, reviewed: candidates.length }
 }
 
@@ -1013,6 +1032,7 @@ export async function promoteSourceCitation(userId: string, projectId: string, s
     memoryItemId: memory.id,
     confidence: 1,
   })
+  invalidateProjectSourceCache(userId, projectId, sourceId)
   return { memoryItemId: memory.id }
 }
 
@@ -1025,6 +1045,7 @@ export async function reviewSourceFactCandidate(userId: string, projectId: strin
   if (!candidate) throw new NotFoundError("Source candidate not found.")
   if (action === "reject") {
     await repos.sources.rejectFactCandidate(candidateId)
+    invalidateProjectSourceCache(userId, projectId, sourceId)
     return { status: "rejected" as const }
   }
   if (candidate.status === "promoted" && candidate.memoryItemId) {
@@ -1054,5 +1075,6 @@ export async function reviewSourceFactCandidate(userId: string, projectId: strin
     memoryItemId: memory.id,
     confidence: candidate.confidence,
   })
+  invalidateProjectSourceCache(userId, projectId, sourceId)
   return { status: "promoted" as const, memoryItemId: memory.id }
 }

@@ -7,7 +7,8 @@ import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persi
 import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval"
 
 // Bump when the cached query shape changes so old deploys' caches are dropped.
-const APP_CACHE_VERSION = "1"
+const APP_CACHE_VERSION = "2"
+const AUTHENTICATED_READ_STALE_TIME_MS = 5 * 60_000
 
 const idbStorage = {
   getItem: (key: string) => idbGet<string>(key).then((v) => v ?? null),
@@ -35,9 +36,9 @@ export function QueryProvider({
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 60_000,
+            staleTime: AUTHENTICATED_READ_STALE_TIME_MS,
             gcTime: 1000 * 60 * 60 * 24, // 24h — survives in IndexedDB
-            refetchOnWindowFocus: true,
+            refetchOnWindowFocus: false,
             retry: 1,
           },
         },

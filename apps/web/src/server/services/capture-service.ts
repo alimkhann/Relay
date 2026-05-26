@@ -1,6 +1,7 @@
 import { createRepositoryBundle } from "@relay/db"
 import { capturePayloadSchema, withCaptureSignature } from "@relay/shared"
 
+import { invalidateProjectCache } from "@/server/cache/invalidation"
 import { decideDigestStrategy, enqueueDigestJob, scheduleDigestDrainForProject, type DigestJobOutcome } from "./digest-service"
 import { getProjectStateStatus } from "./state-status-service"
 import { fireUserMilestone } from "./user-milestones-service"
@@ -181,6 +182,8 @@ export async function saveCapture(userId: string, input: unknown) {
       },
     }).catch(() => {})
   }
+
+  invalidateProjectCache(userId, normalizedInput.projectId)
 
   return {
     session,

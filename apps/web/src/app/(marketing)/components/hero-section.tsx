@@ -122,9 +122,45 @@ export function HeroSection({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
             </Link>
           </motion.div>
 
+          {/* Social proof badges */}
+          <motion.div
+            custom={0.4}
+            variants={fadeUp}
+            initial="hidden"
+            animate={ready ? "visible" : "hidden"}
+            className="mt-6 flex items-center justify-center gap-4"
+          >
+            <a
+              href="https://www.producthunt.com/products/relay-15?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-relay-c81c15ad-0524-4b02-919c-eb965efc036c"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                alt="Relay - Stop repeating yourself to every AI | Product Hunt"
+                src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1126723&theme=dark&t=1779707024093"
+                height={44}
+                style={{ height: 44, width: "auto" }}
+              />
+            </a>
+            <a
+              href="https://peerlist.io/alimkhan/project/relay--ai-memory--context-sync"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="https://peerlist.io/api/v1/projects/embed/PRJHNN7EKKAB8LBPNCOG6R9GR8LL68?showUpvote=true&theme=dark"
+                alt="Relay — AI Memory & Context Sync"
+                height={44}
+                style={{ height: 44, width: "auto" }}
+              />
+            </a>
+          </motion.div>
+
           {/* Microcopy */}
           <motion.p
-            custom={0.4}
+            custom={0.5}
             variants={fadeUp}
             initial="hidden"
             animate={ready ? "visible" : "hidden"}

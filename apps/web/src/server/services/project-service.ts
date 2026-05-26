@@ -2,6 +2,7 @@ import { createRepositoryBundle, getProjectDashboard, getProjectSummaries } from
 import { projectInputSchema, slugify, updateProjectSchema } from "@relay/shared"
 
 import { BadRequestError } from "@/server/http/errors"
+import { invalidateProjectCache, invalidateUserProjectsCache } from "@/server/cache/invalidation"
 import { logServerEvent } from "@/server/logging/logger"
 import { resolveViewerEntitlements } from "./entitlement-service"
 import { completeOnboardingForUser } from "./onboarding-service"
@@ -103,6 +104,7 @@ export async function createProjectForUser(
         project_id: guardedProject.id,
         onboarding_via: options.onboardingVia ?? "web",
       }).catch(() => {})
+      invalidateUserProjectsCache(userId)
       return guardedProject
     } catch (error) {
       if (isUniqueViolation(error)) {
@@ -161,13 +163,16 @@ export async function updateProjectForUser(userId: string, projectId: string, in
     }
   }
 
-  return repositories.projects.update(projectId, {
+  const project = await repositories.projects.update(projectId, {
     name: parsed.name,
     slug,
     description: parsed.description,
     projectUrl: parsed.projectUrl,
     isArchived: parsed.isArchived === false ? undefined : parsed.isArchived
   })
+  invalidateProjectCache(userId, projectId)
+  invalidateUserProjectsCache(userId)
+  return project
 }
 
 export async function deleteProjectForUser(userId: string, projectId: string) {
@@ -177,4 +182,6 @@ export async function deleteProjectForUser(userId: string, projectId: string) {
     throw new BadRequestError("Project not found.")
   }
   console.info("[Relay] project.deleted", { userId, projectId })
+  invalidateProjectCache(userId, projectId)
+  invalidateUserProjectsCache(userId)
 }

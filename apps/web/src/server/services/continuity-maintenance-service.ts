@@ -9,6 +9,7 @@ import {
 
 import { adjudicateGreyZoneConflict } from "./conflict-adjudication-service"
 import { deriveMemoryCompactionAction } from "./compaction-service"
+import { invalidateProjectCache } from "@/server/cache/invalidation"
 
 const BROWSER_SURFACES: WorkSessionRow["surface"][] = [
   "chatgpt",
@@ -278,7 +279,9 @@ export async function runContinuityMaintenanceForProject(
   projectId: string,
 ): Promise<ContinuityMaintenanceResult> {
   const repositories = createRepositoryBundle(userId)
-  return runContinuityMaintenanceForProjectWithRepositories(repositories, projectId)
+  const result = await runContinuityMaintenanceForProjectWithRepositories(repositories, projectId)
+  invalidateProjectCache(userId, projectId)
+  return result
 }
 
 export async function runContinuityMaintenanceForUser(
@@ -294,7 +297,9 @@ export async function runContinuityMaintenanceForUser(
   const results: ContinuityMaintenanceResult[] = []
   for (const project of projects) {
     if (!project) continue
-    results.push(await runContinuityMaintenanceForProjectWithRepositories(repositories, project.id))
+    const result = await runContinuityMaintenanceForProjectWithRepositories(repositories, project.id)
+    invalidateProjectCache(userId, project.id)
+    results.push(result)
   }
 
   return results

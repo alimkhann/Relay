@@ -49,6 +49,25 @@ describe("MemoryRepository.hybridSearch SQL shape", () => {
     expect(sql).toContain("m.source_surface")
   })
 
+  it("does not return search_vector in list payloads", async () => {
+    const { provider, calls } = makeFakeProvider([])
+    const repo = new MemoryRepository(provider)
+
+    await repo.listByProject("proj-1")
+
+    expect(calls[0]!.text).not.toContain("search_vector")
+  })
+
+  it("does not return search_vector in hybrid search payloads", async () => {
+    const { provider, calls } = makeFakeProvider([])
+    const repo = new MemoryRepository(provider)
+
+    await repo.hybridSearch("proj-1", query, embedding)
+
+    expect(calls[0]!.text).toContain("search_vector @@")
+    expect(calls[0]!.text).not.toContain("m.search_vector")
+  })
+
   it("applies dateRange.from / dateRange.to as captured_at bounds (D1)", async () => {
     const { provider, calls } = makeFakeProvider([])
     const repo = new MemoryRepository(provider)

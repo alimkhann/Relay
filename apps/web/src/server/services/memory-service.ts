@@ -3,6 +3,7 @@ import type { CreateMemoryItemInput, MemoryEventType, MemoryItemRow } from "@rel
 import { computeDecayScore, createMemoryItemSchema, DECAY_VISIBILITY_THRESHOLD, updateMemoryItemSchema } from "@relay/shared"
 
 import { embedMemoryItem, embedMemoryItems, generateEmbedding } from "./embedding-service"
+import { invalidateProjectCache } from "@/server/cache/invalidation"
 import { extractAndLinkEntities } from "./entity-extraction-service"
 import { decomposeQuery } from "./query-decomposition-service"
 import { buildCurrentPreviousHint, buildReasoningEvidenceTable, buildTemporalResolutionHint } from "./reasoning-assembly-service"
@@ -112,6 +113,7 @@ export async function createMemoryItem(userId: string, input: unknown) {
   // the worker is deployed, keep the inline best-effort enrichment so
   // dashboards don't see empty embedding columns for a tick or two.
   void postCreateHook(item, repositories)
+  if (item.projectId) invalidateProjectCache(userId, item.projectId)
 
   return item
 }
@@ -144,6 +146,10 @@ export async function createMemoryItemBatch(userId: string, projectId: string, i
   }).catch((error) => {
     console.error("[memory-service] batch embedding failed:", error instanceof Error ? error.message : error)
   })
+
+  if (created[0]?.projectId) {
+    invalidateProjectCache(userId, created[0].projectId)
+  }
 
   return created
 }
@@ -384,6 +390,8 @@ export async function updateMemoryItem(userId: string, memoryId: string, input: 
     })
   }
 
+  if (item.projectId) invalidateProjectCache(userId, item.projectId)
+
   return item
 }
 
@@ -404,5 +412,6 @@ export async function deleteMemoryItem(userId: string, memoryId: string, project
       userId,
       payload: { type: existing.type, reason: "deleted" },
     })
+    invalidateProjectCache(userId, existing.projectId)
   }
 }

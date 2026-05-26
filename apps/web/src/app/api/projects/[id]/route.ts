@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
 
+import { getCachedProjectDashboardForUser } from "@/server/cache/read-model-cache"
 import { withApiAuth } from "@/server/http/api-route"
 import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
 import { consumeMcpReadQuota, consumeMcpWriteQuota } from "@/server/services/entitlement-service"
-import { deleteProjectForUser, getProjectDashboardForUser, updateProjectForUser } from "@/server/services/project-service"
+import { deleteProjectForUser, updateProjectForUser } from "@/server/services/project-service"
 
 export const GET = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   const viewer = await resolveViewer(request.headers.get("authorization"))
@@ -12,7 +13,7 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
   if (viewer.mode === "mcp") {
     await consumeMcpReadQuota(viewer.userId)
   }
-  const dashboard = await getProjectDashboardForUser(viewer.userId, id)
+  const dashboard = await getCachedProjectDashboardForUser(viewer.userId, id)
 
   if (!dashboard) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 })

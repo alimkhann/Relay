@@ -24,6 +24,24 @@ export async function getProjectDashboard(repositories: RepositoryBundle, ownerI
     })
   ])
   const targetProfileById = new Map(targetProfiles.map((profile) => [profile.id, profile.key]))
+  const sessionIds = Array.from(new Set([
+    ...recentSessions.map((session) => session.id),
+    ...sessionHistory.map((session) => session.id)
+  ]))
+  const turnCountsBySessionId = await repositories.turns.countBySessionIds(sessionIds)
+  const sessionToDashboardRow = (session: (typeof recentSessions)[number]) => ({
+    id: session.id,
+    platform: session.platform,
+    title: session.title,
+    url: session.url,
+    pageFingerprint: session.pageFingerprint,
+    captureSignature: session.captureSignature,
+    sourceConversationId: session.sourceConversationId,
+    isArchived: session.isArchived,
+    archivedAt: session.archivedAt,
+    capturedAt: session.capturedAt,
+    turnCount: turnCountsBySessionId.get(session.id) ?? 0
+  })
   const derivedProjectState = projectState
     ? {
         projectOverview: projectState.projectOverview,
@@ -77,36 +95,8 @@ export async function getProjectDashboard(repositories: RepositoryBundle, ownerI
         outputPayload: job.outputPayload
       }))
     }),
-    recentSessions: await Promise.all(
-      recentSessions.map(async (session) => ({
-        id: session.id,
-        platform: session.platform,
-        title: session.title,
-        url: session.url,
-        pageFingerprint: session.pageFingerprint,
-        captureSignature: session.captureSignature,
-        sourceConversationId: session.sourceConversationId,
-        isArchived: session.isArchived,
-        archivedAt: session.archivedAt,
-        capturedAt: session.capturedAt,
-        turnCount: (await repositories.turns.listBySession(session.id)).length
-      }))
-    ),
-    sessionHistory: await Promise.all(
-      sessionHistory.map(async (session) => ({
-        id: session.id,
-        platform: session.platform,
-        title: session.title,
-        url: session.url,
-        pageFingerprint: session.pageFingerprint,
-        captureSignature: session.captureSignature,
-        sourceConversationId: session.sourceConversationId,
-        isArchived: session.isArchived,
-        archivedAt: session.archivedAt,
-        capturedAt: session.capturedAt,
-        turnCount: (await repositories.turns.listBySession(session.id)).length
-      }))
-    ),
+    recentSessions: recentSessions.map(sessionToDashboardRow),
+    sessionHistory: sessionHistory.map(sessionToDashboardRow),
     distinctConversationCount,
     recentDigests: recentDigests.map((digest) => ({
       id: digest.id,
