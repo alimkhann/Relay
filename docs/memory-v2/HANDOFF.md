@@ -349,6 +349,88 @@ with real user data before any prod deploy. New work landed:
 11. Update this HANDOFF with snapshot + sample backfill output.
 12. Hand to user for `/review 35`.
 
+### Phase B partial — dev-branch schema validation done (2026-05-26)
+
+Fresh Neon branch created off current prod for backfill rehearsal:
+
+| Field | Value |
+|---|---|
+| Branch name | `memory-v2-bundle-test` |
+| Branch ID | `br-cool-field-aganybdc` |
+| Parent (prod) | `br-small-moon-agn70urq` |
+| Pooled URL | `postgresql://neondb_owner:npg_8BMkX5hrqpji@ep-divine-flower-agvtodh7-pooler.c-2.eu-central-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require` |
+| Unpooled URL (migrations) | `postgresql://neondb_owner:npg_8BMkX5hrqpji@ep-divine-flower-agvtodh7.c-2.eu-central-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require` |
+
+Migrations applied: 10 files (0040–0049). Run took seconds.
+
+Verification snapshot (fresh dev branch, real prod-fork data):
+
+| Check | Result |
+|---|---|
+| Personal spaces == profiles | 73 == 73 ✓ |
+| Project spaces == projects | 51 == 51 ✓ |
+| space_members rows | 124 (73 personal owners + 51 project memberships) ✓ |
+| `memory_items` NULL `space_id` / `lifecycle_state` / `valid_from` | 0 / 0 / 0 ✓ |
+| Lifecycle backfill | 461 active + 248 archived = 709 total ✓ |
+| 0049 backfill | 709 rows flipped `done → pending`, version=1, ready for v2 extractor ✓ |
+| `observations` / `entity_relations` rows | 0 / 0 (extractors haven't run yet) ✓ |
+| Partial HNSW indexes (`WHERE embedding IS NOT NULL`) | confirmed on `memory_items.embedding` + `observations.embedding` ✓ |
+| `memory_half_lives` seeded | 7 rows ✓ |
+| RLS enabled tables | 61 ✓ |
+| Lifecycle trigger round-trip | `archived ↔ active` syncs `is_archived` ✓ |
+| Personal-space write with NULL `project_id` | works (`dd817aba-...`) ✓ |
+| Last migration | `0049_backfill_v1_to_v2_extraction.sql` ✓ |
+
+Prod growth since the initial scoping query: 626 → 709 memory_items (+83), 70 → 73 profiles (+3), 49 → 51 projects (+2) in roughly 6 hours of beta usage.
+
+### Phase B remainder — pending user-driven local smoke
+
+Schema is verified. The remaining Phase B steps (local web boot + extractor run against the 709 backfilled-pending rows + dashboard/MCP/extension/agent smoke) need the user's local Gemini key + auth setup. Recommended next-session checklist:
+
+1. `apps/web/.env.local` — set:
+   ```
+   DATABASE_URL=postgresql://neondb_owner:npg_8BMkX5hrqpji@ep-divine-flower-agvtodh7-pooler.c-2.eu-central-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require
+   DATABASE_URL_UNPOOLED=postgresql://neondb_owner:npg_8BMkX5hrqpji@ep-divine-flower-agvtodh7.c-2.eu-central-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require
+   GEMINI_API_KEY=<yours>
+   CRON_SECRET=local-dev-secret
+   RELAY_MEMORY_PIPELINE_FULL=true
+   RELAY_HYGIENE_DRY_RUN=false
+   RELAY_PIPELINE_DAILY_USD_CAP=20
+   ```
+   (Cap raised to $20 for one-shot dev backfill rehearsal — reset to $5 before any prod deploy.)
+2. `pnpm --filter @relay/web dev`.
+3. Curl the cron route repeatedly until `pending → 0`:
+   ```bash
+   for i in $(seq 1 35); do
+     curl -fsS -X POST -H "Authorization: Bearer local-dev-secret" \
+       http://localhost:3000/api/cron/memory-pipeline | jq '{processed: .tick.processed, budget: .budget.spentUsd, fullExtraction: .flags.fullExtraction}'
+     sleep 2
+   done
+   ```
+4. Monitor on the dev branch:
+   ```sql
+   select enrichment_status, count(*) from memory_items group by 1;
+   select count(*) from observations;
+   select count(*) from entity_relations;
+   ```
+5. Open `/dashboard` for an old project, confirm graph shows real edges (synthetic-hub fallback drops away once `realEdgeCount ≥ 8`).
+6. Open `/personal` — empty state, then write via MCP, then confirm row lands with `project_id=NULL`.
+7. Sample 5 observations + 5 entity_relations:
+   ```sql
+   select id, content, predicate, subject_entity_id, object_entity_id, object_literal, confidence from observations order by random() limit 5;
+   select er.id, e1.name as subject, er.relation_type, e2.name as object, er.confidence
+     from entity_relations er
+     join canonical_entities e1 on e1.id = er.source_entity_id
+     join canonical_entities e2 on e2.id = er.target_entity_id
+     order by random() limit 5;
+   ```
+8. If Gemini output looks noisy → iterate prompts in `memory-pipeline-providers.ts` → re-enqueue via `update memory_items set enrichment_status='pending', enrichment_version=1 where enrichment_version=2;` → re-run cron.
+
+When done with the dev branch, drop it:
+```
+mcp__Neon__delete_branch(projectId='shiny-term-32281581', branchId='br-cool-field-aganybdc')
+```
+
 ## TL;DR for review
 
 - Schema is layered (episodes → mentions → observations → entity_relations → canon → brief) + bi-temporal + space-scoped.
