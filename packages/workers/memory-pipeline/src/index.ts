@@ -89,7 +89,15 @@ export interface ProcessItemResult {
   error?: string
 }
 
-export const PIPELINE_VERSION = 1
+/**
+ * Pipeline version. Bumped to 2 when Gemini entity + observation extractors
+ * land. Bumping forces `tick()` to reclaim any row with
+ * `enrichment_version < PIPELINE_VERSION` AND status in ('pending','failed').
+ * Rows still in `done` are NOT auto-reclaimed — the backfill migration
+ * (0049_backfill_v1_to_v2_extraction.sql) flips them to `pending` so the
+ * worker reprocesses legacy items through the new extractor pipeline.
+ */
+export const PIPELINE_VERSION = 2
 
 /**
  * Process a single memory_item. Idempotent — re-running with the same row

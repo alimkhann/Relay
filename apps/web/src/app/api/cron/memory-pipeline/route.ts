@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 
-import { createRepositoryBundle } from "@relay/db"
+import { createRepositoryBundle, createWorkerRepositoryProvider } from "@relay/db"
 import {
   PIPELINE_VERSION,
   runHygieneTick,
@@ -10,6 +10,11 @@ import {
 } from "@relay/memory-pipeline"
 
 import { EMBEDDING_MODEL, generateEmbedding } from "@/server/services/embedding-service"
+import {
+  buildEntityExtractor,
+  buildObservationExtractor,
+  buildPipelineBudgetGate,
+} from "@/server/services/memory-pipeline-providers"
 
 /**
  * Cron entry for the memory-pipeline worker.
@@ -46,7 +51,10 @@ async function handle(request: Request): Promise<Response> {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const repositories = createRepositoryBundle()
+  // Uses WORKER_DATABASE_URL when set so the worker can run under a dedicated
+  // role (e.g. relay_worker with bypassrls). Falls back to DATABASE_URL when
+  // unset — current production behavior preserved.
+  const repositories = createRepositoryBundle(undefined, createWorkerRepositoryProvider())
   const repos: MemoryPipelineRepos = {
     provider: repositories.provider,
     memory: repositories.memory,
@@ -57,15 +65,22 @@ async function handle(request: Request): Promise<Response> {
     space: repositories.spaces,
   }
 
-  // Entity + observation extractors land in a follow-up PR (worker full
-  // extraction, Gemini prompt design + cost gating). Until then the worker
-  // runs embed-only; RELAY_MEMORY_PIPELINE_FULL is reserved but inert.
+  // Entity + observation extractors gated behind RELAY_MEMORY_PIPELINE_FULL.
+  // When disabled the worker only embeds new rows + sweeps decay — safe
+  // default for first deploy. Flip the env after prompt-quality soak.
   const fullExtraction = process.env.RELAY_MEMORY_PIPELINE_FULL === "true"
+  const budgetGate = fullExtraction ? buildPipelineBudgetGate() : null
   const providers: PipelineProviders = {
     embed: async (text: string) => ({
       vector: await generateEmbedding(text),
       model: EMBEDDING_MODEL,
     }),
+    ...(fullExtraction && budgetGate
+      ? {
+          extractEntities: buildEntityExtractor(budgetGate),
+          extractObservations: buildObservationExtractor(budgetGate),
+        }
+      : {}),
   }
 
   const dryRunHygiene = process.env.RELAY_HYGIENE_DRY_RUN !== "false"
@@ -90,6 +105,7 @@ async function handle(request: Request): Promise<Response> {
       fullExtraction,
       dryRunHygiene,
     },
+    budget: budgetGate?.snapshot() ?? null,
   })
 }
 

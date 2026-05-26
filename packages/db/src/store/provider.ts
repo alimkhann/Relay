@@ -15,8 +15,8 @@ export interface DatabaseConfig {
   mode: DatabaseMode
 }
 
-let neonPool: NeonPool | null = null
-let postgresPool: PostgresPool | null = null
+const neonPools = new Map<string, NeonPool>()
+const postgresPools = new Map<string, PostgresPool>()
 
 function buildProviderFromClient(input: {
   mode: DatabaseMode
@@ -123,29 +123,34 @@ export function resolveDatabaseConfig(
 }
 
 function getNeonPool(connectionString: string) {
-  if (!neonPool) {
-    neonPool = new NeonPool({
-      connectionString,
-      max: 4
-    })
+  let pool = neonPools.get(connectionString)
+  if (!pool) {
+    pool = new NeonPool({ connectionString, max: 4 })
+    neonPools.set(connectionString, pool)
   }
-
-  return neonPool
+  return pool
 }
 
 function getPostgresPool(connectionString: string) {
-  if (!postgresPool) {
-    postgresPool = new PostgresPool({
-      connectionString,
-      max: 4
-    })
+  let pool = postgresPools.get(connectionString)
+  if (!pool) {
+    pool = new PostgresPool({ connectionString, max: 4 })
+    postgresPools.set(connectionString, pool)
   }
-
-  return postgresPool
+  return pool
 }
 
-export function createRepositoryProvider(viewerUserId?: string): DatabaseProvider {
-  const { connectionString, mode } = resolveDatabaseConfig()
+export function createRepositoryProvider(viewerUserId?: string, overrideConnectionString?: string): DatabaseProvider {
+  let mode: DatabaseMode
+  let connectionString: string
+  if (overrideConnectionString) {
+    connectionString = overrideConnectionString
+    mode = isLocalConnectionString(connectionString) ? "local" : "neon"
+  } else {
+    const resolved = resolveDatabaseConfig()
+    connectionString = resolved.connectionString
+    mode = resolved.mode
+  }
   const database = mode === "local" ? getPostgresPool(connectionString) : getNeonPool(connectionString)
 
   return {
@@ -186,4 +191,17 @@ export function createRepositoryProvider(viewerUserId?: string): DatabaseProvide
       }
     },
   }
+}
+
+/**
+ * Provider for the memory-pipeline worker (cron route). Uses a separate
+ * connection string from WORKER_DATABASE_URL when set so the worker can run
+ * under a dedicated role (e.g. relay_worker with bypassrls) once the app
+ * itself moves to a least-privilege role. Falls back to the default
+ * DATABASE_URL when WORKER_DATABASE_URL is unset — current behavior is
+ * unchanged in that case.
+ */
+export function createWorkerRepositoryProvider(): DatabaseProvider {
+  const workerUrl = process.env.WORKER_DATABASE_URL?.trim()
+  return createRepositoryProvider(undefined, workerUrl || undefined)
 }

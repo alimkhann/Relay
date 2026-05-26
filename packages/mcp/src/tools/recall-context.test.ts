@@ -44,7 +44,7 @@ describe("recallContext (Memory v2 wiring)", () => {
     expect(searchUrl).toContain("observations=true")
     expect(searchUrl).toContain("entities=true")
 
-    const text = result.content[0].text
+    const text = result.content[0]?.text ?? ""
     expect(text).toContain("Observations (1)")
     expect(text).toContain("Alim uses Postgres")
     expect(text).toContain("Entities (1)")

@@ -1,6 +1,13 @@
 import { createRepositoryBundle, type RepositoryBundle } from "@relay/db"
 import type { CreateMemoryItemInput, MemoryEventType, MemoryItemRow } from "@relay/shared"
-import { computeDecayScore, createMemoryItemSchema, DECAY_VISIBILITY_THRESHOLD, updateMemoryItemSchema } from "@relay/shared"
+import {
+  computeDecayMultiplier,
+  computeDecayScore,
+  createMemoryItemSchema,
+  DECAY_VISIBILITY_THRESHOLD,
+  LIFECYCLE_HALF_LIFE_DAYS,
+  updateMemoryItemSchema,
+} from "@relay/shared"
 
 import { embedMemoryItem, embedMemoryItems, generateEmbedding } from "./embedding-service"
 import { invalidateProjectCache } from "@/server/cache/invalidation"
@@ -11,6 +18,40 @@ import { conditionalRerank } from "./reranker-service"
 import { detectRelations } from "./relation-service"
 
 /**
+ * Module-scoped 60s cache for the memory_half_lives lookup table. Read once
+ * per request hot path so recall ranking honors live values from the DB
+ * without per-query overhead. Falls back to the shared defaults on error.
+ */
+let halfLivesCache: { value: Record<string, number>; expiresAt: number } | null = null
+const HALF_LIVES_TTL_MS = 60_000
+
+async function loadHalfLives(repositories: RepositoryBundle): Promise<Record<string, number>> {
+  if (halfLivesCache && halfLivesCache.expiresAt > Date.now()) {
+    return halfLivesCache.value
+  }
+  try {
+    const rows = await repositories.provider.query<{ item_type: string; half_life_days: number }>(
+      `select item_type, half_life_days from memory_half_lives`,
+    )
+    if (rows.length === 0) {
+      return LIFECYCLE_HALF_LIFE_DAYS
+    }
+    const value: Record<string, number> = Object.fromEntries(
+      rows.map((r) => [r.item_type, Number(r.half_life_days)]),
+    )
+    halfLivesCache = { value, expiresAt: Date.now() + HALF_LIVES_TTL_MS }
+    return value
+  } catch {
+    return LIFECYCLE_HALF_LIFE_DAYS
+  }
+}
+
+/** Test-only — clear the half-life cache between cases. */
+export function _resetHalfLivesCacheForTests() {
+  halfLivesCache = null
+}
+
+/**
  * Fire-and-forget memory event emit. Failures never propagate — events are
  * audit/analytics, not the source of truth. Null userId means "unknown actor"
  * (e.g. background job).
@@ -18,7 +59,7 @@ import { detectRelations } from "./relation-service"
 export async function emitMemoryEvent(
   repos: RepositoryBundle,
   input: {
-    projectId: string
+    projectId: string | null
     eventType: MemoryEventType
     memoryItemId?: string | null
     sourceSurface?: string | null
@@ -45,7 +86,9 @@ async function postCreateHook(item: MemoryItemRow, repos: ReturnType<typeof crea
   try {
     await embedMemoryItem(item, repos)
     await detectRelations(item, repos)
-    await extractAndLinkEntities(repos, item.projectId, item.id, item.content, item.title)
+    if (item.projectId) {
+      await extractAndLinkEntities(repos, item.projectId, item.id, item.content, item.title)
+    }
   } catch (error) {
     console.error("[memory-service] post-create hook failed:", error instanceof Error ? error.message : error)
   }
@@ -59,7 +102,9 @@ export async function embedAndRelateItems(items: MemoryItemRow[], repos: Reposit
     for (const item of items) {
       try {
         await detectRelations(item, repos)
-        await extractAndLinkEntities(repos, item.projectId, item.id, item.content, item.title)
+        if (item.projectId) {
+          await extractAndLinkEntities(repos, item.projectId, item.id, item.content, item.title)
+        }
       } catch (error) {
         console.error("[memory-service] post-batch enrichment failed:", error instanceof Error ? error.message : error)
       }
@@ -138,7 +183,9 @@ export async function createMemoryItemBatch(userId: string, projectId: string, i
     for (const item of created) {
       try {
         await detectRelations(item, repositories)
-        await extractAndLinkEntities(repositories, item.projectId, item.id, item.content, item.title)
+        if (item.projectId) {
+          await extractAndLinkEntities(repositories, item.projectId, item.id, item.content, item.title)
+        }
       } catch (error) {
         console.error("[memory-service] post-batch enrichment failed:", error instanceof Error ? error.message : error)
       }
@@ -227,7 +274,14 @@ export async function searchMemoryItems(
     }
   }
 
-  // Boost results containing extracted entities to the top (after rerank)
+  // Boost results containing extracted entities to the top (after rerank),
+  // tie-broken by similarity × decay multiplier so stale items rank below
+  // fresh items at equal entity-match strength.
+  const halfLifeMap = await loadHalfLives(repositories)
+  const decayScore = (item: MemoryItemRow) => {
+    const sim = (item as unknown as { similarity?: number }).similarity ?? 0
+    return sim * computeDecayMultiplier(item, halfLifeMap)
+  }
   if (decomposition.extractedEntities.length > 0) {
     const entityPatterns = decomposition.extractedEntities.map((e) => e.toLowerCase())
     memoryResults.sort((a, b) => {
@@ -235,8 +289,12 @@ export async function searchMemoryItems(
       const bContent = (b.content + " " + (b.title ?? "")).toLowerCase()
       const aHits = entityPatterns.filter((p) => aContent.includes(p)).length
       const bHits = entityPatterns.filter((p) => bContent.includes(p)).length
-      return bHits - aHits
+      if (aHits !== bHits) return bHits - aHits
+      return decayScore(b) - decayScore(a)
     })
+  } else if (hasSimilarityScores) {
+    // No entity boost: still apply decay so fresh items beat stale at equal cosine.
+    memoryResults.sort((a, b) => decayScore(b) - decayScore(a))
   }
 
   // Canon entries are project-scoped; skip them for personal/space-scoped recall.
@@ -343,7 +401,10 @@ export async function updateMemoryItem(userId: string, memoryId: string, input: 
     nullContent: isForgetting,
   })
 
-  await repositories.projectState.markDirty(existing?.projectId ?? item.projectId)
+  const dirtyProjectId = existing?.projectId ?? item.projectId
+  if (dirtyProjectId) {
+    await repositories.projectState.markDirty(dirtyProjectId)
+  }
 
   // Emit one event for the lifecycle transition (if any) AND a separate
   // `reaffirmed` event when the decay clock was reset — the two signals are

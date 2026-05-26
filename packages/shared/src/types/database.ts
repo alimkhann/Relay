@@ -116,7 +116,8 @@ export type SourceSurface =
 
 export interface MemoryItemRow {
   id: string
-  projectId: string
+  /** Project scope. Null for personal-space items (since migration 0047). */
+  projectId: string | null
   /** Memory v2: owning space (personal or project). Null on legacy rows pre-backfill. Optional so pre-v2 row fixtures stay valid. */
   spaceId?: string | null
   sourceTurnId: string | null

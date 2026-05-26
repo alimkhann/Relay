@@ -7,7 +7,7 @@ export class MemoryEventRepository {
   constructor(private readonly provider: DatabaseProvider) {}
 
   async create(input: {
-    projectId: string
+    projectId: string | null
     memoryItemId?: string | null
     eventType: MemoryEventType
     sourceSurface?: string | null
@@ -26,7 +26,7 @@ export class MemoryEventRepository {
        values ($1, $2, $3, $4, $5, $6::jsonb)
        returning *`,
       [
-        input.projectId,
+        input.projectId ?? null,
         input.memoryItemId ?? null,
         input.eventType,
         input.sourceSurface ?? null,
