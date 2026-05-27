@@ -342,6 +342,33 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     null | "approving_held"
   >(null);
   const [projectScanPending, setProjectScanPending] = useState(false);
+  // Memory v2 (F1) — personal-space picker. Personal space is lazy-created
+  // server-side on /api/spaces GET; we just need its id to route captures.
+  const [personalSpaceId, setPersonalSpaceId] = useState<string | null>(null);
+  const [personalMode, setPersonalMode] = useState(false);
+
+  // F1 — discover the user's personal space id once per session. The server
+  // lazy-creates one on first /api/spaces GET, so a single fetch is enough.
+  useEffect(() => {
+    if (!session?.userId || personalSpaceId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await relayFetch("/api/spaces");
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          spaces?: Array<{ id: string; kind: "personal" | "project"; name: string; projectId: string | null }>;
+        };
+        const personal = data.spaces?.find((s) => s.kind === "personal");
+        if (!cancelled && personal) setPersonalSpaceId(personal.id);
+      } catch {
+        // best-effort; capture still works via the project endpoint
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.userId, personalSpaceId]);
   const [newProjectUrl, setNewProjectUrl] = useState("");
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDescription, setNewProjectDescription] = useState("");
@@ -1744,13 +1771,20 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   async function addContext(section: ContextSection) {
     const projectId = activeState.projectId ?? session?.projectId ?? "";
     const content = drafts[section].trim();
-    if (!projectId || !content) return;
+    if (!content) return;
+    // F1 — personal-mode captures route to the space endpoint and ignore project.
+    if (!personalMode && !projectId) return;
+    if (personalMode && !personalSpaceId) return;
+
+    const endpoint = personalMode
+      ? `/api/spaces/${personalSpaceId}/memory`
+      : `/api/projects/${projectId}/memory`;
 
     await runBusyAction(
       `Saving ${sectionLabels[section].toLowerCase()}…`,
       `${sectionLabels[section]} updated.`,
       async () => {
-        const response = await relayFetch(`/api/projects/${projectId}/memory`, {
+        const response = await relayFetch(endpoint, {
           method: "POST",
           body: JSON.stringify({
             type: memoryTypeBySection[section],
@@ -1835,7 +1869,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           }
         } else {
           const projectId = activeState.projectId ?? session?.projectId ?? "";
-          const createResponse = await relayFetch(`/api/projects/${projectId}/memory`, {
+          const endpoint = personalMode && personalSpaceId
+            ? `/api/spaces/${personalSpaceId}/memory`
+            : `/api/projects/${projectId}/memory`;
+          const createResponse = await relayFetch(endpoint, {
             method: "POST",
             body: JSON.stringify({
               type: memoryTypeBySection[section],
@@ -2591,7 +2628,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   }}
                 >
                   <h2 className={styles.projectName}>
-                    {activeState.projectName ?? "No project"}
+                    {personalMode ? "Personal" : activeState.projectName ?? "No project"}
                   </h2>
                   <svg
                     className={`${styles.projectChevron} ${projectSwitcherOpen ? styles.projectChevronOpen : ""}`}
@@ -2610,13 +2647,36 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   <div className={styles.projectDropdown}>
                     {switcherMode === "list" ? (
                       <>
+                        {/* F1 — Personal space pinned to the top of the picker.
+                            Selecting it routes captures to /api/spaces/[id]/memory. */}
+                        {personalSpaceId && (
+                          <div className={styles.projectOptionRow}>
+                            <button
+                              className={`${styles.projectOption} ${personalMode ? styles.projectOptionActive : ""}`}
+                              onClick={() => {
+                                setPersonalMode(true);
+                                setProjectSwitcherOpen(false);
+                              }}
+                            >
+                              {personalMode ? "✓ " : ""}
+                              Personal
+                            </button>
+                          </div>
+                        )}
                         {activeState.projectOptions.map((project) => (
                           <div key={project.id} className={styles.projectOptionRow}>
                             <button
-                              className={`${styles.projectOption} ${project.id === selectedProjectId ? styles.projectOptionActive : ""}`}
-                              onClick={() => void handleProjectChange(project.id)}
+                              className={`${styles.projectOption} ${
+                                !personalMode && project.id === selectedProjectId
+                                  ? styles.projectOptionActive
+                                  : ""
+                              }`}
+                              onClick={() => {
+                                setPersonalMode(false);
+                                void handleProjectChange(project.id);
+                              }}
                             >
-                              {project.id === selectedProjectId ? "✓ " : ""}
+                              {!personalMode && project.id === selectedProjectId ? "✓ " : ""}
                               {project.name}
                             </button>
                             <button
