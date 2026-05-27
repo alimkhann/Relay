@@ -135,8 +135,14 @@ export async function recallContext(
     if (entities.length > 0 || relations.length > 0) {
       sections.push(`## Entities (${entities.length}) & Relations (${relations.length})`)
       for (const e of entities.slice(0, 20)) sections.push(`- ${e.name} (${e.kind})`)
+      // Render relations using entity names instead of raw UUIDs; fall back to
+      // the id when an endpoint isn't in the snapshot's entity slice.
+      const nameById = new Map(entities.map((e) => [e.id, e.name] as const))
+      const label = (id: string) => nameById.get(id) ?? id
       for (const r of relations.slice(0, 20)) {
-        sections.push(`- ${r.sourceEntityId} —[${r.relationType}]→ ${r.targetEntityId}`)
+        sections.push(
+          `- ${label(r.sourceEntityId)} —[${r.relationType}]→ ${label(r.targetEntityId)}`,
+        )
       }
     } else {
       sections.push("## Entities\nNone found.")

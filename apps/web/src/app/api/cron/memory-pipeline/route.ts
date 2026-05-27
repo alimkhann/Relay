@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server"
 
+// A FULL tick with Gemini extractors runs ~3 min over a 25-item batch
+// (HANDOFF §7 drain stats). Default Vercel timeout is too tight.
+export const maxDuration = 300
+
 import { createRepositoryBundle, createWorkerRepositoryProvider } from "@relay/db"
 import {
   PIPELINE_VERSION,

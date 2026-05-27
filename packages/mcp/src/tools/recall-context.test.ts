@@ -19,7 +19,15 @@ describe("recallContext (Memory v2 wiring)", () => {
     const { client, urls } = makeClient({
       results: [{ id: "m1", type: "note", title: null, content: "hi", pinned: false, updatedAt: "", rank: 1 }],
       observations: [{ id: "o1", content: "Alim uses Postgres", predicate: "uses" }],
-      entities: { entities: [{ id: "e1", name: "Postgres", kind: "tool" }], relations: [] },
+      entities: {
+        entities: [
+          { id: "e1", name: "Alim", kind: "person" },
+          { id: "e2", name: "Postgres", kind: "tool" },
+        ],
+        relations: [
+          { sourceEntityId: "e1", targetEntityId: "e2", relationType: "uses", confidence: 1 },
+        ],
+      },
     })
 
     const result = await recallContext(
@@ -47,7 +55,10 @@ describe("recallContext (Memory v2 wiring)", () => {
     const text = result.content[0]?.text ?? ""
     expect(text).toContain("Observations (1)")
     expect(text).toContain("Alim uses Postgres")
-    expect(text).toContain("Entities (1)")
+    expect(text).toContain("Entities (2)")
+    // Relation line uses entity names, not raw UUIDs.
+    expect(text).toContain("Alim —[uses]→ Postgres")
+    expect(text).not.toContain("e1 —[uses]→ e2")
   })
 
   it("uses the project endpoint and fetches project state when no spaceId is given", async () => {

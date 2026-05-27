@@ -9,10 +9,10 @@ import { processItem, type MemoryPipelineRepos, type PipelineProviders } from ".
  * already-claimed/done row return no rows.
  */
 function makeProvider(initialStatus = "pending") {
-  const state = { status: initialStatus }
+  const state = { status: initialStatus, version: 0 }
   const calls: string[] = []
   const provider = {
-    query: vi.fn(async (sql: string) => {
+    query: vi.fn(async (sql: string, params?: unknown[]) => {
       calls.push(sql)
       if (sql.includes("SET enrichment_status = 'running'")) {
         if (state.status === "pending" || state.status === "failed") {
@@ -21,8 +21,18 @@ function makeProvider(initialStatus = "pending") {
         }
         return []
       }
-      if (sql.includes("enrichment_status = 'done'")) {
+      if (sql.includes("SET enrichment_status = 'done'")) {
         state.status = "done"
+        const v = params?.[1]
+        if (typeof v === "number") state.version = v
+        return []
+      }
+      if (sql.includes("SET enrichment_status = 'pending'")) {
+        state.status = "pending"
+        return []
+      }
+      if (sql.includes("SET enrichment_status = 'failed'")) {
+        state.status = "failed"
         return []
       }
       return []
@@ -60,14 +70,49 @@ const providers: PipelineProviders = {
 }
 
 describe("processItem", () => {
-  it("claims a pending row and marks it done", async () => {
+  it("embed-only run reverts status to 'pending' (no version bump) so FULL ticks reclaim it", async () => {
+    // Track A: extractors not wired. Embed-only must not lock the row at
+    // version=2/done — otherwise migration 0049's flipped rows get
+    // permanently excluded from v2 extraction once FULL=true flips on.
     const { provider, state } = makeProvider("pending")
     const repos = makeRepos(provider)
 
     const result = await processItem(repos, providers, "m1")
 
     expect(result.status).toBe("done")
+    expect(state.status).toBe("pending")
+    expect(state.version).toBe(0)
+  })
+
+  it("FULL extraction marks the row done at PIPELINE_VERSION", async () => {
+    const { provider, state } = makeProvider("pending")
+    const repos = makeRepos(provider)
+    repos.entity = {
+      findOrCreateBySpace: vi.fn(async (_s: string, name: string) => ({ id: `e-${name}` })),
+      addMention: vi.fn(async () => ({})),
+    } as never
+    repos.entityRelation = {
+      invalidateCurrentForSubjectPredicate: vi.fn(async () => 0),
+      upsertCurrent: vi.fn(async () => ({ id: "rel1" })),
+    } as never
+    repos.observation = {
+      findCurrentSvo: vi.fn(async () => null),
+      create: vi.fn(async () => ({ id: "obs1" })),
+      updateEmbedding: vi.fn(async () => undefined),
+      invalidate: vi.fn(async () => undefined),
+    } as never
+
+    const richProviders: PipelineProviders = {
+      embed: vi.fn(async () => ({ vector: [0.1], model: "text-embedding-004" })),
+      extractEntities: vi.fn(async () => []),
+      extractObservations: vi.fn(async () => []),
+    }
+
+    const result = await processItem(repos, richProviders, "m1")
+
+    expect(result.status).toBe("done")
     expect(state.status).toBe("done")
+    expect(state.version).toBe(2)
   })
 
   it("skips a row that is already done (idempotent re-run)", async () => {

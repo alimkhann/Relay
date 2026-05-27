@@ -47,27 +47,32 @@ interface UpdateMemoryResponse {
   }
 }
 
+const PATCH_CONCURRENCY = 8
+
 async function patchMany(
   client: RelayClient,
   ids: string[],
   body: Record<string, unknown>,
-  _verb: string,
 ): Promise<{ ok: string[]; errors: string[] }> {
-  // Fire all patches concurrently — N items was N serial round-trips before.
-  const settled = await Promise.allSettled(
-    ids.map((id) => client.patch<UpdateMemoryResponse>(`/api/memory/${id}`, body)),
-  )
+  // Chunk to PATCH_CONCURRENCY in-flight requests so bulk verbs don't
+  // saturate per-user quota gates or open N HTTP sockets at once.
   const ok: string[] = []
   const errors: string[] = []
-  settled.forEach((result, i) => {
-    const id = ids[i] ?? "(unknown)"
-    if (result.status === "fulfilled") {
-      ok.push(id)
-    } else {
-      const reason = result.reason
-      errors.push(`${id}: ${reason instanceof Error ? reason.message : "unknown error"}`)
-    }
-  })
+  for (let i = 0; i < ids.length; i += PATCH_CONCURRENCY) {
+    const slice = ids.slice(i, i + PATCH_CONCURRENCY)
+    const settled = await Promise.allSettled(
+      slice.map((id) => client.patch<UpdateMemoryResponse>(`/api/memory/${id}`, body)),
+    )
+    settled.forEach((result, j) => {
+      const id = slice[j] ?? "(unknown)"
+      if (result.status === "fulfilled") {
+        ok.push(id)
+      } else {
+        const reason = result.reason
+        errors.push(`${id}: ${reason instanceof Error ? reason.message : "unknown error"}`)
+      }
+    })
+  }
   return { ok, errors }
 }
 
@@ -105,22 +110,18 @@ export async function manageMemory(
   }
 
   if (args.action === "archive") {
-    const { ok, errors } = await patchMany(
-      client,
-      ids,
-      { lifecycleState: "archived", isArchived: true },
-      "Archived",
-    )
+    const { ok, errors } = await patchMany(client, ids, {
+      lifecycleState: "archived",
+      isArchived: true,
+    })
     return summarize("Archived", "archive", ok, errors)
   }
 
   if (args.action === "restore") {
-    const { ok, errors } = await patchMany(
-      client,
-      ids,
-      { lifecycleState: "active", isArchived: false },
-      "Restored",
-    )
+    const { ok, errors } = await patchMany(client, ids, {
+      lifecycleState: "active",
+      isArchived: false,
+    })
     return summarize("Restored", "restore", ok, errors)
   }
 
@@ -136,32 +137,25 @@ export async function manageMemory(
         ],
       }
     }
-    const { ok, errors } = await patchMany(
-      client,
-      ids,
-      { lifecycleState: "forgotten", confirm: true },
-      "Forgot",
-    )
+    const { ok, errors } = await patchMany(client, ids, {
+      lifecycleState: "forgotten",
+      confirm: true,
+    })
     return summarize("Forgot", "forget", ok, errors)
   }
 
   if (args.action === "mark_obsolete") {
-    const { ok, errors } = await patchMany(
-      client,
-      ids,
-      { lifecycleState: "cooling", validUntil: new Date().toISOString() },
-      "Marked obsolete",
-    )
+    const { ok, errors } = await patchMany(client, ids, {
+      lifecycleState: "cooling",
+      validUntil: new Date().toISOString(),
+    })
     return summarize("Marked obsolete", "mark obsolete", ok, errors)
   }
 
   if (args.action === "reaffirm") {
-    const { ok, errors } = await patchMany(
-      client,
-      ids,
-      { lastReaffirmedAt: new Date().toISOString() },
-      "Reaffirmed",
-    )
+    const { ok, errors } = await patchMany(client, ids, {
+      lastReaffirmedAt: new Date().toISOString(),
+    })
     return summarize("Reaffirmed", "reaffirm", ok, errors)
   }
 

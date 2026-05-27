@@ -49,10 +49,16 @@ export async function listMemory(
       )
     }
     // The dashboard fallback is project-only; for space listing surface the
-    // error rather than returning unrelated project items.
+    // error so the caller can distinguish "API broke" from "empty space".
     if (args.spaceId) {
+      const message = error instanceof Error ? error.message : String(error)
       return {
-        content: [{ type: "text" as const, text: JSON.stringify([], null, 2) }],
+        content: [
+          {
+            type: "text" as const,
+            text: `list_memory failed for space ${args.spaceId}: ${message}\n${JSON.stringify([], null, 2)}`,
+          },
+        ],
       }
     }
     const dashboard = await client.get<{

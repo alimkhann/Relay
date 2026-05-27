@@ -147,6 +147,15 @@ export async function processItem(
     return result
   }
 
+  // When extractors are wired we mark the row done at the current pipeline
+  // version. In embed-only mode we revert status back to 'pending' (no
+  // version bump) so a future tick with FULL=true reclaims the row for
+  // entity + observation extraction — otherwise the worker would silently
+  // lock the legacy backfill (0049) out of v2 extraction.
+  const ranFullExtraction = Boolean(
+    providers.extractObservations || providers.extractEntities,
+  )
+
   try {
     const spaceId = (item as { spaceId?: string }).spaceId ?? null
     if (!spaceId) {
@@ -296,15 +305,28 @@ export async function processItem(
       )
     }
 
-    await repos.provider.query(
-      `UPDATE memory_items
-       SET enrichment_status = 'done',
-           enrichment_version = $2,
-           enriched_at = now(),
-           enrichment_error = NULL
-       WHERE id = $1`,
-      [itemId, PIPELINE_VERSION],
-    )
+    if (ranFullExtraction) {
+      await repos.provider.query(
+        `UPDATE memory_items
+         SET enrichment_status = 'done',
+             enrichment_version = $2,
+             enriched_at = now(),
+             enrichment_error = NULL
+         WHERE id = $1`,
+        [itemId, PIPELINE_VERSION],
+      )
+    } else {
+      // Embed-only success: revert to 'pending' so a FULL tick later claims
+      // this row for extraction. Pickup query in `tick()` adds an
+      // `embedding IS NULL` guard in embed-only mode so we don't loop.
+      await repos.provider.query(
+        `UPDATE memory_items
+         SET enrichment_status = 'pending',
+             enrichment_error = NULL
+         WHERE id = $1`,
+        [itemId],
+      )
+    }
   } catch (err) {
     result.status = "failed"
     result.error = err instanceof Error ? err.message : String(err)
@@ -331,15 +353,31 @@ export async function tick(
   options: { batchSize?: number } = {},
 ): Promise<ProcessItemResult[]> {
   const batchSize = Math.min(Math.max(options.batchSize ?? 25, 1), 200)
-  const rows = await repos.provider.query(
-    `SELECT id
-     FROM memory_items
-     WHERE enrichment_status IN ('pending','failed')
-       AND enrichment_version < $2
-     ORDER BY created_at ASC
-     LIMIT $1`,
-    [batchSize, PIPELINE_VERSION],
+  // Pickup gated by capability so embed-only ticks don't churn through rows
+  // they can't fully process (and don't pre-stamp them at version=2 which
+  // would lock them out of a later FULL tick).
+  const wantsExtraction = Boolean(
+    providers.extractObservations || providers.extractEntities,
   )
+  const rows = wantsExtraction
+    ? await repos.provider.query(
+        `SELECT id
+         FROM memory_items
+         WHERE enrichment_status IN ('pending','failed')
+           AND enrichment_version < $2
+         ORDER BY created_at ASC
+         LIMIT $1`,
+        [batchSize, PIPELINE_VERSION],
+      )
+    : await repos.provider.query(
+        `SELECT id
+         FROM memory_items
+         WHERE enrichment_status IN ('pending','failed')
+           AND embedding IS NULL
+         ORDER BY created_at ASC
+         LIMIT $1`,
+        [batchSize],
+      )
   const results: ProcessItemResult[] = []
   for (const row of rows) {
     const itemId = String((row as Record<string, unknown>).id)

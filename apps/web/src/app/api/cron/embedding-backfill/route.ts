@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server"
 
+// Operator runs this in a tight loop (50 rows × N calls) during cutover.
+// Each call can take ~70s for the full 3-table sweep.
+export const maxDuration = 300
+
 import { createRepositoryBundle } from "@relay/db"
 
 import {
