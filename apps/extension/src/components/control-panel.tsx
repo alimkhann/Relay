@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, lazy, Suspense } from "react";
+import { Pencil, Trash2 } from "lucide-react";
 
 // ── OTP cell component ──────────────────────────────────────────────────────
 
@@ -139,6 +140,15 @@ const sectionColorClass: Record<ContextSection, string> = {
   decisions: "contextSectionDecisions",
   constraints: "contextSectionConstraints",
   tasks: "contextSectionTasks",
+};
+
+// Per-item side-stripe class for single-section tabs (F6). Mirrors the
+// All-tab section stripe colors so the visual cue persists when the user
+// filters to decisions/tasks/constraints.
+const sectionItemColorClass: Record<ContextSection, string> = {
+  decisions: "contextItemUnifiedDecisions",
+  constraints: "contextItemUnifiedConstraints",
+  tasks: "contextItemUnifiedTasks",
 };
 
 const sectionLabels: Record<ContextSection, string> = {
@@ -3027,15 +3037,19 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                                     className={styles.ghostButton}
                                     type="button"
                                     onClick={() => startEdit(item)}
+                                    aria-label="Edit item"
+                                    title="Edit"
                                   >
-                                    Edit
+                                    <Pencil size={14} />
                                   </button>
                                   <button
                                     className={styles.ghostButton}
                                     type="button"
                                     onClick={() => void removeContextItem(section, item)}
+                                    aria-label="Remove item"
+                                    title="Remove"
                                   >
-                                    Remove
+                                    <Trash2 size={14} />
                                   </button>
                                 </div>
                               </>
@@ -3101,7 +3115,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 const items = activeState.contextPreview[section];
 
                 return (
-                  <div className={styles.contextItemList}>
+                  <div className={`${styles.contextItemList} ${styles.contextItemListScroll}`}>
                     {items.length === 0 ? (
                       contextLoading ? (
                         <ContextSkeleton lines={3} />
@@ -3112,7 +3126,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                       )
                     ) : (
                       items.map((item) => (
-                        <div key={item.key} className={styles.contextItemUnified}>
+                        <div
+                          key={item.key}
+                          className={`${styles.contextItemUnified} ${styles[sectionItemColorClass[section]]}`}
+                        >
                           {editingKey === item.key ? (
                             <>
                               <textarea
@@ -3148,15 +3165,19 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                                   className={styles.ghostButton}
                                   type="button"
                                   onClick={() => startEdit(item)}
+                                  aria-label="Edit item"
+                                  title="Edit"
                                 >
-                                  Edit
+                                  <Pencil size={14} />
                                 </button>
                                 <button
                                   className={styles.ghostButton}
                                   type="button"
                                   onClick={() => void removeContextItem(section, item)}
+                                  aria-label="Remove item"
+                                  title="Remove"
                                 >
-                                  Remove
+                                  <Trash2 size={14} />
                                 </button>
                               </div>
                             </>

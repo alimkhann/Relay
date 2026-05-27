@@ -668,6 +668,27 @@
   transition: border-color 120ms;
 }
 
+/* Per-type left-edge color stripe so when the user filters to a single
+ * memory-type tab the visual cue persists (matches the All-tab section
+ * stripe colors). */
+.contextItemUnifiedDecisions {
+  border-left: 2px solid #60a5fa;
+}
+
+.contextItemUnifiedConstraints {
+  border-left: 2px solid #fbbf24;
+}
+
+.contextItemUnifiedTasks {
+  border-left: 2px solid #34d399;
+}
+
+.contextItemListScroll {
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
 .contextItemUnified:hover {
   border-color: var(--muted);
 }
