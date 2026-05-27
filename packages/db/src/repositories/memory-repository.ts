@@ -5,7 +5,7 @@ import type { DatabaseProvider } from "../store/provider"
 import { decryptTextIfNeeded, encryptTextIfConfigured } from "../utils/encrypted-text"
 
 /** Columns to select for general memory queries — excludes large/internal index columns. */
-const MEMORY_COLS = `id, project_id, space_id, source_turn_id, type, title, content, pinned, is_archived, sort_order, tags, metadata, created_by, created_at, updated_at, source_surface, source_conversation_id, source_url, captured_at, derived_from, embedding_model, forget_after, last_reaffirmed_at`
+const MEMORY_COLS = `id, project_id, space_id, source_turn_id, type, title, content, pinned, is_archived, sort_order, tags, metadata, created_by, created_at, updated_at, source_surface, source_conversation_id, source_url, captured_at, derived_from, embedding_model, forget_after, last_reaffirmed_at, lifecycle_state`
 
 const compactionPenaltyExpr = (alias = "m") => `case ${alias}.metadata->>'compactionState'
   when 'covered_by_canon' then 0.45

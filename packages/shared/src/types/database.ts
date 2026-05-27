@@ -150,6 +150,8 @@ export interface MemoryItemRow {
   forgetAfter: string | null
   /** Timestamp of last reaffirmation — resets the decay clock */
   lastReaffirmedAt: string | null
+  /** Memory v2 lifecycle state. Optional so pre-v2 fixtures stay valid. */
+  lifecycleState?: "active" | "cooling" | "archived" | "forgotten"
 }
 
 export type MemoryRelationType = "supersedes" | "extends" | "derives"

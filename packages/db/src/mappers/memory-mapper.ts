@@ -31,7 +31,10 @@ export function toMemoryRow(record: Record<string, unknown>): MemoryItemRow {
     embeddingModel: record.embedding_model ? String(record.embedding_model) : null,
     // Lifecycle
     forgetAfter: record.forget_after ? String(record.forget_after) : null,
-    lastReaffirmedAt: record.last_reaffirmed_at ? toTimestamp(record.last_reaffirmed_at) : null
+    lastReaffirmedAt: record.last_reaffirmed_at ? toTimestamp(record.last_reaffirmed_at) : null,
+    lifecycleState: record.lifecycle_state
+      ? (String(record.lifecycle_state) as "active" | "cooling" | "archived" | "forgotten")
+      : undefined,
   }
 }
 
