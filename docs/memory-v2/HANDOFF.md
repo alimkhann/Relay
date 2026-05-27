@@ -426,7 +426,9 @@ Schema is verified. The remaining Phase B steps (local web boot + extractor run 
    ```
 8. If Gemini output looks noisy → iterate prompts in `memory-pipeline-providers.ts` → re-enqueue via `update memory_items set enrichment_status='pending', enrichment_version=1 where enrichment_version=2;` → re-run cron.
 
-When done with the dev branch, drop it:
+**Keep the dev branch alive** until /review 35 + all follow-up PRs are merged
+and prod cutover is verified — re-use it for spot checks. Drop only after
+production is healthy:
 ```
 mcp__Neon__delete_branch(projectId='shiny-term-32281581', branchId='br-cool-field-aganybdc')
 ```
@@ -581,6 +583,81 @@ Embedding columns on `canonical_entities` are populated by the new
 backfill route but no production writer wires them on-create. Logging that
 as a follow-up: extend `EntityRepository.findOrCreate*` to embed-on-insert
 (small change, ~10 lines).
+
+### 7. Final dev-branch drain stats (2026-05-27)
+
+After all five fixes landed, full drain of the 709 backfilled-pending rows
+on `br-cool-field-aganybdc`:
+
+| Metric | Value |
+|---|---|
+| `memory_items` processed | **710 / 710 done v=2** (incl. 1 personal-space row after mapper fix) |
+| Observations created | **1742** (all embedded) |
+| Entity relations | **18** (sparse — see §4) |
+| Canonical entities created this session | **990** |
+| `memory_events.observation_created` | **1616** |
+| `memory_events.restored_auto` | **556** (hygiene resurrected items on new evidence — the loop works) |
+| `memory_events.cooled` / `archived` / `expired` | 30 / 94 / 36 |
+| Gemini spend | ~$1.71 over ~80 min (27 worker ticks @ 25 batch) |
+| Drain errors | 0 |
+
+## What's left for you (workflow to merge + cutover)
+
+The bundle is code-complete and locally validated against a real prod fork.
+The next steps are **gated on /review 35** plus a small set of follow-up PRs
+that we deliberately scoped out of #35 to keep the diff reviewable.
+
+### Step 1 — `/review 35`
+
+Run review on this PR. Apply review fixes on `feat/memory-v2-architecture`
+(or new commits — your call). Re-typecheck + re-run `pnpm test:stable` + the
+v2 suite after each fix.
+
+### Step 2 — Build the five deferred follow-up PRs (each branched from updated `main`)
+
+| PR | Scope | Key files |
+|---|---|---|
+| **F1 Extension space picker** | Two-level picker (Personal + projects) in the side-panel; personal capture routes to `/api/spaces/[id]/memory`. Server endpoint already ships in #35. | `apps/extension/src/components/control-panel.tsx` (~2570 lines), `apps/extension/src/background/index.ts` (~120 state, ~4118 write) |
+| **F2 Chat hygiene UI** | Wire `parseAssistantCommand` into `use-assistant-chat.ts` `send()`; render cooling/archived pills in `action-result-card.tsx`. Parser + 19 tests already in #35. | `apps/web/src/components/assistant/use-assistant-chat.ts`, `action-result-card.tsx` |
+| **F3 App-role RLS swap** | Provision `relay_app` (least-priv non-owner) via `docs/memory-v2/roles.sql`; audit ~30 pre-auth flows that have no viewer GUC; move app `DATABASE_URL` off `neondb_owner`. Pre-dates v2 but surfaced by the v2 review. | `docs/memory-v2/roles.sql`, prod env, ~30 route files |
+| **F4 `canonical_entities` embed-on-insert** | Extend `EntityRepository.findOrCreate*` to embed `name (kind)` on first write. Today they land embeddings only via the backfill route. ~10 lines. | `packages/db/src/repositories/entity-repository.ts` |
+| **F5 Other-emptiness audit** | Investigate `context_packets`, `provider_counter_snapshots`, `source_external_citations`. Either delete dead tables or wire missing writers. Non-blocking. | scattered |
+
+### Step 3 — `/review` each follow-up PR
+
+Same loop — review, fix, re-test.
+
+### Step 4 — Final end-to-end test on dev branch
+
+Re-use `br-cool-field-aganybdc` (do **not** drop yet). Point a local web at it,
+exercise: extension capture (post-F1), chat commands + pills (post-F2),
+ranking under decay, MCP `recall` + `manage_memory` round-trips, personal vs
+project space isolation.
+
+### Step 5 — Merge to `main`
+
+Squash or merge — whichever your repo convention is.
+
+### Step 6 — Production cutover
+
+Follow §"Production cutover" lines 237–254 + §5 backfill loop above. Sequence
+once more for clarity:
+
+1. Snapshot prod (or rely on Neon PITR — `history_retention_seconds=21600`).
+2. Apply migrations `0040`–`0049`.
+3. Deploy merged `main`.
+4. Set `CRON_SECRET` in Vercel env.
+5. Run the embedding-backfill loop until all three `remaining` counters hit 0.
+6. Set `RELAY_MEMORY_PIPELINE_FULL=true` + keep `RELAY_HYGIENE_DRY_RUN=true`.
+7. Watch `memory_events` for one week. Sample 10 obs after first 100 drained.
+8. Flip `RELAY_HYGIENE_DRY_RUN=false`. Drop `RELAY_PIPELINE_DAILY_USD_CAP` to `5`.
+
+### Step 7 — Drop dev branch
+
+Only after prod is healthy:
+```
+mcp__Neon__delete_branch(projectId='shiny-term-32281581', branchId='br-cool-field-aganybdc')
+```
 
 ## TL;DR for review
 
