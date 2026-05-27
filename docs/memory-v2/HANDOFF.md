@@ -431,6 +431,157 @@ When done with the dev branch, drop it:
 mcp__Neon__delete_branch(projectId='shiny-term-32281581', branchId='br-cool-field-aganybdc')
 ```
 
+## Phase B complete — local extractor smoke (2026-05-27)
+
+Local validation against dev branch `br-cool-field-aganybdc` uncovered four
+in-scope defects in PR #35 that were silently blocking the extractor + a
+pre-existing prod outage in the legacy embedding flow. All five fixed in this
+commit set.
+
+### 1. Gemini embedding model deprecated
+
+Google deprecated `text-embedding-004` on 2026-01-14. Both the single
+(`embedContent`) and batch (`batchEmbedContents`) endpoints started returning
+404 for that model name. The `postCreateHook` in `memory-service.ts` calls
+embedding via `void embedMemoryItem(...)` — fire-and-forget; the rejection was
+swallowed and never reached PostHog. Result: **every memory_item created since
+~2026-03-25 landed without an embedding**. Recall has been silently
+lexical-only for two months.
+
+Audit on prod branch `br-small-moon-agn70urq`:
+
+| Table | Rows | Without embedding |
+|---|---|---|
+| `memory_items` | 709 | **709** (all NULL) |
+| `canonical_entities` | 110 | **110** (no writer wired — distinct issue, see §3) |
+| `source_chunks` | 674 | **674** (same `text-embedding-004` failure) |
+
+PostHog has **zero** `$exception` events matching `embedding`/`text-embedding`/
+`embedContent` over the past 14 days. The fire-and-forget pattern hid this
+completely.
+
+**Fix** (`apps/web/src/server/services/embedding-service.ts`):
+- `EMBEDDING_API_MODEL` → `gemini-embedding-001`.
+- `EMBEDDING_MODEL` tag bumped to `gemini-embedding-001:rd-768` so
+  `getItemsWithStaleEmbeddingModel` re-claims any future legacy rows.
+- Added `outputDimensionality: 768` to BOTH `embedContent` and
+  `batchEmbedContents` request bodies (gemini-embedding-001 defaults to 3072 —
+  schema is `vector(768)` everywhere; without this the DB rejects with
+  `expected 768 dimensions, not 3072`).
+- Used Matryoshka Representation Learning truncation rather than re-sizing the
+  pgvector columns, so existing HNSW indexes stay valid.
+
+### 2. Worker SQL casts (postgres parameter type inference)
+
+The Neon serverless driver sends parameters untyped; Postgres can't always
+infer types from context when the column appears on the LHS or inside
+`jsonb_build_object`. Three v2 SQL sites failed with
+`could not determine data type of parameter $5`:
+
+| File | Site | Cast added |
+|---|---|---|
+| `packages/db/src/repositories/observation-repository.ts` | `INSERT INTO observations` (subject_entity_id NULL) | `$1::uuid` through `$12::text` |
+| `packages/db/src/repositories/entity-relation-repository.ts` | `INSERT INTO entity_relations` | `$1::uuid`..`$9::jsonb` |
+| `packages/db/src/repositories/entity-relation-repository.ts` | `UPDATE entity_relations` in `invalidateCurrentForSubjectPredicate` | `$5::timestamptz`, `$6::text`, etc. |
+| `packages/workers/memory-pipeline/src/index.ts` | `INSERT INTO memory_events ... 'observation_created'` | `$5::double precision`, `$6::boolean`, `$1-3::uuid` |
+
+These are not "production might also break" — these only ever fire under v2
+extractor flow which is off in prod today.
+
+### 3. New embedding-backfill API route
+
+`apps/web/src/app/api/cron/embedding-backfill/route.ts` (new) — handles all
+three pgvector tables. Same Bearer-token auth as the memory-pipeline cron.
+
+Query params:
+- `?table=memory_items|canonical_entities|source_chunks|all` (default `all`)
+- `?limit=N` (default 50, max 500)
+
+Returns per-table `{ embedded, remaining }`. Embed text per table:
+- `memory_items`: `title + ": " + content` via existing `embedMemoryItems`.
+- `canonical_entities`: `name (kind)` — table has **no** `embedding_model`
+  column (schema gap predating v2; left as-is for this PR), so the route
+  re-embeds only `WHERE embedding IS NULL`.
+- `source_chunks`: `content`. Re-embeds `WHERE embedding IS NULL OR
+  embedding_model <> 'gemini-embedding-001:rd-768'`.
+
+This is the single tool the operator runs after prod cutover (see §5 below).
+
+### 4. Dev validation results (against `br-cool-field-aganybdc`)
+
+After patches landed:
+
+| Check | Result |
+|---|---|
+| Worker tick 1 (no embed needed, items pre-embedded by route) | 25/25 done, 51 ent + 50 obs + 0 rel, $0.06 |
+| Worker tick 2 (embeds inline, then extracts) | 25/25 done, 49 ent + 66 obs + **1 rel**, $0.06 |
+| `embedding-backfill` route, all 3 tables, limit=50 | 50/50 each, 70 sec total |
+| Observation quality (8 random) | All semantically coherent SVO triples; abstract subjects fall back to `object_literal` (correct behaviour); confidence 0.9–1.0 |
+| Entity relation example | `FastAPI -supports-> Server-Sent Events` (1.0) |
+
+Entity relations are sparse (~1 per 50 items). Worker only creates a relation
+when **both** subject and object resolve to canonical entities; most facts
+have one named subject and a non-entity object. Architectural choice, not a
+bug — worth a future prompt-engineering pass if we want a denser graph.
+
+### 5. Post-deploy backfill procedure (you run this after merging PR #35)
+
+After deploying the merged branch and applying migrations 0040–0049 to prod:
+
+1. **Set `CRON_SECRET`** in Vercel env (required — cron + backfill routes fail
+   closed without it).
+2. **Backfill embeddings, all 3 tables**, 50 rows at a time. Run from a
+   developer machine with `CRON_SECRET` exported:
+   ```bash
+   while :; do
+     out=$(curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" \
+       "https://onrelay.app/api/cron/embedding-backfill?table=all&limit=50")
+     echo "$out" | jq '.tables'
+     rem=$(echo "$out" | jq '[.tables[].remaining] | add')
+     [ "$rem" = "0" ] && break
+     sleep 1
+   done
+   ```
+   Watch the per-table `remaining` counters drop to 0. Expected total:
+   `709 + 110 + 674 = 1493` rows × 1 Gemini call each ≈ $0.20 at current
+   pricing. The route is idempotent — safe to re-run.
+3. **Verify**:
+   ```sql
+   SELECT 'memory_items',       COUNT(*) FILTER (WHERE embedding IS NULL) FROM memory_items
+   UNION ALL SELECT 'canonical_entities', COUNT(*) FILTER (WHERE embedding IS NULL) FROM canonical_entities
+   UNION ALL SELECT 'source_chunks',      COUNT(*) FILTER (WHERE embedding IS NULL) FROM source_chunks;
+   ```
+   All three should be 0.
+4. **Apply migration 0049** (`backfill_v1_to_v2_extraction.sql`) to flip
+   legacy `done/v=1` rows back to `pending` so the v2 worker picks them up.
+   Already in the migration set — applies automatically when you run the
+   migration runner.
+5. **Set `RELAY_MEMORY_PIPELINE_FULL=true`** + `RELAY_HYGIENE_DRY_RUN=true`
+   (keep dry-run for the first week of hygiene observations). The Vercel
+   cron or GH Actions cron will start draining the v2 extraction queue.
+6. **Watch** `memory_events` for `observation_created` + `entity_relation_*`.
+   Sample 10 rows after the first 100 items drained; sanity-check Gemini
+   output before flipping `RELAY_HYGIENE_DRY_RUN=false`.
+
+### 6. Open: other emptiness audit on prod
+
+Quick `information_schema` sweep on `br-small-moon-agn70urq` (zero-row public
+tables that aren't obviously feature-flagged off):
+
+| Table | Reason it's empty | Action |
+|---|---|---|
+| `memory_relations` | Legacy v1; superseded by `entity_relations`. | None — leave; PR #35 doesn't read it. |
+| `context_packets` | Feature surface never wired? | Flag for a follow-up audit; not blocking. |
+| `provider_counter_snapshots` | Aggregation table, populated by a cron we may not have running. | Audit separately. |
+| `project_settings` / `project_state_overrides` | User-driven; only writes on opt-in actions. | Expected. |
+| `referral_rewards` | No payout has fired yet. | Expected. |
+| `source_external_citations` | Sources have external citations only if Gemini tags them; pre-existing. | Out of scope. |
+
+Embedding columns on `canonical_entities` are populated by the new
+backfill route but no production writer wires them on-create. Logging that
+as a follow-up: extend `EntityRepository.findOrCreate*` to embed-on-insert
+(small change, ~10 lines).
+
 ## TL;DR for review
 
 - Schema is layered (episodes → mentions → observations → entity_relations → canon → brief) + bi-temporal + space-scoped.

@@ -92,9 +92,9 @@ export class EntityRelationRepository {
       `INSERT INTO entity_relations
         (space_id, source_entity_id, target_entity_id, relation_type,
          confidence, valid_from, source_observation_id, source_memory_item_id, metadata)
-       VALUES ($1, $2, $3, $4,
-               COALESCE($5, 1.0), COALESCE($6::timestamptz, now()),
-               $7, $8, COALESCE($9::jsonb, '{}'::jsonb))
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4::text,
+               COALESCE($5::double precision, 1.0), COALESCE($6::timestamptz, now()),
+               $7::uuid, $8::uuid, COALESCE($9::jsonb, '{}'::jsonb))
        RETURNING ${COLS}`,
       [
         input.spaceId,
@@ -142,11 +142,11 @@ export class EntityRelationRepository {
   ): Promise<number> {
     const rows = await this.provider.query(
       `UPDATE entity_relations
-       SET valid_until = $5, lifecycle_state = $6
-       WHERE space_id = $1
-         AND source_entity_id = $2
-         AND relation_type = $3
-         AND target_entity_id <> $4
+       SET valid_until = $5::timestamptz, lifecycle_state = $6::text
+       WHERE space_id = $1::uuid
+         AND source_entity_id = $2::uuid
+         AND relation_type = $3::text
+         AND target_entity_id <> $4::uuid
          AND valid_until IS NULL
        RETURNING id`,
       [spaceId, sourceEntityId, relationType, exceptTargetId, at, nextLifecycle],

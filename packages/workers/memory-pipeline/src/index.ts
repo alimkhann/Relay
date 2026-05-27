@@ -281,10 +281,10 @@ export async function processItem(
       await repos.provider.query(
         `INSERT INTO memory_events
           (project_id, space_id, memory_item_id, event_type, source_surface, payload)
-         VALUES ($1, $2, $3, 'observation_created', 'worker',
+         VALUES ($1::uuid, $2::uuid, $3::uuid, 'observation_created', 'worker',
                  jsonb_build_object('observation_id', $4::text,
-                                    'confidence', $5,
-                                    'is_svo', $6))`,
+                                    'confidence', $5::double precision,
+                                    'is_svo', $6::boolean))`,
         [
           item.projectId,
           spaceId,

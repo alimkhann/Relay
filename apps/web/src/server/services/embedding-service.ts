@@ -5,8 +5,9 @@ const GEMINI_API_BASE = process.env.GEMINI_API_BASE_URL ?? "https://generativela
 // Identifier stored in memory_items.embedding_model. Bumped to mark vectors that
 // were embedded with taskType=RETRIEVAL_DOCUMENT, distinguishing them from older
 // no-taskType embeddings so backfillStaleEmbeddings can re-embed legacy rows.
-export const EMBEDDING_MODEL = "text-embedding-004:rd"
-const EMBEDDING_API_MODEL = "text-embedding-004"
+export const EMBEDDING_MODEL = "gemini-embedding-001:rd-768"
+const EMBEDDING_API_MODEL = "gemini-embedding-001"
+const EMBEDDING_OUTPUT_DIM = 768
 
 const BATCH_LIMIT = 100
 
@@ -32,6 +33,7 @@ export async function generateEmbedding(text: string, taskType?: EmbeddingTaskTy
   const body: Record<string, unknown> = {
     model: `models/${EMBEDDING_API_MODEL}`,
     content: { parts: [{ text }] },
+    outputDimensionality: EMBEDDING_OUTPUT_DIM,
   }
   if (taskType) body.taskType = taskType
 
@@ -85,6 +87,7 @@ export async function generateEmbeddings(texts: string[], taskType?: EmbeddingTa
             const req: Record<string, unknown> = {
               model: `models/${EMBEDDING_API_MODEL}`,
               content: { parts: [{ text }] },
+              outputDimensionality: EMBEDDING_OUTPUT_DIM,
             }
             if (taskType) req.taskType = taskType
             return req

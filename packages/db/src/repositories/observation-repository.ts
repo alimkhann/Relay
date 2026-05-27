@@ -86,9 +86,10 @@ export class ObservationRepository {
         (space_id, content, source_episode_id, source_memory_item_id,
          subject_entity_id, predicate, object_entity_id, object_literal,
          valid_from, confidence, metadata, lifecycle_state)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
-               COALESCE($9::timestamptz, now()), COALESCE($10, 1.0),
-               COALESCE($11::jsonb, '{}'::jsonb), COALESCE($12, 'active'))
+       VALUES ($1::uuid, $2::text, $3::uuid, $4::uuid,
+               $5::uuid, $6::text, $7::uuid, $8::text,
+               COALESCE($9::timestamptz, now()), COALESCE($10::double precision, 1.0),
+               COALESCE($11::jsonb, '{}'::jsonb), COALESCE($12::text, 'active'))
        RETURNING ${OBSERVATION_COLS}`,
       [
         input.spaceId,
