@@ -9,6 +9,11 @@ export interface CanonicalEntityRow {
   mergedIntoId: string | null
   createdAt: string
   updatedAt: string
+  /** True when the row already has a vector in `embedding`. Callers use this
+   * to decide whether to embed-on-insert (F4) — false right after create,
+   * true after the worker fills it in (or after the embedding-backfill
+   * cron processes the row). */
+  hasEmbedding: boolean
 }
 
 export interface EntityMentionRow {
@@ -29,6 +34,7 @@ function toEntityRow(row: Record<string, unknown>): CanonicalEntityRow {
     mergedIntoId: row.merged_into_id ? String(row.merged_into_id) : null,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
+    hasEmbedding: Boolean(row.has_embedding),
   }
 }
 
@@ -51,7 +57,7 @@ export class EntityRepository {
        VALUES ($1, $2, $3)
        ON CONFLICT (project_id, lower(name)) WHERE merged_into_id IS NULL
        DO UPDATE SET updated_at = now()
-       RETURNING *`,
+       RETURNING *, (embedding IS NOT NULL) AS has_embedding`,
       [projectId, name, kind],
     )
     return toEntityRow(rows[0] as Record<string, unknown>)
@@ -70,7 +76,7 @@ export class EntityRepository {
    */
   async findOrCreateBySpace(spaceId: string, name: string, kind = "unknown"): Promise<CanonicalEntityRow> {
     const existing = await this.provider.query(
-      `SELECT * FROM canonical_entities
+      `SELECT *, (embedding IS NOT NULL) AS has_embedding FROM canonical_entities
        WHERE space_id = $1 AND lower(name) = lower($2) AND merged_into_id IS NULL
        LIMIT 1`,
       [spaceId, name],
@@ -81,7 +87,7 @@ export class EntityRepository {
     const rows = await this.provider.query(
       `INSERT INTO canonical_entities (project_id, space_id, name, kind)
        SELECT s.project_id, s.id, $2, $3 FROM spaces s WHERE s.id = $1
-       RETURNING *`,
+       RETURNING *, (embedding IS NOT NULL) AS has_embedding`,
       [spaceId, name, kind],
     )
     if (rows.length === 0) {
@@ -90,9 +96,23 @@ export class EntityRepository {
     return toEntityRow(rows[0] as Record<string, unknown>)
   }
 
+  /** Set the pgvector embedding on a canonical entity. Called by the
+   * memory-pipeline worker after `findOrCreateBy*` so freshly created
+   * entities pick up an embedding without waiting for the backfill cron.
+   * Embedding model column does not exist on canonical_entities today —
+   * the backfill route + worker share the same model tag globally. */
+  async updateEmbedding(entityId: string, vector: number[]): Promise<void> {
+    await this.provider.query(
+      `UPDATE canonical_entities SET embedding = $2::vector WHERE id = $1::uuid`,
+      [entityId, JSON.stringify(vector)],
+    )
+  }
+
   async listByProject(projectId: string): Promise<CanonicalEntityRow[]> {
     const rows = await this.provider.query(
-      `SELECT * FROM canonical_entities WHERE project_id = $1 AND merged_into_id IS NULL ORDER BY updated_at DESC LIMIT 200`,
+      `SELECT *, (embedding IS NOT NULL) AS has_embedding FROM canonical_entities
+       WHERE project_id = $1 AND merged_into_id IS NULL
+       ORDER BY updated_at DESC LIMIT 200`,
       [projectId],
     )
     return rows.map((r) => toEntityRow(r as Record<string, unknown>))

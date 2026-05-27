@@ -195,6 +195,20 @@ export async function processItem(
       )
       entityIdByName.set(extracted.name.toLowerCase(), entity.id)
       await repos.entity.addMention(itemId, entity.id, extracted.mentionText, spaceId)
+      // F4 — embed-on-insert. If the entity row landed without an embedding
+      // (freshly created), give it one now using `name (kind)` as the embed
+      // text. Non-fatal — the backfill route still catches misses.
+      if (!entity.hasEmbedding) {
+        try {
+          const text = entity.kind && entity.kind !== "unknown"
+            ? `${entity.name} (${entity.kind})`
+            : entity.name
+          const { vector } = await providers.embed(text)
+          await repos.entity.updateEmbedding(entity.id, vector)
+        } catch {
+          // swallow — backfill cron will pick this up later.
+        }
+      }
       result.entitiesCreated += 1
     }
 

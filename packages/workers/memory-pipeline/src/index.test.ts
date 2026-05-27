@@ -136,6 +136,105 @@ describe("processItem", () => {
     expect(result.error).toMatch(/not found/i)
   })
 
+  it("embeds canonical_entities on insert when extractor finds a new entity (F4)", async () => {
+    const { provider } = makeProvider("pending")
+    const repos = makeRepos(provider)
+    ;(repos.memory.getById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "m1",
+      projectId: "p1",
+      spaceId: "s1",
+      type: "note",
+      content: "Alim uses Postgres",
+      metadata: {},
+      embeddingModel: "gemini-embedding-001:rd-768",
+    })
+    const updateEmbedding = vi.fn(async () => undefined)
+    repos.entity = {
+      // Freshly created → hasEmbedding=false.
+      findOrCreateBySpace: vi.fn(async (_s: string, name: string, kind: string) => ({
+        id: `e-${name}`,
+        name,
+        kind,
+        hasEmbedding: false,
+      })),
+      addMention: vi.fn(async () => ({})),
+      updateEmbedding,
+    } as never
+    repos.entityRelation = {
+      invalidateCurrentForSubjectPredicate: vi.fn(async () => 0),
+      upsertCurrent: vi.fn(async () => ({ id: "rel1" })),
+    } as never
+    repos.observation = {
+      findCurrentSvo: vi.fn(async () => null),
+      create: vi.fn(async () => ({ id: "obs1" })),
+      updateEmbedding: vi.fn(async () => undefined),
+      invalidate: vi.fn(async () => undefined),
+    } as never
+
+    const embedded: string[] = []
+    const richProviders: PipelineProviders = {
+      embed: vi.fn(async (text: string) => {
+        embedded.push(text)
+        return { vector: [0.1], model: "gemini-embedding-001:rd-768" }
+      }),
+      extractEntities: vi.fn(async () => [
+        { name: "Postgres", kind: "technology", mentionText: "Postgres" },
+      ]),
+      extractObservations: vi.fn(async () => []),
+    }
+
+    const result = await processItem(repos, richProviders, "m1")
+
+    expect(result.status).toBe("done")
+    expect(updateEmbedding).toHaveBeenCalledTimes(1)
+    expect(updateEmbedding).toHaveBeenCalledWith("e-Postgres", [0.1])
+    expect(embedded).toContain("Postgres (technology)")
+  })
+
+  it("skips canonical_entities embed when the row already has an embedding (F4)", async () => {
+    const { provider } = makeProvider("pending")
+    const repos = makeRepos(provider)
+    ;(repos.memory.getById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "m1",
+      projectId: "p1",
+      spaceId: "s1",
+      type: "note",
+      content: "Alim uses Postgres",
+      metadata: {},
+      embeddingModel: "gemini-embedding-001:rd-768",
+    })
+    const updateEmbedding = vi.fn(async () => undefined)
+    repos.entity = {
+      findOrCreateBySpace: vi.fn(async (_s: string, name: string) => ({
+        id: `e-${name}`,
+        name,
+        kind: "technology",
+        hasEmbedding: true, // already embedded; worker must not re-embed
+      })),
+      addMention: vi.fn(async () => ({})),
+      updateEmbedding,
+    } as never
+    repos.entityRelation = {
+      invalidateCurrentForSubjectPredicate: vi.fn(async () => 0),
+      upsertCurrent: vi.fn(async () => ({ id: "rel1" })),
+    } as never
+    repos.observation = {
+      findCurrentSvo: vi.fn(async () => null),
+      create: vi.fn(async () => ({ id: "obs1" })),
+      updateEmbedding: vi.fn(async () => undefined),
+      invalidate: vi.fn(async () => undefined),
+    } as never
+
+    const richProviders: PipelineProviders = {
+      embed: vi.fn(async () => ({ vector: [0.1], model: "gemini-embedding-001:rd-768" })),
+      extractEntities: vi.fn(async () => [{ name: "Postgres", mentionText: "Postgres" }]),
+      extractObservations: vi.fn(async () => []),
+    }
+
+    await processItem(repos, richProviders, "m1")
+    expect(updateEmbedding).not.toHaveBeenCalled()
+  })
+
   it("supersedes a stale entity_relation when an SVO's object changes (B3)", async () => {
     const { provider } = makeProvider("pending")
     const repos = makeRepos(provider)
