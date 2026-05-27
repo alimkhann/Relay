@@ -659,6 +659,161 @@ Only after prod is healthy:
 mcp__Neon__delete_branch(projectId='shiny-term-32281581', branchId='br-cool-field-aganybdc')
 ```
 
+## Deferred features — schedule AFTER prod cutover + Chrome resubmission
+
+**Do NOT bundle into PR #35. These ship as separate small PRs once the cutover is stable + the extension is back in the Chrome Web Store with the W3 privacy patches.**
+
+### F7 — Edge quick-save button (browser-edge half-circle)
+
+Half-circle floating action button glued to the viewport edge on supported AI chat sites. One tap saves the current selection / latest chat turn without opening the side panel. Toggleable off in both extension settings AND dashboard settings (same flag, two surfaces).
+
+- Lives in a shadow-DOM widget so AI sites' z-index doesn't break it.
+- Displays the currently-active target as a chip on hover ("→ Personal" / "→ {ProjectName}") so user sees the destination before tapping.
+- Adds another content-script DOM injection → re-tighten Chrome listing disclosure before submitting. Plan to ship AFTER current resubmission lands so we don't reset the reviewer clock.
+- Settings flag: `relay.settings.showEdgeQuickSave` (default `true`); per-user, syncs via existing settings table.
+
+Scope: ~1 day. Single content script + settings toggle.
+
+### F8 — Per-target auto-capture toggle (tri-state aware)
+
+Auto-capture becomes a setting per `space_id` instead of a global bool. Some projects ON, others OFF, Personal OFF — fully independent.
+
+- Storage: extension `autoCaptureBySpace: Record<spaceId, boolean>` map replaces the current `autoCapture: boolean`.
+- Background capture path reads `autoCaptureBySpace[currentTargetSpaceId]` on each gate check.
+- UI: settings page lists one row per available space with its own toggle; top-level summary chip shows "Auto-capture: 3/5 projects + Personal off" instead of a tri-state checkbox (tri-state UX hazard).
+- Migration: one-time hop — existing `autoCapture=true` users get `autoCaptureBySpace = { [everySpaceId]: true }`.
+
+Scope: ~half day. Storage shape change + settings UI + capture-gate read.
+
+### F9 — Personal-as-just-another-project + heuristic routing
+
+**Redesign of F1 (already shipped in PR #35).** F1 today treats Personal as a special top-level pinned row with a separate `personalMode` flag. F9 promotes Personal to "just another row in the same picker list" + adds content-based heuristic routing for AI-chat captures.
+
+**Routing decision matrix (today vs target):**
+
+| Capture source | Today (F1) | Target (F9) |
+|---|---|---|
+| Extension manual save | Explicit picker target (Personal pinned at top) | Same picker, Personal as just a row |
+| Extension auto-capture | Same explicit target | **Heuristic:** content-classifier picks Personal or best-matching project; user can re-route via "Move to..." after the fact |
+| MCP `add_memory` | Explicit `spaceId` arg | Explicit arg still wins; fallback to heuristic when omitted |
+| Right-click "Save to Relay" | Explicit picker target | Same picker (no heuristic — user is acting deliberately) |
+| Agent chat | Currently-active project | Heuristic when agent doesn't pass an explicit target |
+
+**Heuristic primitives (cheap, server-side):**
+- Embed the captured text once.
+- Cosine-similarity against the embedding centroid of each space's recent memory_items. Highest hit wins if above a confidence floor.
+- Below the floor → fall back to currently-active project (preserves F1 behavior as the safety net).
+- Cache centroids in `memory_half_lives`-style table, refresh on a slow cron.
+
+**Personal UI parity with project dashboard.** Today `/personal` is just a card list. F9 brings the same surfaces project pages have:
+- Brief generation (deterministic + Gemini, both already wired for projects).
+- Activity feed (memory_events filter by space_id).
+- State derivation (objective / decisions / tasks rollup — same `project-state-service` logic, just scoped to space).
+- Graph view (`getSpaceGraphSnapshot` already exists — point the existing `memory-graph-utils` at it for personal).
+- Sources tab (already space-scoped via 0044 backfill).
+- Tabs by memory type (decisions/tasks/constraints/notes/etc).
+
+**Code surfaces touched:**
+- `apps/web/src/app/(workspace)/personal/page.tsx` — expand from card list to full project-style page.
+- `apps/extension/src/components/control-panel.tsx` — remove `personalMode` flag, treat Personal as a regular `RelayProjectOption` with `kind: "personal"`. Picker drops the pinned-top placement.
+- New `apps/web/src/server/services/space-routing-service.ts` — heuristic classifier.
+- New `apps/web/src/app/api/spaces/[id]/{brief,state,activity,sources}/route.ts` mirrors of the project endpoints.
+
+Scope: 2–3 days. The biggest of the three deferred items because it touches everything that's project-shaped today.
+
+### Order recommendation
+
+1. Cutover PR #35 first.
+2. Chrome resubmission → wait for store approval.
+3. F8 (smallest, no Chrome surface change).
+4. F9 (biggest, but logically before F7 because F7 needs the per-row picker F9 introduces).
+5. F7 (quickest UX win once F9 lands).
+
+## Local verification recipe (next session — use Playwright + Neon MCP)
+
+For the next session AI agent: this is the kickoff playbook for testing PR #35 + everything stacked on it.
+
+### Prereqs
+
+- Repo at `feat/memory-v2-architecture` (`git pull --rebase`).
+- Dev branch alive: `br-cool-field-aganybdc` (Memory v2 fork of prod). Connection strings in §"Phase B partial" above.
+- Local Gemini API key in root `.env.local` already.
+
+### Step 1 — point local web at the dev branch
+
+`apps/web/.env.local` (create if missing):
+
+```
+NEXT_PUBLIC_RELAY_APP_URL=http://localhost:3001
+NEXT_PUBLIC_POSTHOG_KEY=<from root .env.local>
+NEXT_PUBLIC_POSTHOG_HOST=<from root .env.local>
+GEMINI_API_KEY=<from root .env.local>
+DATABASE_URL=postgresql://neondb_owner:npg_8BMkX5hrqpji@ep-divine-flower-agvtodh7-pooler.c-2.eu-central-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require
+DATABASE_URL_UNPOOLED=postgresql://neondb_owner:npg_8BMkX5hrqpji@ep-divine-flower-agvtodh7.c-2.eu-central-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require
+CRON_SECRET=local-dev-secret
+RELAY_MEMORY_PIPELINE_FULL=false
+RELAY_HYGIENE_DRY_RUN=true
+RELAY_PIPELINE_DAILY_USD_CAP=20
+```
+
+### Step 2 — boot
+
+```bash
+pnpm install
+pnpm -r typecheck
+pnpm test:stable
+pnpm --filter @relay/web dev   # background; ready in ~15s on port 3001 (3000 may be in use)
+```
+
+### Step 3 — D-step verification via Playwright + Neon MCP
+
+| Step | Action | Tool |
+|---|---|---|
+| D.1a | Confirm 0050 index covers ORDER BY created_at on dev branch | `mcp__Neon__explain_sql_statement` — see HANDOFF §"Phase B complete" for the exact query |
+| D.1b | Typecheck + tests | Bash — `pnpm -r typecheck && pnpm test:stable` |
+| D.2 | Fix 1 round-trip (W1 ordering trap defense) | Insert one personal-space memory_item via `mcp__Neon__run_sql` → curl `/api/cron/memory-pipeline` with FULL=false → confirm row stays `pending@v=0, embedding NOT NULL` → flip FULL=true → re-curl → confirm `done@v=2` + observations + entities |
+| D.3 | patchMany concurrency cap | MCP `manage_memory` bulk archive 20 IDs → log scan for in-flight PATCH count ≤ 8 |
+| D.4 | Entity-name render | MCP `recall({include:["entities"]})` → response contains `name —[predicate]→ name`, no UUIDs |
+| D.5 | Backfill route smoke | `curl -X POST -H "Authorization: Bearer local-dev-secret" "http://localhost:3001/api/cron/embedding-backfill?table=all&limit=10"` |
+| D.6a | Privacy page renders W3 additions | `curl http://localhost:3001/privacy \| grep -oE "Single Purpose\|audioCapture\|remote code\|Delete account"` — expect 4 hits |
+| D.6b | Personal page renders new card | Playwright MCP: sign in, navigate `/personal`, screenshot. Confirm source badge + timestamps + icon actions render |
+| D.6c | Continue button appears at step cap | Playwright: open agent chat, ask a task that needs > {plan_max_steps} tool calls, screenshot the "Continue" button on the cap-hit message |
+| D.6d | Extension picker shows "Personal" | Manual: `chrome://extensions` → Load unpacked → open side panel → confirm Personal pinned above projects (F1 today; will move to a row in F9) |
+
+### Step 4 — extension auto-capture smoke on a real AI site
+
+1. Load extension into Chrome (Developer mode → Load unpacked → `apps/extension/build/chrome-mv3-dev`).
+2. Sign in via the extension popup.
+3. Toggle on capture, pick a project target.
+4. Open ChatGPT or Claude in a tab, have a short conversation about the project.
+5. Check `/api/projects/{id}/memory?limit=50` returns the new turn-derived items.
+6. Switch the picker to Personal. Have an unrelated conversation. Confirm the new captures land at `/api/spaces/{personalSpaceId}/memory`.
+
+### Step 5 — sample Gemini extraction quality
+
+After D.2 sets FULL=true and the worker drains a few items, sample randomly:
+
+```sql
+SELECT id, content, predicate, subject_entity_id, object_entity_id, object_literal, confidence
+FROM observations ORDER BY random() LIMIT 5;
+
+SELECT er.id, e1.name AS subject, er.relation_type, e2.name AS object, er.confidence
+FROM entity_relations er
+JOIN canonical_entities e1 ON e1.id = er.source_entity_id
+JOIN canonical_entities e2 ON e2.id = er.target_entity_id
+ORDER BY random() LIMIT 5;
+```
+
+If output looks noisy, iterate prompts in `apps/web/src/server/services/memory-pipeline-providers.ts`, re-enqueue via `update memory_items set enrichment_status='pending', enrichment_version=1 where enrichment_version=2;`, re-curl the cron.
+
+### Step 6 — tear-down between sessions
+
+- `TaskStop` the dev server background task.
+- Optionally `mcp__Neon__run_sql_transaction` to delete any test rows you inserted.
+- Restore `.env.local` if you backed it up.
+
+**Do not drop the dev branch until prod cutover is verified healthy.**
+
 ## TL;DR for review
 
 - Schema is layered (episodes → mentions → observations → entity_relations → canon → brief) + bi-temporal + space-scoped.
