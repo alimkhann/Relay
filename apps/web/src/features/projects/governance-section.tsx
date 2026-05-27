@@ -359,7 +359,7 @@ export function GovernanceSection({
                             <p className="text-[12px] leading-relaxed text-[var(--relay-ink-secondary)]">
                               {item.text}
                             </p>
-                            {item.source === "manual" && item.sourceSurface && (
+                            {item.sourceSurface && (
                               <div className="mt-1">
                                 <ProvenanceChip
                                   sourceSurface={item.sourceSurface}
