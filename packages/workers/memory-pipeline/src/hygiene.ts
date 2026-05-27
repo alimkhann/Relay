@@ -242,8 +242,14 @@ export async function runHygieneTick(
         out.itemsResurrected += 1
         continue
       }
+      // Reset the decay clock alongside the lifecycle flip — otherwise the
+      // next hygiene tick re-archives the row because computeDecayScore
+      // still sees a stale last_reaffirmed_at and proposes archived again.
       await repos.provider.query(
-        `UPDATE memory_items SET lifecycle_state = 'cooling' WHERE id = $1`,
+        `UPDATE memory_items
+         SET lifecycle_state = 'cooling',
+             last_reaffirmed_at = now()
+         WHERE id = $1`,
         [memoryItemId],
       )
       out.itemsResurrected += 1

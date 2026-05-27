@@ -261,6 +261,9 @@ export function useAssistantChat(
                   content: m.content || `I can ${event.action.summary}. Confirm to proceed.`
                 }))
                 break
+              case "pending_continuation":
+                patch((m) => ({ ...m, pendingContinuation: { reason: event.reason } }))
+                break
               case "error":
                 setError({ message: event.message, upgradeUrl: event.upgradeUrl })
                 break
@@ -455,6 +458,26 @@ export function useAssistantChat(
       updateAttachments(() => [])
     },
     [runStream, streaming, hasUploadingAttachments, leafId, readyAttachmentIds, runHygieneCommand]
+  )
+
+  // W1 — Continue button handler. When the agent hits its step budget the
+  // assistant message carries pendingContinuation; clicking Continue branches
+  // a new "continue" turn off that message so the agent picks up where it
+  // stopped instead of re-running the whole conversation.
+  const continueTurn = useCallback(
+    (assistantMessage: UiMessage) => {
+      if (streaming || hasUploadingAttachments) return
+      void runStream(
+        {
+          message: "continue",
+          parentId: assistantMessage.id,
+          attachmentIds: [],
+        },
+        "continue",
+        assistantMessage.id,
+      )
+    },
+    [runStream, streaming, hasUploadingAttachments],
   )
 
   const editMessage = useCallback(
@@ -686,6 +709,7 @@ export function useAssistantChat(
     send,
     stop,
     editMessage,
+    continueTurn,
     confirmAction,
     selectBranch,
     setFeedback,

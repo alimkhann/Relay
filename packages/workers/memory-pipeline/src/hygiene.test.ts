@@ -86,6 +86,38 @@ describe("runHygieneTick", () => {
     expect(writes).toHaveLength(0)
   })
 
+  it("resurrects an archived item and resets last_reaffirmed_at (W2)", async () => {
+    const writes: Array<{ sql: string; params: unknown[] | null }> = []
+    const provider = {
+      query: vi.fn(async (sql: string, params?: unknown[]) => {
+        if (sql.includes("FROM memory_items") && sql.includes("ORDER BY coalesce")) return []
+        // Resurrection match query — must be checked BEFORE the generic
+        // FROM observations branch because the CTE references both tables.
+        if (sql.includes("WITH new_facts AS")) {
+          return [{ memory_item_id: "m-arch", project_id: "p1", observation_id: "obs-new" }]
+        }
+        if (sql.includes("FROM observations")) return []
+        writes.push({ sql, params: params ?? null })
+        return []
+      }),
+    }
+    const repos = makeRepos(provider)
+
+    const result = await runHygieneTick(repos, {
+      spaceIds: ["s1"],
+      halfLifeDays: HALF_LIVES,
+      dryRun: false,
+    })
+
+    expect(result.itemsResurrected).toBe(1)
+    // The resurrect UPDATE must set lifecycle to cooling AND reset the
+    // reaffirm clock — otherwise the next tick re-archives the same row.
+    const resurrectWrite = writes.find(
+      (w) => w.sql.includes("lifecycle_state = 'cooling'") && w.sql.includes("last_reaffirmed_at = now()"),
+    )
+    expect(resurrectWrite).toBeTruthy()
+  })
+
   it("handles a personal-space item (null project_id) without emitting a 'null' string", async () => {
     const personalItem = { ...STALE_ITEM, project_id: null }
     const { provider } = makeProvider(personalItem)

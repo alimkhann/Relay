@@ -27,7 +27,11 @@ export const FREE_LIMITS: EntitlementLimitsDto = {
   assistantMessagesMonthly: 10,
   assistantMessagesDaily: 10,
   assistantTokensMonthly: 60_000,
-  assistantMaxSteps: 4,
+  // Industry norms: OpenAI Agents SDK default 20, LangGraph 25, Claude Code
+  // ~30. Token monthly cap (above) is the real cost lever — bumping step
+  // count alone does not blow billing. 6/8/12 errored mid-task too often;
+  // 10/20/30 keeps free-tier abuse low while letting routine flows finish.
+  assistantMaxSteps: 10,
 }
 
 export const STARTER_LIMITS: EntitlementLimitsDto = {
@@ -56,7 +60,7 @@ export const STARTER_LIMITS: EntitlementLimitsDto = {
   assistantMessagesMonthly: 3_000,
   assistantMessagesDaily: 100,
   assistantTokensMonthly: 2_000_000,
-  assistantMaxSteps: 6,
+  assistantMaxSteps: 20,
 }
 
 export const PRO_LIMITS: EntitlementLimitsDto = {
@@ -85,7 +89,7 @@ export const PRO_LIMITS: EntitlementLimitsDto = {
   assistantMessagesMonthly: 12_000,
   assistantMessagesDaily: 400,
   assistantTokensMonthly: 8_000_000,
-  assistantMaxSteps: 8,
+  assistantMaxSteps: 30,
 }
 
 export const PLAN_PRODUCT_IDS = {

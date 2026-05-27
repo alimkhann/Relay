@@ -20,6 +20,9 @@ export interface UiMessage {
   attachments: AssistantAttachmentDto[]
   feedback: AssistantMessageFeedback | null
   pending?: AssistantPendingAction
+  /** Set when the agent hit its step budget. UI renders a Continue button so
+   * the user resumes without re-typing. */
+  pendingContinuation?: { reason: "step_limit" }
   streaming?: boolean
   /** 1-based position + total among sibling branches at this point. */
   branch?: { index: number; total: number; siblingIds: string[] }

@@ -127,6 +127,10 @@ export type AssistantStreamEvent =
   | { type: "tool_start"; tool: string }
   | { type: "tool_result"; result: AssistantActionResult }
   | { type: "pending_action"; action: AssistantPendingAction }
+  /** Step budget exhausted. UI shows a "Continue" button so the user can
+   * resume without re-typing — sends a follow-up turn that branches off the
+   * cap-hit assistant message. Server still emits the trailing text + done. */
+  | { type: "pending_continuation"; reason: "step_limit"; assistantMessageId?: string }
   | { type: "usage"; totalTokens: number }
   | { type: "done"; messageId: string }
   | { type: "error"; message: string; upgradeUrl?: string; plan?: string }

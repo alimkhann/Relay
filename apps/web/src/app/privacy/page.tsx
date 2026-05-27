@@ -21,10 +21,28 @@ export default function PrivacyPage() {
           Privacy Policy
         </h1>
         <p className="mt-2 text-sm text-gray-400">
-          Last updated: May 16, 2026
+          Last updated: May 27, 2026
         </p>
 
         <div className="mt-10 space-y-8 text-[15px] leading-relaxed text-gray-600">
+          <section>
+            <h2 className="mb-3 text-lg font-semibold text-gray-900">
+              Single Purpose
+            </h2>
+            <p>
+              Relay&apos;s single purpose is to sync your project context
+              across the AI chats and coding agents you already use. Every
+              permission, host access, and piece of data Relay collects exists
+              to serve that purpose. We do not sell, broker, rent, or use your
+              data for advertising, profiling, or training third-party models.
+            </p>
+            <p className="mt-3">
+              The Relay Chrome extension does not load or execute remote code.
+              All extension JavaScript is bundled at build time and shipped
+              through the Chrome Web Store; updates ship the same way.
+            </p>
+          </section>
+
           <section>
             <h2 className="mb-3 text-lg font-semibold text-gray-900">
               1. Who We Are
@@ -173,6 +191,15 @@ export default function PrivacyPage() {
                   <strong className="text-gray-900">contextMenus:</strong>{" "}
                   provides the right-click &quot;Save to Relay&quot; action for
                   text you select.
+                </li>
+                <li>
+                  <strong className="text-gray-900">audioCapture (optional):</strong>{" "}
+                  enables the voice-input button in the Relay side panel so
+                  you can dictate notes or chat messages instead of typing.
+                  Microphone access is requested only when you tap the mic
+                  button, transcribed locally / via your AI provider, and never
+                  stored as audio. The permission is optional — declining it
+                  disables the mic button and nothing else.
                 </li>
                 <li>
                   <strong className="text-gray-900">
@@ -439,8 +466,21 @@ export default function PrivacyPage() {
                 </li>
                 <li>
                   <strong className="text-gray-900">Delete:</strong> Delete
-                  your data at any time (via Settings), or request complete
-                  deletion by contacting us.
+                  any individual item from your dashboard at any time. To
+                  delete all data tied to your Relay account, use{" "}
+                  <strong className="text-gray-900">
+                    Settings → Account → Delete account
+                  </strong>{" "}
+                  in the dashboard, or email{" "}
+                  <a
+                    href="mailto:support@onrelay.app"
+                    className="text-gray-900 underline underline-offset-2"
+                  >
+                    support@onrelay.app
+                  </a>{" "}
+                  from the address tied to your account. Account-wide deletions
+                  are processed within 7 days; analytics events held by PostHog
+                  are deleted on the same request.
                 </li>
                 <li>
                   <strong className="text-gray-900">Revoke Access:</strong>{" "}

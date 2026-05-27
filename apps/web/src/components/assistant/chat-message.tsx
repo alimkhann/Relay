@@ -162,7 +162,8 @@ export function ChatMessage({
   onEdit,
   onSelectBranch,
   onSaveAttachment,
-  canSaveAttachments
+  canSaveAttachments,
+  onContinue
 }: {
   message: UiMessage
   onConfirm: (action: AssistantPendingAction) => void
@@ -173,6 +174,7 @@ export function ChatMessage({
   onSelectBranch: (parentId: string | null, siblingId: string) => void
   onSaveAttachment: (id: string) => Promise<void>
   canSaveAttachments: boolean
+  onContinue?: (message: UiMessage) => void
 }) {
   const isUser = message.role === "user"
   const [editing, setEditing] = useState(false)
@@ -265,6 +267,23 @@ export function ChatMessage({
         {message.actionResults.map((result, i) => (
           <ActionResultCard key={i} result={result} onUndo={onUndo} />
         ))}
+
+        {message.pendingContinuation && onContinue ? (
+          <div className="rounded-[var(--relay-radius-lg)] border border-[var(--relay-line)] bg-[var(--relay-soft)]/60 p-3 text-sm">
+            <p className="text-[var(--relay-ink)]">
+              Reached the step limit. Continue from where I stopped?
+            </p>
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => onContinue(message)}
+                className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-accent-blue)] px-3 py-1.5 text-xs font-semibold text-[var(--relay-accent-blue-ink)] hover:bg-[var(--relay-accent-blue-hover)]"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {message.pending ? (
           <div className="rounded-[var(--relay-radius-lg)] border border-amber-500/40 bg-amber-500/5 p-3 text-sm">

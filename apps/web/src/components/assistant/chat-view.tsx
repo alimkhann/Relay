@@ -96,6 +96,7 @@ export function ChatView({
     send,
     stop,
     editMessage,
+    continueTurn,
     confirmAction,
     selectBranch,
     setFeedback,
@@ -368,6 +369,7 @@ export function ChatView({
               onSelectBranch={selectBranch}
               onSaveAttachment={saveAttachmentToSources}
               canSaveAttachments={canSaveToSources}
+              onContinue={continueTurn}
             />
           ))}
 

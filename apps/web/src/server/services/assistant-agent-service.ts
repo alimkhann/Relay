@@ -664,7 +664,7 @@ export async function* runAssistantTurn(
 
   // 6. Step budget exhausted (hard cost ceiling).
   const cappedText =
-    "I reached the step limit for this request. Here's where I got to — ask me to continue if you'd like."
+    "I reached the step limit for this request. Click Continue to keep going from where I stopped."
   for (const delta of chunkText(cappedText)) yield { type: "text", delta }
   const saved = await repositories.assistantMessages.create({
     chatId: chat.id,
@@ -676,6 +676,7 @@ export async function* runAssistantTurn(
       turnActionResults.length > 0 ? { actionResults: turnActionResults } : undefined
   })
   await repositories.assistantChats.touch(chat.id)
+  yield { type: "pending_continuation", reason: "step_limit", assistantMessageId: saved.id }
   yield { type: "usage", totalTokens }
   yield { type: "done", messageId: saved.id }
 }
