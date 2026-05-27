@@ -9,6 +9,11 @@ export type AssistantActionKind = "created" | "updated" | "deleted" | "read"
 export interface AssistantActionItem {
   id?: string
   label: string
+  /** When the action transitions a memory item's lifecycle, the card renders
+   * a pill so the user can see at a glance what state the item is now in.
+   * Set by hygiene-command tool results (F2) and recall hits that surface
+   * non-`active` items. */
+  lifecycle?: "active" | "cooling" | "archived" | "forgotten"
 }
 
 /** Structured summary a tool returns so the UI can render a "what changed" card. */

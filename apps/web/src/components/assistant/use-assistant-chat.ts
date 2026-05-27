@@ -10,6 +10,11 @@ import {
   spliceOptimistic,
   type UiMessage
 } from "@relay/shared/utils/assistant-chat-path"
+import {
+  commandToMemoryPatch,
+  parseAssistantCommand,
+  type ParsedAssistantCommand,
+} from "@relay/shared/utils/assistant-command-parser"
 import type {
   AssistantActionResult,
   AssistantAttachmentDto,
@@ -316,24 +321,140 @@ export function useAssistantChat(
   )
   const hasUploadingAttachments = attachments.some((a) => a.uploading)
 
+  // F2 — hygiene command interceptor. /reaffirm /forget /obsolete /archive
+  // /restore short-circuit the LLM round-trip and PATCH the memory item
+  // directly. The exchange lives in optimistic state only — it's intentionally
+  // not persisted to the chat backend so hygiene chatter doesn't pollute the
+  // LLM context window.
+  const runHygieneCommand = useCallback(
+    async (cmd: ParsedAssistantCommand, rawText: string) => {
+      setError(null)
+      const userTmp = tmp()
+      const asstTmp = tmp()
+      const parentForOptimistic = leafId
+      setBranchParentId(parentForOptimistic)
+
+      const seed: UiMessage[] = [
+        {
+          id: userTmp,
+          parentId: parentForOptimistic,
+          role: "user",
+          content: rawText,
+          actionResults: [],
+          attachments: [],
+          feedback: null,
+        },
+        {
+          id: asstTmp,
+          parentId: userTmp,
+          role: "assistant",
+          content: `Running \`/${cmd.command}\` on \`${cmd.memoryId}\`…`,
+          actionResults: [],
+          attachments: [],
+          feedback: null,
+          streaming: true,
+        },
+      ]
+      setOptimistic(seed)
+
+      const lifecycle = (
+        {
+          reaffirm: "active",
+          obsolete: "cooling",
+          archive: "archived",
+          forget: "forgotten",
+          restore: "active",
+        } as const
+      )[cmd.command]
+      const verbPast = (
+        {
+          reaffirm: "Reaffirmed",
+          obsolete: "Marked obsolete",
+          archive: "Archived",
+          forget: "Forgot",
+          restore: "Restored",
+        } as const
+      )[cmd.command]
+      const irreversible = cmd.command === "forget"
+
+      try {
+        const res = await fetch(`/api/memory/${cmd.memoryId}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(commandToMemoryPatch(cmd)),
+        })
+        if (!res.ok) {
+          let errMsg = `Failed to ${cmd.command} memory ${cmd.memoryId}.`
+          try {
+            const j = (await res.json()) as { error?: string }
+            if (j?.error) errMsg = j.error
+          } catch {
+            /* noop */
+          }
+          setOptimistic((prev) =>
+            prev.map((m) =>
+              m.id === asstTmp ? { ...m, streaming: false, content: errMsg } : m,
+            ),
+          )
+          return
+        }
+        const actionResult: AssistantActionResult = {
+          tool: "manage_memory",
+          action: cmd.command === "forget" ? "deleted" : "updated",
+          entity: "memory item",
+          count: 1,
+          items: [{ id: cmd.memoryId, label: cmd.memoryId, lifecycle }],
+          irreversible: irreversible || undefined,
+        }
+        setOptimistic((prev) =>
+          prev.map((m) =>
+            m.id === asstTmp
+              ? {
+                  ...m,
+                  streaming: false,
+                  content: `${verbPast} memory item.`,
+                  actionResults: [actionResult],
+                }
+              : m,
+          ),
+        )
+        onMutationRef.current?.(actionResult)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : `Failed to ${cmd.command}.`
+        setOptimistic((prev) =>
+          prev.map((m) => (m.id === asstTmp ? { ...m, streaming: false, content: msg } : m)),
+        )
+      }
+    },
+    [leafId],
+  )
+
   const send = useCallback(
     (text: string, pageContext?: PageContext, options?: AssistantSendOptions) => {
       if (!text.trim() || streaming || hasUploadingAttachments) return
+      const trimmed = text.trim()
+      const cmd = parseAssistantCommand(trimmed)
+      if (cmd) {
+        void runHygieneCommand(cmd, trimmed)
+        revokePreviewUrls(attachmentsRef.current)
+        updateAttachments(() => [])
+        return
+      }
       void runStream(
         {
-          message: text.trim(),
+          message: trimmed,
           parentId: leafId,
           attachmentIds: readyAttachmentIds(),
           pageContext,
           webSearch: options?.webSearch || undefined
         },
-        text.trim(),
+        trimmed,
         leafId
       )
       revokePreviewUrls(attachmentsRef.current)
       updateAttachments(() => [])
     },
-    [runStream, streaming, hasUploadingAttachments, leafId, readyAttachmentIds]
+    [runStream, streaming, hasUploadingAttachments, leafId, readyAttachmentIds, runHygieneCommand]
   )
 
   const editMessage = useCallback(

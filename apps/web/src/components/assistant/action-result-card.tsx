@@ -3,11 +3,33 @@
 import { motion } from "motion/react"
 import { CheckCircle2, PencilLine, Trash2, Undo2 } from "lucide-react"
 
-import type { AssistantActionResult } from "@relay/shared"
+import type { AssistantActionItem, AssistantActionResult } from "@relay/shared"
 
 import { cn } from "@/lib/cn"
 
 import { toolIcon } from "./tool-icons"
+
+const LIFECYCLE_PILL: Record<
+  NonNullable<AssistantActionItem["lifecycle"]>,
+  { label: string; classes: string }
+> = {
+  active: {
+    label: "active",
+    classes: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  },
+  cooling: {
+    label: "cooling",
+    classes: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  },
+  archived: {
+    label: "archived",
+    classes: "bg-zinc-500/10 text-zinc-700 dark:text-zinc-300",
+  },
+  forgotten: {
+    label: "forgotten",
+    classes: "bg-rose-500/10 text-rose-700 dark:text-rose-300",
+  },
+}
 
 const ACTION_META: Record<
   AssistantActionResult["action"],
@@ -72,10 +94,11 @@ export function ActionResultCard({
             // external links so users can verify what the agent grounded on.
             const isUrl =
               typeof item.id === "string" && /^https?:\/\//i.test(item.id)
+            const pill = item.lifecycle ? LIFECYCLE_PILL[item.lifecycle] : null
             return (
               <li
                 key={item.id ?? i}
-                className="flex gap-2 text-xs text-[var(--relay-ink-secondary)]"
+                className="flex items-center gap-2 text-xs text-[var(--relay-ink-secondary)]"
               >
                 <span className="text-[var(--relay-muted)]">—</span>
                 {isUrl ? (
@@ -90,6 +113,16 @@ export function ActionResultCard({
                 ) : (
                   <span className="truncate">{item.label}</span>
                 )}
+                {pill ? (
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium",
+                      pill.classes,
+                    )}
+                  >
+                    {pill.label}
+                  </span>
+                ) : null}
               </li>
             )
           })}
