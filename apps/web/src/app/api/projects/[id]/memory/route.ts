@@ -9,6 +9,7 @@ import {
   consumeMcpWriteQuota,
 } from "@/server/services/entitlement-service"
 import { createMemoryItem } from "@/server/services/memory-service"
+import { routePersonalMemory } from "@/server/services/personal-memory-service"
 
 export const GET = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   const viewer = await resolveViewer(request.headers.get("authorization"))
@@ -50,5 +51,15 @@ export const POST = withApiAuth(async (request: Request, { params }: { params: P
   }
   const body = await request.json()
   const item = await createMemoryItem(viewer.userId, { ...body, projectId: id })
+
+  // Auto-capture (routingHint:"auto") additionally derives durable user facts
+  // and routes the salient ones into the user's personal project. Fire-and-
+  // forget — the project capture above is the primary, unaffected result.
+  if (body?.routingHint === "auto" && typeof body?.content === "string") {
+    void routePersonalMemory(viewer.userId, id, body.content, {
+      sourceSurface: body.sourceSurface ?? null,
+    })
+  }
+
   return NextResponse.json({ item }, { status: 201 })
 })
