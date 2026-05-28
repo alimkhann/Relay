@@ -79,7 +79,7 @@ describe("GET /api/projects", () => {
       "project:read",
     )
     expect(consumeMcpReadQuotaMock).toHaveBeenCalledWith("user-1")
-    expect(listCachedProjectsForUserMock).toHaveBeenCalledWith("user-1")
+    expect(listCachedProjectsForUserMock).toHaveBeenCalledWith("user-1", { includePersonal: false })
     expect(payload).toEqual({
       projects: [
         { id: "project-current", name: "Relay", slug: "relay" },

@@ -68,13 +68,13 @@ describe("read-model-cache", () => {
     await expect(listCachedProjectsForUser("user-1")).resolves.toEqual([{ id: "project-1" }])
 
     expect(cacheDefinitions[0]).toMatchObject({
-      keyParts: ["v2", "projects", "user-1"],
+      keyParts: ["v2", "projects", "user-1", "no-personal"],
       options: {
         revalidate: 300,
         tags: ["v2", "relay:user:user-1", "relay:user:user-1:projects"],
       },
     })
-    expect(listProjectsForUserMock).toHaveBeenCalledWith("user-1")
+    expect(listProjectsForUserMock).toHaveBeenCalledWith("user-1", { includePersonal: false })
   })
 
   it("scopes project dashboard cache by user and project", async () => {
