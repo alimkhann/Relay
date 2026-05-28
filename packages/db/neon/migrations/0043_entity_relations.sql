@@ -4,7 +4,7 @@
 
 create table if not exists entity_relations (
   id uuid primary key default gen_random_uuid(),
-  space_id uuid not null references spaces(id) on delete cascade,
+  project_id uuid not null references projects(id) on delete cascade,
   source_entity_id uuid not null references canonical_entities(id) on delete cascade,
   target_entity_id uuid not null references canonical_entities(id) on delete cascade,
   relation_type text not null,
@@ -24,8 +24,8 @@ create table if not exists entity_relations (
   check (source_entity_id <> target_entity_id)
 );
 
-create index if not exists idx_entity_relations_space_valid_until
-  on entity_relations (space_id, valid_until);
+create index if not exists idx_entity_relations_project_valid_until
+  on entity_relations (project_id, valid_until);
 
 create index if not exists idx_entity_relations_source
   on entity_relations (source_entity_id);
@@ -33,8 +33,8 @@ create index if not exists idx_entity_relations_source
 create index if not exists idx_entity_relations_target
   on entity_relations (target_entity_id);
 
-create index if not exists idx_entity_relations_space_lifecycle
-  on entity_relations (space_id, lifecycle_state);
+create index if not exists idx_entity_relations_project_lifecycle
+  on entity_relations (project_id, lifecycle_state);
 
 -- One current edge per (source, target, relation_type) at any given time.
 -- Multiple historical edges remain valid via valid_until being non-null.
@@ -47,13 +47,13 @@ alter table entity_relations enable row level security;
 drop policy if exists "Members read entity_relations" on entity_relations;
 create policy "Members read entity_relations" on entity_relations
   for select
-  using (public.is_space_member(space_id));
+  using (public.is_project_member(project_id));
 
 drop policy if exists "Members write entity_relations" on entity_relations;
 create policy "Members write entity_relations" on entity_relations
   for all
-  using (public.is_space_member(space_id))
-  with check (public.is_space_member(space_id));
+  using (public.is_project_member(project_id))
+  with check (public.is_project_member(project_id));
 
 -- DOWN
 -- drop table if exists entity_relations;

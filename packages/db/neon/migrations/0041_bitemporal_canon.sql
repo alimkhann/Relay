@@ -1,11 +1,10 @@
 -- Memory Architecture v2 — bi-temporal + lifecycle_state on memory_items.
--- Adds space_id, valid_from, valid_until, expired_at, lifecycle_state.
--- Backfills space_id via project_id -> spaces. Installs a trigger that keeps
--- lifecycle_state and is_archived in sync (lifecycle_state is the source of
--- truth; is_archived is kept populated for back-compat).
+-- Adds valid_from, valid_until, expired_at, lifecycle_state. Installs a trigger
+-- that keeps lifecycle_state and is_archived in sync (lifecycle_state is the
+-- source of truth; is_archived is kept populated for back-compat). Scope stays
+-- project_id (NOT NULL); the spaces layer is dropped.
 
 alter table memory_items
-  add column if not exists space_id uuid references spaces(id) on delete cascade,
   add column if not exists valid_from timestamptz,
   add column if not exists valid_until timestamptz,
   add column if not exists expired_at timestamptz,
@@ -33,14 +32,6 @@ begin
       check (lifecycle_state in ('active','cooling','archived','forgotten'));
   end if;
 end$$;
-
--- Backfill space_id from project -> spaces (kind='project').
-update memory_items mi
-set space_id = s.id
-from spaces s
-where s.project_id = mi.project_id
-  and s.kind = 'project'
-  and mi.space_id is null;
 
 -- Backfill valid_from from captured_at, falling back to created_at when
 -- captured_at is NULL (recon confirmed captured_at is_nullable=YES).
@@ -83,14 +74,14 @@ before insert or update on memory_items
 for each row
 execute function public.memory_items_lifecycle_sync();
 
-create index if not exists idx_memory_items_space_valid_until
-  on memory_items (space_id, valid_until);
+create index if not exists idx_memory_items_project_valid_until
+  on memory_items (project_id, valid_until);
 
-create index if not exists idx_memory_items_space_lifecycle
-  on memory_items (space_id, lifecycle_state);
+create index if not exists idx_memory_items_project_lifecycle
+  on memory_items (project_id, lifecycle_state);
 
-create index if not exists idx_memory_items_space_lifecycle_reaffirmed
-  on memory_items (space_id, lifecycle_state, last_reaffirmed_at);
+create index if not exists idx_memory_items_project_lifecycle_reaffirmed
+  on memory_items (project_id, lifecycle_state, last_reaffirmed_at);
 
 -- DOWN
 -- drop trigger if exists trg_memory_items_lifecycle_sync on memory_items;
@@ -100,5 +91,4 @@ create index if not exists idx_memory_items_space_lifecycle_reaffirmed
 --   drop column if exists lifecycle_state,
 --   drop column if exists expired_at,
 --   drop column if exists valid_until,
---   drop column if exists valid_from,
---   drop column if exists space_id;
+--   drop column if exists valid_from;

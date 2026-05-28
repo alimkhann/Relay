@@ -33,11 +33,11 @@ alter table observations
   add column if not exists enriched_at timestamptz;
 
 create index if not exists idx_memory_items_enrichment_pending
-  on memory_items (space_id, enrichment_status, enrichment_version)
+  on memory_items (project_id, enrichment_status, enrichment_version)
   where enrichment_status in ('pending','failed');
 
 create index if not exists idx_observations_enrichment_pending
-  on observations (space_id, enrichment_status, enrichment_version)
+  on observations (project_id, enrichment_status, enrichment_version)
   where enrichment_status in ('pending','failed');
 
 -- Half-life lookup table for the hygiene worker. Keyed by memory_item type;

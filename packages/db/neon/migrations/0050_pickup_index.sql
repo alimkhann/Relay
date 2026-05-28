@@ -5,7 +5,7 @@
 --   WHERE enrichment_status IN ('pending','failed')
 --     AND enrichment_version < $2
 --   ORDER BY created_at ASC LIMIT $1
--- The partial index from 0046 keyed on (space_id, enrichment_status,
+-- The partial index from 0046 keyed on (project_id, enrichment_status,
 -- enrichment_version) does not cover the ORDER BY, so on prod-sized backlogs
 -- (700+ pending after the 0049 backfill flip) the planner falls back to an
 -- in-memory sort. Recreate the partial index with created_at appended so the
@@ -13,11 +13,11 @@
 
 drop index if exists idx_memory_items_enrichment_pending;
 create index if not exists idx_memory_items_enrichment_pending
-  on memory_items (space_id, enrichment_status, enrichment_version, created_at)
+  on memory_items (project_id, enrichment_status, enrichment_version, created_at)
   where enrichment_status in ('pending','failed');
 
 -- DOWN
 -- drop index if exists idx_memory_items_enrichment_pending;
 -- create index if not exists idx_memory_items_enrichment_pending
---   on memory_items (space_id, enrichment_status, enrichment_version)
+--   on memory_items (project_id, enrichment_status, enrichment_version)
 --   where enrichment_status in ('pending','failed');

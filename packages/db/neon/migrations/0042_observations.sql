@@ -6,7 +6,7 @@
 
 create table if not exists observations (
   id uuid primary key default gen_random_uuid(),
-  space_id uuid not null references spaces(id) on delete cascade,
+  project_id uuid not null references projects(id) on delete cascade,
   source_episode_id uuid references source_sessions(id) on delete set null,
   source_memory_item_id uuid references memory_items(id) on delete set null,
   content text not null,
@@ -37,11 +37,11 @@ create index if not exists idx_observations_embedding
 create index if not exists idx_observations_search_vector
   on observations using gin (search_vector);
 
-create index if not exists idx_observations_space_valid_until
-  on observations (space_id, valid_until);
+create index if not exists idx_observations_project_valid_until
+  on observations (project_id, valid_until);
 
-create index if not exists idx_observations_space_lifecycle
-  on observations (space_id, lifecycle_state);
+create index if not exists idx_observations_project_lifecycle
+  on observations (project_id, lifecycle_state);
 
 create index if not exists idx_observations_svo
   on observations (subject_entity_id, predicate)
@@ -60,13 +60,13 @@ alter table observations enable row level security;
 drop policy if exists "Members read observations" on observations;
 create policy "Members read observations" on observations
   for select
-  using (public.is_space_member(space_id));
+  using (public.is_project_member(project_id));
 
 drop policy if exists "Members write observations" on observations;
 create policy "Members write observations" on observations
   for all
-  using (public.is_space_member(space_id))
-  with check (public.is_space_member(space_id));
+  using (public.is_project_member(project_id))
+  with check (public.is_project_member(project_id));
 
 -- Extend memory_events.event_type CHECK to include the new event names that
 -- observations + entity_relations + hygiene will emit. CHECK constraint, not
