@@ -27,7 +27,6 @@ import type {
   GraphRepository,
   MemoryRepository,
   ObservationRepository,
-  SpaceRepository,
 } from "@relay/db"
 import type { EntityRepository } from "@relay/db"
 import type { DatabaseProvider } from "@relay/db"
@@ -36,7 +35,7 @@ import { runHygieneTick, type HygieneOptions, type HygieneResult } from "./hygie
 
 export interface EnrichmentContext {
   itemId: string
-  spaceId: string
+  projectId: string
   type: string
   content: string
   metadata: Record<string, unknown>
@@ -75,7 +74,6 @@ export interface MemoryPipelineRepos {
   entityRelation: EntityRelationRepository
   entity: EntityRepository
   graph: GraphRepository
-  space: SpaceRepository
 }
 
 export interface ProcessItemResult {
@@ -157,14 +155,14 @@ export async function processItem(
   )
 
   try {
-    const spaceId = (item as { spaceId?: string }).spaceId ?? null
-    if (!spaceId) {
-      throw new Error(`memory_item ${itemId} missing space_id; backfill drift`)
+    const projectId = item.projectId
+    if (!projectId) {
+      throw new Error(`memory_item ${itemId} missing project_id; backfill drift`)
     }
 
     const ctx: EnrichmentContext = {
       itemId: item.id,
-      spaceId,
+      projectId,
       type: item.type,
       content: item.content,
       metadata: item.metadata ?? {},
@@ -187,14 +185,13 @@ export async function processItem(
       : []
     const entityIdByName = new Map<string, string>()
     for (const extracted of extractedEntities) {
-      // Space-scoped so personal-space items (project_id NULL) work too.
-      const entity = await repos.entity.findOrCreateBySpace(
-        spaceId,
+      const entity = await repos.entity.findOrCreateByName(
+        projectId,
         extracted.name,
         extracted.kind ?? "unknown",
       )
       entityIdByName.set(extracted.name.toLowerCase(), entity.id)
-      await repos.entity.addMention(itemId, entity.id, extracted.mentionText, spaceId)
+      await repos.entity.addMention(itemId, entity.id, extracted.mentionText)
       // F4 — embed-on-insert. If the entity row landed without an embedding
       // (freshly created), give it one now using `name (kind)` as the embed
       // text. Non-fatal — the backfill route still catches misses.
@@ -205,8 +202,15 @@ export async function processItem(
             : entity.name
           const { vector } = await providers.embed(text)
           await repos.entity.updateEmbedding(entity.id, vector)
-        } catch {
-          // swallow — backfill cron will pick this up later.
+        } catch (err) {
+          // Recovery path: the entity row is already inserted, the backfill
+          // cron will pick up the missing embedding later. Surface the error
+          // so silent regressions (e.g. the next embedding-model deprecation)
+          // are visible in logs instead of disappearing.
+          console.warn(
+            "[memory-pipeline] entity embed-on-insert failed",
+            { entityId: entity.id, error: err instanceof Error ? err.message : String(err) },
+          )
         }
       }
       result.entitiesCreated += 1
@@ -231,7 +235,7 @@ export async function processItem(
       let priorToSupersede: string | null = null
       if (subjectId && obs.predicate) {
         const prior = await repos.observation.findCurrentSvo(
-          spaceId,
+          projectId,
           subjectId,
           obs.predicate,
         )
@@ -245,7 +249,7 @@ export async function processItem(
       }
 
       const created = await repos.observation.create({
-        spaceId,
+        projectId,
         content: obs.content,
         sourceMemoryItemId: itemId,
         subjectEntityId: subjectId,
@@ -269,12 +273,12 @@ export async function processItem(
         result.conflictsResolved += 1
         await repos.provider.query(
           `INSERT INTO memory_events
-            (project_id, space_id, memory_item_id, event_type, source_surface, payload)
-           VALUES ($1, $2, NULL, 'observation_expired', 'worker',
-                   jsonb_build_object('observation_id', $3::text,
+            (project_id, memory_item_id, event_type, source_surface, payload)
+           VALUES ($1, NULL, 'observation_expired', 'worker',
+                   jsonb_build_object('observation_id', $2::text,
                                       'reason', 'svo_superseded',
-                                      'superseded_by', $4::text))`,
-          [item.projectId, spaceId, priorToSupersede, created.id],
+                                      'superseded_by', $3::text))`,
+          [projectId, priorToSupersede, created.id],
         )
       }
 
@@ -284,13 +288,13 @@ export async function processItem(
         // (subject, predicate) that points at a different target, so the SVO
         // never has two "current" edges at once.
         await repos.entityRelation.invalidateCurrentForSubjectPredicate(
-          spaceId,
+          projectId,
           subjectId,
           obs.predicate,
           objectId,
         )
         await repos.entityRelation.upsertCurrent({
-          spaceId,
+          projectId,
           sourceEntityId: subjectId,
           targetEntityId: objectId,
           relationType: obs.predicate,
@@ -303,14 +307,13 @@ export async function processItem(
 
       await repos.provider.query(
         `INSERT INTO memory_events
-          (project_id, space_id, memory_item_id, event_type, source_surface, payload)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, 'observation_created', 'worker',
-                 jsonb_build_object('observation_id', $4::text,
-                                    'confidence', $5::double precision,
-                                    'is_svo', $6::boolean))`,
+          (project_id, memory_item_id, event_type, source_surface, payload)
+         VALUES ($1::uuid, $2::uuid, 'observation_created', 'worker',
+                 jsonb_build_object('observation_id', $3::text,
+                                    'confidence', $4::double precision,
+                                    'is_svo', $5::boolean))`,
         [
-          item.projectId,
-          spaceId,
+          projectId,
           itemId,
           created.id,
           obs.confidence ?? 1.0,
@@ -357,7 +360,7 @@ export async function processItem(
 }
 
 /**
- * Pick up at most `batchSize` pending items across all spaces and process
+ * Pick up at most `batchSize` pending items across all projects and process
  * them sequentially. Caller invokes this on a Vercel cron tick (or queue
  * consumer).
  */

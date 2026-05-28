@@ -99,9 +99,9 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
     // Entity graph tables may not exist yet during migration rollout.
   }
 
-  // Memory v2: resolve this project's space_id so we can pull entity_relations
-  // + observations summary. Failures are non-fatal — the dashboard renders
-  // its current payload even if the v2 tables are missing in a stale env.
+  // Memory v2: pull this project's entity_relations + observations summary.
+  // Failures are non-fatal — the dashboard renders its current payload even if
+  // the v2 tables are missing in a stale env.
   let entityRelations: Array<{
     id: string;
     sourceEntityId: string;
@@ -115,40 +115,37 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
   };
 
   try {
-    const space = await repositories.spaces.resolveSpaceForProject(id);
-    if (space) {
-      const snapshot = await repositories.graph.getSpaceGraphSnapshot(space.id, 200);
-      entityRelations = snapshot.relations;
-      // Single round-trip: total count + recent 25 in one CTE.
-      const summaryRows = await repositories.provider.query(
-        `WITH active AS (
-           SELECT id, content, subject_entity_id, predicate, valid_from
-           FROM observations
-           WHERE space_id = $1
-             AND lifecycle_state IN ('active','cooling')
-             AND valid_until IS NULL
-         )
-         SELECT
-           (SELECT count(*)::int FROM active) AS total,
-           (SELECT json_agg(t.*) FROM (
-              SELECT id, content, subject_entity_id, predicate, valid_from
-              FROM active ORDER BY valid_from DESC LIMIT 25
-            ) t) AS recent`,
-        [space.id],
-      );
-      const summary = (summaryRows[0] as Record<string, unknown>) ?? {};
-      const recentRaw = (summary.recent as Array<Record<string, unknown>> | null) ?? [];
-      observationsSummary = {
-        total: Number(summary.total ?? 0),
-        recent: recentRaw.map((r) => ({
-          id: String(r.id),
-          content: String(r.content),
-          subjectEntityId: r.subject_entity_id ? String(r.subject_entity_id) : null,
-          predicate: r.predicate ? String(r.predicate) : null,
-          validFrom: String(r.valid_from),
-        })),
-      };
-    }
+    const snapshot = await repositories.graph.getProjectGraphSnapshot(id, 200);
+    entityRelations = snapshot.relations;
+    // Single round-trip: total count + recent 25 in one CTE.
+    const summaryRows = await repositories.provider.query(
+      `WITH active AS (
+         SELECT id, content, subject_entity_id, predicate, valid_from
+         FROM observations
+         WHERE project_id = $1
+           AND lifecycle_state IN ('active','cooling')
+           AND valid_until IS NULL
+       )
+       SELECT
+         (SELECT count(*)::int FROM active) AS total,
+         (SELECT json_agg(t.*) FROM (
+            SELECT id, content, subject_entity_id, predicate, valid_from
+            FROM active ORDER BY valid_from DESC LIMIT 25
+          ) t) AS recent`,
+      [id],
+    );
+    const summary = (summaryRows[0] as Record<string, unknown>) ?? {};
+    const recentRaw = (summary.recent as Array<Record<string, unknown>> | null) ?? [];
+    observationsSummary = {
+      total: Number(summary.total ?? 0),
+      recent: recentRaw.map((r) => ({
+        id: String(r.id),
+        content: String(r.content),
+        subjectEntityId: r.subject_entity_id ? String(r.subject_entity_id) : null,
+        predicate: r.predicate ? String(r.predicate) : null,
+        validFrom: String(r.valid_from),
+      })),
+    };
   } catch {
     // v2 tables not present in this env yet.
   }

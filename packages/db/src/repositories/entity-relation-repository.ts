@@ -1,13 +1,13 @@
 import type { DatabaseProvider } from "../store/provider"
 import type { LifecycleState } from "./observation-repository"
 
-const COLS = `id, space_id, source_entity_id, target_entity_id, relation_type,
+const COLS = `id, project_id, source_entity_id, target_entity_id, relation_type,
   confidence, valid_from, valid_until, expired_at, lifecycle_state,
   source_observation_id, source_memory_item_id, metadata, created_at`
 
 export interface EntityRelationRow {
   id: string
-  spaceId: string
+  projectId: string
   sourceEntityId: string
   targetEntityId: string
   relationType: string
@@ -23,7 +23,7 @@ export interface EntityRelationRow {
 }
 
 export interface CreateEntityRelationInput {
-  spaceId: string
+  projectId: string
   sourceEntityId: string
   targetEntityId: string
   relationType: string
@@ -37,7 +37,7 @@ export interface CreateEntityRelationInput {
 function toRow(row: Record<string, unknown>): EntityRelationRow {
   return {
     id: String(row.id),
-    spaceId: String(row.space_id),
+    projectId: String(row.project_id),
     sourceEntityId: String(row.source_entity_id),
     targetEntityId: String(row.target_entity_id),
     relationType: String(row.relation_type),
@@ -90,14 +90,14 @@ export class EntityRelationRepository {
     }
     const rows = await this.provider.query(
       `INSERT INTO entity_relations
-        (space_id, source_entity_id, target_entity_id, relation_type,
+        (project_id, source_entity_id, target_entity_id, relation_type,
          confidence, valid_from, source_observation_id, source_memory_item_id, metadata)
        VALUES ($1::uuid, $2::uuid, $3::uuid, $4::text,
                COALESCE($5::double precision, 1.0), COALESCE($6::timestamptz, now()),
                $7::uuid, $8::uuid, COALESCE($9::jsonb, '{}'::jsonb))
        RETURNING ${COLS}`,
       [
-        input.spaceId,
+        input.projectId,
         input.sourceEntityId,
         input.targetEntityId,
         input.relationType,
@@ -125,7 +125,7 @@ export class EntityRelationRepository {
   }
 
   /**
-   * Close every current edge that shares (space, source, relation_type) but
+   * Close every current edge that shares (project, source, relation_type) but
    * points at a different target. Used when an SVO's object changes: the new
    * `source → newTarget` edge from `upsertCurrent` does not collide with the
    * old `source → oldTarget` edge (different target dodges the partial-unique
@@ -133,7 +133,7 @@ export class EntityRelationRepository {
    * Returns the number of edges superseded.
    */
   async invalidateCurrentForSubjectPredicate(
-    spaceId: string,
+    projectId: string,
     sourceEntityId: string,
     relationType: string,
     exceptTargetId: string,
@@ -143,22 +143,22 @@ export class EntityRelationRepository {
     const rows = await this.provider.query(
       `UPDATE entity_relations
        SET valid_until = $5::timestamptz, lifecycle_state = $6::text
-       WHERE space_id = $1::uuid
+       WHERE project_id = $1::uuid
          AND source_entity_id = $2::uuid
          AND relation_type = $3::text
          AND target_entity_id <> $4::uuid
          AND valid_until IS NULL
        RETURNING id`,
-      [spaceId, sourceEntityId, relationType, exceptTargetId, at, nextLifecycle],
+      [projectId, sourceEntityId, relationType, exceptTargetId, at, nextLifecycle],
     )
     return rows.length
   }
 
-  async listBySpace(
-    spaceId: string,
+  async listByProject(
+    projectId: string,
     options: { includeHistorical?: boolean; limit?: number } = {},
   ): Promise<EntityRelationRow[]> {
-    const conditions = ["space_id = $1"]
+    const conditions = ["project_id = $1"]
     if (!options.includeHistorical) {
       conditions.push("valid_until IS NULL")
       conditions.push("lifecycle_state IN ('active','cooling')")
@@ -170,7 +170,7 @@ export class EntityRelationRepository {
        WHERE ${conditions.join(" AND ")}
        ORDER BY valid_from DESC
        LIMIT ${limit}`,
-      [spaceId],
+      [projectId],
     )
     return rows.map((r) => toRow(r as Record<string, unknown>))
   }

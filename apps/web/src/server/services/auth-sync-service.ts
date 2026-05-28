@@ -244,6 +244,7 @@ export async function reconcileProfileForAuthUser(input: SyncAuthUserInput) {
     );
 
     await initializeUserSettings(input.id);
+    await repositories.projects.ensurePersonalProject(input.id);
     return;
   }
 
@@ -261,4 +262,8 @@ export async function reconcileProfileForAuthUser(input: SyncAuthUserInput) {
   await initializeUserSettings(input.id, {
     newUser: !existingProfile,
   });
+
+  // Every user gets exactly one personal project (kind='personal') that backs
+  // their personal memory. Idempotent — safe to call on every bootstrap.
+  await repositories.projects.ensurePersonalProject(input.id);
 }

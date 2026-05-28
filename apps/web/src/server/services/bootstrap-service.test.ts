@@ -355,6 +355,7 @@ describe("computeBootstrapInputHash", () => {
       project: {
         id: "project-1",
         ownerId: "user-1",
+        kind: "project" as const,
         name: "Relay",
         slug: "relay",
         description: "Carry-forward AI project context.",
@@ -388,6 +389,7 @@ describe("computeBootstrapInputHash", () => {
       project: {
         id: "project-1",
         ownerId: "user-1",
+        kind: "project" as const,
         name: "Relay",
         slug: "relay",
         description: "Carry-forward AI project context.",
@@ -435,6 +437,7 @@ describe("computeBootstrapInputHash", () => {
       project: {
         id: "project-1",
         ownerId: "user-1",
+        kind: "project" as const,
         name: "Relay",
         slug: "relay",
         description: "Carry-forward AI project context.",

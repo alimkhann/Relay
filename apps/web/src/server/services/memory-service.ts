@@ -11,6 +11,7 @@ import {
 
 import { embedMemoryItem, embedMemoryItems, generateEmbedding } from "./embedding-service"
 import { invalidateProjectCache } from "@/server/cache/invalidation"
+import { logServerEvent } from "@/server/logging/logger"
 import { extractAndLinkEntities } from "./entity-extraction-service"
 import { decomposeQuery } from "./query-decomposition-service"
 import { buildCurrentPreviousHint, buildReasoningEvidenceTable, buildTemporalResolutionHint } from "./reasoning-assembly-service"
@@ -178,7 +179,11 @@ export async function createMemoryItemBatch(userId: string, projectId: string, i
     })
   }
 
-  // Async: generate embeddings, detect relations, extract entities for all new items
+  // Async: generate embeddings, detect relations, extract entities for all new items.
+  // Embedding failures here MUST surface — the prior fire-and-forget masked the
+  // text-embedding-004 deprecation for two months. logServerEvent forwards to
+  // PostHog so the next model deprecation pages instead of silently dropping
+  // embeddings on the floor.
   void embedMemoryItems(created, repositories).then(async () => {
     for (const item of created) {
       try {
@@ -187,15 +192,38 @@ export async function createMemoryItemBatch(userId: string, projectId: string, i
           await extractAndLinkEntities(repositories, item.projectId, item.id, item.content, item.title)
         }
       } catch (error) {
-        console.error("[memory-service] post-batch enrichment failed:", error instanceof Error ? error.message : error)
+        await logServerEvent({
+          level: "error",
+          surface: "web-api",
+          area: "memory",
+          event: "memory.post_batch_enrichment_failed",
+          message: "Post-batch enrichment (relations/entities) failed for one item.",
+          userId,
+          context: { memoryItemId: item.id, projectId: item.projectId ?? null },
+          error,
+        })
       }
     }
-  }).catch((error) => {
-    console.error("[memory-service] batch embedding failed:", error instanceof Error ? error.message : error)
+  }).catch(async (error) => {
+    await logServerEvent({
+      level: "error",
+      surface: "web-api",
+      area: "memory",
+      event: "memory.batch_embedding_failed",
+      message: "Batch embedding failed — items landed without embeddings.",
+      userId,
+      context: { batchSize: created.length },
+      error,
+    })
   })
 
-  if (created[0]?.projectId) {
-    invalidateProjectCache(userId, created[0].projectId)
+  // Invalidate the cache for every distinct project touched by this batch.
+  const projectIds = new Set<string>()
+  for (const item of created) {
+    projectIds.add(item.projectId)
+  }
+  for (const projectId of projectIds) {
+    invalidateProjectCache(userId, projectId)
   }
 
   return created
@@ -208,8 +236,6 @@ export async function searchMemoryItems(
   options?: {
     types?: string[]
     tags?: string[]
-    /** Memory v2: scope by space (personal or project) instead of project_id. */
-    spaceId?: string
     /** Memory v2: explicit lifecycle filter. Defaults to active+cooling; 'forgotten' never returned. */
     lifecycleStates?: string[]
     /** Memory v2: include archived items in results (presented as distinct). */
@@ -219,7 +245,6 @@ export async function searchMemoryItems(
   const repositories = createRepositoryBundle(userId)
   const decomposition = decomposeQuery(query)
   const scope = {
-    spaceId: options?.spaceId,
     lifecycleStates: options?.lifecycleStates,
     includeArchived: options?.includeArchived,
   }
@@ -262,7 +287,7 @@ export async function searchMemoryItems(
   if (hasSimilarityScores && memoryResults.length >= 2) {
     const candidates = memoryResults.map((item) => ({
       item,
-      originalScore: (item as unknown as { similarity?: number }).similarity ?? null,
+      originalScore: item.similarity ?? null,
     }))
     const ac = new AbortController()
     const timer = setTimeout(() => ac.abort(), 1500)
@@ -279,7 +304,7 @@ export async function searchMemoryItems(
   // fresh items at equal entity-match strength.
   const halfLifeMap = await loadHalfLives(repositories)
   const decayScore = (item: MemoryItemRow) => {
-    const sim = (item as unknown as { similarity?: number }).similarity ?? 0
+    const sim = item.similarity ?? 0
     return sim * computeDecayMultiplier(item, halfLifeMap)
   }
   if (decomposition.extractedEntities.length > 0) {
@@ -297,14 +322,11 @@ export async function searchMemoryItems(
     memoryResults.sort((a, b) => decayScore(b) - decayScore(a))
   }
 
-  // Canon entries are project-scoped; skip them for personal/space-scoped recall.
-  const canonResults = options?.spaceId
-    ? []
-    : await repositories.canonEntries.searchByProject(projectId, decomposition.normalizedQuery, {
-        kinds: decomposition.canonKinds.length > 0 ? decomposition.canonKinds : undefined,
-        currentOnly: decomposition.stateIntent === "current",
-        historicalAt: decomposition.historicalAt,
-      })
+  const canonResults = await repositories.canonEntries.searchByProject(projectId, decomposition.normalizedQuery, {
+    kinds: decomposition.canonKinds.length > 0 ? decomposition.canonKinds : undefined,
+    currentOnly: decomposition.stateIntent === "current",
+    historicalAt: decomposition.historicalAt,
+  })
 
   const currentPreviousHint = buildCurrentPreviousHint(canonResults)
   const evidenceTable = buildReasoningEvidenceTable({
@@ -326,13 +348,13 @@ export async function searchMemoryItems(
 }
 
 /**
- * Memory v2: space-scoped auxiliary context — observations + entity graph
+ * Memory v2: project-scoped auxiliary context — observations + entity graph
  * snapshot. Powers `recall include:[observations,entities]`. Reuses the
  * observation hybrid search + graph snapshot already built in the db package.
  */
-export async function getSpaceContext(
+export async function getProjectContext(
   userId: string,
-  spaceId: string,
+  projectId: string,
   options: {
     query?: string
     includeObservations?: boolean
@@ -361,17 +383,17 @@ export async function getSpaceContext(
       } catch {
         embedding = null
       }
-      observations = await repositories.observations.hybridSearch(spaceId, embedding, options.query, {
+      observations = await repositories.observations.hybridSearch(projectId, embedding, options.query, {
         limit,
         lifecycleStates,
       })
     } else {
-      observations = await repositories.observations.listBySpace(spaceId, { lifecycleStates, limit })
+      observations = await repositories.observations.listByProject(projectId, { lifecycleStates, limit })
     }
   }
 
   const entities = options.includeEntities
-    ? await repositories.graph.getSpaceGraphSnapshot(spaceId, limit)
+    ? await repositories.graph.getProjectGraphSnapshot(projectId, limit)
     : null
 
   return { observations, entities }

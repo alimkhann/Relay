@@ -5,7 +5,7 @@ import type { DatabaseProvider } from "../store/provider"
 import { decryptTextIfNeeded, encryptTextIfConfigured } from "../utils/encrypted-text"
 
 /** Columns to select for general memory queries — excludes large/internal index columns. */
-const MEMORY_COLS = `id, project_id, space_id, source_turn_id, type, title, content, pinned, is_archived, sort_order, tags, metadata, created_by, created_at, updated_at, source_surface, source_conversation_id, source_url, captured_at, derived_from, embedding_model, forget_after, last_reaffirmed_at, lifecycle_state`
+const MEMORY_COLS = `id, project_id, source_turn_id, type, title, content, pinned, is_archived, sort_order, tags, metadata, created_by, created_at, updated_at, source_surface, source_conversation_id, source_url, captured_at, derived_from, embedding_model, forget_after, last_reaffirmed_at, lifecycle_state`
 
 const compactionPenaltyExpr = (alias = "m") => `case ${alias}.metadata->>'compactionState'
   when 'covered_by_canon' then 0.45
@@ -26,8 +26,6 @@ export interface MemorySearchResult extends MemoryItemRow {
 
 /** Scope + lifecycle options shared by the read/search paths (Memory v2). */
 interface ScopeLifecycleOptions {
-  /** When set, scope by space_id instead of project_id (personal-space recall). */
-  spaceId?: string
   /** Explicit lifecycle filter. Defaults to ['active','cooling']; 'forgotten' is always excluded. */
   lifecycleStates?: string[]
   /** Convenience flag: add 'archived' to the default lifecycle set. Ignored when lifecycleStates is set. */
@@ -160,12 +158,13 @@ export class MemoryRepository {
   }
 
   /**
-   * Memory v2: list items by space (personal or project). Returns the typed,
-   * decrypted `MemoryItemRow` shape — never raw DB columns. Active + cooling
-   * by default; forgotten/archived excluded unless requested.
+   * Memory v2: list items by project (a kind='personal' project is just a
+   * project). Returns the typed, decrypted `MemoryItemRow` shape — never raw
+   * DB columns. Active + cooling by default; forgotten/archived excluded
+   * unless requested.
    */
-  async listBySpace(
-    spaceId: string,
+  async listByProjectV2(
+    projectId: string,
     options: {
       lifecycleStates?: string[]
       limit?: number
@@ -176,11 +175,11 @@ export class MemoryRepository {
     const rows = await this.provider.query(
       `select ${MEMORY_COLS}
        from memory_items
-       where space_id = $1
+       where project_id = $1
          and lifecycle_state = any($2::text[])
        order by pinned desc, updated_at desc
        limit $3`,
-      [spaceId, states, limit],
+      [projectId, states, limit],
     )
     return rows.map((record) => toMemoryRow(record as Record<string, unknown>))
   }
@@ -190,12 +189,11 @@ export class MemoryRepository {
     const encryptedContent = encryptTextIfConfigured(plaintextContent)
 
     const rows = await this.provider.query(
-      `insert into memory_items (project_id, space_id, source_turn_id, type, title, content, pinned, tags, metadata, created_by, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector, forget_after, valid_from)
-       values ($1, $2, $3, $4, $5, $6, $7, $8::text[], $9::jsonb, $10, $11, $12, $13, coalesce($14::timestamptz, now()), $15::text[], to_tsvector('english', coalesce($5, '') || ' ' || $16), $17::timestamptz, coalesce($14::timestamptz, now()))
+      `insert into memory_items (project_id, source_turn_id, type, title, content, pinned, tags, metadata, created_by, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector, forget_after, valid_from)
+       values ($1, $2, $3, $4, $5, $6, $7::text[], $8::jsonb, $9, $10, $11, $12, coalesce($13::timestamptz, now()), $14::text[], to_tsvector('english', coalesce($4, '') || ' ' || $15), $16::timestamptz, coalesce($13::timestamptz, now()))
        returning ${MEMORY_COLS}`,
       [
         input.projectId ?? null,
-        input.spaceId ?? null,
         input.sourceTurnId ?? null,
         input.type,
         input.title ?? null,
@@ -328,15 +326,13 @@ export class MemoryRepository {
 
   async search(projectId: string, query: string, options?: { types?: string[]; tags?: string[]; limit?: number } & ScopeLifecycleOptions): Promise<MemorySearchResult[]> {
     const limit = options?.limit ?? 20
-    const scopeColumn = options?.spaceId ? "space_id" : "project_id"
-    const scopeId = options?.spaceId ?? projectId
     const lifecycleStates = resolveLifecycleStates(options)
     const conditions = [
-      `${scopeColumn} = $1`,
+      `project_id = $1`,
       "lifecycle_state = ANY($3::text[])",
       "search_vector @@ plainto_tsquery('english', $2)"
     ]
-    const params: unknown[] = [scopeId, query, lifecycleStates]
+    const params: unknown[] = [projectId, query, lifecycleStates]
     let paramIndex = 4
 
     if (options?.types?.length) {
@@ -515,13 +511,11 @@ export class MemoryRepository {
     const threshold = options?.threshold ?? 0.5
     const halfLifeDays = options?.recencyHalfLifeDays ?? 30
     const includeSuperseded = options?.includeSuperseded === true
-    const scopeColumn = options?.spaceId ? "space_id" : "project_id"
-    const scopeId = options?.spaceId ?? projectId
     const lifecycleStates = resolveLifecycleStates(options)
 
     // Build parameter list with a running counter so optional filters
     // can be mixed and matched cleanly.
-    const params: unknown[] = [scopeId, query, JSON.stringify(queryEmbedding), threshold]
+    const params: unknown[] = [projectId, query, JSON.stringify(queryEmbedding), threshold]
     const addParam = (value: unknown) => {
       params.push(value)
       return `$${params.length}`
@@ -564,7 +558,7 @@ export class MemoryRepository {
       `with semantic as (
          select id, 1 - (embedding <=> $3::vector) as score, 'semantic'::text as match_type
          from memory_items
-         where ${scopeColumn} = $1
+         where project_id = $1
            ${lifecycleClause}
            and embedding is not null
            and 1 - (embedding <=> $3::vector) >= $4
@@ -575,7 +569,7 @@ export class MemoryRepository {
        lexical as (
          select id, ts_rank(search_vector, websearch_to_tsquery('english', $2)) as score, 'lexical'::text as match_type
          from memory_items
-         where ${scopeColumn} = $1
+         where project_id = $1
            ${lifecycleClause}
            and search_vector @@ websearch_to_tsquery('english', $2)
            ${filterSql}

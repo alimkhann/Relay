@@ -66,7 +66,6 @@ async function handle(request: Request): Promise<Response> {
     entityRelation: repositories.entityRelations,
     entity: repositories.entities,
     graph: repositories.graph,
-    space: repositories.spaces,
   }
 
   // Entity + observation extractors gated behind RELAY_MEMORY_PIPELINE_FULL.

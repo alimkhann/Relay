@@ -18,7 +18,6 @@ import type {
   EntityRelationRepository,
   MemoryRepository,
   ObservationRepository,
-  SpaceRepository,
 } from "@relay/db"
 import {
   LIFECYCLE_HALF_LIFE_DAYS,
@@ -27,10 +26,10 @@ import {
 } from "@relay/shared"
 
 export interface HygieneOptions {
-  /** Spaces to process this tick. If omitted, every space is scanned. */
-  spaceIds?: string[]
-  /** Items per space per tick. Default 100. */
-  perSpaceLimit?: number
+  /** Projects to process this tick. If omitted, every project is scanned. */
+  projectIds?: string[]
+  /** Items per project per tick. Default 100. */
+  perProjectLimit?: number
   /** When true, only logs proposed transitions (no writes). */
   dryRun?: boolean
   /** Override half-life lookup. */
@@ -38,7 +37,7 @@ export interface HygieneOptions {
 }
 
 export interface HygieneResult {
-  spacesProcessed: number
+  projectsProcessed: number
   itemsProposed: number
   itemsCooled: number
   itemsArchived: number
@@ -53,7 +52,6 @@ interface RepoBundle {
   memory: MemoryRepository
   observation: ObservationRepository
   entityRelation: EntityRelationRepository
-  space: SpaceRepository
 }
 
 async function loadHalfLives(
@@ -81,11 +79,11 @@ export async function runHygieneTick(
   options: HygieneOptions = {},
 ): Promise<HygieneResult> {
   const dryRun = options.dryRun ?? false
-  const perSpaceLimit = Math.min(Math.max(options.perSpaceLimit ?? 100, 1), 1000)
+  const perProjectLimit = Math.min(Math.max(options.perProjectLimit ?? 100, 1), 1000)
   const halfLifeDays = await loadHalfLives(repos.provider, options.halfLifeDays)
 
   const out: HygieneResult = {
-    spacesProcessed: 0,
+    projectsProcessed: 0,
     itemsProposed: 0,
     itemsCooled: 0,
     itemsArchived: 0,
@@ -95,30 +93,28 @@ export async function runHygieneTick(
     dryRun,
   }
 
-  const spaceIds = options.spaceIds ?? (await listAllSpaceIds(repos.provider))
+  const projectIds = options.projectIds ?? (await listAllProjectIds(repos.provider))
 
-  for (const spaceId of spaceIds) {
-    out.spacesProcessed += 1
+  for (const projectId of projectIds) {
+    out.projectsProcessed += 1
 
     // 1. Decay sweep over memory_items currently active / cooling.
     const itemRows = await repos.provider.query(
-      `SELECT id, project_id, space_id, type, content, pinned, captured_at,
+      `SELECT id, project_id, type, content, pinned, captured_at,
               created_at, last_reaffirmed_at, metadata, lifecycle_state, valid_until
        FROM memory_items
-       WHERE space_id = $1
+       WHERE project_id = $1
          AND lifecycle_state IN ('active','cooling')
        ORDER BY coalesce(last_reaffirmed_at, captured_at, created_at) ASC
        LIMIT $2`,
-      [spaceId, perSpaceLimit],
+      [projectId, perProjectLimit],
     )
 
     for (const row of itemRows) {
       const r = row as Record<string, unknown>
-      const item: DecayableItem & { id: string; projectId: string | null } = {
+      const item: DecayableItem & { id: string; projectId: string } = {
         id: String(r.id),
-        // Personal-space rows have NULL project_id (migration 0047); never
-        // coerce to the literal string "null".
-        projectId: r.project_id ? String(r.project_id) : null,
+        projectId: String(r.project_id),
         content: String(r.content),
         type: String(r.type),
         capturedAt: r.captured_at ? String(r.captured_at) : null,
@@ -146,7 +142,6 @@ export async function runHygieneTick(
         out.itemsCooled += 1
         await writeEvent(repos.provider, {
           projectId: item.projectId,
-          spaceId,
           memoryItemId: item.id,
           eventType: "cooled",
           payload: { ...transition },
@@ -159,7 +154,6 @@ export async function runHygieneTick(
         out.itemsArchived += 1
         await writeEvent(repos.provider, {
           projectId: item.projectId,
-          spaceId,
           memoryItemId: item.id,
           eventType: "archived",
           payload: { ...transition },
@@ -169,15 +163,15 @@ export async function runHygieneTick(
 
     // 2. Decay sweep over observations.
     const obsRows = await repos.provider.query(
-      `SELECT o.id, o.space_id, o.content, o.valid_from, o.created_at,
+      `SELECT o.id, o.content, o.valid_from, o.created_at,
               o.lifecycle_state, o.valid_until, o.metadata, o.confidence
        FROM observations o
-       WHERE o.space_id = $1
+       WHERE o.project_id = $1
          AND o.lifecycle_state IN ('active','cooling')
          AND o.valid_until IS NULL
        ORDER BY o.valid_from ASC
        LIMIT $2`,
-      [spaceId, perSpaceLimit],
+      [projectId, perProjectLimit],
     )
 
     for (const row of obsRows) {
@@ -215,7 +209,7 @@ export async function runHygieneTick(
       `WITH new_facts AS (
          SELECT id, subject_entity_id, predicate
          FROM observations
-         WHERE space_id = $1
+         WHERE project_id = $1
            AND lifecycle_state = 'active'
            AND created_at > now() - interval '1 day'
            AND subject_entity_id IS NOT NULL
@@ -226,11 +220,11 @@ export async function runHygieneTick(
          FROM memory_items mi
          JOIN entity_mentions em ON em.memory_item_id = mi.id
          JOIN new_facts nf ON nf.subject_entity_id = em.entity_id
-         WHERE mi.space_id = $1
+         WHERE mi.project_id = $1
            AND mi.lifecycle_state = 'archived'
        )
        SELECT memory_item_id, project_id, observation_id FROM archived_matches LIMIT 50`,
-      [spaceId],
+      [projectId],
     )
 
     for (const row of resurrectRows) {
@@ -255,7 +249,6 @@ export async function runHygieneTick(
       out.itemsResurrected += 1
       await writeEvent(repos.provider, {
         projectId,
-        spaceId,
         memoryItemId,
         eventType: "restored_auto",
         payload: { reason: "new_evidence_matched", observationId },
@@ -266,19 +259,18 @@ export async function runHygieneTick(
   return out
 }
 
-async function listAllSpaceIds(provider: DatabaseProvider): Promise<string[]> {
-  // Bounded scan: most-recently-touched spaces first. At current scale (~100s)
-  // this covers every space; once space counts grow past the limit, switch to
+async function listAllProjectIds(provider: DatabaseProvider): Promise<string[]> {
+  // Bounded scan: most-recently-touched projects first. At current scale (~100s)
+  // this covers every project; once project counts grow past the limit, switch to
   // cursor-based pagination across ticks (tracked for a later PR).
   const rows = await provider.query(
-    `SELECT id FROM spaces ORDER BY updated_at DESC NULLS LAST LIMIT 500`,
+    `SELECT id FROM projects ORDER BY updated_at DESC NULLS LAST LIMIT 500`,
   )
   return rows.map((r) => String((r as Record<string, unknown>).id))
 }
 
 interface EventInput {
   projectId: string | null
-  spaceId: string
   memoryItemId: string | null
   eventType: string
   payload: Record<string, unknown>
@@ -290,11 +282,10 @@ async function writeEvent(
 ): Promise<void> {
   await provider.query(
     `INSERT INTO memory_events
-      (project_id, space_id, memory_item_id, event_type, source_surface, payload)
-     VALUES ($1, $2, $3, $4, 'worker', COALESCE($5::jsonb, '{}'::jsonb))`,
+      (project_id, memory_item_id, event_type, source_surface, payload)
+     VALUES ($1, $2, $3, 'worker', COALESCE($4::jsonb, '{}'::jsonb))`,
     [
       evt.projectId,
-      evt.spaceId,
       evt.memoryItemId,
       evt.eventType,
       JSON.stringify(evt.payload),

@@ -63,39 +63,6 @@ export class EntityRepository {
     return toEntityRow(rows[0] as Record<string, unknown>)
   }
 
-  /**
-   * Space-scoped find-or-create. Used by the memory-pipeline worker, which
-   * operates per space (personal spaces have no backing project, so
-   * `findOrCreateByName` with a project id can't be used). Resolves the
-   * owning project_id from `spaces` (NULL for personal) so the legacy
-   * project-scoped readers keep working during the cutover.
-   *
-   * There is no `(space_id, lower(name))` unique index, so this does a
-   * SELECT-then-INSERT. The worker serializes per item via the enrichment
-   * claim guard, so the race window is negligible.
-   */
-  async findOrCreateBySpace(spaceId: string, name: string, kind = "unknown"): Promise<CanonicalEntityRow> {
-    const existing = await this.provider.query(
-      `SELECT *, (embedding IS NOT NULL) AS has_embedding FROM canonical_entities
-       WHERE space_id = $1 AND lower(name) = lower($2) AND merged_into_id IS NULL
-       LIMIT 1`,
-      [spaceId, name],
-    )
-    if (existing.length > 0) {
-      return toEntityRow(existing[0] as Record<string, unknown>)
-    }
-    const rows = await this.provider.query(
-      `INSERT INTO canonical_entities (project_id, space_id, name, kind)
-       SELECT s.project_id, s.id, $2, $3 FROM spaces s WHERE s.id = $1
-       RETURNING *, (embedding IS NOT NULL) AS has_embedding`,
-      [spaceId, name, kind],
-    )
-    if (rows.length === 0) {
-      throw new Error(`Space ${spaceId} not found when creating entity`)
-    }
-    return toEntityRow(rows[0] as Record<string, unknown>)
-  }
-
   /** Set the pgvector embedding on a canonical entity. Called by the
    * memory-pipeline worker after `findOrCreateBy*` so freshly created
    * entities pick up an embedding without waiting for the backfill cron.
@@ -122,17 +89,15 @@ export class EntityRepository {
     memoryItemId: string,
     entityId: string,
     mentionText: string,
-    spaceId?: string | null,
   ): Promise<EntityMentionRow> {
-    // space_id is set when known (memory v2 worker path) so the row satisfies
-    // the space-scoped RLS policy. Legacy callers omit it; the dual-path RLS
-    // (migration 0048) authorizes those via the owning memory item's project.
+    // entity_mentions RLS (migration 0044_entity_rls) authorizes via the owning
+    // memory item's project, so no scope column is stored on the row itself.
     const rows = await this.provider.query(
-      `INSERT INTO entity_mentions (memory_item_id, entity_id, mention_text, space_id)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO entity_mentions (memory_item_id, entity_id, mention_text)
+       VALUES ($1, $2, $3)
        ON CONFLICT (memory_item_id, entity_id) DO UPDATE SET mention_text = EXCLUDED.mention_text
        RETURNING *`,
-      [memoryItemId, entityId, mentionText, spaceId ?? null],
+      [memoryItemId, entityId, mentionText],
     )
     return toMentionRow(rows[0] as Record<string, unknown>)
   }

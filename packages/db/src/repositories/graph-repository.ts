@@ -7,7 +7,7 @@ export interface ExpandedEntity {
   via: string[] // relation types traversed to reach this node
 }
 
-export interface SpaceGraphSnapshot {
+export interface ProjectGraphSnapshot {
   entities: Array<{ id: string; name: string; kind: string }>
   relations: Array<{
     id: string
@@ -34,7 +34,7 @@ export class GraphRepository {
    * them from the seed set.
    */
   async expandFromEntities(
-    spaceId: string,
+    projectId: string,
     seedEntityIds: string[],
     maxHops = 2,
   ): Promise<ExpandedEntity[]> {
@@ -50,7 +50,7 @@ export class GraphRepository {
            ARRAY[ce.id::text]::text[] AS visited
          FROM canonical_entities ce
          WHERE ce.id = ANY($2::uuid[])
-           AND ce.space_id = $1
+           AND ce.project_id = $1
          UNION ALL
          SELECT
            CASE WHEN er.source_entity_id = w.entity_id THEN er.target_entity_id ELSE er.source_entity_id END AS entity_id,
@@ -61,12 +61,12 @@ export class GraphRepository {
          FROM walk w
          JOIN entity_relations er
            ON (er.source_entity_id = w.entity_id OR er.target_entity_id = w.entity_id)
-          AND er.space_id = $1
+          AND er.project_id = $1
           AND er.valid_until IS NULL
           AND er.lifecycle_state IN ('active','cooling')
          JOIN canonical_entities ce2
            ON ce2.id = CASE WHEN er.source_entity_id = w.entity_id THEN er.target_entity_id ELSE er.source_entity_id END
-          AND ce2.space_id = $1
+          AND ce2.project_id = $1
          WHERE w.hops < $3
            AND NOT (ce2.id::text = ANY(w.visited))
        )
@@ -75,7 +75,7 @@ export class GraphRepository {
        GROUP BY entity_id, name
        ORDER BY MIN(hops) ASC, name ASC
        LIMIT 200`,
-      [spaceId, seedEntityIds, cappedHops],
+      [projectId, seedEntityIds, cappedHops],
     )
     return rows.map((row) => {
       const r = row as Record<string, unknown>
@@ -93,7 +93,7 @@ export class GraphRepository {
    * Used by recall to bring in entity-adjacent memories.
    */
   async memoryIdsForEntities(
-    spaceId: string,
+    projectId: string,
     entityIds: string[],
     limit = 50,
   ): Promise<string[]> {
@@ -103,10 +103,10 @@ export class GraphRepository {
        FROM entity_mentions em
        JOIN memory_items mi ON mi.id = em.memory_item_id
        WHERE em.entity_id = ANY($2::uuid[])
-         AND em.space_id = $1
+         AND mi.project_id = $1
          AND mi.lifecycle_state IN ('active','cooling')
        LIMIT $3`,
-      [spaceId, entityIds, limit],
+      [projectId, entityIds, limit],
     )
     return rows.map((r) => String((r as Record<string, unknown>).memory_item_id))
   }
@@ -117,34 +117,34 @@ export class GraphRepository {
    * Replaces the synthetic-hub fallback in memory-graph-utils.ts once the
    * payload is non-empty.
    */
-  async getSpaceGraphSnapshot(spaceId: string, limit = 200): Promise<SpaceGraphSnapshot> {
+  async getProjectGraphSnapshot(projectId: string, limit = 200): Promise<ProjectGraphSnapshot> {
     const entityRows = await this.provider.query(
       `SELECT id, name, kind
        FROM canonical_entities
-       WHERE space_id = $1
+       WHERE project_id = $1
          AND merged_into_id IS NULL
        ORDER BY updated_at DESC
        LIMIT $2`,
-      [spaceId, limit],
+      [projectId, limit],
     )
     const relationRows = await this.provider.query(
       `SELECT id, source_entity_id, target_entity_id, relation_type, confidence
        FROM entity_relations
-       WHERE space_id = $1
+       WHERE project_id = $1
          AND valid_until IS NULL
          AND lifecycle_state IN ('active','cooling')
        ORDER BY valid_from DESC
        LIMIT $2`,
-      [spaceId, limit * 4],
+      [projectId, limit * 4],
     )
     const mentionRows = await this.provider.query(
       `SELECT em.entity_id, em.memory_item_id
        FROM entity_mentions em
        JOIN memory_items mi ON mi.id = em.memory_item_id
-       WHERE em.space_id = $1
+       WHERE mi.project_id = $1
          AND mi.lifecycle_state IN ('active','cooling')
        LIMIT $2`,
-      [spaceId, limit * 6],
+      [projectId, limit * 6],
     )
     return {
       entities: entityRows.map((row) => {

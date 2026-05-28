@@ -14,9 +14,6 @@ interface ToolRegistrationContext {
   resolveProjectSelection?: (explicitId?: string) => Promise<RelayProjectResolutionResult>
   getCachedProjectId: () => string | null
   setCachedProjectId: (projectId: string) => void
-  /** Memory v2: per-session space cache. Optional so existing callers/tests need no change. */
-  getCachedSpaceId?: () => string | null
-  setCachedSpaceId?: (spaceId: string) => void
 }
 
 /**
@@ -28,8 +25,8 @@ interface ToolRegistrationContext {
  * agents so the MCP prompt footprint stays low.
  */
 export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
-  const { client, resolveProjectId, resolveProjectSelection, getCachedProjectId, setCachedProjectId, getCachedSpaceId, setCachedSpaceId } = ctx
-  const writeTools = new Set(["set_current_project", "set_current_space", "save"])
+  const { client, resolveProjectId, resolveProjectSelection, getCachedProjectId, setCachedProjectId } = ctx
+  const writeTools = new Set(["set_current_project", "save"])
   const originalTool = server.tool.bind(server)
 
   ;(server as McpServer & { tool: typeof server.tool }).tool = ((name: string, description: string, schema: unknown, maybeHintsOrHandler: unknown, maybeHandler?: unknown) => {
@@ -121,7 +118,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "set_current_project",
-    "Switch the current Relay project for this MCP session. Use this when the user is clearly working on a different project than the cached/auto-detected one. The switch persists for the lifetime of the MCP server process. Call list_projects first to find the correct projectId. For switching to a personal space, use set_current_space instead.",
+    "Switch the current Relay project for this MCP session. Use this when the user is clearly working on a different project than the cached/auto-detected one. The switch persists for the lifetime of the MCP server process. Call list_projects first to find the correct projectId. Personal memory is a kind='personal' project — switch to its id to work there.",
     z.object({
       projectId: z.string().uuid().describe("The ID of the project to switch to."),
     }).shape,
@@ -132,41 +129,6 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
           {
             type: "text" as const,
             text: JSON.stringify({ ok: true, projectId: args.projectId }, null, 2),
-          },
-        ],
-      }
-    }
-  )
-
-  server.tool(
-    "set_current_space",
-    "Switch the current Relay space for this MCP session. A space is either personal (one per user) or project (one per project). Personal space holds general user facts; project spaces hold project-scoped memory. The switch persists for the lifetime of the MCP server process.",
-    z.object({
-      spaceId: z.string().uuid().describe("The ID of the space to switch to (personal or project)."),
-    }).shape,
-    async (args) => {
-      // Persist the space for the lifetime of this MCP session. recall + save
-      // (add_memory) fall back to this when no explicit spaceId is passed.
-      if (!setCachedSpaceId) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, spaceId: args.spaceId, note: "This MCP server build does not support session space caching. Pass spaceId explicitly on each call." },
-                null,
-                2,
-              ),
-            },
-          ],
-        }
-      }
-      setCachedSpaceId(args.spaceId)
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({ ok: true, spaceId: args.spaceId }, null, 2),
           },
         ],
       }
@@ -223,10 +185,6 @@ If a query returns no useful memory, investigate locally and save only confirmed
 If returned context is stale, completed, contradicted, or superseded, clean it up with save action: "manage_memory" or correct project state with save action: "set_state".`,
     recallSchema.shape,
     async (args) => {
-      // Fall back to the session's cached space when none is passed explicitly.
-      if (!args.spaceId && getCachedSpaceId?.()) {
-        args.spaceId = getCachedSpaceId() ?? undefined
-      }
       const projectId = await resolveProjectId(args.projectId)
       const result = await recall(client, args, projectId)
       if (args.query) {
@@ -276,14 +234,6 @@ Pass action-specific fields in payload. Examples:
 Use manage_memory whenever get_brief or recall shows stale, completed, contradicted, or superseded context. Prefer archiving old facts over adding corrections that leave obsolete memory active.`,
     saveSchema.shape,
     async (args) => {
-      // add_memory falls back to the session's cached space when the payload
-      // omits an explicit spaceId — mirrors recall's behavior.
-      if (args.action === "add_memory" && getCachedSpaceId?.()) {
-        const payload = (args.payload ?? {}) as Record<string, unknown>
-        if (!payload.spaceId) {
-          args.payload = { ...payload, spaceId: getCachedSpaceId() }
-        }
-      }
       const projectId = await resolveProjectId(args.projectId)
       const recordMutation: Parameters<typeof save>[3] = async (pid, mutation) => {
         await client.recordSessionMutation(pid, mutation).catch(() => {})

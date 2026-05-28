@@ -11,8 +11,7 @@ import { traceContextSources } from "./trace-context-sources.js"
 import { searchContext } from "./search-context.js"
 
 export const recallSchema = z.object({
-  projectId: z.string().optional().describe("Project ID. Auto-detected if not provided."),
-  spaceId: z.string().optional().describe("Space ID (personal or project). Overrides projectId when provided."),
+  projectId: z.string().optional().describe("Project ID. Auto-detected if not provided. Personal memory is a kind='personal' project — pass its id to recall from it."),
   query: z.string().optional().describe("Search query — triggers hybrid search across memory items, observations, and canon entries."),
   memoryId: z.string().optional().describe("Get a specific memory item by ID."),
   include: z
@@ -46,7 +45,6 @@ export async function recall(
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
   const sections: string[] = []
   const include = args.include ?? []
-  const spaceId = args.spaceId
   const wantObservations = include.includes("observations")
   const wantEntities = include.includes("entities")
   const lifecycleStates = args.filters?.lifecycleStates
@@ -63,7 +61,6 @@ export async function recall(
       {
         query: args.query,
         projectId,
-        spaceId,
         lifecycleStates,
         includeArchived,
         includeObservations: wantObservations,
@@ -73,15 +70,9 @@ export async function recall(
     )
     sections.push(extractText(result))
   } else if (!args.memoryId && !include.length && !args.tracePhrase) {
-    // No query: list the space's memory when space-scoped; otherwise the
-    // project-state snapshot.
-    if (spaceId) {
-      const result = await listMemory(client, { projectId, spaceId }, projectId)
-      sections.push(extractText(result))
-    } else {
-      const result = await getProjectState(client, projectId)
-      sections.push(extractText(result))
-    }
+    // No query: return the project-state snapshot.
+    const result = await getProjectState(client, projectId)
+    sections.push(extractText(result))
   } else if (!args.query && (wantObservations || wantEntities)) {
     // observations/entities are search-scoped channels — they need a query.
     sections.push("Provide a `query` to retrieve observations/entities.")
@@ -92,7 +83,6 @@ export async function recall(
       client,
       {
         projectId,
-        spaceId,
         types: args.filters.types as ("note" | "decision" | "constraint" | "requirement" | "task" | "artifact")[],
         // listMemory accepts singular `tag`; pass the first if any provided
         tag: args.filters.tags?.[0],
@@ -110,7 +100,6 @@ export async function recall(
       {
         query: args.query,
         projectId,
-        spaceId,
         types: args.filters.types as ("note" | "decision" | "constraint" | "requirement" | "task" | "artifact")[],
         tags: args.filters.tags,
         lifecycleStates,

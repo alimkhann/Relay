@@ -1,10 +1,8 @@
 import type { MemoryItemType, SourceSurface } from "./database"
 
 export interface CreateMemoryItemInput {
-  /** Project scope. Optional for personal-space items (spaceId required instead). */
-  projectId?: string | null
-  /** Memory v2: target space (personal or project). Required when projectId omitted. */
-  spaceId?: string | null
+  /** Project scope. A kind='personal' project backs personal memory. */
+  projectId: string
   sourceTurnId?: string | null
   type: MemoryItemType
   title?: string | null

@@ -36,14 +36,12 @@ function makeRepos(provider: { query: ReturnType<typeof vi.fn> }) {
     memory: {} as never,
     observation: { setLifecycle: vi.fn(async () => {}) } as never,
     entityRelation: {} as never,
-    space: {} as never,
   }
 }
 
 const STALE_ITEM = {
   id: "m1",
   project_id: "p1",
-  space_id: "s1",
   type: "note",
   content: "old fact",
   pinned: false,
@@ -61,7 +59,7 @@ describe("runHygieneTick", () => {
     const repos = makeRepos(provider)
 
     const result = await runHygieneTick(repos, {
-      spaceIds: ["s1"],
+      projectIds: ["s1"],
       halfLifeDays: HALF_LIVES,
       dryRun: false,
     })
@@ -76,7 +74,7 @@ describe("runHygieneTick", () => {
     const repos = makeRepos(provider)
 
     const result = await runHygieneTick(repos, {
-      spaceIds: ["s1"],
+      projectIds: ["s1"],
       halfLifeDays: HALF_LIVES,
       dryRun: true,
     })
@@ -104,7 +102,7 @@ describe("runHygieneTick", () => {
     const repos = makeRepos(provider)
 
     const result = await runHygieneTick(repos, {
-      spaceIds: ["s1"],
+      projectIds: ["s1"],
       halfLifeDays: HALF_LIVES,
       dryRun: false,
     })
@@ -116,25 +114,5 @@ describe("runHygieneTick", () => {
       (w) => w.sql.includes("lifecycle_state = 'cooling'") && w.sql.includes("last_reaffirmed_at = now()"),
     )
     expect(resurrectWrite).toBeTruthy()
-  })
-
-  it("handles a personal-space item (null project_id) without emitting a 'null' string", async () => {
-    const personalItem = { ...STALE_ITEM, project_id: null }
-    const { provider } = makeProvider(personalItem)
-    const repos = makeRepos(provider)
-
-    let capturedEventParams: unknown[] | null = null
-    provider.query.mockImplementation(async (sql: string, params?: unknown[]) => {
-      if (sql.includes("FROM memory_items") && sql.includes("ORDER BY coalesce")) return [personalItem]
-      if (sql.includes("FROM observations")) return []
-      if (sql.includes("WITH new_facts AS")) return []
-      if (sql.includes("INSERT INTO memory_events")) capturedEventParams = params ?? null
-      return []
-    })
-
-    await runHygieneTick(repos, { spaceIds: ["s1"], halfLifeDays: HALF_LIVES, dryRun: false })
-
-    // First INSERT param is project_id — must be SQL NULL, never the string "null".
-    expect(capturedEventParams?.[0]).toBeNull()
   })
 })

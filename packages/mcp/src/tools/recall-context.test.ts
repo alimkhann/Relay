@@ -15,7 +15,7 @@ function makeClient(response: unknown) {
 }
 
 describe("recallContext (Memory v2 wiring)", () => {
-  it("routes to the space search endpoint and forwards lifecycle + channel params", async () => {
+  it("forwards lifecycle + channel params to the project search endpoint", async () => {
     const { client, urls } = makeClient({
       results: [{ id: "m1", type: "note", title: null, content: "hi", pinned: false, updatedAt: "", rank: 1 }],
       observations: [{ id: "o1", content: "Alim uses Postgres", predicate: "uses" }],
@@ -34,7 +34,6 @@ describe("recallContext (Memory v2 wiring)", () => {
       client,
       {
         query: "db",
-        spaceId: "space-1",
         lifecycleStates: ["active", "archived"],
         includeArchived: true,
         includeObservations: true,
@@ -43,9 +42,8 @@ describe("recallContext (Memory v2 wiring)", () => {
       "proj-1",
     )
 
-    // Hits the space endpoint, never the project endpoint or dashboard.
-    expect(urls.some((u) => u.startsWith("/api/spaces/space-1/memory/search"))).toBe(true)
-    expect(urls.some((u) => u.includes("/api/projects/"))).toBe(false)
+    // Hits the project search endpoint.
+    expect(urls.some((u) => u.startsWith("/api/projects/proj-1/memory/search"))).toBe(true)
     const searchUrl = urls.find((u) => u.includes("/memory/search")) ?? ""
     expect(searchUrl).toContain("lifecycle=active%2Carchived")
     expect(searchUrl).toContain("includeArchived=true")
@@ -61,7 +59,7 @@ describe("recallContext (Memory v2 wiring)", () => {
     expect(text).not.toContain("e1 —[uses]→ e2")
   })
 
-  it("uses the project endpoint and fetches project state when no spaceId is given", async () => {
+  it("uses the project endpoint and fetches project state", async () => {
     const { client, urls } = makeClient({ results: [] })
 
     await recallContext(client, { query: "db" }, "proj-1")

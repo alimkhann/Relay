@@ -6,8 +6,7 @@ import { toTimestamp } from "./timestamp"
 export function toMemoryRow(record: Record<string, unknown>): MemoryItemRow {
   return {
     id: String(record.id),
-    projectId: record.project_id ? String(record.project_id) : null,
-    spaceId: record.space_id ? String(record.space_id) : null,
+    projectId: String(record.project_id),
     sourceTurnId: record.source_turn_id ? String(record.source_turn_id) : null,
     type: record.type as MemoryItemRow["type"],
     title: record.title ? String(record.title) : null,

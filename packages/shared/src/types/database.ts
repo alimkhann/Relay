@@ -47,6 +47,8 @@ export interface ProfileRow {
   updatedAt: string
 }
 
+export type ProjectKind = "project" | "personal"
+
 export interface ProjectRow {
   id: string
   ownerId: string
@@ -55,6 +57,8 @@ export interface ProjectRow {
   description: string | null
   projectUrl: string | null
   isArchived: boolean
+  /** 'personal' backs a user's personal memory; 'project' is a normal project. */
+  kind: ProjectKind
   createdAt: string
   updatedAt: string
 }
@@ -116,10 +120,8 @@ export type SourceSurface =
 
 export interface MemoryItemRow {
   id: string
-  /** Project scope. Null for personal-space items (since migration 0047). */
-  projectId: string | null
-  /** Memory v2: owning space (personal or project). Null on legacy rows pre-backfill. Optional so pre-v2 row fixtures stay valid. */
-  spaceId?: string | null
+  /** Project scope. Always set — a kind='personal' project backs personal memory. */
+  projectId: string
   sourceTurnId: string | null
   type: MemoryItemType
   title: string | null
@@ -152,6 +154,8 @@ export interface MemoryItemRow {
   lastReaffirmedAt: string | null
   /** Memory v2 lifecycle state. Optional so pre-v2 fixtures stay valid. */
   lifecycleState?: "active" | "cooling" | "archived" | "forgotten"
+  /** Cosine similarity score, attached by hybridSearch/semanticSearch. Absent on lexical-only or non-search rows. */
+  similarity?: number
 }
 
 export type MemoryRelationType = "supersedes" | "extends" | "derives"

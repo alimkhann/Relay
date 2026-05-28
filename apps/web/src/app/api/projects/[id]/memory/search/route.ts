@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server"
 
-import { createRepositoryBundle } from "@relay/db"
 import { withApiAuth } from "@/server/http/api-route"
 import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
 import { consumeMcpReadQuota } from "@/server/services/entitlement-service"
-import { getSpaceContext, searchMemoryItems } from "@/server/services/memory-service"
+import { getProjectContext, searchMemoryItems } from "@/server/services/memory-service"
 
 export const maxDuration = 60
 
@@ -43,25 +42,21 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
   const { memoryResults, canonResults, queryAnalysis, evidenceTable, currentPreviousHint, temporalHint } =
     await searchMemoryItems(viewer.userId, id, query, { types, tags, lifecycleStates, includeArchived })
 
-  // Memory v2 channels: resolve this project's space, then attach observations
-  // + entity-graph snapshot when requested. Non-fatal if v2 tables are absent.
+  // Memory v2 channels: attach observations + entity-graph snapshot when
+  // requested. Non-fatal if v2 tables are absent.
   let observations: unknown[] = []
   let entities: unknown = null
   if (wantObservations || wantEntities) {
     try {
-      const repositories = createRepositoryBundle(viewer.userId)
-      const space = await repositories.spaces.resolveSpaceForProject(id)
-      if (space) {
-        const aux = await getSpaceContext(viewer.userId, space.id, {
-          query,
-          includeObservations: wantObservations,
-          includeEntities: wantEntities,
-          lifecycleStates,
-          includeArchived,
-        })
-        observations = aux.observations
-        entities = aux.entities
-      }
+      const aux = await getProjectContext(viewer.userId, id, {
+        query,
+        includeObservations: wantObservations,
+        includeEntities: wantEntities,
+        lifecycleStates,
+        includeArchived,
+      })
+      observations = aux.observations
+      entities = aux.entities
     } catch {
       // v2 tables not present in this env yet.
     }

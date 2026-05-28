@@ -2,7 +2,7 @@ import type { DatabaseProvider } from "../store/provider"
 
 export type LifecycleState = "active" | "cooling" | "archived" | "forgotten"
 
-const OBSERVATION_COLS = `id, space_id, source_episode_id, source_memory_item_id, content,
+const OBSERVATION_COLS = `id, project_id, source_episode_id, source_memory_item_id, content,
   subject_entity_id, predicate, object_entity_id, object_literal,
   valid_from, valid_until, expired_at, lifecycle_state, embedding_model,
   confidence, metadata, created_at, enrichment_status, enrichment_version, enriched_at,
@@ -10,7 +10,7 @@ const OBSERVATION_COLS = `id, space_id, source_episode_id, source_memory_item_id
 
 export interface ObservationRow {
   id: string
-  spaceId: string
+  projectId: string
   sourceEpisodeId: string | null
   sourceMemoryItemId: string | null
   content: string
@@ -33,7 +33,7 @@ export interface ObservationRow {
 }
 
 export interface CreateObservationInput {
-  spaceId: string
+  projectId: string
   content: string
   sourceEpisodeId?: string | null
   sourceMemoryItemId?: string | null
@@ -55,7 +55,7 @@ export interface ObservationSearchResult extends ObservationRow {
 function toRow(row: Record<string, unknown>): ObservationRow {
   return {
     id: String(row.id),
-    spaceId: String(row.space_id),
+    projectId: String(row.project_id),
     sourceEpisodeId: row.source_episode_id ? String(row.source_episode_id) : null,
     sourceMemoryItemId: row.source_memory_item_id ? String(row.source_memory_item_id) : null,
     content: String(row.content),
@@ -83,7 +83,7 @@ export class ObservationRepository {
   async create(input: CreateObservationInput): Promise<ObservationRow> {
     const rows = await this.provider.query(
       `INSERT INTO observations
-        (space_id, content, source_episode_id, source_memory_item_id,
+        (project_id, content, source_episode_id, source_memory_item_id,
          subject_entity_id, predicate, object_entity_id, object_literal,
          valid_from, confidence, metadata, lifecycle_state)
        VALUES ($1::uuid, $2::text, $3::uuid, $4::uuid,
@@ -92,7 +92,7 @@ export class ObservationRepository {
                COALESCE($11::jsonb, '{}'::jsonb), COALESCE($12::text, 'active'))
        RETURNING ${OBSERVATION_COLS}`,
       [
-        input.spaceId,
+        input.projectId,
         input.content,
         input.sourceEpisodeId ?? null,
         input.sourceMemoryItemId ?? null,
@@ -118,19 +118,19 @@ export class ObservationRepository {
   }
 
   /**
-   * List observations currently true in this space (valid_until IS NULL),
+   * List observations currently true in this project (valid_until IS NULL),
    * with default lifecycle filter (active by default).
    */
-  async listBySpace(
-    spaceId: string,
+  async listByProject(
+    projectId: string,
     options: {
       lifecycleStates?: LifecycleState[]
       includeHistorical?: boolean
       limit?: number
     } = {},
   ): Promise<ObservationRow[]> {
-    const conditions = ["space_id = $1"]
-    const params: unknown[] = [spaceId]
+    const conditions = ["project_id = $1"]
+    const params: unknown[] = [projectId]
     let i = 2
 
     if (!options.includeHistorical) {
@@ -159,21 +159,21 @@ export class ObservationRepository {
    * this to close the prior validity window when a contradicting SVO arrives.
    */
   async findCurrentSvo(
-    spaceId: string,
+    projectId: string,
     subjectEntityId: string,
     predicate: string,
   ): Promise<ObservationRow | null> {
     const rows = await this.provider.query(
       `SELECT ${OBSERVATION_COLS}
        FROM observations
-       WHERE space_id = $1
+       WHERE project_id = $1
          AND subject_entity_id = $2
          AND predicate = $3
          AND valid_until IS NULL
          AND lifecycle_state IN ('active','cooling')
        ORDER BY valid_from DESC
        LIMIT 1`,
-      [spaceId, subjectEntityId, predicate],
+      [projectId, subjectEntityId, predicate],
     )
     return rows.length === 0 ? null : toRow(rows[0] as Record<string, unknown>)
   }
@@ -218,7 +218,7 @@ export class ObservationRepository {
    * Returns currently-valid active observations by default.
    */
   async hybridSearch(
-    spaceId: string,
+    projectId: string,
     queryEmbedding: number[] | null,
     queryText: string,
     options: {
@@ -231,7 +231,7 @@ export class ObservationRepository {
     const states = options.lifecycleStates ?? ["active"]
     const historicalFilter = options.includeHistorical ? "" : "AND valid_until IS NULL"
     const RRF_K = 60
-    const params: unknown[] = [spaceId, states, limit]
+    const params: unknown[] = [projectId, states, limit]
 
     let semanticCte = ""
     let semanticUnion = ""
@@ -242,7 +242,7 @@ export class ObservationRepository {
         semantic AS (
           SELECT id, row_number() OVER (ORDER BY embedding <=> $${vecIdx}::vector) AS rank
           FROM observations
-          WHERE space_id = $1
+          WHERE project_id = $1
             AND embedding IS NOT NULL
             AND lifecycle_state = ANY($2::text[])
             ${historicalFilter}
@@ -262,7 +262,7 @@ export class ObservationRepository {
                  ORDER BY ts_rank(search_vector, plainto_tsquery('english', $${lexIdx})) DESC
                ) AS rank
         FROM observations
-        WHERE space_id = $1
+        WHERE project_id = $1
           AND search_vector @@ plainto_tsquery('english', $${lexIdx})
           AND lifecycle_state = ANY($2::text[])
           ${historicalFilter}

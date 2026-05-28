@@ -16,8 +16,7 @@ export const sourceSurfaceSchema = z.enum([
 
 export const createMemoryItemSchema = z
   .object({
-    projectId: z.string().min(1).nullable().optional(),
-    spaceId: z.string().min(1).nullable().optional(),
+    projectId: z.string().min(1),
     sourceTurnId: z.string().nullable().optional(),
     type: z.enum(["note", "decision", "constraint", "requirement", "task", "artifact"]),
     title: z.string().max(120).nullable().optional(),
@@ -33,10 +32,6 @@ export const createMemoryItemSchema = z
     derivedFrom: z.array(z.string()).nullable().optional(),
     forgetAfter: z.string().datetime().nullable().optional(),
   })
-  .refine(
-    (input) => Boolean(input.projectId) || Boolean(input.spaceId),
-    { message: "Either projectId or spaceId must be provided." },
-  )
 
 export const lifecycleStateSchema = z.enum(["active", "cooling", "archived", "forgotten"])
 

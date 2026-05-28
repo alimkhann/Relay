@@ -49,7 +49,6 @@ function makeRepos(provider: { query: ReturnType<typeof vi.fn> }): MemoryPipelin
       getById: vi.fn(async () => ({
         id: "m1",
         projectId: "p1",
-        spaceId: "s1",
         type: "note",
         content: "hello",
         metadata: {},
@@ -60,7 +59,6 @@ function makeRepos(provider: { query: ReturnType<typeof vi.fn> }): MemoryPipelin
     entityRelation: {} as never,
     entity: {} as never,
     graph: {} as never,
-    space: {} as never,
   }
 }
 
@@ -88,7 +86,7 @@ describe("processItem", () => {
     const { provider, state } = makeProvider("pending")
     const repos = makeRepos(provider)
     repos.entity = {
-      findOrCreateBySpace: vi.fn(async (_s: string, name: string) => ({ id: `e-${name}` })),
+      findOrCreateByName: vi.fn(async (_s: string, name: string) => ({ id: `e-${name}` })),
       addMention: vi.fn(async () => ({})),
     } as never
     repos.entityRelation = {
@@ -142,7 +140,6 @@ describe("processItem", () => {
     ;(repos.memory.getById as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "m1",
       projectId: "p1",
-      spaceId: "s1",
       type: "note",
       content: "Alim uses Postgres",
       metadata: {},
@@ -151,7 +148,7 @@ describe("processItem", () => {
     const updateEmbedding = vi.fn(async () => undefined)
     repos.entity = {
       // Freshly created → hasEmbedding=false.
-      findOrCreateBySpace: vi.fn(async (_s: string, name: string, kind: string) => ({
+      findOrCreateByName: vi.fn(async (_s: string, name: string, kind: string) => ({
         id: `e-${name}`,
         name,
         kind,
@@ -197,7 +194,6 @@ describe("processItem", () => {
     ;(repos.memory.getById as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "m1",
       projectId: "p1",
-      spaceId: "s1",
       type: "note",
       content: "Alim uses Postgres",
       metadata: {},
@@ -205,7 +201,7 @@ describe("processItem", () => {
     })
     const updateEmbedding = vi.fn(async () => undefined)
     repos.entity = {
-      findOrCreateBySpace: vi.fn(async (_s: string, name: string) => ({
+      findOrCreateByName: vi.fn(async (_s: string, name: string) => ({
         id: `e-${name}`,
         name,
         kind: "technology",
@@ -241,14 +237,13 @@ describe("processItem", () => {
     ;(repos.memory.getById as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "m1",
       projectId: "p1",
-      spaceId: "s1",
       type: "note",
       content: "Alim now uses Postgres",
       metadata: {},
       embeddingModel: "text-embedding-004",
     })
     repos.entity = {
-      findOrCreateBySpace: vi.fn(async (_space: string, name: string) => ({
+      findOrCreateByName: vi.fn(async (_space: string, name: string) => ({
         id: name === "Alim" ? "e-alim" : "e-postgres",
       })),
       addMention: vi.fn(async () => ({})),
@@ -278,7 +273,7 @@ describe("processItem", () => {
     const result = await processItem(repos, richProviders, "m1")
 
     expect(result.status).toBe("done")
-    expect(invalidateCurrentForSubjectPredicate).toHaveBeenCalledWith("s1", "e-alim", "uses", "e-postgres")
+    expect(invalidateCurrentForSubjectPredicate).toHaveBeenCalledWith("p1", "e-alim", "uses", "e-postgres")
     expect(upsertCurrent).toHaveBeenCalled()
     expect(result.relationsCreated).toBe(1)
   })

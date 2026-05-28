@@ -8,6 +8,7 @@ function makeProject(): ProjectRow {
   return {
     id: "project-1",
     ownerId: "user-1",
+    kind: "project" as const,
     name: "Relay",
     slug: "relay",
     description: "Keep AI project continuity stable.",

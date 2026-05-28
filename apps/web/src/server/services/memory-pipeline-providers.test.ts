@@ -19,7 +19,7 @@ import {
 function ctx(content: string): EnrichmentContext {
   return {
     itemId: "item-1",
-    spaceId: "space-1",
+    projectId: "project-1",
     type: "note",
     content,
     metadata: {},

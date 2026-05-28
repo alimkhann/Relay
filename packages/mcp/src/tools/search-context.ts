@@ -2,8 +2,7 @@ import { z } from "zod"
 import type { RelayClient } from "../client.js"
 
 export const searchContextSchema = z.object({
-  projectId: z.string().optional().describe("Project ID. Auto-detected if not provided."),
-  spaceId: z.string().optional().describe("Space ID (personal or project). Scopes the search to that space."),
+  projectId: z.string().optional().describe("Project ID. Auto-detected if not provided. Personal memory is a kind='personal' project — pass its id to scope the search there."),
   query: z.string().describe("Search query to match against memory items. Supports stemming (e.g., 'auth' matches 'authentication')."),
   types: z
     .array(z.enum(["note", "decision", "constraint", "requirement", "task", "artifact"]))
@@ -75,9 +74,7 @@ export async function searchContext(
     if (args.lifecycleStates?.length) params.set("lifecycle", args.lifecycleStates.join(","))
     if (args.includeArchived) params.set("includeArchived", "true")
 
-    const endpoint = args.spaceId
-      ? `/api/spaces/${args.spaceId}/memory/search?${params.toString()}`
-      : `/api/projects/${resolvedProjectId}/memory/search?${params.toString()}`
+    const endpoint = `/api/projects/${resolvedProjectId}/memory/search?${params.toString()}`
     const data = await client.get<SearchResponse>(endpoint)
 
     return {
@@ -92,14 +89,6 @@ export async function searchContext(
     }
   } catch {
     // Fall back to client-side search
-  }
-
-  // The client-side fallback only knows the project endpoint; for space-scoped
-  // search just report no results rather than leaking project items.
-  if (args.spaceId) {
-    return {
-      content: [{ type: "text" as const, text: `No memory items found matching "${args.query}".` }],
-    }
   }
 
   const data = await client.get<MemoryResponse>(`/api/projects/${resolvedProjectId}/memory`)

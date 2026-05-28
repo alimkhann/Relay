@@ -2,8 +2,7 @@ import { z } from "zod"
 import type { RelayClient } from "../client.js"
 
 export const recallContextSchema = z.object({
-  projectId: z.string().optional().describe("Project ID. Auto-detected if not provided."),
-  spaceId: z.string().optional().describe("Space ID (personal or project). Scopes the search to that space."),
+  projectId: z.string().optional().describe("Project ID. Auto-detected if not provided. Personal memory is a kind='personal' project — pass its id to scope the search there."),
   query: z.string().describe("What to search for — e.g., 'authentication approach', 'database choice', 'rate limiting'."),
   lifecycleStates: z.array(z.enum(["active", "cooling", "archived"])).optional(),
   includeArchived: z.boolean().optional(),
@@ -62,18 +61,15 @@ export async function recallContext(
   resolvedProjectId: string
 ) {
   const sections: string[] = []
-  const useSpace = Boolean(args.spaceId)
 
-  // 1. Search memory items (space-scoped when a spaceId is set).
+  // 1. Search memory items.
   const params = new URLSearchParams({ q: args.query })
   if (args.lifecycleStates?.length) params.set("lifecycle", args.lifecycleStates.join(","))
   if (args.includeArchived) params.set("includeArchived", "true")
   if (args.includeObservations) params.set("observations", "true")
   if (args.includeEntities) params.set("entities", "true")
 
-  const endpoint = useSpace
-    ? `/api/spaces/${args.spaceId}/memory/search?${params.toString()}`
-    : `/api/projects/${resolvedProjectId}/memory/search?${params.toString()}`
+  const endpoint = `/api/projects/${resolvedProjectId}/memory/search?${params.toString()}`
 
   let search: SearchResponse = { results: [] }
   try {
@@ -82,21 +78,19 @@ export async function recallContext(
     // Search failed, continue with state only
   }
 
-  // 2. Project-state snippet — only meaningful for project scope.
-  if (!useSpace) {
-    try {
-      const data = await client.get<DashboardResponse>(`/api/projects/${resolvedProjectId}`)
-      const state = data.dashboard.projectState
-      if (state) {
-        const stateParts: string[] = ["## Project Context"]
-        if (state.projectOverview) stateParts.push(`**Overview:** ${state.projectOverview}`)
-        if (state.currentObjective) stateParts.push(`**Current Objective:** ${state.currentObjective}`)
-        if (state.recentProgress) stateParts.push(`**Recent Progress:** ${state.recentProgress}`)
-        sections.push(stateParts.join("\n"))
-      }
-    } catch {
-      // State fetch failed, continue with search results only
+  // 2. Project-state snippet.
+  try {
+    const data = await client.get<DashboardResponse>(`/api/projects/${resolvedProjectId}`)
+    const state = data.dashboard.projectState
+    if (state) {
+      const stateParts: string[] = ["## Project Context"]
+      if (state.projectOverview) stateParts.push(`**Overview:** ${state.projectOverview}`)
+      if (state.currentObjective) stateParts.push(`**Current Objective:** ${state.currentObjective}`)
+      if (state.recentProgress) stateParts.push(`**Recent Progress:** ${state.recentProgress}`)
+      sections.push(stateParts.join("\n"))
     }
+  } catch {
+    // State fetch failed, continue with search results only
   }
 
   // 3. Format memory results.
