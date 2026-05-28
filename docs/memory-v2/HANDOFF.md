@@ -1,5 +1,60 @@
 # Memory Architecture v2 — Handoff
 
+> **⚠️ ARCHITECTURE PIVOT (2026-05-29): the `spaces` layer was dropped. Personal memory is now a `projects` row with `kind='personal'`.** Everything below the "Current architecture" section describes the **superseded** spaces design and is kept only as historical context. Read the section directly below first; treat the rest as an archive.
+
+## Current architecture (post-pivot) — authoritative
+
+**Branch:** `feat/memory-v2-architecture` · **Project:** `shiny-term-32281581` · prod branch `br-small-moon-agn70urq`.
+
+### Why the pivot
+
+Planning personal-space parity (brief/state/digest) revealed that `spaces` was ~90% redundant with `projects`: every project already had a 1:1 backing project-space doing no autonomous work, and personal was the only genuinely distinct case (single-owner). Rather than widen the two largest services (bootstrap + digest) to be space-aware, **personal became a `projects` row with `kind='personal'`** — so the entire existing project pipeline (brief / state / digest / canon / sources / graph) serves personal for free. The `spaces`, `space_members`, every `space_id` column, `is_space_member` RLS, `SpaceRepository`, `set_current_space`, and `/api/spaces*` are all gone. `project_id` is `NOT NULL` everywhere. Future team/shared scoping, if it comes, will be a *projects* feature, purpose-built.
+
+### What shipped (commits on this branch, newest last)
+
+| Phase | Commit | Summary |
+|---|---|---|
+| P1 | `d5bb681` | **Migrations reshaped in place.** `0040_spaces.sql`→`0040_personal_projects.sql` (adds `projects.kind` + partial-unique `(owner_id) WHERE kind='personal'` + backfills one personal project + owner `project_members` row per profile). New `0044_entity_rls.sql` (project-keyed RLS for `canonical_entities` + `entity_mentions`). Deleted `0044_space_id_backfill`, `0047_nullable_project_id`, `0051`. `0041/42/43/46/48/50`: `space_id`→`project_id`, dropped space indexes + the entity_mentions dual-path. |
+| P2 | `4973285` | **Code collapse.** Deleted `SpaceRepository` + `/api/spaces*`. Repointed observation/entity-relation/graph/memory repos + worker from `space_id`→`project_id` (`getSpaceGraphSnapshot`→`getProjectGraphSnapshot`, `getSpaceContext`→`getProjectContext`, `listBySpace`→`listByProject`). `project-repository` gained `ensurePersonalProject`/`getPersonalProject`; `listByOwner({includePersonal})` (default false) so personal never leaks into pickers/billing; active-quota count excludes `kind='personal'`. `reconcileProfileForAuthUser` ensures the personal project on bootstrap. `/personal` redirects to the shared `/dashboard`. MCP dropped `set_current_space`/`spaceId`. `ProjectRow`/`MemoryItemRow`/`CreateMemoryItemInput` dropped `spaceId`; `project_id` NOT NULL. |
+| P3 | `a7a3677` | **Selective personal memory** (`personal-memory-service.ts`). `classifyPersonalSalience()` — Gemini extractor (reuses `runGeminiJsonWithFallback` + a budget gate) keeps only durable user-centric facts (identity/preference/work/skill/goal/constraint/relationship/health), rejects transient + project-technical. `decidePersonalCrud()` — mem0-style ADD/NOOP via `resolveMemoryConflict` (no second engine; supersession delegated to the worker). `routePersonalMemory()` — fire-and-forget; the capture route runs it only on `routingHint:"auto"`, project capture stays primary. **Soak: writes gated by `RELAY_PERSONAL_MEMORY_AUTOWRITE=true` AND `confidence >= 0.7`; otherwise logged via `logServerEvent`, never written.** 12 unit tests. |
+| P4 | `20afa1e` | **Clients surface personal as a project.** `ProjectSummaryDto`/`RelayProjectOption` gain optional `kind`, threaded `listByOwner`→`getProjectSummaries`→`listProjectsForUser`→`listCachedProjectsForUser` (cache key varies on `includePersonal`). `/api/projects?includePersonal=true` + extension session/auth routes include personal; auto-select + empty-state count only non-personal (no leak). Extension control-panel drops the `/api/spaces` fetch + `personalSpaceId`; personal derives from `projectOptions.kind`, pinned at the top of the picker, manual captures post to its normal project endpoint (no routingHint — manual wins). Assistant agent's in-process client lists personal (with `kind`) so it can route durable facts there. |
+| P5 | `b39e92a` | Test-assertion fixes for `includePersonal`; this doc. |
+
+### Verification (this work)
+
+| Check | Result |
+|---|---|
+| Reshaped migrations on a fresh Neon branch off prod (`br-old-resonance-agvka18i`) | 10 files applied clean, no errors |
+| Personal projects == profiles | **78 == 78** |
+| Personal projects missing owner `project_members` row | **0** |
+| Profiles with ≠1 personal project | **0** |
+| `space_id` columns anywhere / `spaces`+`space_members` tables | **0 / 0** |
+| `project_id` NOT NULL on `observations` / `entity_relations` / `memory_items` | NO / NO / NO (all NOT NULL) |
+| `pnpm -r typecheck` | clean across all workspaces |
+| Extension `plasmo build` | succeeds |
+| `pnpm test:stable` | 75 passed |
+| New + touched suites (personal-memory 12, worker/mcp 19, project-queries/mapper/routing/auth) | green |
+| Full `pnpm test` | 642 passed / **12 pre-existing failures** unrelated to this work (sidebar "No QueryClient", dashboard-page "DATABASE_URL", sign-in, mcp client/project-detection, dashboard-content, project-context dedup — none reference `kind`/`spaces`/`personal`; none of their source or tests are in this branch's diff) |
+
+### New env var
+
+| Var | Default | Effect |
+|---|---|---|
+| `RELAY_PERSONAL_MEMORY_AUTOWRITE` | unset (log-only) | When `true`, auto-routed personal facts at `confidence >= 0.7` are written to the personal project. Otherwise every candidate is logged (`memory.personal_fact_skipped`), never written — soak mode. Promote to `true` only after the logged sample looks clean. |
+
+### Known follow-ups
+
+- **`routingHint:"auto"` has no extension trigger yet.** The server path (P3) is wired and consumed by `POST /api/projects/[id]/memory`, but the extension's conversation auto-capture flows through the *digest/session* pipeline, not a direct memory POST. Routing durable personal facts out of the worker/digest is the natural next step (the worker already runs over every project, personal included).
+- **Personal-memory salience prompt needs a soak** before flipping `RELAY_PERSONAL_MEMORY_AUTOWRITE=true` — same discipline as the v2 extractor soak. Sample the `memory.personal_fact_skipped` logs first.
+- **Local UI Playwright pass** (`/personal` renders the full project dashboard; project dashboards unregressed) is the remaining manual gate — needs the dev server pointed at a fresh branch + local auth.
+- **Re-review** PR #35 after the reshape — the diff shrank substantially (spaces machinery deleted) but the net change is large.
+
+---
+
+# ARCHIVE — superseded spaces design (pre-pivot)
+
+Everything below predates the 2026-05-29 pivot and describes the dropped `spaces` layer. Kept for historical context only — **do not implement against it.**
+
 **Branch:** `feat/memory-v2-architecture`
 **Plan:** `~/.claude/plans/hey-i-need-you-composed-sunbeam.md`
 **Neon dev branch:** `memory-v2-dev` (id `br-wild-hill-agavkwb4`) ← prod `br-small-moon-agn70urq`, project `shiny-term-32281581`.
@@ -210,6 +265,7 @@ remains outside these.
 - **Dormant `projectId` mapper coercion.** `toMemoryRow` maps a NULL `project_id` to the string `"null"` (type says `string`). Only reached by the worker extractor path, which is off in this PR. Fixed in follow-up PR #4.
 - **Harmless residue in 0040.** `spaces_personal_unique_per_owner` is created and immediately dropped in the same migration (replaced by a partial unique index). Already applied to the dev branch; left as-is for migration-history integrity.
 - **0048 is applied on the dev branch (resolved there).** The legacy async `entity_mentions` INSERT in `entity-extraction-service.ts:19` doesn't set `space_id`; 0044's space-only write policy would have blocked it, but 0048's dual-path policy authorizes via the owning project. Applied + verified on dev. **Still must be applied to prod** as part of cutover (it's in the `0040`–`0048` set). Note: moot on prod anyway while the app connects as the bypassrls owner (see the RLS risk above) — but required the moment the app moves to a restricted role.
+- **Worker `processItem` is not transactional across its extraction loop.** If the worker throws mid-item (e.g. embed succeeds, then an `observation_created` event INSERT fails), the observations/entity_mentions/entity_relations inserted *earlier in the same item's loop* stay committed while the row flips to `enrichment_status='failed'`. A retry re-runs extraction from the same content and re-inserts: `entity.findOrCreateBySpace` is idempotent, but `observation.create` and `entity.addMention` are **not**, so duplicates accumulate on each retry. Low-probability today (Gemini extraction is mostly deterministic + the failure window is narrow), but the correct fix is to wrap the per-item work in a single DB transaction (or per-observation savepoints). Deferred to a follow-up to avoid widening the cutover diff. Tracking: F6 (post-cutover).
 
 ## Merging with `main` (the branch is behind by the Neon-cost work)
 
