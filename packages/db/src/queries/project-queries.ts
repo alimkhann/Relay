@@ -59,8 +59,14 @@ function extractRoutingKeywords(values: Array<string | null | undefined>) {
   return keywords
 }
 
-export async function getProjectSummaries(repositories: RepositoryBundle, ownerId: string): Promise<ProjectSummaryDto[]> {
-  const projects = await repositories.projects.listByOwner(ownerId)
+export async function getProjectSummaries(
+  repositories: RepositoryBundle,
+  ownerId: string,
+  options: { includePersonal?: boolean } = {},
+): Promise<ProjectSummaryDto[]> {
+  const projects = await repositories.projects.listByOwner(ownerId, {
+    includePersonal: options.includePersonal,
+  })
 
   return Promise.all(
     projects.map(async (project) => {
@@ -97,7 +103,8 @@ export async function getProjectSummaries(repositories: RepositoryBundle, ownerI
           hasMeaningfulContext: memoryCount > 0 || conversationCount > 0,
           keywords: routingKeywords
         },
-        updatedAt: project.updatedAt
+        updatedAt: project.updatedAt,
+        kind: project.kind
       }
     })
   )

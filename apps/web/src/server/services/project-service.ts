@@ -27,9 +27,12 @@ function buildProjectSlugCandidate(baseSlug: string, attempt: number) {
   return `${baseSlug.slice(0, Math.max(2, PROJECT_SLUG_MAX_LENGTH - suffix.length))}${suffix}`
 }
 
-export async function listProjectsForUser(userId: string) {
+export async function listProjectsForUser(
+  userId: string,
+  options: { includePersonal?: boolean } = {},
+) {
   const repositories = createRepositoryBundle(userId)
-  return getProjectSummaries(repositories, userId)
+  return getProjectSummaries(repositories, userId, options)
 }
 
 export async function getProjectDashboardForUser(userId: string, projectId: string) {

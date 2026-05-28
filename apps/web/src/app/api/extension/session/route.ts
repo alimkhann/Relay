@@ -10,7 +10,7 @@ export const GET = withApiAuth(async (request: Request) => {
   const viewer = await resolveViewer(request.headers.get("authorization"))
   rejectMcpViewer(viewer)
   const [projects, settings, onboarding] = await Promise.all([
-    listProjectsForUser(viewer.userId),
+    listProjectsForUser(viewer.userId, { includePersonal: true }),
     getUserSettings(viewer.userId),
     getResolvedOnboardingStateForUser(viewer.userId)
   ])

@@ -13,7 +13,8 @@ export const GET = withApiAuth(async (request: Request) => {
   if (viewer.mode === "mcp") {
     await consumeMcpReadQuota(viewer.userId)
   }
-  const projects = await listCachedProjectsForUser(viewer.userId)
+  const includePersonal = new URL(request.url).searchParams.get("includePersonal") === "true"
+  const projects = await listCachedProjectsForUser(viewer.userId, { includePersonal })
   return NextResponse.json({ projects })
 })
 

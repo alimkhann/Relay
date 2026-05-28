@@ -16,11 +16,15 @@ function cachedRead<T>(keyParts: string[], tags: string[], reader: () => Promise
   })()
 }
 
-export async function listCachedProjectsForUser(userId: string) {
+export async function listCachedProjectsForUser(
+  userId: string,
+  options: { includePersonal?: boolean } = {},
+) {
+  const includePersonal = options.includePersonal ?? false
   return cachedRead(
-    ["projects", userId],
+    ["projects", userId, includePersonal ? "with-personal" : "no-personal"],
     [relayCacheTags.user(userId), relayCacheTags.userProjects(userId)],
-    () => listProjectsForUser(userId),
+    () => listProjectsForUser(userId, { includePersonal }),
   )
 }
 

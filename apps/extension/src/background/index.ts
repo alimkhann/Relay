@@ -1184,6 +1184,7 @@ async function loadSessionData() {
           hasMeaningfulContext: boolean;
           keywords: string[];
         } | null;
+        kind?: "project" | "personal";
       }>;
       settings: RemoteSettingsResponsePayload["settings"];
       onboarding?: RelayOnboardingState | null;
@@ -1202,8 +1203,12 @@ async function loadSessionData() {
       memoryCount: project.memoryCount ?? 0,
       sessionCount: project.sessionCount ?? 0,
       routingContext: project.routingContext ?? null,
+      kind: project.kind ?? "project",
     }));
-    if (projects.length === 0) {
+    // The personal project (kind='personal') rides along for the picker but is
+    // never treated as a normal project for auto-selection or the empty-state.
+    const selectableProjects = projects.filter((project) => project.kind !== "personal");
+    if (selectableProjects.length === 0) {
       recordBackgroundTelemetry({
         level: "info",
         surface: "extension-background",
@@ -1215,12 +1220,12 @@ async function loadSessionData() {
     const nextProjectId =
       onboarding.status === "completed"
         ? session.projectId &&
-          projects.some((project) => project.id === session.projectId)
+          selectableProjects.some((project) => project.id === session.projectId)
           ? session.projectId
           : onboarding.completedProjectId &&
-              projects.some((project) => project.id === onboarding.completedProjectId)
+              selectableProjects.some((project) => project.id === onboarding.completedProjectId)
             ? onboarding.completedProjectId
-            : (projects[0]?.id ?? "")
+            : (selectableProjects[0]?.id ?? "")
         : "";
 
     await setRelaySession({

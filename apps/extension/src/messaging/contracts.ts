@@ -16,6 +16,8 @@ export interface RelayProjectOption {
     hasMeaningfulContext: boolean;
     keywords: string[];
   } | null;
+  /** 'personal' backs the user's personal memory; absent → normal project. */
+  kind?: "project" | "personal";
 }
 
 export type RelayRemoteStatus = "loading" | "ready" | "stale" | "unavailable";

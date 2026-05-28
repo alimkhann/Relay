@@ -83,15 +83,16 @@ export async function POST(request: Request) {
       })
 
       const [projects, settings, onboarding] = await Promise.all([
-        listProjectsForUser(user.id),
+        listProjectsForUser(user.id, { includePersonal: true }),
         getUserSettings(user.id),
         getResolvedOnboardingStateForUser(user.id),
       ])
 
       const appUrl = process.env.NEXT_PUBLIC_RELAY_APP_URL ?? "http://localhost:3000"
+      const firstSelectable = projects.find((project) => project.kind !== "personal")
       const selectedProjectId =
         onboarding.status === "completed"
-          ? onboarding.completedProjectId ?? projects[0]?.id ?? ""
+          ? onboarding.completedProjectId ?? firstSelectable?.id ?? ""
           : ""
 
       await logServerEvent({

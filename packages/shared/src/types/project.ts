@@ -6,6 +6,7 @@ import type {
   MemoryItemType,
   ProjectAutonomyMode,
   ProjectCompactionMode,
+  ProjectKind,
   ProjectSummarySnapshotKind,
   SourceSurface,
   SupportedPlatform,
@@ -38,6 +39,8 @@ export interface ProjectSummaryDto {
     keywords: string[]
   } | null
   updatedAt: string
+  /** 'personal' backs the user's personal memory. Absent on legacy payloads → treat as 'project'. */
+  kind?: ProjectKind
 }
 
 export interface ProjectDashboardDto {

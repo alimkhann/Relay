@@ -57,7 +57,9 @@ export class RelayHttpMcpClient {
   }
 
   async listProjects() {
-    const projects = await listProjectsForUser(this.viewer.userId)
+    // Include the personal project so the assistant can route durable
+    // user-centric facts there (it's a normal project with kind='personal').
+    const projects = await listProjectsForUser(this.viewer.userId, { includePersonal: true })
     return projects.map((p: ProjectSummaryDto) => ({
       id: p.id,
       name: p.name,
@@ -67,6 +69,7 @@ export class RelayHttpMcpClient {
       sessionCount: p.sessionCount,
       keywords: p.routingContext?.keywords ?? [],
       updatedAt: p.updatedAt,
+      kind: p.kind ?? "project",
     }))
   }
 
