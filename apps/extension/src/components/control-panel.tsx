@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, lazy, Suspense } from "react";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, ChevronDown } from "lucide-react";
 
 // ── OTP cell component ──────────────────────────────────────────────────────
 
@@ -2840,35 +2840,18 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               const override = targetOption?.autoCapture;
               const globalAuto = userSettings?.autoCapture ?? true;
               const effective = override ?? globalAuto;
-              const targetLabel = personalMode ? "Personal" : (activeState.projectName ?? "this project");
               return (
                 <div className={styles.autoCaptureRow}>
-                  <span className={styles.autoCaptureLabel}>
-                    Auto-capture · {targetLabel}
-                    {override === undefined ? " (inheriting)" : ""}
-                  </span>
-                  <div className={styles.autoCaptureControls}>
-                    {override !== undefined ? (
-                      <button
-                        type="button"
-                        className={styles.autoCaptureReset}
-                        disabled={busy}
-                        title="Inherit the global setting"
-                        onClick={() => void setProjectAutoCapture(targetId, null)}
-                      >
-                        ↺
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      className={`${styles.autoCaptureToggle} ${effective ? styles.autoCaptureToggleOn : ""}`}
-                      disabled={busy}
-                      aria-pressed={effective}
-                      onClick={() => void setProjectAutoCapture(targetId, !effective)}
-                    >
-                      {effective ? "On" : "Off"}
-                    </button>
-                  </div>
+                  <span className={styles.autoCaptureLabel}>Auto-capture</span>
+                  <button
+                    type="button"
+                    className={`${styles.autoCaptureToggle} ${effective ? styles.autoCaptureToggleOn : ""}`}
+                    disabled={busy}
+                    aria-pressed={effective}
+                    onClick={() => void setProjectAutoCapture(targetId, !effective)}
+                  >
+                    {effective ? "On" : "Off"}
+                  </button>
                 </div>
               );
             })()}
@@ -3137,6 +3120,9 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                         <button
                           className={styles.ghostButton}
                           type="button"
+                          aria-label={expanded ? "Collapse" : "Expand"}
+                          aria-expanded={expanded}
+                          title={expanded ? "Collapse" : "Expand"}
                           onClick={() =>
                             setExpandedSections((current) => ({
                               ...current,
@@ -3144,7 +3130,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                             }))
                           }
                         >
-                          {expanded ? "Collapse" : items.length > 1 ? "Expand" : "Add"}
+                          <ChevronDown
+                            size={14}
+                            style={{ transform: expanded ? "rotate(180deg)" : undefined, transition: "transform 150ms ease" }}
+                          />
                         </button>
                       </div>
 
