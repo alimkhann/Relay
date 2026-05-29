@@ -2,6 +2,37 @@
 
 > **⚠️ ARCHITECTURE PIVOT (2026-05-29): the `spaces` layer was dropped. Personal memory is now a `projects` row with `kind='personal'`.** Everything below the "Current architecture" section describes the **superseded** spaces design and is kept only as historical context. Read the section directly below first; treat the rest as an archive.
 
+## ▶ NEXT-SESSION HANDOFF (2026-05-30) — READ FIRST
+
+**Branch:** `feat/memory-v2-architecture` (PR #35), pushed, HEAD `a008787`. **Plan file:** `~/.claude/plans/plan-fixes-improvements-then-and-robust-reddy.md` (approved; W-task list).
+
+**State:** Memory-v2 pivot (P1–P5) is done, reviewed twice, smoke-tested. An extension-UX batch is partly landed. **Everything ships in #35 before cutover** (user decision). These are the last pushes before prod cutover.
+
+**Done (committed + pushed):**
+- Pivot P1–P5 + review fixes + enum-cast fix.
+- **W1** cutover verified LIVE on a prod-fork branch with the real prod key: 80 profiles → 80 personal projects (exactly one each), 0 missing owner member rows, personal excluded from the project limit. Cutover is safe.
+- **W9** personal surfaced in all 4 places: extension picker (pinned), web dashboard switcher (pinned, never the default), MCP `list_projects` (`?includePersonal=true`), agent in-process client.
+- **W4** inline auto-capture row simplified (label + functional On/Off). **W7** expand→chevron. **W5(partial)** add-memory composer bg fixed.
+- **`manual` source surface** added end-to-end; **every memory item now shows a source badge** (web `OriginBadge` + `ProvenanceChip` default unknown→Manual; extension manual adds stamp `sourceSurface:"manual"`).
+- Source/timestamp/recency **already exists** in the web `memory-item-card` (OriginBadge + relative time + decay) — do NOT rebuild it.
+
+**Remaining W-tasks (the last pushes), each a focused chunk:**
+1. **W5-ext** — extension memory items show source/time/recency like the web. Decision/constraint/task items (`RelayContextPreviewItem` in `apps/extension/src/messaging/contracts.ts:54`) carry only `source: manual|derived`, NO `sourceSurface`/`capturedAt`. Thread those from the backend builder (`apps/extension/src/background/index.ts` + the web endpoint feeding contextPreview) → render a source badge + relative time on each item + sort by recency. Plus: **notes CRUD parity** (notes are read+delete only via `SidepanelNoteItem`; add inline edit + composer), **scrollable type-tab strip + a Notes tab** (`.contextTabs` ~`control-panel.tsx:3090`).
+2. **W2/W3 — platform×project auto-capture + inline-chip matrix** (the big one). Data model: add `autoCapturePlatforms?`, `inlineChip?`, `inlineChipPlatforms?` to `ProjectSettings` (`packages/shared/src/types/database.ts`, `project.ts`, schema `schemas/project.ts:41`, service `project-settings-service.ts` null-clear per key). Pure resolvers `effectiveAutoCapture/effectiveInlineChip` (leaf>project>global) + unit tests. Thread maps through `getProjectSummaries → ProjectSummaryDto → /api/extension/session → background projectOptions`; widen the background capture gate (`background/index.ts` ~2749 `effectiveAutoCapture`) to `(activeProject, platform)`. Settings UI (`control-panel.tsx:2185-2304`): chevron tri-state trees (global → projects incl Personal → platforms), main toggle on/off/indeterminate functional. Same tree for inline-chip. Reframe the Platforms group.
+3. **W8 — in-page edge save/detach button** (content script). Persistent button at the page edge where the save toast appears (`background/index.ts:3965` `relaySaveToastInPage` pattern, but persistent + `pointer-events:auto`, shadow-DOM). Unsaved→Save&link; saved→Detach/unlink WITH confirmation (`updateChatAssociation(true)`/`archiveChatAssociation`); one-time dismissable X (persist per chat); NO green border. Retire the side-panel half-circle. New content-script surface → Chrome listing re-disclosure.
+4. **W6 — double-scroll** (`.module.css` `.expanded`:92 vs `.contextItemListScroll`:736 nested overflow). Needs eyes-on — fix in a live pass.
+
+**Then: cutover** — see "Production cutover" below (migrations `0040`–`0050` to prod, `CRON_SECRET`, embedding-backfill loop, `RELAY_MEMORY_PIPELINE_FULL=true` + `RELAY_HYGIENE_DRY_RUN=true` for a week). Soak `RELAY_PERSONAL_MEMORY_AUTOWRITE` (log-only) before flipping personal-routing on. Chrome resubmission after W8.
+
+**Dev branch for testing:** `br-muddy-morning-ag55csrg` (prod fork, migrations `0040`–`0050` applied, 80 profiles backfilled). Existing rows are prod-encrypted → need the prod key to decrypt.
+- Pull it (Vercel CLI is logged in as `alimkhan`): `vercel env pull /tmp/p.env --environment=production --yes`, extract `RELAY_CONTENT_ENCRYPTION_KEY`, **shred the dump**.
+- Build a throwaway `apps/web/.env.local` from the user's root `.env.local` overriding `AUTH_PROVIDER=local`, `DATABASE_URL`/`LOCAL_DATABASE_URL`=branch pooled URL, + the prod `RELAY_CONTENT_ENCRYPTION_KEY`. Boot `pnpm --filter @relay/web dev`; auth via `POST /api/auth/local {email:"alimkhan.ergebayev@gmail.com"}` (browser/Playwright sets the cookie). Teardown: rm `apps/web/.env.local`, kill server. Only touch Alim's account + a smoke project.
+
+### Paste-ready prompt for the next session
+```
+Continue PR #35 (feat/memory-v2-architecture) — the last extension-UX pushes before prod cutover. Read docs/memory-v2/HANDOFF.md "NEXT-SESSION HANDOFF" + the plan at ~/.claude/plans/plan-fixes-improvements-then-and-robust-reddy.md first. Remaining, in order: (1) W5-ext: extension memory items show source badge + relative time + recency sort (thread sourceSurface/capturedAt into RelayContextPreviewItem from the backend), notes CRUD parity, scrollable type tabs + Notes tab; (2) W2/W3: platform×project auto-capture + inline-chip matrix (data model + resolvers + tri-state settings trees); (3) W8: in-page edge save/detach button (content script, dismissable, no green border, detach-with-confirm); (4) W6: double-scroll (live pass). Bundle all into #35; cutover after. Commit per workstream, typecheck + extension build + test:stable after each, push. For live testing use dev branch br-muddy-morning-ag55csrg with the prod RELAY_CONTENT_ENCRYPTION_KEY (vercel env pull, shred dump, throwaway apps/web/.env.local, only Alim's account + a smoke project). Caveman mode is on.
+```
+
 ## Current architecture (post-pivot) — authoritative
 
 **Branch:** `feat/memory-v2-architecture` · **Project:** `shiny-term-32281581` · prod branch `br-small-moon-agn70urq`.
