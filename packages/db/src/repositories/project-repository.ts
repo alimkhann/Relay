@@ -44,29 +44,31 @@ export class ProjectRepository {
    * row so is_project_member() authorizes the owner.
    */
   async ensurePersonalProject(ownerId: string): Promise<ProjectRow> {
-    const existing = await this.getPersonalProject(ownerId)
-    if (existing) return existing
-    const rows = await this.provider.query(
-      `insert into projects (owner_id, name, slug, description, kind)
-       values ($1, 'Personal', 'personal-' || $1, 'Personal memory that lives outside any project.', 'personal')
-       on conflict (owner_id) where kind = 'personal' do nothing
-       returning *`,
-      [ownerId]
-    )
-    if (rows.length > 0) {
-      const project = toProjectRow(rows[0] as Record<string, unknown>)
-      await this.provider.query(
-        `insert into project_members (project_id, user_id, role)
-         values ($1, $2, 'owner')
-         on conflict (project_id, user_id) do nothing`,
-        [project.id, ownerId]
+    let project = await this.getPersonalProject(ownerId)
+    if (!project) {
+      const rows = await this.provider.query(
+        `insert into projects (owner_id, name, slug, description, kind)
+         values ($1, 'Personal', 'personal-' || $1, 'Personal memory that lives outside any project.', 'personal')
+         on conflict (owner_id) where kind = 'personal' do nothing
+         returning *`,
+        [ownerId]
       )
-      return project
+      // Empty on a lost insert race — fetch the row the other writer created.
+      project = rows.length > 0
+        ? toProjectRow(rows[0] as Record<string, unknown>)
+        : await this.getPersonalProject(ownerId)
+      if (!project) throw new Error("Failed to create or resolve personal project")
     }
-    // Lost the insert race — fetch the row the other writer created.
-    const after = await this.getPersonalProject(ownerId)
-    if (!after) throw new Error("Failed to create or resolve personal project")
-    return after
+    // Ensure the owner membership row on EVERY path — not just first insert.
+    // Without it is_project_member() is false and the owner is locked out of
+    // their own personal items; this repairs any project that somehow lacks it.
+    await this.provider.query(
+      `insert into project_members (project_id, user_id, role)
+       values ($1, $2, 'owner')
+       on conflict (project_id, user_id) do nothing`,
+      [project.id, ownerId]
+    )
+    return project
   }
 
   async getById(id: string): Promise<ProjectRow | null> {
