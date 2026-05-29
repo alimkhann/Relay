@@ -1446,12 +1446,15 @@
 
 /* ── Shiny text (inserting animation) ── */
 
+/* Travels one background-width (200 percentage-points, matching the smooth
+   ec-shimmer reference). The previous 200%→-200% form moved two widths per
+   cycle, so the loop restart snapped visibly ("jerk at the end"). */
 @keyframes shimmer {
-  0% {
+  from {
     background-position: 200% center;
   }
-  100% {
-    background-position: -200% center;
+  to {
+    background-position: 0% center;
   }
 }
 
