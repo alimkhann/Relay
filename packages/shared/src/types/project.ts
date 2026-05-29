@@ -41,6 +41,8 @@ export interface ProjectSummaryDto {
   updatedAt: string
   /** 'personal' backs the user's personal memory. Absent on legacy payloads → treat as 'project'. */
   kind?: ProjectKind
+  /** Per-project auto-capture override; undefined = inherit the global setting. */
+  autoCapture?: boolean
 }
 
 export interface ProjectDashboardDto {
@@ -208,6 +210,8 @@ export interface ProjectSettingsDto {
   showTentativeUpdates: boolean
   includeTentativeUpdatesInPackets: boolean
   compactionMode: ProjectCompactionMode
+  /** Per-project auto-capture override; undefined = inherit the global setting. */
+  autoCapture?: boolean
 }
 
 export interface ProjectStateOverrideDto {

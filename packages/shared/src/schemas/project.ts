@@ -43,9 +43,16 @@ export const projectSettingsSchema = z.object({
   showTentativeUpdates: z.boolean().default(true),
   includeTentativeUpdatesInPackets: z.boolean().default(true),
   compactionMode: z.enum(["light", "standard", "aggressive"]).default("standard"),
+  // Per-project auto-capture override. Absent = inherit the global user
+  // setting; true/false = force on/off for this project (incl. personal).
+  autoCapture: z.boolean().optional(),
 })
 
-export const updateProjectSettingsSchema = projectSettingsSchema.partial()
+// PATCH additionally accepts `autoCapture: null` to clear the override and
+// fall back to the global setting.
+export const updateProjectSettingsSchema = projectSettingsSchema
+  .partial()
+  .extend({ autoCapture: z.boolean().nullable().optional() })
 
 export type ProjectSettingsInput = z.infer<typeof projectSettingsSchema>
 export type UpdateProjectSettingsInput = z.infer<typeof updateProjectSettingsSchema>

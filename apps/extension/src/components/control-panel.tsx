@@ -794,6 +794,31 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
   }
 
+  // Per-project (incl. personal) auto-capture override. value=null clears the
+  // override → inherit the global setting. runBusyAction refreshes the active
+  // state so the projectOptions override updates in place.
+  async function setProjectAutoCapture(projectId: string, value: boolean | null) {
+    if (busy || !projectId) return;
+    await runBusyAction(
+      "Updating auto-capture…",
+      value === null
+        ? "Auto-capture now inherits the global setting."
+        : value
+          ? "Auto-capture on for this space."
+          : "Auto-capture off for this space.",
+      async () => {
+        const response = await relayFetch(`/api/projects/${projectId}/settings`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ autoCapture: value }),
+        });
+        if (!response.ok) {
+          throw new Error(await readErrorMessage(response, "Could not update auto-capture."));
+        }
+      },
+    );
+  }
+
   async function togglePlatformEnabled(platform: SupportedPlatform, enabled: boolean) {
     const current = userSettings?.enabledPlatforms ?? [...supportedPlatforms];
     const next = enabled
@@ -2804,6 +2829,49 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 ) : null}
               </div>
             </div>
+
+            {/* Per-target auto-capture override (active project or Personal). */}
+            {(() => {
+              const targetId = personalMode
+                ? (activeState.projectOptions.find((p) => p.kind === "personal")?.id ?? null)
+                : (activeState.projectId ?? null);
+              if (!targetId) return null;
+              const targetOption = activeState.projectOptions.find((p) => p.id === targetId);
+              const override = targetOption?.autoCapture;
+              const globalAuto = userSettings?.autoCapture ?? true;
+              const effective = override ?? globalAuto;
+              const targetLabel = personalMode ? "Personal" : (activeState.projectName ?? "this project");
+              return (
+                <div className={styles.autoCaptureRow}>
+                  <span className={styles.autoCaptureLabel}>
+                    Auto-capture · {targetLabel}
+                    {override === undefined ? " (inheriting)" : ""}
+                  </span>
+                  <div className={styles.autoCaptureControls}>
+                    {override !== undefined ? (
+                      <button
+                        type="button"
+                        className={styles.autoCaptureReset}
+                        disabled={busy}
+                        title="Inherit the global setting"
+                        onClick={() => void setProjectAutoCapture(targetId, null)}
+                      >
+                        ↺
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className={`${styles.autoCaptureToggle} ${effective ? styles.autoCaptureToggleOn : ""}`}
+                      disabled={busy}
+                      aria-pressed={effective}
+                      onClick={() => void setProjectAutoCapture(targetId, !effective)}
+                    >
+                      {effective ? "On" : "Off"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Primary CTA */}
             <button

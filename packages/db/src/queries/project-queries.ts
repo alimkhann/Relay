@@ -70,11 +70,12 @@ export async function getProjectSummaries(
 
   return Promise.all(
     projects.map(async (project) => {
-      const [memoryCount, memorySamples, projectState, conversationCount] = await Promise.all([
+      const [memoryCount, memorySamples, projectState, conversationCount, projectSettings] = await Promise.all([
         repositories.memory.countByProject(project.id),
         repositories.memory.listRoutingSamplesByProject(project.id, 3),
         repositories.projectState.getByProject(project.id),
-        repositories.sessions.countDistinctConversations(project.id, { includeArchived: false })
+        repositories.sessions.countDistinctConversations(project.id, { includeArchived: false }),
+        repositories.projectSettings.getByProject(project.id)
       ])
       const routingKeywords = extractRoutingKeywords([
         project.name,
@@ -104,7 +105,8 @@ export async function getProjectSummaries(
           keywords: routingKeywords
         },
         updatedAt: project.updatedAt,
-        kind: project.kind
+        kind: project.kind,
+        autoCapture: (projectSettings?.settings as { autoCapture?: boolean } | undefined)?.autoCapture
       }
     })
   )

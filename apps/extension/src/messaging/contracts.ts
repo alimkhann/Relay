@@ -18,6 +18,8 @@ export interface RelayProjectOption {
   } | null;
   /** 'personal' backs the user's personal memory; absent → normal project. */
   kind?: "project" | "personal";
+  /** Per-project auto-capture override; undefined = inherit the global setting. */
+  autoCapture?: boolean;
 }
 
 export type RelayRemoteStatus = "loading" | "ready" | "stale" | "unavailable";

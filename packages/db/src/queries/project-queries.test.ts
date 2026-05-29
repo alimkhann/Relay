@@ -41,6 +41,9 @@ describe("getProjectSummaries", () => {
           relevantTools: [],
         }),
       },
+      projectSettings: {
+        getByProject: async () => ({ settings: { autoCapture: false } }),
+      },
     } as unknown as Parameters<typeof getProjectSummaries>[0], "user-1")
 
     expect(summaries).toHaveLength(1)
@@ -48,6 +51,7 @@ describe("getProjectSummaries", () => {
       id: "project-1",
       memoryCount: 12,
       sessionCount: 3,
+      autoCapture: false,
       routingContext: {
         hasMeaningfulContext: true,
       },

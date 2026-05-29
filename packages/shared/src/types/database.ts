@@ -505,6 +505,7 @@ export interface ProjectSettingsRow {
     showTentativeUpdates: boolean
     includeTentativeUpdatesInPackets: boolean
     compactionMode: ProjectCompactionMode
+    autoCapture?: boolean
   }
   createdAt: string
   updatedAt: string

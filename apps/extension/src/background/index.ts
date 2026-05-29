@@ -1185,6 +1185,7 @@ async function loadSessionData() {
           keywords: string[];
         } | null;
         kind?: "project" | "personal";
+        autoCapture?: boolean;
       }>;
       settings: RemoteSettingsResponsePayload["settings"];
       onboarding?: RelayOnboardingState | null;
@@ -1204,6 +1205,7 @@ async function loadSessionData() {
       sessionCount: project.sessionCount ?? 0,
       routingContext: project.routingContext ?? null,
       kind: project.kind ?? "project",
+      autoCapture: project.autoCapture,
     }));
     // The personal project (kind='personal') rides along for the picker but is
     // never treated as a normal project for auto-selection or the empty-state.
@@ -2744,7 +2746,15 @@ async function captureObservedChange(
       }
     }
 
-    if (!session.connected || !session.token || (!explicitProjectId && !session.autoCapture)) {
+    // Per-project auto-capture: the active project may override the global
+    // setting (incl. the personal project). Override wins; absent → inherit.
+    const effectiveActiveProjectId = explicitProjectId ?? state.projectId ?? session.projectId ?? null;
+    const activeProjectOption = effectiveActiveProjectId
+      ? session.projectOptions.find((option) => option.id === effectiveActiveProjectId)
+      : undefined;
+    const effectiveAutoCapture = activeProjectOption?.autoCapture ?? session.autoCapture;
+
+    if (!session.connected || !session.token || (!explicitProjectId && !effectiveAutoCapture)) {
       recordBackgroundTelemetry({
         level: "info",
         surface: "extension-background",
