@@ -119,7 +119,7 @@ export class MemoryRepository {
     }
 
     if (options.types?.length) {
-      conditions.push(`type = ANY($${paramIndex}::text[])`)
+      conditions.push(`type::text = ANY($${paramIndex}::text[])`)
       params.push(options.types)
       paramIndex += 1
     }
@@ -336,7 +336,7 @@ export class MemoryRepository {
     let paramIndex = 4
 
     if (options?.types?.length) {
-      conditions.push(`type = ANY($${paramIndex}::text[])`)
+      conditions.push(`type::text = ANY($${paramIndex}::text[])`)
       params.push(options.types)
       paramIndex++
     }
@@ -465,7 +465,7 @@ export class MemoryRepository {
     let paramIndex = 4
 
     if (options?.types?.length) {
-      conditions.push(`type = ANY($${paramIndex}::text[])`)
+      conditions.push(`type::text = ANY($${paramIndex}::text[])`)
       params.push(options.types)
       paramIndex++
     }
@@ -522,7 +522,7 @@ export class MemoryRepository {
     }
     const lifecycleClause = `and lifecycle_state = ANY(${addParam(lifecycleStates)}::text[])`
 
-    const typeClause = options?.types?.length ? `and type = ANY(${addParam(options.types)}::text[])` : ""
+    const typeClause = options?.types?.length ? `and type::text = ANY(${addParam(options.types)}::text[])` : ""
     const tagClause = options?.tags?.length ? `and tags && ${addParam(options.tags)}::text[]` : ""
     const fromClause = options?.dateRange?.from
       ? `and captured_at >= ${addParam(options.dateRange.from)}::timestamptz`
