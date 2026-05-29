@@ -52,6 +52,7 @@ const ORIGIN_META: Record<
   mcp: { label: "MCP", Icon: Terminal },
   api: { label: "API", Icon: Boxes },
   web: { label: "Web", Icon: Globe },
+  manual: { label: "Manual", Icon: Pencil },
 }
 
 const TYPE_ACCENT: Record<MemoryItemType, string> = {
@@ -64,9 +65,10 @@ const TYPE_ACCENT: Record<MemoryItemType, string> = {
 }
 
 function OriginBadge({ surface }: { surface: SourceSurface | null }) {
-  const meta = surface ? ORIGIN_META[surface] : null
-  const Icon = meta?.Icon ?? Chrome
-  const label = meta?.label ?? "Unknown"
+  // Untracked surface → treat as a manual/user save so every item is badged.
+  const meta = (surface ? ORIGIN_META[surface] : null) ?? ORIGIN_META.manual
+  const Icon = meta.Icon
+  const label = meta.label
   const isAssistant = surface === "ask_relay"
   return (
     <span

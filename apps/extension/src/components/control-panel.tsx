@@ -1795,6 +1795,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             type: memoryTypeBySection[section],
             title: null,
             content,
+            sourceSurface: "manual",
           }),
         });
 
@@ -1885,6 +1886,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               type: memoryTypeBySection[section],
               title: null,
               content: nextText,
+              sourceSurface: "manual",
             }),
           });
           if (!createResponse.ok) {

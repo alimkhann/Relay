@@ -117,6 +117,7 @@ export type SourceSurface =
   | "api"
   | "ask_relay"
   | "extension"
+  | "manual"
 
 export interface MemoryItemRow {
   id: string

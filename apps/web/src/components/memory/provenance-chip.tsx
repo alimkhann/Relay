@@ -59,6 +59,10 @@ const surfaceMap: Record<SourceSurface, SurfaceMeta> = {
     label: "Extension",
     classes: "bg-teal-500/10 text-teal-600",
   },
+  manual: {
+    label: "Manual",
+    classes: "bg-zinc-500/10 text-zinc-600",
+  },
 };
 
 /* ─── Relative time helper ─── */
@@ -94,10 +98,8 @@ export function ProvenanceChip({
   className,
   compact = false,
 }: ProvenanceChipProps) {
-  if (!sourceSurface) return null;
-
-  const meta = surfaceMap[sourceSurface];
-  if (!meta) return null;
+  // Untracked surface → badge as a manual/user save so every item is labelled.
+  const meta = (sourceSurface ? surfaceMap[sourceSurface] : null) ?? surfaceMap.manual;
 
   const chip = (
     <span

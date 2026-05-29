@@ -11,7 +11,10 @@ export const sourceSurfaceSchema = z.enum([
   "codex",
   "mcp",
   "web",
-  "api"
+  "api",
+  "ask_relay",
+  "extension",
+  "manual"
 ])
 
 export const createMemoryItemSchema = z
