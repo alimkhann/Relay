@@ -48,7 +48,7 @@ export default async function WorkspaceLayout({
   }
   const repositories = createRepositoryBundle(viewer.userId)
   const [projects, onboarding, settings, entitlements, profile, extensionTokens, referralProgram, capturesUsed] = await Promise.all([
-    listProjectsForUser(viewer.userId),
+    listProjectsForUser(viewer.userId, { includePersonal: true }),
     getResolvedOnboardingStateForUser(viewer.userId),
     getUserSettings(viewer.userId),
     resolveViewerEntitlements(viewer.userId),
@@ -79,7 +79,7 @@ export default async function WorkspaceLayout({
       />
       <div className="flex min-h-screen bg-[var(--relay-bg)] text-[var(--relay-ink)]">
         <WorkspaceSidebarShell
-          projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+          projects={projects.map((p) => ({ id: p.id, name: p.name, kind: p.kind }))}
           user={sidebarUser}
           referral={referralProgram ? { code: referralProgram.code, link: referralProgram.link, qualifiedCount: referralProgram.qualifiedCount } : undefined}
           plan={{ plan: entitlements.plan, isPaid: entitlements.isPaid, capturesUsed, capturesLimit: entitlements.limits.captureMonthly }}

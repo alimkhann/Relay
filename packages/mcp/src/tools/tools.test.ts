@@ -25,7 +25,7 @@ function getBriefStatus(result: { structuredContent?: unknown }) {
 function mockClient(overrides: Record<string, unknown> = {}) {
   return {
     get: vi.fn().mockImplementation((path: string) => {
-      if (path === "/api/projects") {
+      if (path === "/api/projects" || path.startsWith("/api/projects?")) {
         return Promise.resolve({
           projects: [
             {

@@ -8,7 +8,7 @@ import { CommandPalette } from "@/components/layout/command-palette"
 import { useSidebar } from "@/components/layout/sidebar-context"
 
 interface WorkspaceSidebarShellProps {
-  projects: { id: string; name: string }[]
+  projects: { id: string; name: string; kind?: "project" | "personal" }[]
   user: {
     name: string
     email?: string
@@ -27,7 +27,12 @@ export function WorkspaceSidebarShell({
   const cookieProjectId = typeof document !== "undefined"
     ? document.cookie.match(/relay-last-project=([^;]+)/)?.[1]
     : undefined
-  const currentProjectId = searchParams.get("project") ?? cookieProjectId ?? projects[0]?.id
+  // Default to the first non-personal project — the personal project is
+  // selectable in the switcher but is never the implicit current project.
+  const currentProjectId =
+    searchParams.get("project") ??
+    cookieProjectId ??
+    projects.find((p) => p.kind !== "personal")?.id
   const { setMobileOpen } = useSidebar()
 
   return (

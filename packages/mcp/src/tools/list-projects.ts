@@ -12,6 +12,7 @@ interface ProjectSummary {
   sessionCount: number
   routingContext: { hasMeaningfulContext: boolean; keywords: string[] } | null
   updatedAt: string
+  kind?: "project" | "personal"
 }
 
 interface ListProjectsResponse {
@@ -19,7 +20,9 @@ interface ListProjectsResponse {
 }
 
 export async function listProjects(client: RelayClient, currentProjectId: string | null = null) {
-  const data = await client.get<ListProjectsResponse>("/api/projects")
+  // Include the personal project so agents/clients can set_current_project to
+  // it and read/write personal memory (it's a normal kind='personal' project).
+  const data = await client.get<ListProjectsResponse>("/api/projects?includePersonal=true")
 
   const projects = data.projects.map((p) => ({
     id: p.id,
@@ -29,6 +32,7 @@ export async function listProjects(client: RelayClient, currentProjectId: string
     memoryCount: p.memoryCount,
     sessionCount: p.sessionCount,
     keywords: p.routingContext?.keywords ?? [],
+    kind: p.kind ?? "project",
     isCurrent: currentProjectId === p.id,
   }))
 

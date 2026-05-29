@@ -9,7 +9,7 @@ import * as Tooltip from "@radix-ui/react-tooltip";
 import { cn } from "@/lib/cn";
 import { CreateProjectForm } from "@/components/projects/create-project-form";
 
-type Project = { id: string; name: string };
+type Project = { id: string; name: string; kind?: "project" | "personal" };
 
 export function SidebarProjectSwitcher({
   projects,
@@ -44,8 +44,12 @@ export function SidebarProjectSwitcher({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  const personalProject = projects.find((p) => p.kind === "personal");
+  const regularProjects = projects.filter((p) => p.kind !== "personal");
+  // Personal is selectable but never the implicit default — fall back to the
+  // first regular project.
   const current =
-    projects.find((p) => p.id === optimisticCurrentId) ?? projects[0];
+    projects.find((p) => p.id === optimisticCurrentId) ?? regularProjects[0] ?? personalProject;
 
   function switchProject(nextProjectId: string) {
     if (
@@ -131,28 +135,40 @@ export function SidebarProjectSwitcher({
 
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 w-full rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] p-1 shadow-[var(--relay-shadow-lg)]">
-          {projects.map((p) => (
-            <button
-              key={p.id}
-              disabled={Boolean(pendingProjectId)}
-              onClick={() => switchProject(p.id)}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-[var(--relay-radius-sm)] px-2.5 py-1.5 text-left text-[13px] transition-colors",
-                p.id === optimisticCurrentId
-                  ? "bg-[var(--relay-soft)] font-medium text-[var(--relay-ink)]"
-                  : "text-[var(--relay-ink-secondary)] hover:bg-[var(--relay-soft)]",
-                Boolean(pendingProjectId) && "cursor-default opacity-60",
-              )}
-            >
-              {p.id === optimisticCurrentId && pendingProjectId !== p.id && (
-                <Check className="h-3 w-3 shrink-0" />
-              )}
-              {pendingProjectId === p.id && (
-                <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
-              )}
-              <span className="truncate">{p.name}</span>
-            </button>
-          ))}
+          {(() => {
+            const renderButton = (p: Project) => (
+              <button
+                key={p.id}
+                disabled={Boolean(pendingProjectId)}
+                onClick={() => switchProject(p.id)}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-[var(--relay-radius-sm)] px-2.5 py-1.5 text-left text-[13px] transition-colors",
+                  p.id === optimisticCurrentId
+                    ? "bg-[var(--relay-soft)] font-medium text-[var(--relay-ink)]"
+                    : "text-[var(--relay-ink-secondary)] hover:bg-[var(--relay-soft)]",
+                  Boolean(pendingProjectId) && "cursor-default opacity-60",
+                )}
+              >
+                {p.id === optimisticCurrentId && pendingProjectId !== p.id && (
+                  <Check className="h-3 w-3 shrink-0" />
+                )}
+                {pendingProjectId === p.id && (
+                  <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                )}
+                <span className="truncate">{p.name}</span>
+              </button>
+            );
+            return (
+              <>
+                {/* Personal pinned at the top, separated from regular projects. */}
+                {personalProject && renderButton(personalProject)}
+                {personalProject && regularProjects.length > 0 && (
+                  <div className="my-1 border-t border-[var(--relay-line)]" />
+                )}
+                {regularProjects.map(renderButton)}
+              </>
+            );
+          })()}
 
           <div className="my-1 border-t border-[var(--relay-line)]" />
 
