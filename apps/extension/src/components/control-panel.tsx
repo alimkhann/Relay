@@ -2963,8 +2963,9 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   </p>
                 </div>
                 {/* Half-circle manual save&link — quick action sitting where the
-                    saving/saved state shows. Saves + links the current chat to
-                    the active project in one tap. */}
+                    saving/saved state shows. Only for `none` (unsaved) + `saved`;
+                    `held`/`ignored`/`archived` already have dedicated buttons in
+                    cardActions, so no double affordance. */}
                 {activeState.chatAssociation.status === "saved" ? (
                   <button
                     type="button"
@@ -2977,7 +2978,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                       <polyline points="20 6 9 17 4 12" />
                     </svg>
                   </button>
-                ) : (
+                ) : activeState.chatAssociation.status === "none" ? (
                   <button
                     type="button"
                     className={styles.saveLinkHalf}
@@ -2996,7 +2997,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                       </svg>
                     )}
                   </button>
-                )}
+                ) : null}
               </div>
 
               {activeState.chatAssociation.status !== "none" &&
