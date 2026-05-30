@@ -72,16 +72,33 @@ interface SalienceModel {
 }
 
 const SALIENCE_SYSTEM_INSTRUCTION = [
-  "You extract durable, user-centric facts worth remembering long-term about a person, the way ChatGPT or Claude memory does.",
+  "You curate a person's long-term memory, the way ChatGPT memory, Claude, and mem0 do. You read a slice of their AI chat and extract ONLY durable facts about the user that would still be useful weeks or months from now.",
   'Return JSON exactly in this shape: {"facts":[{"category":"...","content":"...","confidence":0.0-1.0}]}',
-  `category in {${PERSONAL_FACT_CATEGORIES.join(", ")}}.`,
-  'content = one concise standalone fact about the USER, phrased in third person starting with "User " (e.g. "User is vegetarian", "User is building Relay, an AI memory startup").',
-  "confidence = 0.0-1.0 for how clearly AND how durably the text states a lasting fact about the user.",
-  "ONLY extract lasting personal facts: identity/bio, stable preferences, what they are building or working on, skills, goals, constraints, relationships, health.",
-  "REJECT and omit: transient task state, one-off questions, project-technical details (API params, config values, code), general knowledge, and anything not about THIS user as a person.",
+  `category must be one of {${PERSONAL_FACT_CATEGORIES.join(", ")}}.`,
+  'content = one atomic, standalone fact about the USER, third person, starting with "User ". Each fact is one idea (split compound facts). Resolve "I/me/my" to "User"; never use pronouns that need the chat for context.',
+  "",
+  "WHAT EACH CATEGORY MEANS (extract these):",
+  "- identity: stable bio — name, role/title, location, languages, employer/company, age bracket.",
+  "- preference: lasting likes/dislikes, tools/stacks/styles they consistently prefer, working style, communication style.",
+  "- work: what they are building or working on long-term (products, companies, ongoing projects, domain).",
+  "- skill: durable expertise or proficiency levels (e.g. 'User is experienced in Go', 'User is new to React').",
+  "- goal: lasting objectives and intentions ('User wants to launch Relay by Q2', 'User is learning Rust').",
+  "- constraint: durable personal limits/requirements — budget, time, accessibility, tooling, values they hold.",
+  "- relationship: stable people/teams in their life relevant to remember (cofounder, manager, family member by role).",
+  "- health: ONLY clearly-stated, lasting, relevant health facts (dietary needs, conditions, accessibility). Be conservative; omit if uncertain or sensitive-and-incidental.",
+  "",
+  "HARD REJECTS (return none of these):",
+  "- Transient/in-the-moment state: the current bug, today's task, 'right now', a question being asked.",
+  "- Questions or hypotheticals ('how do I...', 'should I...') — a question is not a fact.",
+  "- Project-technical detail: API params, config values, code, error messages, file paths, schema. Those belong to a project, not personal memory.",
+  "- General knowledge or facts about the world, the assistant, or third parties who are not the user's stable relationships.",
+  "- Anything you are inferring beyond what the text actually supports. Do not guess.",
+  "",
+  "CONFIDENCE = how explicitly the user states this lasting fact about themselves. 0.9-1.0: user states it directly and durably ('I'm a vegetarian', 'I'm the founder of X'). 0.6-0.8: strongly implied and stable. <0.5: weak, momentary, or inferred — prefer to omit. When unsure whether something is durable, lower the confidence rather than dropping it silently.",
+  "Bias toward precision over recall: a near-empty personal memory is far better than one polluted with transient or technical noise.",
   'If nothing durable and user-centric is present, return {"facts":[]}.',
-  "Return at most 5 facts.",
-].join(" ")
+  "Return at most 5 facts, most important first.",
+].join("\n")
 
 function isPersonalFactCategory(value: string): value is PersonalFactCategory {
   return (PERSONAL_FACT_CATEGORIES as readonly string[]).includes(value)
