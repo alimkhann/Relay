@@ -577,54 +577,6 @@
   gap: 8px;
 }
 
-/* Half-circle (right-dome) manual save&link button. */
-.saveLinkHalf {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 38px;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-left: none;
-  /* Flat left edge, rounded right → half-circle glued to the card edge. */
-  border-radius: 0 999px 999px 0;
-  background: var(--ink);
-  color: var(--surface);
-  cursor: pointer;
-  transition: opacity 120ms, background 120ms, color 120ms;
-}
-
-.saveLinkHalf:hover:not(:disabled) {
-  opacity: 0.88;
-}
-
-.saveLinkHalf:disabled {
-  cursor: not-allowed;
-  background: var(--surface-soft);
-  color: var(--muted);
-}
-
-.saveLinkHalfSaved {
-  background: rgba(16, 185, 129, 0.14);
-  color: #10b981;
-  border-color: rgba(16, 185, 129, 0.3);
-}
-
-.saveLinkDots {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: currentColor;
-  animation: ec-pulse-fallback 1.2s ease-in-out infinite;
-}
-
-@keyframes ec-pulse-fallback {
-  0%, 100% { opacity: 0.35; }
-  50% { opacity: 1; }
-}
-
 .metaText {
   margin: 10px 0 0;
   font-size: 12px;
@@ -743,6 +695,14 @@
   max-height: 420px;
   overflow-y: auto;
   padding-right: 2px;
+}
+
+/* W6: in the expanded side panel the shell is the sole scroller, so the inner
+   list grows instead of nesting a second scrollbar (no wheel-trap). The compact
+   popup keeps the capped inner scroll. */
+.expanded .contextItemListScroll {
+  max-height: none;
+  overflow-y: visible;
 }
 
 .contextItemUnified:hover {

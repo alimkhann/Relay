@@ -115,6 +115,10 @@
     if (toastRoot) {
       toastRoot.dataset.theme = relayChipState.resolvedTheme;
     }
+
+    if (typeof renderEdgeSaveButton === "function") {
+      renderEdgeSaveButton();
+    }
   }
 
   async function initializeRelayTheme() {
@@ -2173,7 +2177,257 @@
     hideInlineChipWithMotion();
   }
 
+  // ─── W8: persistent in-page edge save / detach button ───────────────
+  // Shows on supported chats that already have content (≥1 turn, not a fresh
+  // empty chat). Unsaved → Save & link; saved → Detach (with confirm). A one-
+  // time × dismisses it for the current chat (persisted). Shadow-DOM isolated.
+  const EDGE_DISMISS_KEY = "relay.edgeSaveDismissed";
+  relayChipState.edgeDismissed = new Set();
+  relayChipState.edgeBusy = false;
+
+  (async () => {
+    try {
+      const stored = await chrome.storage.local.get(EDGE_DISMISS_KEY);
+      const list = stored[EDGE_DISMISS_KEY];
+      if (Array.isArray(list)) {
+        relayChipState.edgeDismissed = new Set(list);
+      }
+    } catch (_error) {
+      // Best-effort; default to an empty set.
+    }
+    renderEdgeSaveButton();
+  })();
+
+  function edgeChatKey(activeState) {
+    const page = activeState.page || {};
+    return (
+      page.sourceConversationId ||
+      page.url ||
+      page.pathname ||
+      relayChipState.href
+    );
+  }
+
+  function edgeHasContent(activeState) {
+    const page = activeState.page;
+    return Boolean(
+      page && page.supported && !page.isFreshChat && (page.turns || 0) >= 1,
+    );
+  }
+
+  function persistEdgeDismissed() {
+    try {
+      chrome.storage.local.set({
+        [EDGE_DISMISS_KEY]: Array.from(relayChipState.edgeDismissed).slice(-200),
+      });
+    } catch (_error) {
+      // Best-effort persistence.
+    }
+  }
+
+  function removeEdgeSaveButton() {
+    const host = document.getElementById("relay-edge-save");
+    if (host) host.remove();
+  }
+
+  function getEdgeSaveHost() {
+    let host = document.getElementById("relay-edge-save");
+    if (host && host.shadowRoot) return host;
+    if (host) host.remove();
+    host = document.createElement("div");
+    host.id = "relay-edge-save";
+    host.attachShadow({ mode: "open" });
+    document.documentElement.appendChild(host);
+    return host;
+  }
+
+  function renderEdgeSaveButton() {
+    const activeState = getRenderableState();
+    if (!isValidActiveProjectState(activeState) || !edgeHasContent(activeState)) {
+      removeEdgeSaveButton();
+      return;
+    }
+
+    const chatKey = edgeChatKey(activeState);
+    if (relayChipState.edgeDismissed.has(chatKey)) {
+      removeEdgeSaveButton();
+      return;
+    }
+
+    const association = activeState.chatAssociation || { status: "none" };
+    const saved = association.status === "saved";
+    const projectName =
+      (saved ? association.projectName : activeState.projectName) ||
+      "your project";
+    const canAct = saved || Boolean(activeState.projectId);
+    const busy = relayChipState.edgeBusy;
+    const theme = relayChipState.resolvedTheme;
+
+    const host = getEdgeSaveHost();
+    const renderKey = JSON.stringify({
+      chatKey,
+      saved,
+      projectName,
+      canAct,
+      busy,
+      theme,
+    });
+    if (host.dataset.renderKey === renderKey) return;
+    host.dataset.renderKey = renderKey;
+
+    const dark = theme === "dark";
+    const bg = dark ? "#1a1a1c" : "#ffffff";
+    const ink = dark ? "#e4e4e7" : "#18181b";
+    const muted = dark ? "#a1a1aa" : "#71717a";
+    const line = dark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)";
+    const accent = dark ? "#e4e4e7" : "#18181b";
+    const accentText = dark ? "#09090b" : "#fafafa";
+    const hover = dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)";
+
+    const label = busy
+      ? saved
+        ? "Detaching…"
+        : "Saving…"
+      : saved
+        ? "Detach"
+        : "Save & link";
+    const sub = saved
+      ? `Saved to ${escapeHtml(projectName)}`
+      : `Link to ${escapeHtml(projectName)}`;
+
+    host.shadowRoot.innerHTML = `
+      <style>
+        :host { all: initial; }
+        .wrap {
+          position: fixed;
+          right: 0;
+          top: 50%;
+          transform: translateY(-50%);
+          z-index: 2147483646;
+          box-sizing: border-box;
+          display: flex;
+          flex-direction: column;
+          align-items: stretch;
+          gap: 6px;
+          width: 132px;
+          padding: 10px 12px;
+          background: ${bg};
+          color: ${ink};
+          border: 1px solid ${line};
+          border-right: none;
+          border-radius: 12px 0 0 12px;
+          box-shadow: -6px 0 24px rgba(0,0,0,0.22);
+          font: 500 12px/1.3 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+          pointer-events: auto;
+        }
+        .dismiss {
+          position: absolute;
+          top: 3px;
+          right: 5px;
+          width: 16px;
+          height: 16px;
+          padding: 0;
+          border: none;
+          background: transparent;
+          color: ${muted};
+          font-size: 14px;
+          line-height: 1;
+          cursor: pointer;
+          border-radius: 4px;
+        }
+        .dismiss:hover { background: ${hover}; color: ${ink}; }
+        .main {
+          margin-top: 4px;
+          width: 100%;
+          padding: 7px 10px;
+          border: none;
+          border-radius: 8px;
+          background: ${accent};
+          color: ${accentText};
+          font: 600 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+          cursor: pointer;
+          transition: opacity 120ms ease;
+        }
+        .main:hover:not(:disabled) { opacity: 0.88; }
+        .main:disabled { opacity: 0.45; cursor: not-allowed; }
+        .main[data-variant="detach"] {
+          background: transparent;
+          color: ${ink};
+          border: 1px solid ${line};
+        }
+        .sub {
+          font-size: 10px;
+          color: ${muted};
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+      </style>
+      <div class="wrap">
+        <button class="dismiss" type="button" aria-label="Hide for this chat" title="Hide for this chat">×</button>
+        <button class="main" type="button" data-variant="${saved ? "detach" : "save"}" ${canAct && !busy ? "" : "disabled"}>${escapeHtml(label)}</button>
+        <span class="sub">${sub}</span>
+      </div>
+    `;
+
+    const dismissButton = host.shadowRoot.querySelector(".dismiss");
+    if (dismissButton) {
+      dismissButton.addEventListener("click", () => {
+        relayChipState.edgeDismissed.add(chatKey);
+        persistEdgeDismissed();
+        removeEdgeSaveButton();
+        emitInlineTelemetry({
+          event: "edge_save.dismissed",
+          message: "Dismissed the in-page edge save button for this chat.",
+        });
+      });
+    }
+
+    const mainButton = host.shadowRoot.querySelector(".main");
+    if (mainButton) {
+      mainButton.addEventListener("click", async () => {
+        if (relayChipState.edgeBusy || !canAct) return;
+
+        if (saved) {
+          const confirmed = window.confirm(
+            "Detach this chat from the project and rebuild the project state?",
+          );
+          if (!confirmed) return;
+          relayChipState.edgeBusy = true;
+          renderEdgeSaveButton();
+          emitInlineTelemetry({
+            event: "edge_save.detach",
+            message: "Detached a chat via the in-page edge button.",
+          });
+          await sendRuntimeMessage({
+            type: "RELAY_SET_CHAT_ASSOCIATION_ARCHIVED",
+            payload: {
+              projectId: association.projectId,
+              sessionId: association.sessionId,
+              archived: true,
+            },
+          });
+        } else {
+          relayChipState.edgeBusy = true;
+          renderEdgeSaveButton();
+          emitInlineTelemetry({
+            event: "edge_save.save",
+            message: "Saved & linked a chat via the in-page edge button.",
+          });
+          await sendRuntimeMessage({
+            type: "RELAY_CAPTURE_VISIBLE",
+            payload: { projectId: activeState.projectId },
+          });
+        }
+
+        relayChipState.edgeBusy = false;
+        renderEdgeSaveButton();
+      });
+    }
+  }
+
   function renderInlineChip() {
+    renderEdgeSaveButton();
     const config = getSiteConfig();
     const activeState = getRenderableState();
 
