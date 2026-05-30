@@ -18,6 +18,7 @@ import { syncUserSettingsToExtension } from "@/lib/extension-settings-bridge"
 import { createClientFlowId } from "@/lib/telemetry/client"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
 import { ChromeWebstoreBadge } from "@/components/chrome-webstore-badge"
+import { CaptureRulesMatrix, type CaptureProjectSettings } from "@/components/settings/capture-rules-matrix"
 
 interface SettingsPreferencesProps {
   initialSettings: UserSettingsRow["settings"]
@@ -25,6 +26,7 @@ interface SettingsPreferencesProps {
   initialTokens: ExtensionApiTokenRow[]
   section: "app" | "integrations" | "account"
   viewer?: { displayName: string | null; email: string | null }
+  captureProjects?: CaptureProjectSettings[]
 }
 
 const EXTENSION_VERSION = "0.3.0"
@@ -121,6 +123,7 @@ export function SettingsPreferences({
   initialTokens,
   section,
   viewer,
+  captureProjects,
 }: SettingsPreferencesProps) {
   const [settings, setSettings] = useState(initialSettings)
   const [toast, setToast] = useState<string | null>(null)
@@ -368,35 +371,23 @@ export function SettingsPreferences({
           </FadeIn>
 
           <FadeIn delay={0.1}>
-          <SettingsSection title="Behavior" description="Fine-tune how Relay runs in the background.">
+          <SettingsSection title="Behavior" description="Fine-tune how Relay runs in the background. Toggle a whole project, or expand to override per site.">
             <div className="divide-y divide-[var(--relay-line)]">
-              <div className="flex items-center justify-between gap-4 px-5 py-3.5">
-                <div>
-                  <p className="text-[15px] font-medium text-[var(--relay-ink)]">Auto-capture</p>
-                  <p className="mt-0.5 text-sm text-[var(--relay-muted)]">Save chat content automatically.</p>
-                </div>
-                <Toggle
-                  checked={settings.autoCapture}
-                  disabled={pending}
-                  onChange={(on) => update({ ...settings, autoCapture: on }, `Auto-capture ${on ? "on" : "off"}`)}
-                />
-              </div>
-              <div className="flex items-center justify-between gap-4 px-5 py-3.5">
-                <div>
-                  <p className="text-[15px] font-medium text-[var(--relay-ink)]">Auto-show inline chip</p>
-                  <p className="mt-0.5 text-sm text-[var(--relay-muted)]">Show the chip automatically on new chats. When off, press ⌘⇧I (Ctrl+Shift+I) to summon it.</p>
-                </div>
-                <Toggle
-                  checked={settings.showSidepanelOnSupportedSites}
-                  disabled={pending}
-                  onChange={(on) =>
-                    update(
-                      { ...settings, showSidepanelOnSupportedSites: on },
-                      `Auto-show inline chip ${on ? "on" : "off"}`,
-                    )
-                  }
-                />
-              </div>
+              <CaptureRulesMatrix
+                initialProjects={captureProjects ?? []}
+                globalAutoCapture={settings.autoCapture}
+                globalInlineChip={settings.showSidepanelOnSupportedSites}
+                disabled={pending}
+                onSetGlobalAutoCapture={(on) =>
+                  update({ ...settings, autoCapture: on }, `Auto-capture ${on ? "on" : "off"}`)
+                }
+                onSetGlobalInlineChip={(on) =>
+                  update(
+                    { ...settings, showSidepanelOnSupportedSites: on },
+                    `Auto-show inline chip ${on ? "on" : "off"}`,
+                  )
+                }
+              />
               <div className="flex items-center justify-between gap-4 px-5 py-3.5">
                 <div>
                   <p className="text-[15px] font-medium text-[var(--relay-ink)]">Auto-import chat sources</p>

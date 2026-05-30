@@ -8,6 +8,9 @@ import { listExtensionTokensForUser } from "@/server/services/extension-token-se
 import { getUserSettings } from "@/server/services/settings-service"
 import { getBillingStatusForUser } from "@/server/services/entitlement-service"
 import { getReferralProgramForUser } from "@/server/services/referral-service"
+import { listProjectsForUser } from "@/server/services/project-service"
+import { getProjectSettings } from "@/server/services/project-settings-service"
+import type { CaptureProjectSettings } from "@/components/settings/capture-rules-matrix"
 import { CreditCard, Sliders, Puzzle, User } from "lucide-react"
 
 export const dynamic = "force-dynamic"
@@ -40,6 +43,26 @@ export default async function SettingsPage({
   ])
   const hasConnectedExtension = tokens.some((token) => !token.revokedAt)
   const activeTokens = tokens.filter((token) => !token.revokedAt)
+
+  // The capture-rules matrix only renders in the "app" section.
+  let captureProjects: CaptureProjectSettings[] = []
+  if (section === "app") {
+    const projects = await listProjectsForUser(viewer.userId, { includePersonal: true })
+    captureProjects = await Promise.all(
+      projects.map(async (project): Promise<CaptureProjectSettings> => {
+        const projectSettings = await getProjectSettings(viewer.userId, project.id)
+        return {
+          id: project.id,
+          name: project.name,
+          kind: project.kind === "personal" ? "personal" : "project",
+          autoCapture: projectSettings.autoCapture ?? null,
+          autoCapturePlatforms: projectSettings.autoCapturePlatforms ?? null,
+          inlineChip: projectSettings.inlineChip ?? null,
+          inlineChipPlatforms: projectSettings.inlineChipPlatforms ?? null,
+        }
+      }),
+    )
+  }
 
   return (
     <div className="flex flex-col md:flex-row gap-4 md:gap-8">
@@ -89,6 +112,7 @@ export default async function SettingsPage({
               initialTokens={activeTokens}
               section={section}
               viewer={{ displayName: viewer.name ?? null, email: viewer.email ?? null }}
+              captureProjects={captureProjects}
             />
           )}
         </SettingsContent>
