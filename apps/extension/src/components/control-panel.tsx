@@ -840,6 +840,32 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     successMessage: string,
   ) {
     if (busy || !projectId) return;
+    // Optimistic: reflect the override on the matching projectOption now so the
+    // tri-state trees update instantly. projectOptions otherwise lag behind the
+    // background session cache (15s), which is why the per-project/site toggles
+    // appeared dead while the global toggle (read from local userSettings) worked.
+    setActiveState((current) => ({
+      ...current,
+      projectOptions: current.projectOptions.map((option) =>
+        option.id === projectId
+          ? {
+              ...option,
+              ...("autoCapture" in patch
+                ? { autoCapture: patch.autoCapture ?? undefined }
+                : {}),
+              ...("autoCapturePlatforms" in patch
+                ? { autoCapturePlatforms: patch.autoCapturePlatforms ?? undefined }
+                : {}),
+              ...("inlineChip" in patch
+                ? { inlineChip: patch.inlineChip ?? undefined }
+                : {}),
+              ...("inlineChipPlatforms" in patch
+                ? { inlineChipPlatforms: patch.inlineChipPlatforms ?? undefined }
+                : {}),
+            }
+          : option,
+      ),
+    }));
     await runBusyAction("Updating settings…", successMessage, async () => {
       const response = await relayFetch(`/api/projects/${projectId}/settings`, {
         method: "PATCH",
@@ -849,6 +875,12 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       if (!response.ok) {
         throw new Error(await readErrorMessage(response, "Could not update settings."));
       }
+      // Force the background to drop its cached session so the post-action
+      // refresh carries the freshly-written override (not a stale snapshot).
+      await chrome.runtime.sendMessage({
+        type: "RELAY_REFRESH_SESSION",
+        payload: { force: true },
+      });
     });
   }
 
@@ -3240,8 +3272,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                               </>
                             ) : (
                               <>
-                                <p className={styles.contextText}>{item.text}</p>
                                 <ContextItemMeta item={item} />
+                                <p className={styles.contextText}>{item.text}</p>
                                 <div className={styles.contextActions}>
                                   <button
                                     className={styles.ghostButton}
@@ -3432,8 +3464,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                             </>
                           ) : (
                             <>
-                              <p className={styles.contextText}>{item.text}</p>
                               <ContextItemMeta item={item} />
+                              <p className={styles.contextText}>{item.text}</p>
                               <div className={styles.contextActions}>
                                 <button
                                   className={styles.ghostButton}
@@ -3868,8 +3900,9 @@ function SidepanelNoteItem({
 
   return (
     <article className={styles.noteItem}>
-      <p className={styles.noteText}>{note.text}</p>
-      <footer className={styles.noteFooter}>
+      {/* Meta (source + time) on top, then text, then right-aligned icon
+          actions — matching the decision/constraint/task item layout. */}
+      <div className={styles.noteFooter}>
         {note.sourceUrl && note.hostname ? (
           <a
             href={note.sourceUrl}
@@ -3883,29 +3916,36 @@ function SidepanelNoteItem({
             ) : null}
             <span className={styles.noteHostname}>{note.hostname}</span>
           </a>
-        ) : null}
+        ) : (
+          <span className={styles.contextItemBadge}>Note</span>
+        )}
         <time className={styles.noteTime} dateTime={note.capturedAt}>
           {formatNoteRelativeTime(note.capturedAt)}
         </time>
+      </div>
+      <p className={styles.noteText}>{note.text}</p>
+      <div className={styles.contextActions}>
         <button
           type="button"
-          className={styles.noteEdit}
+          className={styles.ghostButton}
           disabled={busy}
           onClick={onStartEdit}
           aria-label="Edit note"
+          title="Edit"
         >
-          Edit
+          <Pencil size={14} />
         </button>
         <button
           type="button"
-          className={styles.noteDelete}
+          className={styles.ghostButton}
           disabled={busy}
           onClick={onDelete}
           aria-label="Delete note"
+          title="Remove"
         >
-          Remove
+          <Trash2 size={14} />
         </button>
-      </footer>
+      </div>
     </article>
   );
 }

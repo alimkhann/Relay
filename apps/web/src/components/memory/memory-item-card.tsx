@@ -222,41 +222,42 @@ export function MemoryItemCard({
         >
           <Markdown content={item.content} />
         </div>
-      </div>
-      <div className="absolute right-2 top-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-        <button
-          type="button"
-          onClick={() => setExpanded((x) => !x)}
-          aria-label={expanded ? "Collapse item" : "Expand item"}
-          title={expanded ? "Collapse" : "Expand"}
-          className="rounded p-1 text-[var(--relay-faint)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
-        >
-          {expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
-        </button>
-        {onEdit && (
+        {/* Actions live at the bottom-right of the card body, revealed on hover. */}
+        <div className="mt-2 flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           <button
             type="button"
-            onClick={() => onEdit(item)}
-            disabled={busy}
-            aria-label="Edit item"
-            title="Edit"
-            className="rounded p-1 text-[var(--relay-faint)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)] disabled:cursor-not-allowed"
+            onClick={() => setExpanded((x) => !x)}
+            aria-label={expanded ? "Collapse item" : "Expand item"}
+            title={expanded ? "Collapse" : "Expand"}
+            className="rounded p-1 text-[var(--relay-faint)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]"
           >
-            <Pencil className="size-3" />
+            {expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
           </button>
-        )}
-        {onDelete && (
-          <button
-            type="button"
-            onClick={() => onDelete(item)}
-            disabled={busy}
-            aria-label="Delete item"
-            title="Delete"
-            className="rounded p-1 text-[var(--relay-faint)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-danger)] disabled:cursor-not-allowed"
-          >
-            <Trash2 className="size-3" />
-          </button>
-        )}
+          {onEdit && (
+            <button
+              type="button"
+              onClick={() => onEdit(item)}
+              disabled={busy}
+              aria-label="Edit item"
+              title="Edit"
+              className="rounded p-1 text-[var(--relay-faint)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)] disabled:cursor-not-allowed"
+            >
+              <Pencil className="size-3" />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              onClick={() => onDelete(item)}
+              disabled={busy}
+              aria-label="Delete item"
+              title="Delete"
+              className="rounded p-1 text-[var(--relay-faint)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-danger)] disabled:cursor-not-allowed"
+            >
+              <Trash2 className="size-3" />
+            </button>
+          )}
+        </div>
       </div>
     </article>
   )
