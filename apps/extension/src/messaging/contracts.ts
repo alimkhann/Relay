@@ -242,7 +242,7 @@ export type RelayMessage =
         source?: "toast" | "inline_chip" | "sidebar";
       };
     }
-  | { type: "RELAY_REFRESH_SESSION" }
+  | { type: "RELAY_REFRESH_SESSION"; payload?: { force?: boolean } }
   | { type: "RELAY_SIGN_OUT" }
   | { type: "RELAY_OPEN_SIDE_PANEL" }
   | { type: "RELAY_OPEN_DASHBOARD"; payload?: { nextPath?: string; flowId?: string } }

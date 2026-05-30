@@ -1107,7 +1107,7 @@ async function readErrorResponse(response: Response, fallback: string) {
   }
 }
 
-async function loadSessionData() {
+async function loadSessionData(force = false) {
   const session = await getRelaySession();
   if (!session.token) {
     sessionDataCache = null;
@@ -1121,6 +1121,7 @@ async function loadSessionData() {
   }
 
   if (
+    !force &&
     sessionDataCache &&
     sessionDataCache.token === session.token &&
     Date.now() - sessionDataCache.fetchedAt < SESSION_CACHE_TTL_MS
@@ -1130,7 +1131,9 @@ async function loadSessionData() {
 
   // Durability: after an MV3 worker wake, in-memory cache is gone. Seed it
   // from the persisted snapshot so a recent value can be served immediately
-  // (and acts as the failure fallback) while the network refresh runs.
+  // (and acts as the failure fallback) while the network refresh runs. A forced
+  // refresh skips this early return so a fresh network value is fetched (used
+  // after a settings write so per-project overrides reflect immediately).
   if (!sessionDataCache || sessionDataCache.token !== session.token) {
     const persisted = await readPersistedSessionData(session.userId);
     if (persisted) {
@@ -1140,7 +1143,7 @@ async function loadSessionData() {
         data: persisted.data as unknown as SessionCacheData,
         fetchedAt: persisted.fetchedAt,
       };
-      if (Date.now() - persisted.fetchedAt < SESSION_CACHE_TTL_MS) {
+      if (!force && Date.now() - persisted.fetchedAt < SESSION_CACHE_TTL_MS) {
         return sessionDataCache.data;
       }
     }
@@ -2786,6 +2789,31 @@ async function captureObservedChange(
     const activeProjectOption = effectiveActiveProjectId
       ? session.projectOptions.find((option) => option.id === effectiveActiveProjectId)
       : undefined;
+
+    // Personal memory is durable-facts-only (server-side gated routing). Never
+    // auto-capture or auto-associate a full chat session into it — only an
+    // explicit user manual save may target personal.
+    if (activeProjectOption?.kind === "personal" && !manualSelection) {
+      recordBackgroundTelemetry({
+        level: "info",
+        surface: "extension-background",
+        area: "capture",
+        event: "capture_skipped",
+        flowId,
+        message: "Skipped auto-capture into the personal project.",
+        projectId: effectiveActiveProjectId,
+        tabId,
+        context: {
+          trigger: autoCapture ? "auto" : "association",
+          reason: "personal_auto_capture_blocked",
+        },
+      });
+      return {
+        ok: false,
+        reason: "Auto-capture does not target your personal project.",
+      };
+    }
+
     const autoCaptureAllowed = effectiveAutoCapture({
       platform: (state.page.platform ?? null) as SupportedPlatform | null,
       global: session.autoCapture,
@@ -5130,8 +5158,9 @@ chrome.runtime.onMessage.addListener(
         }
 
         if (message.type === "RELAY_REFRESH_SESSION") {
+          const force = message.payload?.force === true;
           sessionDataCache = null;
-          const payload = await loadSessionData();
+          const payload = await loadSessionData(force);
           sendResponse({ ok: true, ...payload });
           return;
         }
