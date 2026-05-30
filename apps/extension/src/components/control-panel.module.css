@@ -1781,6 +1781,105 @@
   cursor: not-allowed;
 }
 
+/* Mixed (tri-state): knob centered, dimmed accent. */
+.settingsToggleInput:indeterminate {
+  background: var(--accent);
+  opacity: 0.55;
+}
+
+.settingsToggleInput:indeterminate::after {
+  transform: translateX(6px);
+}
+
+/* ── Capture/inline-chip matrix tree ── */
+
+.captureTreeHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.captureTreeChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.captureTreeChevron:hover {
+  color: var(--ink);
+}
+
+.captureTreeBody {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 2px 0 4px 8px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+
+.captureTreeProject {
+  display: flex;
+  flex-direction: column;
+}
+
+.captureTreeRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.captureTreeProjectName {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.captureTreePersonalTag {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--muted);
+}
+
+.captureTreePlatforms {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 1px 0 4px 18px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+
+.captureTreePlatformRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+}
+
 .platformList {
   display: flex;
   flex-direction: column;

@@ -78,6 +78,11 @@ function OtpCells({ value, onChange, disabled }: OtpCellsProps) {
 }
 
 import { slugify } from "@relay/shared/utils/text";
+import {
+  effectiveAutoCapture,
+  effectiveInlineChip,
+} from "@relay/shared/utils/capture-settings";
+import type { CaptureResolutionInput } from "@relay/shared/utils/capture-settings";
 import { supportedPlatforms } from "@relay/shared/constants/platforms";
 import type { SupportedPlatform, UserSettingsRow } from "@relay/shared/types/database";
 import type { BillingStatusDto, EntitlementLimitsDto } from "@relay/shared/types/billing";
@@ -820,12 +825,31 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     );
   }
 
-  async function togglePlatformEnabled(platform: SupportedPlatform, enabled: boolean) {
-    const current = userSettings?.enabledPlatforms ?? [...supportedPlatforms];
-    const next = enabled
-      ? Array.from(new Set([...current, platform]))
-      : current.filter((p) => p !== platform);
-    await patchUserSettings({ enabledPlatforms: next });
+  // Per-(project) capture/chip overrides. A `null` on any key clears it and
+  // inherits the next level up (platform leaf → project → global). Used by the
+  // tri-state matrix trees. runBusyAction refreshes the active state so the
+  // projectOptions overrides update in place.
+  async function patchProjectCaptureSettings(
+    projectId: string,
+    patch: {
+      autoCapture?: boolean | null;
+      autoCapturePlatforms?: Partial<Record<SupportedPlatform, boolean>> | null;
+      inlineChip?: boolean | null;
+      inlineChipPlatforms?: Partial<Record<SupportedPlatform, boolean>> | null;
+    },
+    successMessage: string,
+  ) {
+    if (busy || !projectId) return;
+    await runBusyAction("Updating settings…", successMessage, async () => {
+      const response = await relayFetch(`/api/projects/${projectId}/settings`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Could not update settings."));
+      }
+    });
   }
 
   async function changeThemeMode(nextMode: RelayThemeMode) {
@@ -2256,75 +2280,94 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             </div>
           </div>
 
-          <div className={styles.settingsGroup}>
-            <span className={styles.settingsLabel}>Behavior</span>
-            <label className={styles.settingsToggleRow}>
-              <span className={styles.settingsToggleCopy}>
-                <span className={styles.settingsToggleTitle}>Auto-capture</span>
-                <span className={styles.settingsToggleHint}>
-                  Quietly capture useful turns as you chat.
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                className={styles.settingsToggleInput}
-                checked={userSettings?.autoCapture ?? session?.autoCapture ?? true}
-                disabled={userSettingsBusy || !userSettings}
-                onChange={(event) =>
-                  void patchUserSettings({ autoCapture: event.target.checked })
-                }
-              />
-            </label>
-            <label className={styles.settingsToggleRow}>
-              <span className={styles.settingsToggleCopy}>
-                <span className={styles.settingsToggleTitle}>Auto-show inline chip</span>
-                <span className={styles.settingsToggleHint}>
-                  Show the chip automatically on new chats. When off, press ⌘⇧I (Ctrl+Shift+I) to summon it.
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                className={styles.settingsToggleInput}
-                checked={userSettings?.showSidepanelOnSupportedSites ?? true}
-                disabled={userSettingsBusy || !userSettings}
-                onChange={(event) =>
-                  void patchUserSettings({
-                    showSidepanelOnSupportedSites: event.target.checked,
-                  })
-                }
-              />
-            </label>
-          </div>
+          {(() => {
+            // Personal pinned first, then projects in their picker order.
+            const captureProjects = [...activeState.projectOptions].sort((a, b) =>
+              a.kind === "personal" ? -1 : b.kind === "personal" ? 1 : 0,
+            );
+            const treeDisabled = userSettingsBusy || !userSettings || busy;
+            const autoGlobal = userSettings?.autoCapture ?? session?.autoCapture ?? true;
+            const chipGlobal = userSettings?.showSidepanelOnSupportedSites ?? true;
 
-          <div className={styles.settingsGroup}>
-            <span className={styles.settingsLabel}>Platforms</span>
-            <p className={styles.settingsHint}>
-              Turn the inline chip and capture on or off per site.
-            </p>
-            <div className={styles.platformList}>
-              {supportedPlatforms.map((platform) => {
-                const enabled =
-                  userSettings?.enabledPlatforms?.includes(platform) ?? true;
-                return (
-                  <label key={platform} className={styles.platformRow}>
-                    <span className={styles.platformRowLabel}>
-                      <PlatformIcon platform={platform} size={14} />
-                      <span>{prettyPlatformName(platform)}</span>
-                    </span>
-                    <input
-                      type="checkbox"
-                      className={styles.settingsToggleInput}
-                      checked={enabled}
-                      disabled={userSettingsBusy || !userSettings}
-                      onChange={(event) =>
-                        void togglePlatformEnabled(platform, event.target.checked)
-                      }
-                    />
-                  </label>
-                );
-              })}
-            </div>
-          </div>
+            const autoCaptureAxis: CaptureAxis = {
+              getProjectValue: (project) => project.autoCapture,
+              getProjectPlatforms: (project) => project.autoCapturePlatforms,
+              resolve: effectiveAutoCapture,
+            };
+            const inlineChipAxis: CaptureAxis = {
+              getProjectValue: (project) => project.inlineChip,
+              getProjectPlatforms: (project) => project.inlineChipPlatforms,
+              resolve: effectiveInlineChip,
+            };
+
+            return (
+              <div className={styles.settingsGroup}>
+                <span className={styles.settingsLabel}>Behavior</span>
+                <CaptureMatrixTree
+                  title="Auto-capture"
+                  hint="Quietly capture useful turns. Expand to override per project, then per site."
+                  global={autoGlobal}
+                  projects={captureProjects}
+                  disabled={treeDisabled}
+                  axis={autoCaptureAxis}
+                  onSetGlobal={(value) => void patchUserSettings({ autoCapture: value })}
+                  onSetProject={(project, value) =>
+                    void patchProjectCaptureSettings(
+                      project.id,
+                      { autoCapture: value, autoCapturePlatforms: null },
+                      value
+                        ? "Auto-capture on for this project."
+                        : "Auto-capture off for this project.",
+                    )
+                  }
+                  onSetPlatform={(project, platform, value) =>
+                    void patchProjectCaptureSettings(
+                      project.id,
+                      {
+                        autoCapturePlatforms: {
+                          ...(project.autoCapturePlatforms ?? {}),
+                          [platform]: value,
+                        },
+                      },
+                      "Updated auto-capture for this site.",
+                    )
+                  }
+                />
+                <CaptureMatrixTree
+                  title="Auto-show inline chip"
+                  hint="Show the chip on new chats. Expand to override per project, then per site. When off, press ⌘⇧I to summon it."
+                  global={chipGlobal}
+                  projects={captureProjects}
+                  disabled={treeDisabled}
+                  axis={inlineChipAxis}
+                  onSetGlobal={(value) =>
+                    void patchUserSettings({ showSidepanelOnSupportedSites: value })
+                  }
+                  onSetProject={(project, value) =>
+                    void patchProjectCaptureSettings(
+                      project.id,
+                      { inlineChip: value, inlineChipPlatforms: null },
+                      value
+                        ? "Inline chip on for this project."
+                        : "Inline chip off for this project.",
+                    )
+                  }
+                  onSetPlatform={(project, platform, value) =>
+                    void patchProjectCaptureSettings(
+                      project.id,
+                      {
+                        inlineChipPlatforms: {
+                          ...(project.inlineChipPlatforms ?? {}),
+                          [platform]: value,
+                        },
+                      },
+                      "Updated inline chip for this site.",
+                    )
+                  }
+                />
+              </div>
+            );
+          })()}
 
           <div className={styles.settingsGroup}>
             <span className={styles.settingsLabel}>Usage</span>
@@ -3578,6 +3621,201 @@ function ContextItemMeta({ item }: { item: ContextItem }) {
         <time className={styles.contextItemTime} dateTime={item.capturedAt ?? undefined}>
           {time}
         </time>
+      ) : null}
+    </div>
+  );
+}
+
+type CaptureTri = "on" | "off" | "mixed";
+
+interface CaptureAxis {
+  getProjectValue: (project: RelayProjectOption) => boolean | undefined;
+  getProjectPlatforms: (
+    project: RelayProjectOption,
+  ) => Partial<Record<SupportedPlatform, boolean>> | undefined;
+  resolve: (input: CaptureResolutionInput) => boolean;
+}
+
+function nextCaptureValue(tri: CaptureTri): boolean {
+  // on → off; off/mixed → on (mixed resolves to a fully-on subtree).
+  return tri !== "on";
+}
+
+function TriStateCheckbox({
+  tri,
+  disabled,
+  onToggle,
+  ariaLabel,
+}: {
+  tri: CaptureTri;
+  disabled: boolean;
+  onToggle: () => void;
+  ariaLabel: string;
+}) {
+  const ref = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = tri === "mixed";
+  }, [tri]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      className={styles.settingsToggleInput}
+      checked={tri === "on"}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      onChange={onToggle}
+    />
+  );
+}
+
+function CaptureMatrixTree({
+  title,
+  hint,
+  global,
+  projects,
+  disabled,
+  axis,
+  onSetGlobal,
+  onSetProject,
+  onSetPlatform,
+}: {
+  title: string;
+  hint: string;
+  global: boolean;
+  projects: RelayProjectOption[];
+  disabled: boolean;
+  axis: CaptureAxis;
+  onSetGlobal: (value: boolean) => void;
+  onSetProject: (project: RelayProjectOption, value: boolean) => void;
+  onSetPlatform: (
+    project: RelayProjectOption,
+    platform: SupportedPlatform,
+    value: boolean,
+  ) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [openProjects, setOpenProjects] = useState<Record<string, boolean>>({});
+
+  const platformValue = (project: RelayProjectOption, platform: SupportedPlatform) =>
+    axis.resolve({
+      platform,
+      global,
+      project: axis.getProjectValue(project),
+      projectPlatforms: axis.getProjectPlatforms(project),
+    });
+
+  const projectTri = (project: RelayProjectOption): CaptureTri => {
+    const values = supportedPlatforms.map((platform) => platformValue(project, platform));
+    if (values.every(Boolean)) return "on";
+    if (values.every((value) => !value)) return "off";
+    return "mixed";
+  };
+
+  const globalTri = (): CaptureTri => {
+    if (projects.length === 0) return global ? "on" : "off";
+    const tris = projects.map(projectTri);
+    if (tris.every((tri) => tri === "on")) return "on";
+    if (tris.every((tri) => tri === "off")) return "off";
+    return "mixed";
+  };
+
+  return (
+    <div className={styles.settingsGroup}>
+      <div className={styles.captureTreeHeader}>
+        <button
+          type="button"
+          className={styles.captureTreeChevron}
+          aria-label={expanded ? "Collapse" : "Expand"}
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          <ChevronDown
+            size={14}
+            style={{
+              transform: expanded ? "rotate(180deg)" : undefined,
+              transition: "transform 150ms ease",
+            }}
+          />
+        </button>
+        <span className={styles.settingsToggleCopy}>
+          <span className={styles.settingsToggleTitle}>{title}</span>
+          <span className={styles.settingsToggleHint}>{hint}</span>
+        </span>
+        <TriStateCheckbox
+          tri={globalTri()}
+          disabled={disabled}
+          ariaLabel={`${title} (all projects)`}
+          onToggle={() => onSetGlobal(nextCaptureValue(globalTri()))}
+        />
+      </div>
+
+      {expanded ? (
+        <div className={styles.captureTreeBody}>
+          {projects.map((project) => {
+            const open = openProjects[project.id] ?? false;
+            return (
+              <div key={project.id} className={styles.captureTreeProject}>
+                <div className={styles.captureTreeRow}>
+                  <button
+                    type="button"
+                    className={styles.captureTreeChevron}
+                    aria-label={open ? "Collapse" : "Expand"}
+                    aria-expanded={open}
+                    onClick={() =>
+                      setOpenProjects((current) => ({
+                        ...current,
+                        [project.id]: !open,
+                      }))
+                    }
+                  >
+                    <ChevronDown
+                      size={12}
+                      style={{
+                        transform: open ? "rotate(180deg)" : undefined,
+                        transition: "transform 150ms ease",
+                      }}
+                    />
+                  </button>
+                  <span className={styles.captureTreeProjectName}>
+                    {project.name}
+                    {project.kind === "personal" ? (
+                      <span className={styles.captureTreePersonalTag}>Personal</span>
+                    ) : null}
+                  </span>
+                  <TriStateCheckbox
+                    tri={projectTri(project)}
+                    disabled={disabled}
+                    ariaLabel={`${title} for ${project.name}`}
+                    onToggle={() => onSetProject(project, nextCaptureValue(projectTri(project)))}
+                  />
+                </div>
+
+                {open ? (
+                  <div className={styles.captureTreePlatforms}>
+                    {supportedPlatforms.map((platform) => (
+                      <label key={platform} className={styles.captureTreePlatformRow}>
+                        <span className={styles.platformRowLabel}>
+                          <PlatformIcon platform={platform} size={13} />
+                          <span>{prettyPlatformName(platform)}</span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          className={styles.settingsToggleInput}
+                          checked={platformValue(project, platform)}
+                          disabled={disabled}
+                          onChange={(event) =>
+                            onSetPlatform(project, platform, event.target.checked)
+                          }
+                        />
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
       ) : null}
     </div>
   );

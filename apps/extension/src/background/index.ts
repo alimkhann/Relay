@@ -1,4 +1,7 @@
-import { effectiveAutoCapture } from "@relay/shared/utils/capture-settings";
+import {
+  effectiveAutoCapture,
+  effectiveInlineChip,
+} from "@relay/shared/utils/capture-settings";
 import { createFlowId } from "@relay/shared/utils/telemetry";
 import { buildProjectContextPreview, getProjectContextCounts } from "@relay/shared/utils/project-context";
 import { normalizeText, slugify } from "@relay/shared/utils/text";
@@ -1827,7 +1830,17 @@ async function syncTabRemoteState(
     state.projectId = activeProject?.id ?? null;
     state.projectName = activeProject?.name ?? null;
     state.boundProject = boundProject;
-    state.showCue = settings?.settings.showSidepanelOnSupportedSites ?? true;
+    {
+      const activeOption = activeProject
+        ? projects.find((option) => option.id === activeProject.id)
+        : undefined;
+      state.showCue = effectiveInlineChip({
+        platform: (state.page.platform ?? null) as SupportedPlatform | null,
+        global: settings?.settings.showSidepanelOnSupportedSites ?? true,
+        project: activeOption?.inlineChip,
+        projectPlatforms: activeOption?.inlineChipPlatforms,
+      });
+    }
     state.trust = trust;
     state.stateStatus = nextStateStatus;
     state.contextPreview = contextPreview;
