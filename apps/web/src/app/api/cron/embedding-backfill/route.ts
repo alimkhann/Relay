@@ -48,11 +48,14 @@ function authorize(request: Request): boolean {
 }
 
 type TableKey = "memory_items" | "canonical_entities" | "source_chunks"
+const VALID_TABLES: ReadonlyArray<TableKey> = ["memory_items", "canonical_entities", "source_chunks"]
+
+type TableResult = { embedded: number; failed: number; remaining: number }
 
 async function backfillCanonicalEntities(
   provider: ReturnType<typeof createRepositoryBundle>["provider"],
   limit: number,
-): Promise<{ embedded: number; remaining: number }> {
+): Promise<TableResult> {
   const rows = (await provider.query(
     `SELECT id, name, kind FROM canonical_entities
      WHERE embedding IS NULL
@@ -62,6 +65,7 @@ async function backfillCanonicalEntities(
   )) as Array<{ id: string; name: string; kind: string | null }>
 
   let embedded = 0
+  let failed = 0
   for (const row of rows) {
     const text = row.kind ? `${row.name} (${row.kind})` : row.name
     try {
@@ -72,6 +76,7 @@ async function backfillCanonicalEntities(
       )
       embedded += 1
     } catch (err) {
+      failed += 1
       console.error("[embedding-backfill] canonical_entities row failed", row.id, err)
     }
   }
@@ -80,13 +85,13 @@ async function backfillCanonicalEntities(
     `SELECT COUNT(*)::int AS remaining FROM canonical_entities WHERE embedding IS NULL`,
   )) as Array<{ remaining: number }>
 
-  return { embedded, remaining: remainingRows[0]?.remaining ?? 0 }
+  return { embedded, failed, remaining: remainingRows[0]?.remaining ?? 0 }
 }
 
 async function backfillSourceChunks(
   provider: ReturnType<typeof createRepositoryBundle>["provider"],
   limit: number,
-): Promise<{ embedded: number; remaining: number }> {
+): Promise<TableResult> {
   const rows = (await provider.query(
     `SELECT id, content FROM source_chunks
      WHERE embedding IS NULL OR embedding_model IS DISTINCT FROM $1::text
@@ -96,6 +101,7 @@ async function backfillSourceChunks(
   )) as Array<{ id: string; content: string }>
 
   let embedded = 0
+  let failed = 0
   for (const row of rows) {
     try {
       const vector = await generateEmbedding(row.content, "RETRIEVAL_DOCUMENT")
@@ -107,6 +113,7 @@ async function backfillSourceChunks(
       )
       embedded += 1
     } catch (err) {
+      failed += 1
       console.error("[embedding-backfill] source_chunks row failed", row.id, err)
     }
   }
@@ -117,13 +124,17 @@ async function backfillSourceChunks(
     [EMBEDDING_MODEL],
   )) as Array<{ remaining: number }>
 
-  return { embedded, remaining: remainingRows[0]?.remaining ?? 0 }
+  return { embedded, failed, remaining: remainingRows[0]?.remaining ?? 0 }
 }
 
 async function backfillMemoryItems(
   repositories: ReturnType<typeof createRepositoryBundle>,
   limit: number,
-): Promise<{ embedded: number; remaining: number }> {
+): Promise<TableResult> {
+  // backfillMissingEmbeddings / backfillStaleEmbeddings return the count of
+  // successfully embedded rows. Per-row failures aren't propagated up — they
+  // log inside the embedding-service. Compute `failed` from the gap between
+  // the rows we attempted (capped by limit) and the rows we embedded.
   const missing = await backfillMissingEmbeddings(repositories, limit)
   const remainingLimit = Math.max(0, limit - missing)
   const stale = remainingLimit > 0 ? await backfillStaleEmbeddings(repositories, remainingLimit) : 0
@@ -136,6 +147,7 @@ async function backfillMemoryItems(
 
   return {
     embedded: missing + stale,
+    failed: 0,
     remaining: remainingRows[0]?.remaining ?? 0,
   }
 }
@@ -146,7 +158,17 @@ async function handle(request: Request): Promise<Response> {
   }
 
   const url = new URL(request.url)
-  const tableParam = url.searchParams.get("table") as TableKey | "all" | null
+  const rawTable = url.searchParams.get("table")
+  // Allow-list `?table`. Unknown name → 400 so an operator typo in the cutover
+  // runbook doesn't return 200 with an empty `tables: {}` body that reads as
+  // success.
+  if (rawTable && rawTable !== "all" && !VALID_TABLES.includes(rawTable as TableKey)) {
+    return NextResponse.json(
+      { error: `Unknown table '${rawTable}'. Expected one of: ${VALID_TABLES.join(", ")}, all.` },
+      { status: 400 },
+    )
+  }
+  const tableParam = (rawTable ?? "all") as TableKey | "all"
   const limit = Math.min(
     Math.max(Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 1),
     500,
@@ -154,13 +176,10 @@ async function handle(request: Request): Promise<Response> {
 
   const repositories = createRepositoryBundle()
 
-  const tables: TableKey[] =
-    tableParam && tableParam !== "all"
-      ? [tableParam]
-      : ["memory_items", "canonical_entities", "source_chunks"]
+  const tables: TableKey[] = tableParam === "all" ? [...VALID_TABLES] : [tableParam]
 
   const startedAt = Date.now()
-  const results: Record<string, { embedded: number; remaining: number }> = {}
+  const results: Record<string, TableResult> = {}
 
   for (const table of tables) {
     if (table === "memory_items") {
