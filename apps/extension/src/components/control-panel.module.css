@@ -647,10 +647,16 @@
   padding: 2px;
   border-radius: var(--radius-sm);
   background: var(--surface-soft);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.contextTabs::-webkit-scrollbar {
+  display: none;
 }
 
 .contextTab {
-  flex: 1;
+  flex: 1 0 auto;
   border: none;
   background: transparent;
   color: var(--muted);
@@ -834,6 +840,30 @@
   font-size: 13px;
   line-height: 1.5;
   color: var(--ink-secondary);
+}
+
+.contextItemMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.contextItemBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+}
+
+.contextItemTime {
+  font-variant-numeric: tabular-nums;
 }
 
 .contextActions {
@@ -1476,8 +1506,26 @@
   font-variant-numeric: tabular-nums;
 }
 
-.noteDelete {
+.noteEdit {
   margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--faint);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0;
+}
+
+.noteEdit:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.noteEdit:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.noteDelete {
   background: transparent;
   border: none;
   color: var(--faint);

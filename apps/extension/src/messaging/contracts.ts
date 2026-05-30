@@ -1,5 +1,6 @@
 import type {
   RelayOnboardingState,
+  SourceSurface,
   TelemetryEventInput,
   UserEntitlementsDto,
 } from "@relay/shared";
@@ -55,6 +56,9 @@ export interface RelayContextPreviewItem {
   text: string;
   source: "manual" | "derived";
   memoryId?: string | null;
+  /** Capturing surface for manual items; null/undefined for derived. */
+  sourceSurface?: SourceSurface | null;
+  capturedAt?: string | null;
 }
 
 export interface RelayContextNoteItem {

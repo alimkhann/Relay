@@ -133,7 +133,7 @@ interface ControlPanelProps {
 }
 
 type ContextSection = "decisions" | "constraints" | "tasks";
-type ContextTab = "all" | ContextSection;
+type ContextTab = "all" | ContextSection | "notes";
 type ContextItem = RelayActiveProjectState["contextPreview"][ContextSection][number];
 
 const sectionColorClass: Record<ContextSection, string> = {
@@ -371,6 +371,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     constraints: "",
     tasks: "",
   });
+  const [noteDraft, setNoteDraft] = useState("");
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
   const [themeMode, setThemeMode] = useState<RelayThemeMode>("system");
@@ -1834,6 +1835,53 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     );
   }
 
+  async function addNote() {
+    const content = noteDraft.trim();
+    if (!content) return;
+    const projectId = activeState.projectId ?? session?.projectId ?? "";
+    const personalProject =
+      activeState.projectOptions.find((project) => project.kind === "personal") ?? null;
+    if (!personalMode && !projectId) return;
+    if (personalMode && !personalProject) return;
+
+    const endpoint = personalMode
+      ? `/api/projects/${personalProject!.id}/memory`
+      : `/api/projects/${projectId}/memory`;
+
+    await runBusyAction("Saving note…", "Note saved.", async () => {
+      const response = await relayFetch(endpoint, {
+        method: "POST",
+        body: JSON.stringify({
+          type: "note",
+          title: null,
+          content,
+          pinned: true,
+          sourceSurface: "manual",
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Note creation failed."));
+      }
+      setNoteDraft("");
+    });
+  }
+
+  async function saveNoteEdit(memoryId: string) {
+    const nextText = editingText.trim();
+    if (!nextText) return;
+    await runBusyAction("Saving note…", "Note updated.", async () => {
+      const response = await relayFetch(`/api/memory/${memoryId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ content: nextText }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Note update failed."));
+      }
+      setEditingKey(null);
+      setEditingText("");
+    });
+  }
+
   async function removeNote(memoryId: string) {
     await runBusyAction(
       "Removing note…",
@@ -3081,7 +3129,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
             {/* ─── Subtabs ─── */}
             <div className={styles.contextTabs}>
-              {(["all", "decisions", "tasks", "constraints"] as const).map(
+              {(["all", "decisions", "tasks", "constraints", "notes"] as const).map(
                 (tab) => {
                   const count =
                     tab === "all"
@@ -3090,6 +3138,12 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                           0,
                         )
                       : activeState.contextPreview[tab].length;
+                  const label =
+                    tab === "all"
+                      ? "All"
+                      : tab === "notes"
+                        ? "Notes"
+                        : sectionLabels[tab];
                   return (
                     <button
                       key={tab}
@@ -3097,7 +3151,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                       className={`${styles.contextTab} ${activeContextTab === tab ? styles.contextTabActive : ""}`}
                       onClick={() => setActiveContextTab(tab)}
                     >
-                      {tab === "all" ? "All" : sectionLabels[tab]}
+                      {label}
                       <span className={styles.contextTabCount}>{count}</span>
                     </button>
                   );
@@ -3178,6 +3232,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                             ) : (
                               <>
                                 <p className={styles.contextText}>{item.text}</p>
+                                <ContextItemMeta item={item} />
                                 <div className={styles.contextActions}>
                                   <button
                                     className={styles.ghostButton}
@@ -3248,12 +3303,75 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                       key={note.memoryId}
                       note={note}
                       busy={busy}
+                      editing={editingKey === `note:${note.memoryId}`}
+                      editingText={editingText}
+                      onChangeEditingText={setEditingText}
+                      onStartEdit={() => {
+                        setEditingKey(`note:${note.memoryId}`);
+                        setEditingText(note.text);
+                      }}
+                      onSaveEdit={() => void saveNoteEdit(note.memoryId)}
+                      onCancelEdit={() => {
+                        setEditingKey(null);
+                        setEditingText("");
+                      }}
                       onDelete={() => void removeNote(note.memoryId)}
                     />
                   ))
                 )}
               </div>
               </>
+            ) : activeContextTab === "notes" ? (
+              /* Notes tab: scrollable list + composer */
+              <div className={`${styles.contextItemList} ${styles.contextItemListScroll}`}>
+                {activeState.contextPreview.notes.length === 0 ? (
+                  contextLoading ? (
+                    <ContextSkeleton lines={3} />
+                  ) : (
+                    <p className={styles.emptyHint}>
+                      No notes yet. Add one below, or right-click any text on the
+                      web → Save to Relay.
+                    </p>
+                  )
+                ) : (
+                  activeState.contextPreview.notes.map((note) => (
+                    <SidepanelNoteItem
+                      key={note.memoryId}
+                      note={note}
+                      busy={busy}
+                      editing={editingKey === `note:${note.memoryId}`}
+                      editingText={editingText}
+                      onChangeEditingText={setEditingText}
+                      onStartEdit={() => {
+                        setEditingKey(`note:${note.memoryId}`);
+                        setEditingText(note.text);
+                      }}
+                      onSaveEdit={() => void saveNoteEdit(note.memoryId)}
+                      onCancelEdit={() => {
+                        setEditingKey(null);
+                        setEditingText("");
+                      }}
+                      onDelete={() => void removeNote(note.memoryId)}
+                    />
+                  ))
+                )}
+
+                <div className={styles.contextComposer}>
+                  <textarea
+                    className={styles.contextEditor}
+                    value={noteDraft}
+                    placeholder="Add a note Relay should keep."
+                    onChange={(event) => setNoteDraft(event.target.value)}
+                  />
+                  <button
+                    className={styles.secondaryButton}
+                    disabled={busy || !noteDraft.trim()}
+                    onClick={() => void addNote()}
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
             ) : (
               /* Single-section tab: unified list with composer */
               (() => {
@@ -3306,6 +3424,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                           ) : (
                             <>
                               <p className={styles.contextText}>{item.text}</p>
+                              <ContextItemMeta item={item} />
                               <div className={styles.contextActions}>
                                 <button
                                   className={styles.ghostButton}
@@ -3430,6 +3549,40 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   );
 }
 
+const SURFACE_LABELS: Record<string, string> = {
+  chatgpt: "ChatGPT",
+  claude: "Claude",
+  gemini: "Gemini",
+  grok: "Grok",
+  perplexity: "Perplexity",
+  deepseek: "DeepSeek",
+  codex: "Codex",
+  mcp: "MCP",
+  web: "Web",
+  api: "API",
+  ask_relay: "Ask Relay",
+  extension: "Extension",
+  manual: "Manual",
+};
+
+function ContextItemMeta({ item }: { item: ContextItem }) {
+  const label =
+    item.source === "derived"
+      ? "Derived"
+      : SURFACE_LABELS[item.sourceSurface ?? "manual"] ?? "Manual";
+  const time = item.capturedAt ? formatNoteRelativeTime(item.capturedAt) : null;
+  return (
+    <div className={styles.contextItemMeta}>
+      <span className={styles.contextItemBadge}>{label}</span>
+      {time ? (
+        <time className={styles.contextItemTime} dateTime={item.capturedAt ?? undefined}>
+          {time}
+        </time>
+      ) : null}
+    </div>
+  );
+}
+
 function formatNoteRelativeTime(iso: string): string {
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return "";
@@ -3446,6 +3599,12 @@ function formatNoteRelativeTime(iso: string): string {
 interface SidepanelNoteItemProps {
   note: RelayActiveProjectState["contextPreview"]["notes"][number];
   busy: boolean;
+  editing: boolean;
+  editingText: string;
+  onChangeEditingText: (value: string) => void;
+  onStartEdit: () => void;
+  onSaveEdit: () => void;
+  onCancelEdit: () => void;
   onDelete: () => void;
 }
 
@@ -3464,10 +3623,44 @@ function ContextSkeleton({ lines = 2 }: { lines?: number }) {
   );
 }
 
-function SidepanelNoteItem({ note, busy, onDelete }: SidepanelNoteItemProps) {
+function SidepanelNoteItem({
+  note,
+  busy,
+  editing,
+  editingText,
+  onChangeEditingText,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
+  onDelete,
+}: SidepanelNoteItemProps) {
   const favicon = note.hostname
     ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(note.hostname)}&sz=32`
     : null;
+
+  if (editing) {
+    return (
+      <article className={styles.noteItem}>
+        <textarea
+          className={styles.contextEditor}
+          value={editingText}
+          onChange={(event) => onChangeEditingText(event.target.value)}
+        />
+        <div className={styles.contextActions} style={{ opacity: 1 }}>
+          <button
+            className={styles.secondaryButton}
+            disabled={busy || !editingText.trim()}
+            onClick={onSaveEdit}
+          >
+            Save
+          </button>
+          <button className={styles.ghostButton} type="button" onClick={onCancelEdit}>
+            Cancel
+          </button>
+        </div>
+      </article>
+    );
+  }
 
   return (
     <article className={styles.noteItem}>
@@ -3490,6 +3683,15 @@ function SidepanelNoteItem({ note, busy, onDelete }: SidepanelNoteItemProps) {
         <time className={styles.noteTime} dateTime={note.capturedAt}>
           {formatNoteRelativeTime(note.capturedAt)}
         </time>
+        <button
+          type="button"
+          className={styles.noteEdit}
+          disabled={busy}
+          onClick={onStartEdit}
+          aria-label="Edit note"
+        >
+          Edit
+        </button>
         <button
           type="button"
           className={styles.noteDelete}

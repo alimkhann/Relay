@@ -497,6 +497,17 @@ function buildDashboardContextPreview(
   }
 
   const base = buildProjectContextPreview(dashboard);
+  // Most-recent first; derived items (no capturedAt) sink to the bottom, order
+  // preserved among themselves.
+  const byRecency = <T extends { capturedAt?: string | null }>(items: T[]): T[] =>
+    [...items].sort((a, b) => {
+      const at = a.capturedAt ?? "";
+      const bt = b.capturedAt ?? "";
+      if (at && bt) return bt.localeCompare(at);
+      if (at) return -1;
+      if (bt) return 1;
+      return 0;
+    });
   const notes = (dashboard.memory ?? [])
     .filter((item) => item.type === "note" && item.pinned)
     .sort((a, b) => {
@@ -525,7 +536,9 @@ function buildDashboardContextPreview(
     });
 
   return {
-    ...base,
+    decisions: byRecency(base.decisions),
+    constraints: byRecency(base.constraints),
+    tasks: byRecency(base.tasks),
     notes,
   };
 }
