@@ -1,4 +1,4 @@
-import { normalizeText, type ProjectSummaryDto } from "@relay/shared"
+import { normalizeText, type ProjectSettingsRow, type ProjectSummaryDto } from "@relay/shared"
 
 import type { RepositoryBundle } from "./repository-bundle"
 
@@ -77,6 +77,9 @@ export async function getProjectSummaries(
         repositories.sessions.countDistinctConversations(project.id, { includeArchived: false }),
         repositories.projectSettings.getByProject(project.id)
       ])
+      const settings = projectSettings?.settings as
+        | ProjectSettingsRow["settings"]
+        | undefined
       const routingKeywords = extractRoutingKeywords([
         project.name,
         project.slug,
@@ -106,7 +109,10 @@ export async function getProjectSummaries(
         },
         updatedAt: project.updatedAt,
         kind: project.kind,
-        autoCapture: (projectSettings?.settings as { autoCapture?: boolean } | undefined)?.autoCapture
+        autoCapture: settings?.autoCapture,
+        autoCapturePlatforms: settings?.autoCapturePlatforms,
+        inlineChip: settings?.inlineChip,
+        inlineChipPlatforms: settings?.inlineChipPlatforms
       }
     })
   )

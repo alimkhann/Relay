@@ -34,9 +34,16 @@ export async function updateProjectSettings(userId: string, projectId: string, i
     ...(existing?.settings ?? defaultProjectSettings),
     ...patch,
   }
-  // `autoCapture: null` clears the override → inherit the global user setting.
-  if (patch.autoCapture === null) {
-    delete combined.autoCapture
+  // A `null` on any override clears it → inherit the next level up.
+  for (const key of [
+    "autoCapture",
+    "autoCapturePlatforms",
+    "inlineChip",
+    "inlineChipPlatforms",
+  ] as const) {
+    if (patch[key] === null) {
+      delete combined[key]
+    }
   }
   const merged = normalizeProjectSettings(combined as Partial<ProjectSettingsRow["settings"]>)
   const row = await repositories.projectSettings.upsert(projectId, merged)

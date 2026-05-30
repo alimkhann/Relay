@@ -1,6 +1,7 @@
 import type {
   RelayOnboardingState,
   SourceSurface,
+  SupportedPlatform,
   TelemetryEventInput,
   UserEntitlementsDto,
 } from "@relay/shared";
@@ -21,6 +22,12 @@ export interface RelayProjectOption {
   kind?: "project" | "personal";
   /** Per-project auto-capture override; undefined = inherit the global setting. */
   autoCapture?: boolean;
+  /** Per-(platform) auto-capture override; wins over `autoCapture`. */
+  autoCapturePlatforms?: Partial<Record<SupportedPlatform, boolean>>;
+  /** Per-project inline-chip override; undefined = inherit the global setting. */
+  inlineChip?: boolean;
+  /** Per-(platform) inline-chip override; wins over `inlineChip`. */
+  inlineChipPlatforms?: Partial<Record<SupportedPlatform, boolean>>;
 }
 
 export type RelayRemoteStatus = "loading" | "ready" | "stale" | "unavailable";

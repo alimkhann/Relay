@@ -507,6 +507,12 @@ export interface ProjectSettingsRow {
     includeTentativeUpdatesInPackets: boolean
     compactionMode: ProjectCompactionMode
     autoCapture?: boolean
+    /** Per-(platform) auto-capture override; wins over `autoCapture`. */
+    autoCapturePlatforms?: Partial<Record<SupportedPlatform, boolean>>
+    /** Per-project inline-chip override; undefined = inherit the global setting. */
+    inlineChip?: boolean
+    /** Per-(platform) inline-chip override; wins over `inlineChip`. */
+    inlineChipPlatforms?: Partial<Record<SupportedPlatform, boolean>>
   }
   createdAt: string
   updatedAt: string

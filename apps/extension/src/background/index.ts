@@ -1,3 +1,4 @@
+import { effectiveAutoCapture } from "@relay/shared/utils/capture-settings";
 import { createFlowId } from "@relay/shared/utils/telemetry";
 import { buildProjectContextPreview, getProjectContextCounts } from "@relay/shared/utils/project-context";
 import { normalizeText, slugify } from "@relay/shared/utils/text";
@@ -1199,6 +1200,9 @@ async function loadSessionData() {
         } | null;
         kind?: "project" | "personal";
         autoCapture?: boolean;
+        autoCapturePlatforms?: Partial<Record<SupportedPlatform, boolean>>;
+        inlineChip?: boolean;
+        inlineChipPlatforms?: Partial<Record<SupportedPlatform, boolean>>;
       }>;
       settings: RemoteSettingsResponsePayload["settings"];
       onboarding?: RelayOnboardingState | null;
@@ -1219,6 +1223,9 @@ async function loadSessionData() {
       routingContext: project.routingContext ?? null,
       kind: project.kind ?? "project",
       autoCapture: project.autoCapture,
+      autoCapturePlatforms: project.autoCapturePlatforms,
+      inlineChip: project.inlineChip,
+      inlineChipPlatforms: project.inlineChipPlatforms,
     }));
     // The personal project (kind='personal') rides along for the picker but is
     // never treated as a normal project for auto-selection or the empty-state.
@@ -2759,15 +2766,21 @@ async function captureObservedChange(
       }
     }
 
-    // Per-project auto-capture: the active project may override the global
-    // setting (incl. the personal project). Override wins; absent → inherit.
+    // Auto-capture resolves most-specific-wins across (project × platform):
+    // a per-platform leaf overrides the project-level value, which overrides
+    // the global setting (incl. the personal project).
     const effectiveActiveProjectId = explicitProjectId ?? state.projectId ?? session.projectId ?? null;
     const activeProjectOption = effectiveActiveProjectId
       ? session.projectOptions.find((option) => option.id === effectiveActiveProjectId)
       : undefined;
-    const effectiveAutoCapture = activeProjectOption?.autoCapture ?? session.autoCapture;
+    const autoCaptureAllowed = effectiveAutoCapture({
+      platform: (state.page.platform ?? null) as SupportedPlatform | null,
+      global: session.autoCapture,
+      project: activeProjectOption?.autoCapture,
+      projectPlatforms: activeProjectOption?.autoCapturePlatforms,
+    });
 
-    if (!session.connected || !session.token || (!explicitProjectId && !effectiveAutoCapture)) {
+    if (!session.connected || !session.token || (!explicitProjectId && !autoCaptureAllowed)) {
       recordBackgroundTelemetry({
         level: "info",
         surface: "extension-background",

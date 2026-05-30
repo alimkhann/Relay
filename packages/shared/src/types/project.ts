@@ -43,6 +43,12 @@ export interface ProjectSummaryDto {
   kind?: ProjectKind
   /** Per-project auto-capture override; undefined = inherit the global setting. */
   autoCapture?: boolean
+  /** Per-(platform) auto-capture override; wins over `autoCapture`. */
+  autoCapturePlatforms?: Partial<Record<SupportedPlatform, boolean>>
+  /** Per-project inline-chip override; undefined = inherit the global setting. */
+  inlineChip?: boolean
+  /** Per-(platform) inline-chip override; wins over `inlineChip`. */
+  inlineChipPlatforms?: Partial<Record<SupportedPlatform, boolean>>
 }
 
 export interface ProjectDashboardDto {
@@ -212,6 +218,12 @@ export interface ProjectSettingsDto {
   compactionMode: ProjectCompactionMode
   /** Per-project auto-capture override; undefined = inherit the global setting. */
   autoCapture?: boolean
+  /** Per-(platform) auto-capture override; wins over `autoCapture`. */
+  autoCapturePlatforms?: Partial<Record<SupportedPlatform, boolean>>
+  /** Per-project inline-chip override; undefined = inherit the global setting. */
+  inlineChip?: boolean
+  /** Per-(platform) inline-chip override; wins over `inlineChip`. */
+  inlineChipPlatforms?: Partial<Record<SupportedPlatform, boolean>>
 }
 
 export interface ProjectStateOverrideDto {
