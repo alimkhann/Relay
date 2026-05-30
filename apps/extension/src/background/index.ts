@@ -981,6 +981,8 @@ function setAssociationToastState(
     expiresAt: payload.expiresAt,
     digestStatus: payload.digestStatus ?? null,
     reason: payload.reason ?? null,
+    personalSaved: payload.personalSaved ?? null,
+    personalUnsure: payload.personalUnsure ?? null,
   };
 }
 
@@ -2104,6 +2106,7 @@ async function captureTab(
     budgetStatus: payload.budgetStatus ?? null,
     stateStatus: payload.stateStatus ?? null,
     reconciliation: payload.reconciliation ?? null,
+    personalRouting: payload.personalRouting ?? null,
   };
 }
 
@@ -3288,6 +3291,8 @@ async function captureObservedChange(
           projectId,
           projectName: state.projectName ?? projectName ?? "",
           digestStatus,
+          personalSaved: result.personalRouting?.written ?? null,
+          personalUnsure: result.personalRouting?.unsure ?? null,
         });
         await showAssociationToast(tabId, doneToast);
       }

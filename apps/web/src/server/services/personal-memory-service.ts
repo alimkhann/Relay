@@ -43,6 +43,13 @@ const CLASSIFY_USD = 0.0015
 /** Facts at or above this confidence are eligible to write (when autowrite is on). */
 export const PERSONAL_SALIENCE_WRITE_THRESHOLD = 0.7
 
+/**
+ * Facts in [UNSURE, WRITE) are surfaced as "unsure" — Relay found something that
+ * looks personal but isn't confident enough to auto-write. Below UNSURE they're
+ * treated as noise and dropped silently.
+ */
+export const PERSONAL_SALIENCE_UNSURE_THRESHOLD = 0.4
+
 export const PERSONAL_FACT_CATEGORIES = [
   "identity",
   "preference",
@@ -195,6 +202,25 @@ export interface RoutePersonalMemoryOptions {
 }
 
 /**
+ * Outcome of one routing pass, surfaced so the capture caller can show the user
+ * a "saved N to Personal" / "N look personal — confirm?" toast.
+ */
+export interface PersonalRoutingResult {
+  /** Personal project id, when one exists for the user. */
+  personalProjectId: string | null
+  /** Durable facts actually written into personal this pass. */
+  written: number
+  /** Borderline facts (confidence in [UNSURE, WRITE)) — found, not written. */
+  unsure: number
+  /** High-confidence facts that already existed (ADD/NOOP -> noop). */
+  duplicate: number
+}
+
+function emptyRoutingResult(personalProjectId: string | null): PersonalRoutingResult {
+  return { personalProjectId, written: 0, unsure: 0, duplicate: 0 }
+}
+
+/**
  * Derive durable user facts from a captured text and route the high-confidence
  * ones into the user's personal project. Best-effort + fire-and-forget — never
  * throws into the caller. The original capture into `activeProjectId` is the
@@ -208,18 +234,21 @@ export async function routePersonalMemory(
   activeProjectId: string,
   content: string,
   options: RoutePersonalMemoryOptions = {},
-): Promise<void> {
+): Promise<PersonalRoutingResult> {
+  let personalProjectId: string | null = null
   try {
     const repositories = createRepositoryBundle(userId)
     const personal = await repositories.projects.getPersonalProject(userId)
-    if (!personal) return
+    if (!personal) return emptyRoutingResult(null)
+    personalProjectId = personal.id
     // A write whose target already is the personal project is a manual personal
     // capture — manual picks win, so don't re-route.
-    if (personal.id === activeProjectId) return
+    if (personal.id === activeProjectId) return emptyRoutingResult(personal.id)
 
     const facts = await classifyPersonalSalience(content, options.classifyDeps)
-    if (facts.length === 0) return
+    if (facts.length === 0) return emptyRoutingResult(personal.id)
 
+    const result = emptyRoutingResult(personal.id)
     const autoWriteEnabled = process.env.RELAY_PERSONAL_MEMORY_AUTOWRITE === "true"
 
     // Load existing personal items once for the ADD/NOOP decision.
@@ -240,6 +269,12 @@ export async function routePersonalMemory(
     for (const fact of facts) {
       const eligible = autoWriteEnabled && fact.confidence >= PERSONAL_SALIENCE_WRITE_THRESHOLD
       if (!eligible) {
+        if (
+          fact.confidence >= PERSONAL_SALIENCE_UNSURE_THRESHOLD &&
+          fact.confidence < PERSONAL_SALIENCE_WRITE_THRESHOLD
+        ) {
+          result.unsure += 1
+        }
         // Soak: log the candidate for prompt tuning, never write.
         await logServerEvent({
           level: "info",
@@ -269,6 +304,7 @@ export async function routePersonalMemory(
         existing,
       )
       if (decision.verb === "noop") {
+        result.duplicate += 1
         await logServerEvent({
           level: "info",
           surface: "web-api",
@@ -302,6 +338,7 @@ export async function routePersonalMemory(
           validationState: "inferred",
         },
       })
+      result.written += 1
       // Keep the in-memory existing set current so later facts in the same
       // batch dedupe against just-added ones.
       existing.push({
@@ -314,6 +351,7 @@ export async function routePersonalMemory(
         metadata: created.metadata,
       })
     }
+    return result
   } catch (error) {
     await logServerEvent({
       level: "error",
@@ -325,5 +363,6 @@ export async function routePersonalMemory(
       context: { derivedFromProjectId: activeProjectId },
       error,
     }).catch(() => {})
+    return emptyRoutingResult(personalProjectId)
   }
 }

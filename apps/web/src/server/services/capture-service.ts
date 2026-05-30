@@ -5,7 +5,27 @@ import { invalidateProjectCache } from "@/server/cache/invalidation"
 import { decideDigestStrategy, enqueueDigestJob, scheduleDigestDrainForProject, type DigestJobOutcome } from "./digest-service"
 import { getProjectStateStatus } from "./state-status-service"
 import { fireUserMilestone } from "./user-milestones-service"
+import { routePersonalMemory, type PersonalRoutingResult } from "./personal-memory-service"
 import { logServerEvent } from "@/server/logging/logger"
+
+const PERSONAL_ROUTING_MAX_CHARS = 6_000
+
+/**
+ * Build the text the personal-salience classifier reads. Personal facts come
+ * from what the *user* says, so prefer user turns; fall back to the whole
+ * transcript when a capture has none. Bounded — the classifier truncates again.
+ */
+function buildPersonalRoutingText(
+  turns: ReadonlyArray<{ role: string; content: string }>,
+): string {
+  const userTurns = turns.filter((turn) => turn.role === "user")
+  const source = userTurns.length > 0 ? userTurns : turns
+  return source
+    .map((turn) => turn.content.trim())
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, PERSONAL_ROUTING_MAX_CHARS)
+}
 
 export async function saveCapture(userId: string, input: unknown) {
   const startedAt = Date.now()
@@ -185,6 +205,20 @@ export async function saveCapture(userId: string, input: unknown) {
 
   invalidateProjectCache(userId, normalizedInput.projectId)
 
+  // Derive durable user facts from this capture and selectively route the
+  // salient ones into the personal project. routePersonalMemory self-guards
+  // (skips when the active project already IS personal) and never throws.
+  let personalRouting: PersonalRoutingResult | null = null
+  const personalSourceText = buildPersonalRoutingText(parsed.turns)
+  if (personalSourceText) {
+    personalRouting = await routePersonalMemory(
+      userId,
+      normalizedInput.projectId,
+      personalSourceText,
+      { sourceSurface: normalizedInput.platform ?? "extension" },
+    )
+  }
+
   return {
     session,
     turns,
@@ -194,6 +228,7 @@ export async function saveCapture(userId: string, input: unknown) {
     digestOutcome,
     budgetStatus,
     stateStatus,
-    reconciliation: digestOutcome?.reconciliation ?? null
+    reconciliation: digestOutcome?.reconciliation ?? null,
+    personalRouting,
   }
 }

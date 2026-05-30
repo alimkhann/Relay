@@ -1,11 +1,28 @@
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type { MemoryItemForConflictResolution } from "@relay/shared"
+
+const getPersonalProjectMock = vi.fn()
+const listByProjectMock = vi.fn()
+const createMemoryItemMock = vi.fn()
+
+vi.mock("@relay/db", () => ({
+  createRepositoryBundle: () => ({
+    projects: { getPersonalProject: getPersonalProjectMock },
+    memory: { listByProject: listByProjectMock },
+  }),
+}))
+
+vi.mock("./memory-service", () => ({
+  createMemoryItem: (...args: unknown[]) => createMemoryItemMock(...args),
+}))
 
 import {
   classifyPersonalSalience,
   decidePersonalCrud,
+  routePersonalMemory,
   PERSONAL_SALIENCE_WRITE_THRESHOLD,
+  PERSONAL_SALIENCE_UNSURE_THRESHOLD,
   type PersonalFact,
 } from "./personal-memory-service"
 import type { runGeminiJsonWithFallback } from "./gemini-service"
@@ -132,5 +149,80 @@ describe("PERSONAL_SALIENCE_WRITE_THRESHOLD", () => {
   it("is a sane soak threshold in (0,1)", () => {
     expect(PERSONAL_SALIENCE_WRITE_THRESHOLD).toBeGreaterThan(0)
     expect(PERSONAL_SALIENCE_WRITE_THRESHOLD).toBeLessThanOrEqual(1)
+  })
+
+  it("unsure threshold sits below the write threshold", () => {
+    expect(PERSONAL_SALIENCE_UNSURE_THRESHOLD).toBeGreaterThan(0)
+    expect(PERSONAL_SALIENCE_UNSURE_THRESHOLD).toBeLessThan(PERSONAL_SALIENCE_WRITE_THRESHOLD)
+  })
+})
+
+describe("routePersonalMemory result", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    getPersonalProjectMock.mockReset()
+    listByProjectMock.mockReset()
+    createMemoryItemMock.mockReset()
+  })
+
+  function classifyWith(facts: PersonalFact[]) {
+    return {
+      runJson: fakeRunJson(facts),
+      gate: ALLOW_GATE as never,
+    }
+  }
+
+  it("returns empty result when the user has no personal project", async () => {
+    getPersonalProjectMock.mockResolvedValue(null)
+    const result = await routePersonalMemory("u1", "proj-1", "hi", {
+      classifyDeps: classifyWith([{ category: "identity", content: "x", confidence: 0.9 }]),
+    })
+    expect(result).toEqual({ personalProjectId: null, written: 0, unsure: 0, duplicate: 0 })
+  })
+
+  it("skips re-routing when the active project already is personal", async () => {
+    getPersonalProjectMock.mockResolvedValue({ id: "personal-1" })
+    const result = await routePersonalMemory("u1", "personal-1", "hi", {
+      classifyDeps: classifyWith([{ category: "identity", content: "x", confidence: 0.9 }]),
+    })
+    expect(result).toEqual({ personalProjectId: "personal-1", written: 0, unsure: 0, duplicate: 0 })
+  })
+
+  it("counts borderline facts as unsure during soak (autowrite off)", async () => {
+    vi.stubEnv("RELAY_PERSONAL_MEMORY_AUTOWRITE", "")
+    getPersonalProjectMock.mockResolvedValue({ id: "personal-1" })
+    listByProjectMock.mockResolvedValue([])
+    const result = await routePersonalMemory("u1", "proj-1", "hi", {
+      classifyDeps: classifyWith([
+        { category: "preference", content: "likes dark mode", confidence: 0.55 },
+        { category: "goal", content: "noise", confidence: 0.2 },
+      ]),
+    })
+    expect(result.written).toBe(0)
+    expect(result.unsure).toBe(1)
+    expect(createMemoryItemMock).not.toHaveBeenCalled()
+  })
+
+  it("writes high-confidence facts when autowrite is enabled", async () => {
+    vi.stubEnv("RELAY_PERSONAL_MEMORY_AUTOWRITE", "true")
+    getPersonalProjectMock.mockResolvedValue({ id: "personal-1" })
+    listByProjectMock.mockResolvedValue([])
+    createMemoryItemMock.mockImplementation(async (_u: string, input: { content: string }) => ({
+      id: `m-${input.content}`,
+      content: input.content,
+      capturedAt: new Date().toISOString(),
+      type: "note",
+      pinned: false,
+      sourceSurface: "auto",
+      metadata: {},
+    }))
+    const result = await routePersonalMemory("u1", "proj-1", "hi", {
+      classifyDeps: classifyWith([
+        { category: "identity", content: "based in Kazakhstan", confidence: 0.92 },
+      ]),
+    })
+    expect(result.written).toBe(1)
+    expect(result.unsure).toBe(0)
+    expect(createMemoryItemMock).toHaveBeenCalledOnce()
   })
 })

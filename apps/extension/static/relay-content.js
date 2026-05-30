@@ -2583,8 +2583,16 @@
               ? "Saved - analysis queued"
               : `Saved to ${payload.projectName}`
           : `Approve save to ${payload.projectName}`;
+    const personalNote =
+      payload.mode === "done"
+        ? (payload.personalSaved && payload.personalSaved > 0
+            ? ` · Saved ${payload.personalSaved} to Personal`
+            : payload.personalUnsure && payload.personalUnsure > 0
+              ? ` · ${payload.personalUnsure} may be personal — review in Personal`
+              : "")
+        : "";
     const meta =
-      payload.mode === "saving"
+      (payload.mode === "saving"
         ? payload.reason || `Saving this chat to ${payload.projectName}...`
         : payload.mode === "done"
           ? payload.digestStatus === "analyzed"
@@ -2592,7 +2600,8 @@
             : payload.digestStatus === "queued"
               ? "Chat captured. Analysis will run shortly."
               : "Chat captured to your project."
-          : payload.reason || "Relay is not fully sure. Approve now or review it later in the sidebar.";
+          : payload.reason || "Relay is not fully sure. Approve now or review it later in the sidebar.") +
+      personalNote;
     const showActions = payload.mode === "ask";
     const showDismiss = payload.mode !== "done";
     const canSwitchProject =

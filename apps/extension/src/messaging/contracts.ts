@@ -102,6 +102,10 @@ export interface RelayAssociationToastPayload {
   expiresAt: number;
   digestStatus?: "analyzed" | "queued" | null;
   reason?: string | null;
+  /** Durable user facts routed into the personal project by this capture. */
+  personalSaved?: number | null;
+  /** Borderline personal facts found but not auto-written (soak / low confidence). */
+  personalUnsure?: number | null;
 }
 
 export interface RelayRoutingReview {
@@ -122,6 +126,8 @@ export interface RelayAssociationToastState {
   expiresAt: number | null;
   digestStatus?: "analyzed" | "queued" | null;
   reason?: string | null;
+  personalSaved?: number | null;
+  personalUnsure?: number | null;
 }
 
 export interface RelayInsertState {
