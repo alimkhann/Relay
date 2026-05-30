@@ -22,7 +22,11 @@ export default async function DashboardPage({
   searchParams: Promise<{ project?: string; projectName?: string; projectDescription?: string; projectUrl?: string; walkthrough?: string }>
 }) {
   const viewer = await requirePageViewer("/dashboard")
-  const projects = await listProjectsForUser(viewer.userId)
+  // Include personal so it can be selected from the switcher, but keep the
+  // regular-only list for onboarding/empty-state/default resolution (personal
+  // is never the implicit current project and must not count as "has projects").
+  const allProjects = await listProjectsForUser(viewer.userId, { includePersonal: true })
+  const projects = allProjects.filter((p) => p.kind !== "personal")
   const [onboarding, settings] = await Promise.all([
     getResolvedOnboardingStateForUser(viewer.userId, { projects }).catch((error) => {
       void logServerEvent({
@@ -122,7 +126,7 @@ export default async function DashboardPage({
   const { project: selectedProjectId, walkthrough: walkthroughParam } = await searchParams
   const currentProject =
     (selectedProjectId
-      ? projects.find((p) => p.id === selectedProjectId)
+      ? allProjects.find((p) => p.id === selectedProjectId)
       : projects.find((p) => p.id === onboarding.completedProjectId)) ??
     projects[0] ??
     null
