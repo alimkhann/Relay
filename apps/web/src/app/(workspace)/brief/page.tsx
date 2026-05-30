@@ -14,17 +14,19 @@ export default async function BriefPage({
   searchParams: Promise<{ project?: string }>
 }) {
   const viewer = await requirePageViewer("/brief")
-  const projects = await listProjectsForUser(viewer.userId)
+  const projects = await listProjectsForUser(viewer.userId, { includePersonal: true })
 
   if (projects.length === 0) {
     redirect("/dashboard")
   }
 
   const { project: selectedProjectId } = await searchParams
+  // Personal is selectable by explicit ?project=, but never the implicit default.
+  const defaultProject = projects.find((p) => p.kind !== "personal") ?? projects[0]!
   const currentProject =
     (selectedProjectId
       ? projects.find((p) => p.id === selectedProjectId)
-      : projects[0]) ?? projects[0]!
+      : defaultProject) ?? defaultProject
 
   void fireUserMilestone(viewer.userId, "first_brief_viewed", {
     project_id: currentProject.id,
