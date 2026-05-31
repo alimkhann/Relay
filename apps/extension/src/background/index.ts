@@ -31,12 +31,15 @@ import type {
 } from "../messaging/contracts";
 import {
   clearIgnoredChatKey,
+  clearManualOverride,
   isIgnoredChatKey,
   readAssociationAdjudication,
   readApprovedAssociations,
+  readManualOverride,
   rememberAssociationAdjudication,
   rememberApprovedAssociation,
   rememberIgnoredChatKey,
+  rememberManualOverride,
   removeApprovedAssociationBySession,
 } from "../storage/routing";
 import {
@@ -61,6 +64,7 @@ import {
   buildAssociationKey,
   evaluateProjectRouting,
   findApprovedAssociationMatch,
+  pickPreferredProjectId,
   type RelayRoutingDecision,
   type RelayBoundProjectSignal,
 } from "./routing";
@@ -156,6 +160,12 @@ interface RelayTabState {
   associationToast: RelayAssociationToastState;
   associationToastTimer: ReturnType<typeof setTimeout> | null;
   associationSuppressed: boolean;
+  // Manual "switch to project" override. Wins over the chat's auto-derived
+  // association for the active/picker project AND the next save, and survives
+  // re-syncs of the same chat. Cleared when the user navigates to a different
+  // conversation (chat key change) or retargets the chat association.
+  manualProjectId: string | null;
+  manualProjectChatKey: string | null;
   insertState: RelayInsertState;
   insertStateTimer: ReturnType<typeof setTimeout> | null;
   pendingInsertedBrief: PendingInsertedBriefState | null;
@@ -733,6 +743,34 @@ function hydrateTabStateFromSession(state: RelayTabState, session: Awaited<Retur
   }
 }
 
+/**
+ * Reconcile the per-tab manual project override against the current chat.
+ * - Drops the override when the user navigated to a different conversation.
+ * - Hydrates it from persisted storage when this tab/chat has one but the
+ *   in-memory state lost it (e.g. MV3 service-worker restart, reopened tab).
+ * Call before resolving the active project on a supported page.
+ */
+async function reconcileManualOverride(state: RelayTabState): Promise<void> {
+  if (!state.page.supported) return;
+  const currentChatKey = buildAssociationKey(state.page);
+
+  // Navigated to a different conversation — the override no longer applies.
+  if (state.manualProjectChatKey && state.manualProjectChatKey !== currentChatKey) {
+    await clearManualOverride(state.manualProjectChatKey);
+    state.manualProjectId = null;
+    state.manualProjectChatKey = null;
+  }
+
+  // Rehydrate from durable storage when memory was cleared.
+  if (!state.manualProjectId) {
+    const persisted = await readManualOverride(currentChatKey);
+    if (persisted) {
+      state.manualProjectId = persisted.projectId;
+      state.manualProjectChatKey = currentChatKey;
+    }
+  }
+}
+
 function createTabState(tabId: number): RelayTabState {
   return {
     tabId,
@@ -762,6 +800,8 @@ function createTabState(tabId: number): RelayTabState {
     associationToast: createEmptyAssociationToast(),
     associationToastTimer: null,
     associationSuppressed: false,
+    manualProjectId: null,
+    manualProjectChatKey: null,
     insertState: createEmptyInsertState(),
     insertStateTimer: null,
     pendingInsertedBrief: null,
@@ -1436,13 +1476,32 @@ async function resolveBoundProject(tabId: number, pageState: RelayPageState) {
 async function resolveActiveProject(
   tabId: number,
   pageState: RelayPageState,
-  preferredProjectId?: string | null,
+  preferred?:
+    | string
+    | null
+    | {
+        manualProjectId?: string | null;
+        associationProjectId?: string | null;
+        rememberedProjectId?: string | null;
+      },
 ) {
   const session = await getRelaySession();
   const remote = await loadSessionData();
   const bound = remote.connected
     ? await resolveBoundProject(tabId, pageState)
     : null;
+  // Resolve precedence against the authoritative project list (which includes
+  // the personal project) so a manual override wins, a stale override falls
+  // through to the association, and an unknown id never nulls the selection.
+  const preferredProjectId =
+    typeof preferred === "object" && preferred !== null
+      ? pickPreferredProjectId({
+          manualProjectId: preferred.manualProjectId,
+          associationProjectId: preferred.associationProjectId,
+          rememberedProjectId: preferred.rememberedProjectId,
+          projectIds: remote.projects.map((project) => project.id),
+        })
+      : (preferred ?? null);
   const preferredProject =
     preferredProjectId
       ? remote.projects.find((project) => project.id === preferredProjectId) ?? null
@@ -1479,6 +1538,20 @@ async function rememberProjectSelection(
   pageState: RelayPageState,
   projectName?: string | null,
 ) {
+  const session = await getRelaySession();
+  const selectedProject =
+    session.projectOptions.find((project) => project.id === projectId) ??
+    null;
+
+  if (selectedProject?.kind === "personal") {
+    await setRelaySession({
+      projectId,
+      assumedProjectId: projectId,
+      assumedProjectName: projectName ?? selectedProject.name,
+    });
+    return;
+  }
+
   const updates = [
     relayFetch("/api/extension/bindings", {
       method: "POST",
@@ -1624,16 +1697,26 @@ async function buildActiveProjectState(
   }
 
   const associationProject = getRetargetableAssociationProject(state);
+  // A manual project override wins over the chat's auto-derived association in
+  // the picker too, so the user sees the project they just switched to.
+  const manualProjectId = state.manualProjectId;
+  const manualProjectName = manualProjectId
+    ? (state.projectOptions.length ? state.projectOptions : session.projectOptions).find(
+        (project) => project.id === manualProjectId,
+      )?.name ?? state.projectName ?? null
+    : null;
   const onboarding = session.onboarding ?? createPendingOnboardingState();
   const effectiveProjectId =
     onboarding.status === "completed"
-      ? associationProject?.projectId ??
+      ? manualProjectId ??
+        associationProject?.projectId ??
         state.projectId ??
         (session.assumedProjectId || null)
       : null;
   const effectiveProjectName =
     onboarding.status === "completed"
-      ? associationProject?.projectName ??
+      ? (manualProjectId ? manualProjectName : null) ??
+        associationProject?.projectName ??
         state.projectName ??
         session.assumedProjectName ??
         session.projectOptions.find((project) => project.id === effectiveProjectId)?.name ??
@@ -1786,6 +1869,9 @@ async function syncTabRemoteState(
   await broadcastActiveProjectState(tabId);
 
   try {
+    // Reconcile the manual override against the current chat before resolving:
+    // drop it on navigation, rehydrate it after a worker restart.
+    await reconcileManualOverride(state);
     const approvedAssociations = state.page.supported
       ? await readApprovedAssociations()
       : [];
@@ -1793,12 +1879,12 @@ async function syncTabRemoteState(
       state.page,
       approvedAssociations,
     );
-    const preferredProjectId =
-      getRetargetableAssociationProject(state)?.projectId ??
-      rememberedAssociation?.projectId ??
-      null;
     const { connected, projects, activeProject, settings, boundProject, onboarding } =
-      await resolveActiveProject(tabId, state.page, preferredProjectId);
+      await resolveActiveProject(tabId, state.page, {
+        manualProjectId: state.manualProjectId,
+        associationProjectId: getRetargetableAssociationProject(state)?.projectId ?? null,
+        rememberedProjectId: rememberedAssociation?.projectId ?? null,
+      });
     const dashboard = activeProject
       ? await fetchProjectDashboard(activeProject.id)
       : null;
@@ -2566,6 +2652,16 @@ async function retargetAssociation(
     return { ok: false, reason: "Choose a valid project first." };
   }
 
+  // Retargeting the chat is an explicit association choice — drop any manual
+  // override so it doesn't shadow the new association on the next re-sync.
+  if (state.manualProjectChatKey) {
+    await clearManualOverride(state.manualProjectChatKey);
+  } else if (state.page.supported) {
+    await clearManualOverride(buildAssociationKey(state.page));
+  }
+  state.manualProjectId = null;
+  state.manualProjectChatKey = null;
+
   const previousState = {
     projectId: state.projectId,
     projectName: state.projectName,
@@ -2849,7 +2945,17 @@ async function captureObservedChange(
       });
     }
 
-    let projectId = explicitProjectId ?? state.projectId;
+    // A manual project switch on this chat must win over the chat's
+    // auto-derived association when routing a non-explicit save, so the save
+    // lands where the user pointed Relay. Reconcile first to drop a stale
+    // override left over from a different conversation.
+    if (!explicitProjectId) {
+      await reconcileManualOverride(state);
+    }
+    const manualOverrideProjectId =
+      !explicitProjectId && state.manualProjectId ? state.manualProjectId : null;
+
+    let projectId = manualOverrideProjectId ?? explicitProjectId ?? state.projectId;
     let routingDecision: Awaited<ReturnType<typeof resolveAutoCaptureRouting>> | null =
       null;
     let autoAssociated = false;
@@ -2864,7 +2970,7 @@ async function captureObservedChange(
       ? null
       : findApprovedAssociationMatch(state.page, approvedAssociations);
 
-    if (!explicitProjectId) {
+    if (!explicitProjectId && !manualOverrideProjectId) {
       if (
         state.chatAssociation.status === "saved" &&
         state.chatAssociation.projectId
@@ -5273,6 +5379,22 @@ chrome.runtime.onMessage.addListener(
             pageState,
             nextProjectName,
           );
+          // On a supported chat, a manual pick must win over the chat's
+          // auto-derived association — for the active project, the picker, and
+          // the next save — and survive re-syncs of this same chat. Persist it
+          // per chat key so a service-worker restart keeps the choice.
+          let overrideDisplacedAssociation = false;
+          if (state && pageState.supported) {
+            const overrideChatKey = buildAssociationKey(pageState);
+            const priorAssociationProjectId =
+              getRetargetableAssociationProject(state)?.projectId ?? null;
+            overrideDisplacedAssociation =
+              priorAssociationProjectId != null &&
+              priorAssociationProjectId !== message.payload.projectId;
+            state.manualProjectId = message.payload.projectId;
+            state.manualProjectChatKey = overrideChatKey;
+            await rememberManualOverride(overrideChatKey, message.payload.projectId);
+          }
           if (state) {
             state.projectId = message.payload.projectId;
             state.projectName = nextProjectName ?? state.projectName;
@@ -5302,6 +5424,7 @@ chrome.runtime.onMessage.addListener(
               context: {
                 projectName: nextProjectName ?? null,
                 associationAware: false,
+                overrideDisplacedAssociation,
               },
             });
             sendResponse(await buildActiveProjectState(tabId));

@@ -192,6 +192,26 @@ function hasIncidentalReferenceMention(project: RelayProjectOption, haystack: st
   ].some((phrase) => normalizedHaystack.includes(phrase))
 }
 
+function hasPersonalProfileIntent(haystack: string | null | undefined) {
+  const normalizedHaystack = normalizeText(haystack ?? "").toLowerCase()
+  if (!normalizedHaystack) return false
+
+  return [
+    "about me",
+    "know about me",
+    "what you know about me",
+    "everything you know about me",
+    "my profile",
+    "personal profile",
+    "user profile",
+    "personal facts",
+    "personal memory",
+    "who am i",
+  ].some((phrase) => normalizedHaystack.includes(phrase)) ||
+    /\bsummari[sz]e\b[\s\S]{0,80}\bme\b/.test(normalizedHaystack) ||
+    /\bwhat\b[\s\S]{0,60}\byou\b[\s\S]{0,60}\bknow\b[\s\S]{0,60}\bme\b/.test(normalizedHaystack)
+}
+
 function collectProjectTokens(project: RelayProjectOption) {
   return uniqueTokens([project.name, project.slug ?? null])
 }
@@ -247,6 +267,36 @@ function buildAssociationComparisonKey(page: Pick<RelayPageState, "platform" | "
 
 export function buildAssociationKey(page: Pick<RelayPageState, "platform" | "pageFingerprint" | "pathname" | "url" | "sourceConversationId">) {
   return buildAssociationComparisonKey(page)
+}
+
+/**
+ * Pick the project id that should drive the active/picker project and the next
+ * save, honoring precedence: a manual project override wins over the chat's
+ * auto-derived association, which wins over a remembered approved association.
+ *
+ * Membership matters: a candidate id is only honored when it exists in the
+ * current project options (the personal project IS in this list). An override
+ * whose project is no longer available falls through to the association rather
+ * than silently nulling the selection. Returns null when nothing qualifies.
+ */
+export function pickPreferredProjectId(input: {
+  manualProjectId?: string | null
+  associationProjectId?: string | null
+  rememberedProjectId?: string | null
+  projectIds: ReadonlyArray<string>
+}): string | null {
+  const available = new Set(input.projectIds)
+  const candidates = [
+    input.manualProjectId,
+    input.associationProjectId,
+    input.rememberedProjectId,
+  ]
+  for (const candidate of candidates) {
+    if (candidate && available.has(candidate)) {
+      return candidate
+    }
+  }
+  return null
 }
 
 export function findApprovedAssociationMatch(
@@ -373,6 +423,10 @@ function scoreProjectCandidate(
   const recentWindowTokens = uniqueTokens([routingText])
   const fullVisibleRoutingText = getFullVisibleRoutingText(input.page)
   const fullVisibleTokens = uniqueTokens([fullVisibleRoutingText])
+  const personalProfileIntent =
+    hasPersonalProfileIntent(input.page.title) ||
+    hasPersonalProfileIntent(routingText) ||
+    hasPersonalProfileIntent(fullVisibleRoutingText)
 
   for (const association of input.approvedAssociations) {
     scoreApprovedAssociation(candidate, input, association)
@@ -571,6 +625,16 @@ function scoreProjectCandidate(
     candidate.score += 2
     candidate.signalCategories.add("binding")
     pushReason(candidate, "This is the currently selected project.")
+  }
+
+  if (
+    personalProfileIntent &&
+    project.kind !== "personal" &&
+    !candidate.signalCategories.has("association")
+  ) {
+    candidate.score = Math.min(candidate.score, 20)
+    candidate.highConfidenceEligible = false
+    pushReason(candidate, "The chat is primarily asking about the user, not this project.")
   }
 
   // Cap description-only scoring: if the ONLY signals are from description overlap
