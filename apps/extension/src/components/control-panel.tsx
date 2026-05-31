@@ -2783,7 +2783,12 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                             the top of the picker. Selecting it routes manual
                             captures to its normal project memory endpoint. */}
                         {(() => {
-                          const personalProject = activeState.projectOptions.find(
+                          // Fall back to the session list when the tab state
+                          // hasn't hydrated yet, so Personal still appears.
+                          const pickerOptions = activeState.projectOptions.length
+                            ? activeState.projectOptions
+                            : session?.projectOptions ?? [];
+                          const personalProject = pickerOptions.find(
                             (project) => project.kind === "personal",
                           );
                           if (!personalProject) return null;
@@ -2802,7 +2807,9 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                             </div>
                           );
                         })()}
-                        {activeState.projectOptions
+                        {(activeState.projectOptions.length
+                          ? activeState.projectOptions
+                          : session?.projectOptions ?? [])
                           .filter((project) => project.kind !== "personal")
                           .map((project) => (
                           <div key={project.id} className={styles.projectOptionRow}>

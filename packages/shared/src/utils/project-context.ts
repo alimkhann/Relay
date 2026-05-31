@@ -66,7 +66,9 @@ export function buildProjectContextItems(
         source: "derived" as const,
         memoryId: null,
         sourceSurface: null,
-        capturedAt: null,
+        // Derived items have no capture event — stamp the time the project
+        // state was last rederived so the UI can show a relative time.
+        capturedAt: dashboard.projectState?.updatedAt ?? null,
       }
     })
     .filter(

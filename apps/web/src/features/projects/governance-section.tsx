@@ -354,20 +354,20 @@ export function GovernanceSection({
                           </div>
                         </div>
                       ) : (
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[12px] leading-relaxed text-[var(--relay-ink-secondary)]">
-                              {item.text}
-                            </p>
-                            <div className="mt-1">
-                              <ProvenanceChip
-                                sourceSurface={item.sourceSurface ?? null}
-                                capturedAt={item.capturedAt}
-                                derived={item.source === "derived"}
-                              />
-                            </div>
+                        <div className="min-w-0">
+                          {/* Source/time badge top-left (matches extension). */}
+                          <div className="mb-1">
+                            <ProvenanceChip
+                              sourceSurface={item.sourceSurface ?? null}
+                              capturedAt={item.capturedAt}
+                              derived={item.source === "derived"}
+                            />
                           </div>
-                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                          <p className="text-[12px] leading-relaxed text-[var(--relay-ink-secondary)]">
+                            {item.text}
+                          </p>
+                          {/* Edit/delete bottom-right, revealed on hover. */}
+                          <div className="mt-1.5 flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                             <button
                               className="p-1 rounded text-[var(--relay-faint)] hover:text-[var(--relay-ink)] transition-colors"
                               onClick={() => {
