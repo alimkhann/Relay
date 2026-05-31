@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 // Mocked repository + digest surface. capture-service calls
 // createRepositoryBundle() and the digest-service helpers; we stub both so the
@@ -73,7 +73,9 @@ beforeEach(() => {
   decideDigestStrategyMock.mockResolvedValue({ strategy: "deferred", budgetStatus: null })
 })
 
-afterEach(() => vi.resetAllMocks())
+// NOTE: do not vi.resetAllMocks() here — it strips mock implementations that
+// other service tests' vi.mock factories rely on when the suite runs together.
+// clearAllMocks (beforeEach) already resets call state between tests.
 
 describe("linkSessionToProjects", () => {
   it("links a non-personal project and enqueues its digest", async () => {

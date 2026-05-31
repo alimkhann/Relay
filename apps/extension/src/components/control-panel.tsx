@@ -114,6 +114,7 @@ import {
 import {
   deriveAssociationCardPresentation,
   deriveUnresolvedAssociationCardPresentation,
+  resolvePanelProjectOptions,
   shouldShowAssociationCard,
 } from "./control-panel-state";
 import { resolveDisplayedPlan } from "./control-panel-billing";
@@ -351,6 +352,12 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   // in projectOptions (one per user). personalMode routes manual captures to it
   // via the normal project memory endpoint; no separate spaces API.
   const [personalMode, setPersonalMode] = useState(false);
+  // "Also save to" multi-project picker: the extra projects (besides the active
+  // one) the next Link & save should fan the captured session out to.
+  const [alsoSaveToOpen, setAlsoSaveToOpen] = useState(false);
+  const [alsoSaveToProjectIds, setAlsoSaveToProjectIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [newProjectUrl, setNewProjectUrl] = useState("");
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDescription, setNewProjectDescription] = useState("");
@@ -388,6 +395,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [billing, setBilling] = useState<BillingStatusDto | null>(null);
   const [userSettingsBusy, setUserSettingsBusy] = useState(false);
   const [showWalkthrough, setShowWalkthrough] = useState(false);
+  const panelProjectOptions = resolvePanelProjectOptions(
+    activeState.projectOptions,
+    session?.projectOptions ?? [],
+  );
   const walkthroughChecked = useRef(false);
   const activeStateRequestInFlight = useRef(false);
   const lastActiveStateRefreshAt = useRef(0);
@@ -1639,6 +1650,12 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       return;
     }
 
+    // "Also save to" extras: exclude the primary project, send the rest so the
+    // server links the session to each and runs their digests.
+    const extraProjectIds = Array.from(alsoSaveToProjectIds).filter(
+      (id) => id !== activeState.projectId,
+    );
+
     setBusy(true);
     setStatus(`Saving to ${activeState.projectName ?? "the selected project"}…`);
 
@@ -1648,6 +1665,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         payload: {
           projectId: activeState.projectId,
           tabId: tab.id,
+          additionalProjectIds: extraProjectIds.length ? extraProjectIds : undefined,
         },
       })) as {
         ok?: boolean;
@@ -1660,15 +1678,19 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       };
 
       const savedProjectName = result?.projectName ?? activeState.projectName ?? "the selected project";
+      const alsoCount = extraProjectIds.length;
+      const alsoSuffix = alsoCount > 0 ? ` + ${alsoCount} more project${alsoCount === 1 ? "" : "s"}` : "";
       setStatus(
         result?.ok
           ? (result.skippedInsertedContext
               ? (result.reason ?? `Saved to ${savedProjectName}. Relay found no new edits after the inserted brief.`)
-              : `Saved to ${savedProjectName}.${result?.digestStatus === "analyzed" ? " Relay analyzed it." : result?.digestStatus === "queued" || result?.digestQueued ? " Relay is updating your project brief." : ""}`)
+              : `Saved to ${savedProjectName}${alsoSuffix}.${result?.digestStatus === "analyzed" ? " Relay analyzed it." : result?.digestStatus === "queued" || result?.digestQueued ? " Relay is updating your project brief." : ""}`)
           : (result?.reason ?? "Associate chat failed."),
       );
 
       if (result?.ok) {
+        setAlsoSaveToProjectIds(new Set());
+        setAlsoSaveToOpen(false);
         await refreshLocalSession();
         await refreshActiveProjectState();
       }
@@ -1681,6 +1703,117 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
   }
 
+  function toggleAlsoSaveTo(projectId: string) {
+    setAlsoSaveToProjectIds((current) => {
+      const next = new Set(current);
+      if (next.has(projectId)) next.delete(projectId);
+      else next.add(projectId);
+      return next;
+    });
+  }
+
+  // Link & save button, with a "also save to" chevron when the server enables
+  // multi-project capture. The chevron expands a full-width dropdown of the
+  // other projects (Personal pinned first) with right-aligned checkboxes; the
+  // checked ones ride along as additionalProjectIds on the next save.
+  function renderLinkAndSave() {
+    const disabled =
+      busy || !activeState.projectId || !activeState.page.supported;
+    const showChevron = Boolean(session?.multiProjectCapture);
+
+    // Candidates = every project except the active/primary one (it is always
+    // saved to). Personal pinned to the top.
+    const candidates = panelProjectOptions
+      .filter((option) => option.id !== activeState.projectId)
+      .sort((a, b) => {
+        if (a.kind === "personal" && b.kind !== "personal") return -1;
+        if (b.kind === "personal" && a.kind !== "personal") return 1;
+        return 0;
+      });
+    const selectedCount = candidates.filter((option) =>
+      alsoSaveToProjectIds.has(option.id),
+    ).length;
+
+    if (!showChevron) {
+      return (
+        <button
+          className={styles.primaryButton}
+          disabled={disabled}
+          onClick={() => void associateCurrentChat()}
+        >
+          {busy ? "Saving…" : "Link & save"}
+        </button>
+      );
+    }
+
+    return (
+      <div className={styles.linkSaveWrap}>
+        <div className={styles.linkSaveRow}>
+          <button
+            className={styles.linkSaveMain}
+            disabled={disabled}
+            onClick={() => void associateCurrentChat()}
+          >
+            {busy
+              ? "Saving…"
+              : `Link & save${selectedCount > 0 ? ` (+${selectedCount})` : ""}`}
+          </button>
+          <button
+            className={styles.linkSaveChevron}
+            disabled={busy}
+            aria-label="Also save to"
+            aria-expanded={alsoSaveToOpen}
+            title="Also save to"
+            onClick={() => setAlsoSaveToOpen((open) => !open)}
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 12 12"
+              fill="none"
+              aria-hidden="true"
+              style={{
+                transform: alsoSaveToOpen ? "rotate(180deg)" : "none",
+                transition: "transform 120ms",
+              }}
+            >
+              <path
+                d="M3 4.5 6 7.5 9 4.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
+        {alsoSaveToOpen ? (
+          <div className={styles.alsoSaveMenu} role="group" aria-label="Also save to">
+            {candidates.length === 0 ? (
+              <p className={styles.alsoSaveEmpty}>No other projects yet.</p>
+            ) : (
+              candidates.map((option) => {
+                const checked = alsoSaveToProjectIds.has(option.id);
+                return (
+                  <label key={option.id} className={styles.alsoSaveItem}>
+                    <span className={styles.alsoSaveName}>
+                      {option.kind === "personal" ? "Personal" : option.name}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleAlsoSaveTo(option.id)}
+                    />
+                  </label>
+                );
+              })
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   async function handleProjectChange(nextProjectId: string) {
     if (!nextProjectId) return;
 
@@ -1690,9 +1823,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       activeState.chatAssociation.status === "held" ||
       activeState.chatAssociation.status === "saved";
     const nextProject =
-      activeState.projectOptions.find((project) => project.id === nextProjectId) ??
+      panelProjectOptions.find((project) => project.id === nextProjectId) ??
       null;
     const previousState = activeState;
+    const previousPersonalMode = personalMode;
     setBusy(true);
 
     try {
@@ -1743,6 +1877,14 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       await setRelaySession({
         projectId: nextProjectId,
       });
+      if (nextProject) {
+        setPersonalMode(nextProject.kind === "personal");
+        setActiveState((current) => ({
+          ...current,
+          projectId: nextProjectId,
+          projectName: nextProject.name,
+        }));
+      }
       setStatus(
         associationAware
           ? activeState.chatAssociation.status === "saved"
@@ -1757,6 +1899,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       if (associationAware) {
         setActiveState(previousState);
       }
+      setPersonalMode(previousPersonalMode);
       setStatus(
         cause instanceof Error ? cause.message : "Project switch failed.",
       );
@@ -1834,7 +1977,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     // Personal-mode captures target the user's personal project. Manual pick →
     // no routingHint (the chosen target wins; no auto-classification).
     const personalProject =
-      activeState.projectOptions.find((project) => project.kind === "personal") ?? null;
+      panelProjectOptions.find((project) => project.kind === "personal") ?? null;
     if (!personalMode && !projectId) return;
     if (personalMode && !personalProject) return;
 
@@ -1896,7 +2039,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     if (!content) return;
     const projectId = activeState.projectId ?? session?.projectId ?? "";
     const personalProject =
-      activeState.projectOptions.find((project) => project.kind === "personal") ?? null;
+      panelProjectOptions.find((project) => project.kind === "personal") ?? null;
     if (!personalMode && !projectId) return;
     if (personalMode && !personalProject) return;
 
@@ -1980,7 +2123,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         } else {
           const projectId = activeState.projectId ?? session?.projectId ?? "";
           const personalProject =
-            activeState.projectOptions.find((project) => project.kind === "personal") ?? null;
+            panelProjectOptions.find((project) => project.kind === "personal") ?? null;
           const endpoint = personalMode && personalProject
             ? `/api/projects/${personalProject.id}/memory`
             : `/api/projects/${projectId}/memory`;
@@ -2122,6 +2265,18 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     session?.projectId ??
     session?.assumedProjectId ??
     "";
+  const selectedProjectOption =
+    panelProjectOptions.find((project) => project.id === selectedProjectId) ??
+    null;
+  const selectedProjectIsPersonal = selectedProjectOption?.kind === "personal";
+  const projectSwitcherLabel =
+    selectedProjectIsPersonal
+      ? "Personal"
+      : activeState.projectName ?? selectedProjectOption?.name ?? "No project";
+  useEffect(() => {
+    setPersonalMode(selectedProjectIsPersonal);
+  }, [selectedProjectIsPersonal]);
+
   const dashboardPath = (() => {
     const url = new URL("/dashboard", "http://relay.local");
     if (selectedProjectId) {
@@ -2314,7 +2469,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
           {(() => {
             // Personal pinned first, then projects in their picker order.
-            const captureProjects = [...activeState.projectOptions].sort((a, b) =>
+            const captureProjects = [...panelProjectOptions].sort((a, b) =>
               a.kind === "personal" ? -1 : b.kind === "personal" ? 1 : 0,
             );
             const treeDisabled = userSettingsBusy || !userSettings || busy;
@@ -2443,36 +2598,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               : "Sign in once. Relay captures useful work quietly and keeps your next chat ready."}
           </p>
 
-          {extensionAuthProvider === "local" ? (
-            <>
-              <label className={`${styles.field} ${styles.authField}`}>
-                <span>Email</span>
-                <input
-                  value={localAuthEmail}
-                  onChange={(event) => setLocalAuthEmail(event.target.value)}
-                  placeholder="you@example.com"
-                  type="email"
-                />
-              </label>
-
-              <label className={`${styles.field} ${styles.authField}`}>
-                <span>Name</span>
-                <input
-                  value={localAuthName}
-                  onChange={(event) => setLocalAuthName(event.target.value)}
-                  placeholder="Display name (optional)"
-                />
-              </label>
-
-              <button
-                className={`${styles.primaryButton} ${styles.authPrimaryButton}`}
-                disabled={busy || !localAuthEmail.trim()}
-                onClick={() => void signInLocally()}
-              >
-                {busy ? "Signing in…" : "Sign in locally"}
-              </button>
-            </>
-          ) : emailAuthAwaitingOtp ? (
+          {emailAuthAwaitingOtp && extensionAuthProvider !== "local" ? (
             <>
               <button
                 type="button"
@@ -2531,6 +2657,43 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 {busy ? "Signing in…" : "Continue with Google"}
               </button>
 
+              {extensionAuthProvider === "local" ? (
+                <>
+                  <div className={`${styles.dividerRow} ${styles.authDividerRow}`}>
+                    <div className={styles.dividerLine} />
+                    <span className={styles.authDividerLabel}>Or continue locally</span>
+                    <div className={styles.dividerLine} />
+                  </div>
+
+                  <label className={`${styles.field} ${styles.authField}`}>
+                    <span>Email</span>
+                    <input
+                      value={localAuthEmail}
+                      onChange={(event) => setLocalAuthEmail(event.target.value)}
+                      placeholder="you@example.com"
+                      type="email"
+                    />
+                  </label>
+
+                  <label className={`${styles.field} ${styles.authField}`}>
+                    <span>Name</span>
+                    <input
+                      value={localAuthName}
+                      onChange={(event) => setLocalAuthName(event.target.value)}
+                      placeholder="Display name (optional)"
+                    />
+                  </label>
+
+                  <button
+                    className={`${styles.primaryButton} ${styles.authPrimaryButton}`}
+                    disabled={busy || !localAuthEmail.trim()}
+                    onClick={() => void signInLocally()}
+                  >
+                    {busy ? "Signing in…" : "Sign in locally"}
+                  </button>
+                </>
+              ) : (
+                <>
               <div className={`${styles.dividerRow} ${styles.authDividerRow}`}>
                 <div className={styles.dividerLine} />
                 <span className={styles.authDividerLabel}>Or continue with email</span>
@@ -2629,8 +2792,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   onClick={() => void continueGuidedSetup(2)}
                 >
                   Open full setup guide
-                </button>
-              </div>
+                  </button>
+                </div>
+                </>
+              )}
             </>
           )}
         </section>
@@ -2758,9 +2923,9 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                     setSwitcherMode("list");
                     setProjectSwitcherOpen((v) => !v);
                   }}
-                >
+                  >
                   <h2 className={styles.projectName}>
-                    {personalMode ? "Personal" : activeState.projectName ?? "No project"}
+                    {projectSwitcherLabel}
                   </h2>
                   <svg
                     className={`${styles.projectChevron} ${projectSwitcherOpen ? styles.projectChevronOpen : ""}`}
@@ -2783,11 +2948,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                             the top of the picker. Selecting it routes manual
                             captures to its normal project memory endpoint. */}
                         {(() => {
-                          // Fall back to the session list when the tab state
-                          // hasn't hydrated yet, so Personal still appears.
-                          const pickerOptions = activeState.projectOptions.length
-                            ? activeState.projectOptions
-                            : session?.projectOptions ?? [];
+                          // Merge in session Personal when tab state is stale.
+                          const pickerOptions = panelProjectOptions;
                           const personalProject = pickerOptions.find(
                             (project) => project.kind === "personal",
                           );
@@ -2795,36 +2957,36 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                           return (
                             <div className={styles.projectOptionRow}>
                               <button
-                                className={`${styles.projectOption} ${personalMode ? styles.projectOptionActive : ""}`}
+                                className={`${styles.projectOption} ${
+                                  selectedProjectIsPersonal
+                                    ? styles.projectOptionActive
+                                    : ""
+                                }`}
                                 onClick={() => {
-                                  setPersonalMode(true);
-                                  setProjectSwitcherOpen(false);
+                                  void handleProjectChange(personalProject.id);
                                 }}
                               >
-                                {personalMode ? "✓ " : ""}
+                                {selectedProjectIsPersonal ? "✓ " : ""}
                                 Personal
                               </button>
                             </div>
                           );
                         })()}
-                        {(activeState.projectOptions.length
-                          ? activeState.projectOptions
-                          : session?.projectOptions ?? [])
+                        {panelProjectOptions
                           .filter((project) => project.kind !== "personal")
                           .map((project) => (
                           <div key={project.id} className={styles.projectOptionRow}>
                             <button
                               className={`${styles.projectOption} ${
-                                !personalMode && project.id === selectedProjectId
+                                !selectedProjectIsPersonal && project.id === selectedProjectId
                                   ? styles.projectOptionActive
                                   : ""
                               }`}
                               onClick={() => {
-                                setPersonalMode(false);
                                 void handleProjectChange(project.id);
                               }}
                             >
-                              {!personalMode && project.id === selectedProjectId ? "✓ " : ""}
+                              {!selectedProjectIsPersonal && project.id === selectedProjectId ? "✓ " : ""}
                               {project.name}
                             </button>
                             <button
@@ -2965,10 +3127,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             {/* Per-target auto-capture override (active project or Personal). */}
             {(() => {
               const targetId = personalMode
-                ? (activeState.projectOptions.find((p) => p.kind === "personal")?.id ?? null)
+                ? (panelProjectOptions.find((p) => p.kind === "personal")?.id ?? null)
                 : (activeState.projectId ?? null);
               if (!targetId) return null;
-              const targetOption = activeState.projectOptions.find((p) => p.id === targetId);
+              const targetOption = panelProjectOptions.find((p) => p.id === targetId);
               const override = targetOption?.autoCapture;
               const globalAuto = userSettings?.autoCapture ?? true;
               const effective = override ?? globalAuto;
@@ -3141,28 +3303,12 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                     Restore chat
                   </button>
                 ) : null}
-                {activeState.chatAssociation.status === "ignored" ? (
-                  <button
-                    className={styles.primaryButton}
-                    disabled={
-                      busy || !activeState.projectId || !activeState.page.supported
-                    }
-                    onClick={() => void associateCurrentChat()}
-                  >
-                    {busy ? "Saving…" : "Link & save"}
-                  </button>
-                ) : null}
-                {activeState.chatAssociation.status === "none" ? (
-                  <button
-                    className={styles.primaryButton}
-                    disabled={
-                      busy || !activeState.projectId || !activeState.page.supported
-                    }
-                    onClick={() => void associateCurrentChat()}
-                  >
-                    {busy ? "Saving…" : "Link & save"}
-                  </button>
-                ) : null}
+                {activeState.chatAssociation.status === "ignored"
+                  ? renderLinkAndSave()
+                  : null}
+                {activeState.chatAssociation.status === "none"
+                  ? renderLinkAndSave()
+                  : null}
               </div>
             </section>
           ) : null}

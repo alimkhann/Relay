@@ -1254,6 +1254,7 @@ async function loadSessionData(force = false) {
       }>;
       settings: RemoteSettingsResponsePayload["settings"];
       onboarding?: RelayOnboardingState | null;
+      features?: { multiProjectCapture?: boolean } | null;
     };
     const settingsPayload = {
       settings: sessionPayload.settings,
@@ -1313,6 +1314,7 @@ async function loadSessionData(force = false) {
         session.targetMode === "manual" ? session.targetProfileKey : "",
       projectOptions: projects,
       onboarding,
+      multiProjectCapture: Boolean(sessionPayload.features?.multiProjectCapture),
     });
     await identifyExtensionUser(sessionPayload.userId);
 
@@ -2046,7 +2048,10 @@ function updateTabPageState(tabId: number, page: RelayPageState) {
 async function captureTab(
   projectId: string,
   tabId: number,
-  options: { processingMode?: "default" | "fast_ack" } = {},
+  options: {
+    processingMode?: "default" | "fast_ack";
+    additionalProjectIds?: string[];
+  } = {},
 ) {
   const startedAt = Date.now();
   const state = getOrCreateTabState(tabId);
@@ -2139,6 +2144,10 @@ async function captureTab(
           projectId,
           processingMode: options.processingMode,
           ...capturePayload,
+          // Multi-project targets override any value the content script set.
+          additionalProjectIds: options.additionalProjectIds?.length
+            ? options.additionalProjectIds
+            : undefined,
         }),
       },
       { timeoutMs: CAPTURE_API_TIMEOUT_MS },
@@ -2782,6 +2791,10 @@ async function captureObservedChange(
     manualSelection?: boolean;
     skipAssociationToast?: boolean;
     autoCapture?: boolean;
+    // Multi-project capture: link the captured session to these extra projects
+    // (incl. personal) so each runs its own digest. Membership is re-checked
+    // server-side.
+    additionalProjectIds?: string[];
   } = {},
 ) {
   const state = getOrCreateTabState(tabId);
@@ -2881,10 +2894,26 @@ async function captureObservedChange(
       }
     }
 
+    // A manual project switch on this chat must win over the chat's
+    // auto-derived association when routing a non-explicit save, so the save
+    // lands where the user pointed Relay. Reconcile first to drop a stale
+    // override left over from a different conversation. Computed up here (before
+    // the personal guard) so the guard checks the SAME target the capture will
+    // use, not a stale state.projectId.
+    if (!explicitProjectId) {
+      await reconcileManualOverride(state);
+    }
+    const manualOverrideProjectId =
+      !explicitProjectId && state.manualProjectId ? state.manualProjectId : null;
+
     // Auto-capture resolves most-specific-wins across (project × platform):
     // a per-platform leaf overrides the project-level value, which overrides
-    // the global setting (incl. the personal project).
-    const effectiveActiveProjectId = explicitProjectId ?? state.projectId ?? session.projectId ?? null;
+    // the global setting (incl. the personal project). Resolve against the
+    // override-folded target, not raw state.projectId — otherwise a
+    // worker-restart with a stale state.projectId lets the personal guard below
+    // check the wrong project and auto-capture a full session into Personal.
+    const effectiveActiveProjectId =
+      manualOverrideProjectId ?? explicitProjectId ?? state.projectId ?? session.projectId ?? null;
     const activeProjectOption = effectiveActiveProjectId
       ? session.projectOptions.find((option) => option.id === effectiveActiveProjectId)
       : undefined;
@@ -2945,16 +2974,7 @@ async function captureObservedChange(
       });
     }
 
-    // A manual project switch on this chat must win over the chat's
-    // auto-derived association when routing a non-explicit save, so the save
-    // lands where the user pointed Relay. Reconcile first to drop a stale
-    // override left over from a different conversation.
-    if (!explicitProjectId) {
-      await reconcileManualOverride(state);
-    }
-    const manualOverrideProjectId =
-      !explicitProjectId && state.manualProjectId ? state.manualProjectId : null;
-
+    // manualOverrideProjectId was resolved above (before the personal guard).
     let projectId = manualOverrideProjectId ?? explicitProjectId ?? state.projectId;
     let routingDecision: Awaited<ReturnType<typeof resolveAutoCaptureRouting>> | null =
       null;
@@ -3248,6 +3268,7 @@ async function captureObservedChange(
 
     const result = await captureTab(projectId, tabId, {
       processingMode: explicitProjectId ? "fast_ack" : "default",
+      additionalProjectIds: options.additionalProjectIds,
     });
     if (result?.ok) {
       if (savingToastShownAt !== null) {
@@ -5593,6 +5614,7 @@ chrome.runtime.onMessage.addListener(
             await captureObservedChange(tabId, message.payload.projectId, {
               manualSelection: Boolean(message.payload.projectId),
               skipAssociationToast: false,
+              additionalProjectIds: message.payload.additionalProjectIds,
             }),
           );
           return;

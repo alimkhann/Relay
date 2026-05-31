@@ -192,7 +192,7 @@ export type RelayMessage =
   | { type: "RELAY_INSERT_CONTEXT"; payload: { content: string } }
   | {
       type: "RELAY_CAPTURE_VISIBLE";
-      payload: { projectId: string; tabId?: number };
+      payload: { projectId: string; tabId?: number; additionalProjectIds?: string[] };
     }
   | { type: "RELAY_DISMISS_CAPTURE_REVIEW"; payload?: { tabId?: number } }
   | { type: "RELAY_TRIGGER_AUTO_CAPTURE"; payload: { tabId?: number } }

@@ -22,7 +22,7 @@ const actionEnum = z.enum([
 ])
 
 export const saveSchema = z.object({
-  projectId: z.string().optional().describe("Project ID. Auto-detected if not provided."),
+  projectId: z.string().optional().describe("Project ID. Auto-detected if not provided. Pass the literal \"personal\" to target the user's personal memory project."),
   action: actionEnum.describe("The write action to perform."),
   payload: z.record(z.string(), z.unknown()).describe("Action-specific payload. See individual tool docs for fields."),
 })

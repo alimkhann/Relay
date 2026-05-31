@@ -38,7 +38,23 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
       name: p.name,
       slug: p.slug ?? null,
       keywords: p.routingContext?.keywords ?? [],
+      kind: p.kind ?? "project",
     }))
+  }
+
+  // Resolve the literal "personal" alias to the user's kind='personal' project
+  // so agents can write/read personal memory without knowing its UUID. Cached
+  // for the session like any other resolved id.
+  let cachedPersonalProjectId: string | null = null
+  async function resolvePersonalProjectId(): Promise<string> {
+    if (cachedPersonalProjectId) return cachedPersonalProjectId
+    const projects = await listProjectsForResolution()
+    const personal = projects.find((p) => p.kind === "personal")
+    if (!personal) {
+      throw new Error("No personal project found for this account.")
+    }
+    cachedPersonalProjectId = personal.id
+    return personal.id
   }
 
   async function resolveProjectSelection(explicitId?: string): Promise<RelayProjectResolutionResult> {
@@ -95,6 +111,10 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
   }
 
   async function resolveProjectId(explicitId?: string): Promise<string> {
+    // "personal" alias → the user's kind='personal' project id.
+    if (explicitId === "personal") {
+      return resolvePersonalProjectId()
+    }
     const result = await resolveProjectSelection(explicitId)
     if (result.status === "resolved") return result.projectId
     throw new Error(
