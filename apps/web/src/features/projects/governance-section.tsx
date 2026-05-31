@@ -359,15 +359,13 @@ export function GovernanceSection({
                             <p className="text-[12px] leading-relaxed text-[var(--relay-ink-secondary)]">
                               {item.text}
                             </p>
-                            {item.sourceSurface && (
-                              <div className="mt-1">
-                                <ProvenanceChip
-                                  sourceSurface={item.sourceSurface}
-                                  capturedAt={item.capturedAt}
-                                  compact
-                                />
-                              </div>
-                            )}
+                            <div className="mt-1">
+                              <ProvenanceChip
+                                sourceSurface={item.sourceSurface ?? null}
+                                capturedAt={item.capturedAt}
+                                derived={item.source === "derived"}
+                              />
+                            </div>
                           </div>
                           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                             <button

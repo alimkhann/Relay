@@ -89,6 +89,8 @@ interface ProvenanceChipProps {
   className?: string;
   /** Compact mode hides the timestamp */
   compact?: boolean;
+  /** AI-derived from project state (no capture surface) → labelled "Derived". */
+  derived?: boolean;
 }
 
 export function ProvenanceChip({
@@ -97,9 +99,13 @@ export function ProvenanceChip({
   capturedAt,
   className,
   compact = false,
+  derived = false,
 }: ProvenanceChipProps) {
-  // Untracked surface → badge as a manual/user save so every item is labelled.
-  const meta = (sourceSurface ? surfaceMap[sourceSurface] : null) ?? surfaceMap.manual;
+  // Derived items have no capture surface — match the extension's "Derived"
+  // badge. Otherwise an untracked surface badges as a manual/user save.
+  const meta = derived
+    ? { label: "Derived", classes: surfaceMap.manual.classes }
+    : (sourceSurface ? surfaceMap[sourceSurface] : null) ?? surfaceMap.manual;
 
   const chip = (
     <span
