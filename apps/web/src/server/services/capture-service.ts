@@ -112,15 +112,14 @@ export async function saveCapture(userId: string, input: unknown) {
 
   if (isDuplicateCapture && latestComparable) {
     // The chat is unchanged, but the user may be adding NEW project targets to
-    // an already-captured session — link them and fan out their digests against
-    // the existing session instead of dropping them.
+    // an already-captured session. Route through linkSessionToProjects so the
+    // dup path gets the SAME treatment as after-the-fact linking: insert the
+    // session_projects rows, fan out a digest per non-personal target, AND
+    // harvest personal facts when Personal is among the new targets. (Calling
+    // only fanOutSessionProjects here would enqueue digests without ever
+    // linking the session, and would skip the personal harvest.)
     if (extraProjectIds.length > 0) {
-      await fanOutSessionProjects(repositories, userId, {
-        sessionId: latestComparable.id,
-        captureSignature: latestComparable.captureSignature,
-        extraProjectIds,
-        personalProjectId,
-      })
+      await linkSessionToProjects(userId, latestComparable.id, extraProjectIds)
     }
     return {
       session: latestComparable,

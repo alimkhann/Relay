@@ -340,12 +340,29 @@ Migrations are additive; rollback is `-- DOWN` SQL in each file. Recommended seq
 
 1. Snapshot prod, or rely on Neon point-in-time recovery (history_retention_seconds=21600 on this project — 6h).
 2. Maintenance window: ~5–10 min (the largest backfill is `memory_items.space_id` over 604 rows on this branch; prod will be larger).
-3. Apply migrations (now `0040`–`0048`).
+3. Apply migrations (now `0040`–`0051`). `0051` = `session_projects` link table
+   for multi-project capture + backfill (one row per existing session → its
+   origin project) + a membership RLS policy. After applying, verify the
+   backfill: `select count(*) from session_projects` == `select count(*) from
+   source_sessions`.
 4. Deploy code from `feat/memory-v2-architecture` (or merged main).
 5. Set **`CRON_SECRET`** before the first cron tick (the route fails closed in production without it).
 6. Hold off enabling `RELAY_MEMORY_PIPELINE_FULL` until the extractors land (follow-up PR #4).
-7. Monitor `memory_events` for `cooled` / `restored_auto` activity from the hygiene tick.
-8. Decay multiplier hooks land in follow-up PR #3 — until then recall behaviour is identical to today's.
+7. **Multi-project capture is DARK** until `RELAY_MULTI_PROJECT_CAPTURE=true` in
+   Vercel. The `0051` table + backfill ship safe at step 3; flip the flag only
+   after the backfill is verified. It gates the capture fan-out +
+   duplicate-path linking (`capture-service`), the `session_projects` read
+   union, and the extension "also save to" chevron (surfaced via
+   `/api/extension/session` → `features.multiProjectCapture`). **Cost:** each
+   extra linked project runs its own Gemini digest per capture (N× spend);
+   per-project budget still enforced by `decideDigestStrategy`.
+8. **F3 RLS audit must include the new `session_projects` policy**
+   ("Members manage session_projects", keyed on `is_project_member(project_id)`)
+   when the app moves off the bypassrls owner role. Until then RLS is decorative
+   in prod and the multi-project write surfaces rely on the app-level
+   `members.filterMemberProjectIds`/`isMember` checks.
+9. Monitor `memory_events` for `cooled` / `restored_auto` activity from the hygiene tick.
+10. Decay multiplier hooks land in follow-up PR #3 — until then recall behaviour is identical to today's.
 
 ### Environment variables
 
