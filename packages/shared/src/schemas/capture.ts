@@ -25,6 +25,10 @@ const parsedTurnSchema = z.object({
 
 export const capturePayloadSchema = z.object({
   projectId: z.string().min(1),
+  // Multi-project capture: link the captured session to these projects in
+  // addition to the origin `projectId`, so each runs its own digest extraction
+  // over the same transcript. The origin is implied and may be omitted here.
+  additionalProjectIds: z.array(z.string().min(1)).max(10).optional(),
   platform: z.enum(supportedPlatforms),
   processingMode: z.enum(["default", "fast_ack"]).optional(),
   session: z.object({

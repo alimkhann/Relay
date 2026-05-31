@@ -45,6 +45,8 @@ export interface PageMetadata {
 
 export interface CapturePayload {
   projectId: string
+  /** Multi-project capture: extra projects to link this session to (origin implied). */
+  additionalProjectIds?: string[]
   platform: SupportedPlatform
   processingMode?: "default" | "fast_ack"
   session: {

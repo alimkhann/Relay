@@ -27,6 +27,45 @@ function buildPersonalRoutingText(
     .slice(0, PERSONAL_ROUTING_MAX_CHARS)
 }
 
+type CaptureRepositories = ReturnType<typeof createRepositoryBundle>
+
+/**
+ * Enqueue a deferred digest pass for each extra NON-personal project linked to a
+ * session, so each extracts the facts that matter to IT from the same
+ * transcript. Personal is skipped: it never receives a full project digest
+ * (durable user facts are harvested separately by routePersonalMemory). Deferred
+ * + per-project budget (decideDigestStrategy) keeps one capture from blowing the
+ * global cap. Used by both the fresh- and duplicate-capture paths and the
+ * after-the-fact link service.
+ */
+async function fanOutSessionProjects(
+  repositories: CaptureRepositories,
+  userId: string,
+  input: {
+    sessionId: string
+    captureSignature: string | null
+    extraProjectIds: string[]
+    personalProjectId: string | null
+  },
+): Promise<void> {
+  if (!input.captureSignature) return
+  for (const projectId of input.extraProjectIds) {
+    if (projectId === input.personalProjectId) continue
+    const decision = await decideDigestStrategy(repositories, userId, {
+      projectId,
+      sessionId: input.sessionId,
+    })
+    if (decision.strategy === "skip") continue
+    await enqueueDigestJob(userId, {
+      projectId,
+      sessionId: input.sessionId,
+      captureSignature: input.captureSignature,
+      status: "deferred",
+    })
+    scheduleDigestDrainForProject(userId, projectId, 1)
+  }
+}
+
 export async function saveCapture(userId: string, input: unknown) {
   const startedAt = Date.now()
   const repositories = createRepositoryBundle(userId)
@@ -39,6 +78,27 @@ export async function saveCapture(userId: string, input: unknown) {
     }
   })
   const fastAck = parsed.processingMode === "fast_ack"
+
+  // Multi-project capture: resolve the membership-verified extra targets and the
+  // user's personal project id up front, so BOTH the duplicate-capture path and
+  // the fresh-capture path link the session + fan out per-project extraction.
+  // Personal is special: it never receives a full project digest (durable facts
+  // only, harvested by routePersonalMemory), it just gets linked + surfaced.
+  const multiProjectEnabled = process.env.RELAY_MULTI_PROJECT_CAPTURE === "true"
+  let extraProjectIds: string[] = []
+  let personalProjectId: string | null = null
+  if (multiProjectEnabled && normalizedInput.additionalProjectIds?.length) {
+    const requested = normalizedInput.additionalProjectIds.filter(
+      (id) => id !== normalizedInput.projectId
+    )
+    // SECURITY: prod connects as the table owner (RLS bypassed), so authorize
+    // every extra target with an explicit app-level membership check.
+    extraProjectIds = await repositories.members.filterMemberProjectIds(requested, userId)
+    if (extraProjectIds.length > 0) {
+      personalProjectId = (await repositories.projects.getPersonalProject(userId))?.id ?? null
+    }
+  }
+
   const latestComparable = await repositories.sessions.getLatestComparableByIdentity(
     normalizedInput.projectId,
     normalizedInput.platform,
@@ -51,6 +111,17 @@ export async function saveCapture(userId: string, input: unknown) {
   const isDuplicateCapture = latestComparable?.captureSignature === normalizedInput.session.captureSignature
 
   if (isDuplicateCapture && latestComparable) {
+    // The chat is unchanged, but the user may be adding NEW project targets to
+    // an already-captured session — link them and fan out their digests against
+    // the existing session instead of dropping them.
+    if (extraProjectIds.length > 0) {
+      await fanOutSessionProjects(repositories, userId, {
+        sessionId: latestComparable.id,
+        captureSignature: latestComparable.captureSignature,
+        extraProjectIds,
+        personalProjectId,
+      })
+    }
     return {
       session: latestComparable,
       turns: [],
@@ -79,6 +150,14 @@ export async function saveCapture(userId: string, input: unknown) {
       turnCount: turns.length
     }
   })
+
+  // Link the session to its origin (always) plus the extra targets, so the
+  // read-union surfaces it everywhere. Origin link keeps the union consistent
+  // with the backfill even when no extra targets are present.
+  await repositories.sessions.linkToProjects(session.id, [
+    normalizedInput.projectId,
+    ...extraProjectIds
+  ])
   const shouldQueueDigest = latestComparable?.captureSignature !== normalizedInput.session.captureSignature
   let jobId: string | null = null
   let digestStrategy: "skip" | "ai" | "deferred" = "skip"
@@ -150,6 +229,19 @@ export async function saveCapture(userId: string, input: unknown) {
     }
   }
 
+  // Fan out a digest pass for each additional NON-personal project so each
+  // extracts the facts that matter to IT from the same transcript. Personal is
+  // intentionally excluded — it gets durable user facts via routePersonalMemory
+  // below, never a full project digest (decisions/constraints/state/brief).
+  if (shouldQueueDigest && normalizedInput.session.captureSignature && extraProjectIds.length > 0) {
+    await fanOutSessionProjects(repositories, userId, {
+      sessionId: session.id,
+      captureSignature: normalizedInput.session.captureSignature,
+      extraProjectIds,
+      personalProjectId,
+    })
+  }
+
   const stateStatus = await getProjectStateStatus(repositories, normalizedInput.projectId)
   await logServerEvent({
     level: "info",
@@ -206,8 +298,11 @@ export async function saveCapture(userId: string, input: unknown) {
   invalidateProjectCache(userId, normalizedInput.projectId)
 
   // Derive durable user facts from this capture and selectively route the
-  // salient ones into the personal project. routePersonalMemory self-guards
-  // (skips when the active project already IS personal) and never throws.
+  // salient ones into the personal project. This is the ONLY writer of
+  // personal-type memory, including when Personal is an explicit multi-project
+  // target (which only links the session — never runs a project digest into
+  // Personal). routePersonalMemory self-guards (skips when the active project
+  // already IS personal) and never throws.
   let personalRouting: PersonalRoutingResult | null = null
   const personalSourceText = buildPersonalRoutingText(parsed.turns)
   if (personalSourceText) {
@@ -231,4 +326,75 @@ export async function saveCapture(userId: string, input: unknown) {
     reconciliation: digestOutcome?.reconciliation ?? null,
     personalRouting,
   }
+}
+
+/**
+ * Link an already-captured session to additional projects after the fact (e.g.
+ * from the sidebar "also save to…" action). Reuses the existing session row —
+ * never recreates it — and enqueues a deferred digest pass for each newly
+ * linked project so each extracts its own facts. Membership is checked per
+ * target; production runs as the table owner (RLS bypassed), so this app-level
+ * check is the real enforcement.
+ */
+export async function linkSessionToProjects(
+  userId: string,
+  sessionId: string,
+  projectIds: string[],
+): Promise<{ linked: string[]; skipped: string[] }> {
+  const repositories = createRepositoryBundle(userId)
+  const session = await repositories.sessions.getById(sessionId, { includeArchived: true })
+  if (!session) {
+    throw new Error("Session not found.")
+  }
+  // The caller must be a member of the session's origin project too.
+  if (!(await repositories.members.isMember(session.projectId, userId))) {
+    throw new Error("Not authorized for this session.")
+  }
+
+  const requested = Array.from(new Set(projectIds.filter(Boolean))).filter(
+    (id) => id !== session.projectId,
+  )
+  const authorized = await repositories.members.filterMemberProjectIds(requested, userId)
+  const skipped = requested.filter((id) => !authorized.includes(id))
+
+  // Only link/enqueue for projects not already linked, so this is idempotent.
+  const already = new Set(await repositories.sessions.listLinkedProjectIds(sessionId))
+  const newlyLinked = authorized.filter((id) => !already.has(id))
+  if (newlyLinked.length === 0) {
+    return { linked: [], skipped }
+  }
+
+  await repositories.sessions.linkToProjects(sessionId, newlyLinked)
+
+  const personalProjectId = (await repositories.projects.getPersonalProject(userId))?.id ?? null
+
+  // Non-personal targets get a deferred project digest; Personal is excluded
+  // (durable facts only, harvested below from the same transcript).
+  await fanOutSessionProjects(repositories, userId, {
+    sessionId,
+    captureSignature: session.captureSignature ?? null,
+    extraProjectIds: newlyLinked,
+    personalProjectId,
+  })
+
+  // If Personal is a newly linked target, harvest its durable user facts from
+  // the session transcript — the same path saveCapture uses, just after the
+  // fact. derivedFrom = the session's origin project.
+  if (personalProjectId && newlyLinked.includes(personalProjectId)) {
+    const turns = await repositories.turns.listBySession(sessionId)
+    const personalSourceText = buildPersonalRoutingText(
+      turns.map((turn) => ({ role: turn.role, content: turn.content })),
+    )
+    if (personalSourceText) {
+      await routePersonalMemory(userId, session.projectId, personalSourceText, {
+        sourceSurface: session.platform ?? "extension",
+      })
+    }
+  }
+
+  for (const projectId of newlyLinked) {
+    invalidateProjectCache(userId, projectId)
+  }
+
+  return { linked: newlyLinked, skipped }
 }
