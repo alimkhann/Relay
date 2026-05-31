@@ -141,7 +141,7 @@ export function buildGroupedActivityFeed(
 
 export async function listActivityFeedForUser(userId: string): Promise<ActivityEntry[]> {
   const repositories = createRepositoryBundle(userId)
-  const projects = await getProjectSummaries(repositories, userId)
+  const projects = await getProjectSummaries(repositories, userId, { includePersonal: true })
   const dashboards = await Promise.all(
     projects.map((project) => getProjectDashboard(repositories, userId, project.id)),
   )
