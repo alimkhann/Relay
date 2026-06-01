@@ -48,11 +48,11 @@ function fakeRunJson(facts: unknown): typeof runGeminiJsonWithFallback {
 describe("classifyPersonalSalience", () => {
   it("keeps a durable user-centric fact (e.g. 'I'm vegetarian')", async () => {
     const runJson = fakeRunJson([
-      { category: "preference", content: "User is vegetarian", confidence: 0.9 },
+      { category: "concept", content: "User is vegetarian", confidence: 0.9 },
     ])
     const facts = await classifyPersonalSalience("I'm vegetarian", { runJson, gate: ALLOW_GATE })
     expect(facts).toEqual<PersonalFact[]>([
-      { category: "preference", content: "User is vegetarian", confidence: 0.9 },
+      { category: "concept", content: "User is vegetarian", confidence: 0.9 },
     ])
   })
 
@@ -71,25 +71,25 @@ describe("classifyPersonalSalience", () => {
 
   it("drops rows with unknown category or empty content and clamps confidence", async () => {
     const runJson = fakeRunJson([
-      { category: "preference", content: "User likes dark mode", confidence: 1.7 },
+      { category: "concept", content: "User likes dark mode", confidence: 1.7 },
       { category: "bogus", content: "User does X", confidence: 0.9 },
-      { category: "skill", content: "   ", confidence: 0.9 },
+      { category: "concept", content: "   ", confidence: 0.9 },
     ])
     const facts = await classifyPersonalSalience("...", { runJson, gate: ALLOW_GATE })
     expect(facts).toEqual<PersonalFact[]>([
-      { category: "preference", content: "User likes dark mode", confidence: 1 },
+      { category: "concept", content: "User likes dark mode", confidence: 1 },
     ])
   })
 
   it("returns [] without calling the model on empty input", async () => {
-    const runJson = fakeRunJson([{ category: "identity", content: "x", confidence: 1 }])
+    const runJson = fakeRunJson([{ category: "note", content: "x", confidence: 1 }])
     const facts = await classifyPersonalSalience("   ", { runJson, gate: ALLOW_GATE })
     expect(facts).toEqual([])
     expect(runJson).not.toHaveBeenCalled()
   })
 
   it("returns [] when the budget gate blocks the call", async () => {
-    const runJson = fakeRunJson([{ category: "identity", content: "x", confidence: 1 }])
+    const runJson = fakeRunJson([{ category: "note", content: "x", confidence: 1 }])
     const blockGate = { ...ALLOW_GATE, shouldRun: () => false }
     const facts = await classifyPersonalSalience("I'm a developer", { runJson, gate: blockGate })
     expect(facts).toEqual([])
@@ -176,7 +176,7 @@ describe("routePersonalMemory result", () => {
   it("returns empty result when the user has no personal project", async () => {
     getPersonalProjectMock.mockResolvedValue(null)
     const result = await routePersonalMemory("u1", "proj-1", "hi", {
-      classifyDeps: classifyWith([{ category: "identity", content: "x", confidence: 0.9 }]),
+      classifyDeps: classifyWith([{ category: "note", content: "x", confidence: 0.9 }]),
     })
     expect(result).toEqual({ personalProjectId: null, written: 0, unsure: 0, duplicate: 0 })
   })
@@ -184,7 +184,7 @@ describe("routePersonalMemory result", () => {
   it("skips re-routing when the active project already is personal", async () => {
     getPersonalProjectMock.mockResolvedValue({ id: "personal-1" })
     const result = await routePersonalMemory("u1", "personal-1", "hi", {
-      classifyDeps: classifyWith([{ category: "identity", content: "x", confidence: 0.9 }]),
+      classifyDeps: classifyWith([{ category: "note", content: "x", confidence: 0.9 }]),
     })
     expect(result).toEqual({ personalProjectId: "personal-1", written: 0, unsure: 0, duplicate: 0 })
   })
@@ -195,8 +195,8 @@ describe("routePersonalMemory result", () => {
     listByProjectMock.mockResolvedValue([])
     const result = await routePersonalMemory("u1", "proj-1", "hi", {
       classifyDeps: classifyWith([
-        { category: "preference", content: "likes dark mode", confidence: 0.55 },
-        { category: "goal", content: "noise", confidence: 0.2 },
+        { category: "concept", content: "likes dark mode", confidence: 0.55 },
+        { category: "concept", content: "noise", confidence: 0.2 },
       ]),
     })
     expect(result.written).toBe(0)
@@ -219,7 +219,7 @@ describe("routePersonalMemory result", () => {
     }))
     const result = await routePersonalMemory("u1", "proj-1", "hi", {
       classifyDeps: classifyWith([
-        { category: "identity", content: "based in Kazakhstan", confidence: 0.92 },
+        { category: "note", content: "based in Kazakhstan", confidence: 0.92 },
       ]),
     })
     expect(result.written).toBe(1)
@@ -258,8 +258,8 @@ describe("routePersonalFromTranscript (personal-origin capture)", () => {
 
     const result = await routePersonalFromTranscript("u1", "Assistant: User is the founder of Relay", {
       classifyDeps: classifyWith([
-        { category: "identity", content: "User is the founder of Relay", confidence: 0.95 },
-        { category: "project", content: "User is building Relay", confidence: 0.9 },
+        { category: "note", content: "User is the founder of Relay", confidence: 0.95 },
+        { category: "concept", content: "User is building Relay", confidence: 0.9 },
       ]),
     })
 
@@ -271,7 +271,7 @@ describe("routePersonalFromTranscript (personal-origin capture)", () => {
   it("returns empty when the user has no personal project", async () => {
     getPersonalProjectMock.mockResolvedValue(null)
     const result = await routePersonalFromTranscript("u1", "hi", {
-      classifyDeps: classifyWith([{ category: "identity", content: "x", confidence: 0.9 }]),
+      classifyDeps: classifyWith([{ category: "note", content: "x", confidence: 0.9 }]),
     })
     expect(result).toEqual({ personalProjectId: null, written: 0, unsure: 0, duplicate: 0 })
   })

@@ -3243,7 +3243,12 @@ async function captureObservedChange(
       return { ok: false, reason: "Choose a project first." };
     }
 
-    if (!skipAssociationToast && (autoAssociated || Boolean(explicitProjectId))) {
+    // Show the "saving…" toast for EVERY capture that reaches this point —
+    // manual save, explicit pick, auto-association, AND a held→continue
+    // approval. Previously it was gated on (autoAssociated || explicitProjectId),
+    // so held→continue and some auto paths only showed the after-saved toast.
+    // We have a resolved projectId here, so any capture should announce itself.
+    if (!skipAssociationToast) {
       const projectName = resolveAssociationProjectName({
         matchedProjectName:
           state.projectOptions.find((project) => project.id === projectId)?.name ??

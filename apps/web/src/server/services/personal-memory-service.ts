@@ -55,25 +55,19 @@ export const PERSONAL_SALIENCE_WRITE_THRESHOLD = 0.7
  */
 export const PERSONAL_SALIENCE_UNSURE_THRESHOLD = 0.4
 
-// Folk/mem0-inspired personal taxonomy. These live ONLY in
+// Folk-style personal taxonomy (matches Folk by Nozomio: company, concept,
+// event, meeting, note, person, signals). These live ONLY in
 // memory_items.metadata.personalCategory (items still store as type 'note') —
-// not the project memory_items.type enum — so expanding them is classifier-local
-// with no DB/UI/MCP change.
+// not the project memory_items.type enum — so this is classifier-local with no
+// DB/UI/MCP change.
 export const PERSONAL_FACT_CATEGORIES = [
-  "identity", // stable bio: name, age, location, nationality, languages
-  "preference", // lasting likes/dislikes, tools/stacks/styles, working & comm style
-  "work", // what they build/work on long-term: products, company, domain
-  "project", // a specific named project/product of theirs (one per fact)
-  "skill", // durable expertise / proficiency levels
-  "goal", // lasting objectives & intentions
-  "constraint", // durable personal limits: budget, time, values, tooling
-  "relationship", // stable people/teams: cofounder, family by role, manager
-  "person", // a specific named person relevant to them
-  "company", // a company/org relevant to them (employer, school, vendor)
-  "education", // schools, courses, degrees, exams, academic status
-  "finance", // durable financial situation/strategy (budget posture, funding)
-  "event", // a dated/scheduled milestone worth remembering
-  "health", // clearly-stated lasting health/dietary/accessibility facts
+  "person", // a specific named person in their life/work (mentor, friend, family, collaborator)
+  "company", // a company/org relevant to them: employer, school, key vendor/tool provider
+  "concept", // a durable idea/topic/preference/skill/value/goal that defines them
+  "event", // a dated or scheduled milestone worth remembering
+  "meeting", // a specific conversation/call/session worth remembering
+  "signals", // a notable behavioral signal or state about the user (intent, momentum, change)
+  "note", // any other durable user-centric fact that doesn't fit the above
 ] as const
 
 export type PersonalFactCategory = (typeof PERSONAL_FACT_CATEGORIES)[number]
@@ -99,21 +93,14 @@ const SALIENCE_SYSTEM_INSTRUCTION = [
   `category must be one of {${PERSONAL_FACT_CATEGORIES.join(", ")}}.`,
   'content = one atomic, standalone fact about the USER, third person, starting with "User ". Each fact is one idea (split compound facts). Resolve "I/me/my" to "User"; never use pronouns that need the chat for context.',
   "",
-  "WHAT EACH CATEGORY MEANS (extract these):",
-  "- identity: stable bio — name, role/title, location, nationality, languages, age bracket.",
-  "- preference: lasting likes/dislikes, tools/stacks/styles they consistently prefer, working style, communication style.",
-  "- work: what they are building or working on long-term in general (their domain, what they do).",
-  "- project: a SPECIFIC named project/product of theirs — one fact per project ('User is building Relay, a cross-AI context tool').",
-  "- skill: durable expertise or proficiency levels (e.g. 'User is experienced in Go', 'User is new to React').",
-  "- goal: lasting objectives and intentions ('User wants to launch Relay by Q2', 'User is learning Rust').",
-  "- constraint: durable personal limits/requirements — budget, time, accessibility, tooling, values they hold.",
-  "- relationship: stable people/teams in their life by ROLE relevant to remember (cofounder, manager, family member).",
-  "- person: a SPECIFIC named person relevant to them (mentor, friend, collaborator by name).",
-  "- company: a company/org relevant to them — employer, school, key vendor/tool provider they rely on.",
-  "- education: schools, degrees, courses, exams/scores, academic status.",
-  "- finance: durable financial situation or strategy — budget posture, funding, cost sensitivity, credits relied on.",
+  "WHAT EACH CATEGORY MEANS (pick the single best fit per fact):",
+  "- person: a specific person in their life/work — mentor, friend, family member, collaborator, manager. Name them when stated.",
+  "- company: a company or organization relevant to them — employer, school/university, key vendor or tool provider they rely on.",
+  "- concept: a durable idea/topic that defines them — a lasting preference, skill/proficiency, value, goal, constraint, interest, or what they build/work on. This is the catch-all for durable traits ('User prefers TypeScript', 'User is experienced in Go', 'User wants to get into YC', 'User optimizes hard for free tiers', 'User is building a cross-AI context tool').",
   "- event: a dated or scheduled milestone worth remembering ('User sits the SAT retake in Fall 2026').",
-  "- health: ONLY clearly-stated, lasting, relevant health facts (dietary needs, conditions, accessibility). Be conservative; omit if uncertain or sensitive-and-incidental.",
+  "- meeting: a specific past conversation/call/session worth remembering as an episode (not a recurring trait).",
+  "- signals: a notable behavioral signal or state — intent, momentum, a recent change in their situation ('User is on academic leave', 'User is preparing to relaunch university applications').",
+  "- note: any other durable, user-centric fact that does not fit the categories above. Identity facts (name, age, location, nationality) go here.",
   "",
   "HARD REJECTS (return none of these):",
   "- Transient/in-the-moment state: the current bug, today's task, 'right now', a question being asked.",
