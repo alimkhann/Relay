@@ -20,6 +20,7 @@ vi.mock("./memory-service", () => ({
 import {
   classifyPersonalSalience,
   decidePersonalCrud,
+  routePersonalFromTranscript,
   routePersonalMemory,
   PERSONAL_SALIENCE_WRITE_THRESHOLD,
   PERSONAL_SALIENCE_UNSURE_THRESHOLD,
@@ -224,5 +225,54 @@ describe("routePersonalMemory result", () => {
     expect(result.written).toBe(1)
     expect(result.unsure).toBe(0)
     expect(createMemoryItemMock).toHaveBeenCalledOnce()
+  })
+})
+
+describe("routePersonalFromTranscript (personal-origin capture)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    getPersonalProjectMock.mockReset()
+    listByProjectMock.mockReset()
+    createMemoryItemMock.mockReset()
+  })
+
+  function classifyWith(facts: PersonalFact[]) {
+    return { runJson: fakeRunJson(facts), gate: ALLOW_GATE as never }
+  }
+
+  it("writes salience facts even though the target IS personal (no early-return)", async () => {
+    // This is the bug fix: routePersonalMemory early-returns when active===personal;
+    // the transcript path must NOT, or a personal-origin capture writes nothing.
+    vi.stubEnv("RELAY_PERSONAL_MEMORY_AUTOWRITE", "true")
+    getPersonalProjectMock.mockResolvedValue({ id: "personal-1" })
+    listByProjectMock.mockResolvedValue([])
+    createMemoryItemMock.mockImplementation(async (_u: string, input: { content: string }) => ({
+      id: `m-${input.content}`,
+      content: input.content,
+      capturedAt: new Date().toISOString(),
+      type: "note",
+      pinned: false,
+      sourceSurface: "auto",
+      metadata: {},
+    }))
+
+    const result = await routePersonalFromTranscript("u1", "Assistant: User is the founder of Relay", {
+      classifyDeps: classifyWith([
+        { category: "identity", content: "User is the founder of Relay", confidence: 0.95 },
+        { category: "project", content: "User is building Relay", confidence: 0.9 },
+      ]),
+    })
+
+    expect(result.personalProjectId).toBe("personal-1")
+    expect(result.written).toBe(2)
+    expect(createMemoryItemMock).toHaveBeenCalledTimes(2)
+  })
+
+  it("returns empty when the user has no personal project", async () => {
+    getPersonalProjectMock.mockResolvedValue(null)
+    const result = await routePersonalFromTranscript("u1", "hi", {
+      classifyDeps: classifyWith([{ category: "identity", content: "x", confidence: 0.9 }]),
+    })
+    expect(result).toEqual({ personalProjectId: null, written: 0, unsure: 0, duplicate: 0 })
   })
 })

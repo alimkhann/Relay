@@ -1350,12 +1350,12 @@
           rgba(15, 15, 15, 1) 70%,
           rgba(115, 115, 115, 0.6) 100%
         );
-        background-size: 300% 100%;
+        background-size: 200% 100%;
         -webkit-background-clip: text;
         background-clip: text;
         -webkit-text-fill-color: transparent;
         color: transparent;
-        animation: relay-toast-shimmer 1.8s ease-in-out infinite;
+        animation: relay-toast-shimmer 2s linear infinite;
       }
 
       .relay-association-toast--visible {
@@ -1388,17 +1388,21 @@
           rgba(228, 228, 231, 1) 70%,
           rgba(180, 180, 187, 0.5) 100%
         );
-        background-size: 300% 100%;
+        background-size: 200% 100%;
         -webkit-background-clip: text;
         background-clip: text;
         -webkit-text-fill-color: transparent;
         color: transparent;
-        animation: relay-toast-shimmer 1.8s ease-in-out infinite;
+        animation: relay-toast-shimmer 2s linear infinite;
       }
 
+      /* Travel exactly one tile (200% size, 200pp move) with linear timing so
+         the loop restart is seamless — matches the smooth panel .shimmerText.
+         The old 300% tile + 200pp ease-in-out travel didn't align on repeat
+         (snap at the right end) and eased to a near-stop at the edges. */
       @keyframes relay-toast-shimmer {
-        0% { background-position: 100% center; }
-        100% { background-position: -100% center; }
+        from { background-position: 200% center; }
+        to { background-position: 0% center; }
       }
 
       .relay-association-toast__titleWrap {

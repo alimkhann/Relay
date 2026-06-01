@@ -5,23 +5,34 @@ import { invalidateProjectCache } from "@/server/cache/invalidation"
 import { decideDigestStrategy, enqueueDigestJob, scheduleDigestDrainForProject, type DigestJobOutcome } from "./digest-service"
 import { getProjectStateStatus } from "./state-status-service"
 import { fireUserMilestone } from "./user-milestones-service"
-import { routePersonalMemory, type PersonalRoutingResult } from "./personal-memory-service"
+import {
+  routePersonalFromTranscript,
+  routePersonalMemory,
+  type PersonalRoutingResult,
+} from "./personal-memory-service"
 import { logServerEvent } from "@/server/logging/logger"
 
 const PERSONAL_ROUTING_MAX_CHARS = 6_000
 
 /**
- * Build the text the personal-salience classifier reads. Personal facts come
- * from what the *user* says, so prefer user turns; fall back to the whole
- * transcript when a capture has none. Bounded — the classifier truncates again.
+ * Build the text the personal-salience classifier reads. Personal facts often
+ * live in the ASSISTANT turn (e.g. "tell me everything you know about me" → the
+ * assistant recites the profile), so feed the WHOLE transcript with role labels
+ * and let the classifier decide what's a durable user fact. The classifier's
+ * HARD REJECTS guard (assistant/world/inferred claims) keeps recited noise out;
+ * confidence scoring + the soak gate are the backstop. Bounded — the classifier
+ * truncates again.
  */
 function buildPersonalRoutingText(
   turns: ReadonlyArray<{ role: string; content: string }>,
 ): string {
-  const userTurns = turns.filter((turn) => turn.role === "user")
-  const source = userTurns.length > 0 ? userTurns : turns
-  return source
-    .map((turn) => turn.content.trim())
+  return turns
+    .map((turn) => {
+      const content = turn.content.trim()
+      if (!content) return ""
+      const who = turn.role === "user" ? "User" : turn.role === "assistant" ? "Assistant" : turn.role
+      return `${who}: ${content}`
+    })
     .filter(Boolean)
     .join("\n")
     .slice(0, PERSONAL_ROUTING_MAX_CHARS)
@@ -99,6 +110,14 @@ export async function saveCapture(userId: string, input: unknown) {
     }
   }
 
+  // Is the capture's ORIGIN project the user's personal project? If so it must
+  // NEVER get a full project digest (decisions/constraints/tasks/state/brief) —
+  // only durable user facts via the salience classifier. This is the
+  // "Personal as primary target" path (manual save / held→continue while parked
+  // on Personal), distinct from Personal as an additional fan-out target.
+  const originProject = await repositories.projects.getById(normalizedInput.projectId)
+  const originIsPersonal = originProject?.kind === "personal"
+
   const latestComparable = await repositories.sessions.getLatestComparableByIdentity(
     normalizedInput.projectId,
     normalizedInput.platform,
@@ -163,7 +182,9 @@ export async function saveCapture(userId: string, input: unknown) {
   let budgetStatus: { aiUsed: number; aiLimit: number; aiRemaining: number; plan: "free" | "starter" | "pro" } | null = null
   let digestOutcome: DigestJobOutcome | null = null
 
-  if (shouldQueueDigest && normalizedInput.session.captureSignature) {
+  // Personal-origin captures never run a project digest — the personal harvest
+  // below (routePersonalFromTranscript) is the only writer for them.
+  if (shouldQueueDigest && normalizedInput.session.captureSignature && !originIsPersonal) {
     const decision = await decideDigestStrategy(repositories, userId, {
       projectId: normalizedInput.projectId,
       sessionId: session.id
@@ -171,60 +192,46 @@ export async function saveCapture(userId: string, input: unknown) {
     digestStrategy = decision.strategy
     budgetStatus = decision.budgetStatus ?? null
 
-    if (budgetStatus && budgetStatus.aiRemaining <= 0 && decision.strategy !== "ai") {
+    if (decision.strategy === "ai") {
+      // Always run the ORIGIN digest INLINE so the user sees results without a
+      // queue/cron/drain delay. (fast_ack no longer defers the origin; extra
+      // fan-out projects below still run async so one save can't block N×.)
+      const job = await enqueueDigestJob(userId, {
+        projectId: normalizedInput.projectId,
+        sessionId: session.id,
+        captureSignature: normalizedInput.session.captureSignature
+      })
+      jobId = job.id
+
+      const { runDigestJobInline } = await import("./digest-service")
+      const inlineOutcome = await runDigestJobInline(repositories, userId, job).catch(() => null)
+
+      if (inlineOutcome) {
+        digestOutcome = inlineOutcome
+      } else {
+        // Inline run failed (not a budget issue) — fall back to a drain so the
+        // capture still gets analyzed; this is an error path, not the norm.
+        scheduleDigestDrainForProject(userId, normalizedInput.projectId, 1)
+      }
+    } else if (decision.strategy === "deferred") {
+      // Budget is unavailable: do NOT enqueue/queue. Surface "limit hit" and
+      // leave the capture un-analyzed rather than parking a deferred job.
+      digestStrategy = "skip"
       await logServerEvent({
         level: "warn",
         surface: "web-api",
         area: "digest",
         event: "digest_budget_blocked",
-        message: "Relay could not run an immediate AI digest because the daily budget was exhausted.",
+        message: "AI digest skipped — daily budget exhausted (no job enqueued).",
         userId,
         context: {
           projectId: normalizedInput.projectId,
           sessionId: session.id,
-          strategy: decision.strategy,
-          aiUsed: budgetStatus.aiUsed,
-          aiLimit: budgetStatus.aiLimit,
-          plan: budgetStatus.plan,
+          aiUsed: budgetStatus?.aiUsed ?? null,
+          aiLimit: budgetStatus?.aiLimit ?? null,
+          plan: budgetStatus?.plan ?? null,
         },
       }).catch(() => {})
-    }
-
-    if (decision.strategy === "ai" && fastAck) {
-      const job = await enqueueDigestJob(userId, {
-        projectId: normalizedInput.projectId,
-        sessionId: session.id,
-        captureSignature: normalizedInput.session.captureSignature
-      })
-      jobId = job.id
-      digestStrategy = "deferred"
-      scheduleDigestDrainForProject(userId, normalizedInput.projectId, 1)
-    } else if (decision.strategy === "ai") {
-      const job = await enqueueDigestJob(userId, {
-        projectId: normalizedInput.projectId,
-        sessionId: session.id,
-        captureSignature: normalizedInput.session.captureSignature
-      })
-      jobId = job.id
-      
-      const { runDigestJobInline } = await import("./digest-service")
-      const inlineOutcome = await runDigestJobInline(repositories, userId, job).catch((error) => {
-        return null
-      })
-      
-      if (inlineOutcome) {
-        digestOutcome = inlineOutcome
-      } else {
-        scheduleDigestDrainForProject(userId, normalizedInput.projectId, 1)
-      }
-    } else if (decision.strategy === "deferred") {
-      const job = await enqueueDigestJob(userId, {
-        projectId: normalizedInput.projectId,
-        sessionId: session.id,
-        captureSignature: normalizedInput.session.captureSignature,
-        status: "deferred"
-      })
-      jobId = job.id
     }
   }
 
@@ -296,21 +303,27 @@ export async function saveCapture(userId: string, input: unknown) {
 
   invalidateProjectCache(userId, normalizedInput.projectId)
 
-  // Derive durable user facts from this capture and selectively route the
-  // salient ones into the personal project. This is the ONLY writer of
-  // personal-type memory, including when Personal is an explicit multi-project
-  // target (which only links the session — never runs a project digest into
-  // Personal). routePersonalMemory self-guards (skips when the active project
-  // already IS personal) and never throws.
+  // Derive durable user facts from this capture into the personal project — the
+  // ONLY writer of personal-type memory.
+  // - origin = personal: route directly from the transcript (the project digest
+  //   was skipped above). This is what fills Personal when you capture while
+  //   parked on it.
+  // - origin = a normal project: routePersonalMemory additionally harvests
+  //   user-centric facts (self-guards when origin already IS personal).
+  // Either way Personal only ever gets salience NOTES, never a project digest.
   let personalRouting: PersonalRoutingResult | null = null
   const personalSourceText = buildPersonalRoutingText(parsed.turns)
   if (personalSourceText) {
-    personalRouting = await routePersonalMemory(
-      userId,
-      normalizedInput.projectId,
-      personalSourceText,
-      { sourceSurface: normalizedInput.platform ?? "extension" },
-    )
+    personalRouting = originIsPersonal
+      ? await routePersonalFromTranscript(userId, personalSourceText, {
+          sourceSurface: normalizedInput.platform ?? "extension",
+        })
+      : await routePersonalMemory(
+          userId,
+          normalizedInput.projectId,
+          personalSourceText,
+          { sourceSurface: normalizedInput.platform ?? "extension" },
+        )
   }
 
   return {

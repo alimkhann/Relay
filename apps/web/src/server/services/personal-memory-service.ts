@@ -36,9 +36,14 @@ const CLASSIFY_MODEL_PRIMARY =
 const CLASSIFY_MODEL_FALLBACK =
   process.env.GEMINI_MODEL_EXTRACTION_FALLBACK ?? "gemini-2.5-flash-lite"
 
-const CLASSIFY_MAX_INPUT = 4_000
-const CLASSIFY_MAX_OUTPUT = 600
+const CLASSIFY_MAX_INPUT = 8_000
+// Headroom for a full profile (a "what do you know about me" recap can yield
+// 20+ atomic facts); 600 truncated mid-array and capped real extractions.
+const CLASSIFY_MAX_OUTPUT = 2_400
 const CLASSIFY_USD = 0.0015
+
+/** Hard ceiling on facts per pass — generous so full profiles aren't clipped. */
+const MAX_PERSONAL_FACTS_PER_PASS = 30
 
 /** Facts at or above this confidence are eligible to write (when autowrite is on). */
 export const PERSONAL_SALIENCE_WRITE_THRESHOLD = 0.7
@@ -50,15 +55,25 @@ export const PERSONAL_SALIENCE_WRITE_THRESHOLD = 0.7
  */
 export const PERSONAL_SALIENCE_UNSURE_THRESHOLD = 0.4
 
+// Folk/mem0-inspired personal taxonomy. These live ONLY in
+// memory_items.metadata.personalCategory (items still store as type 'note') —
+// not the project memory_items.type enum — so expanding them is classifier-local
+// with no DB/UI/MCP change.
 export const PERSONAL_FACT_CATEGORIES = [
-  "identity",
-  "preference",
-  "work",
-  "skill",
-  "goal",
-  "constraint",
-  "relationship",
-  "health",
+  "identity", // stable bio: name, age, location, nationality, languages
+  "preference", // lasting likes/dislikes, tools/stacks/styles, working & comm style
+  "work", // what they build/work on long-term: products, company, domain
+  "project", // a specific named project/product of theirs (one per fact)
+  "skill", // durable expertise / proficiency levels
+  "goal", // lasting objectives & intentions
+  "constraint", // durable personal limits: budget, time, values, tooling
+  "relationship", // stable people/teams: cofounder, family by role, manager
+  "person", // a specific named person relevant to them
+  "company", // a company/org relevant to them (employer, school, vendor)
+  "education", // schools, courses, degrees, exams, academic status
+  "finance", // durable financial situation/strategy (budget posture, funding)
+  "event", // a dated/scheduled milestone worth remembering
+  "health", // clearly-stated lasting health/dietary/accessibility facts
 ] as const
 
 export type PersonalFactCategory = (typeof PERSONAL_FACT_CATEGORIES)[number]
@@ -85,13 +100,19 @@ const SALIENCE_SYSTEM_INSTRUCTION = [
   'content = one atomic, standalone fact about the USER, third person, starting with "User ". Each fact is one idea (split compound facts). Resolve "I/me/my" to "User"; never use pronouns that need the chat for context.',
   "",
   "WHAT EACH CATEGORY MEANS (extract these):",
-  "- identity: stable bio — name, role/title, location, languages, employer/company, age bracket.",
+  "- identity: stable bio — name, role/title, location, nationality, languages, age bracket.",
   "- preference: lasting likes/dislikes, tools/stacks/styles they consistently prefer, working style, communication style.",
-  "- work: what they are building or working on long-term (products, companies, ongoing projects, domain).",
+  "- work: what they are building or working on long-term in general (their domain, what they do).",
+  "- project: a SPECIFIC named project/product of theirs — one fact per project ('User is building Relay, a cross-AI context tool').",
   "- skill: durable expertise or proficiency levels (e.g. 'User is experienced in Go', 'User is new to React').",
   "- goal: lasting objectives and intentions ('User wants to launch Relay by Q2', 'User is learning Rust').",
   "- constraint: durable personal limits/requirements — budget, time, accessibility, tooling, values they hold.",
-  "- relationship: stable people/teams in their life relevant to remember (cofounder, manager, family member by role).",
+  "- relationship: stable people/teams in their life by ROLE relevant to remember (cofounder, manager, family member).",
+  "- person: a SPECIFIC named person relevant to them (mentor, friend, collaborator by name).",
+  "- company: a company/org relevant to them — employer, school, key vendor/tool provider they rely on.",
+  "- education: schools, degrees, courses, exams/scores, academic status.",
+  "- finance: durable financial situation or strategy — budget posture, funding, cost sensitivity, credits relied on.",
+  "- event: a dated or scheduled milestone worth remembering ('User sits the SAT retake in Fall 2026').",
   "- health: ONLY clearly-stated, lasting, relevant health facts (dietary needs, conditions, accessibility). Be conservative; omit if uncertain or sensitive-and-incidental.",
   "",
   "HARD REJECTS (return none of these):",
@@ -103,8 +124,9 @@ const SALIENCE_SYSTEM_INSTRUCTION = [
   "",
   "CONFIDENCE = how explicitly the user states this lasting fact about themselves. 0.9-1.0: user states it directly and durably ('I'm a vegetarian', 'I'm the founder of X'). 0.6-0.8: strongly implied and stable. <0.5: weak, momentary, or inferred — prefer to omit. When unsure whether something is durable, lower the confidence rather than dropping it silently.",
   "Bias toward precision over recall: a near-empty personal memory is far better than one polluted with transient or technical noise.",
+  "When the text is a profile/recap that genuinely contains many durable facts, extract them ALL as separate atomic facts — do not summarize or drop the long tail.",
   'If nothing durable and user-centric is present, return {"facts":[]}.',
-  "Return at most 5 facts, most important first.",
+  `Return at most ${MAX_PERSONAL_FACTS_PER_PASS} facts, most important first.`,
 ].join("\n")
 
 function isPersonalFactCategory(value: string): value is PersonalFactCategory {
@@ -161,7 +183,7 @@ export async function classifyPersonalSalience(
         return { category, content: factContent, confidence }
       })
       .filter((f): f is PersonalFact => f !== null)
-      .slice(0, 5)
+      .slice(0, MAX_PERSONAL_FACTS_PER_PASS)
   } catch (error) {
     console.warn(
       "[personal-memory] salience classifier failed:",
@@ -221,6 +243,164 @@ function emptyRoutingResult(personalProjectId: string | null): PersonalRoutingRe
 }
 
 /**
+ * Write a batch of already-classified personal facts into the personal project,
+ * applying the soak gate + mem0 ADD/NOOP dedupe. Shared by the auto-route path
+ * (routePersonalMemory) and the personal-origin capture path (which classifies
+ * the same way but must NOT early-return on activeProjectId === personal).
+ */
+async function writePersonalFacts(
+  userId: string,
+  personalProjectId: string,
+  facts: PersonalFact[],
+  options: { sourceSurface: string | null; derivedFromProjectId: string },
+): Promise<PersonalRoutingResult> {
+  const repositories = createRepositoryBundle(userId)
+  const result = emptyRoutingResult(personalProjectId)
+  const autoWriteEnabled = process.env.RELAY_PERSONAL_MEMORY_AUTOWRITE === "true"
+
+  // Load existing personal items once for the ADD/NOOP decision.
+  const existingRows = await repositories.memory.listByProject(personalProjectId, {
+    types: ["note"],
+    limit: 200,
+  })
+  const existing: MemoryItemForConflictResolution[] = existingRows.map((row) => ({
+    id: row.id,
+    content: row.content,
+    capturedAt: row.capturedAt,
+    type: row.type,
+    pinned: row.pinned,
+    sourceSurface: row.sourceSurface,
+    metadata: row.metadata,
+  }))
+
+  for (const fact of facts) {
+    const eligible = autoWriteEnabled && fact.confidence >= PERSONAL_SALIENCE_WRITE_THRESHOLD
+    if (!eligible) {
+      if (
+        fact.confidence >= PERSONAL_SALIENCE_UNSURE_THRESHOLD &&
+        fact.confidence < PERSONAL_SALIENCE_WRITE_THRESHOLD
+      ) {
+        result.unsure += 1
+      }
+      // Soak: log the candidate for prompt tuning, never write.
+      await logServerEvent({
+        level: "info",
+        surface: "web-api",
+        area: "memory",
+        event: "memory.personal_fact_skipped",
+        message: "Personal fact candidate not written (soak/below-threshold).",
+        userId,
+        context: {
+          category: fact.category,
+          confidence: fact.confidence,
+          autoWriteEnabled,
+          derivedFromProjectId: options.derivedFromProjectId,
+          content: fact.content,
+        },
+      })
+      continue
+    }
+
+    const decision = decidePersonalCrud(
+      {
+        id: "incoming",
+        content: fact.content,
+        capturedAt: new Date().toISOString(),
+        type: "note",
+      },
+      existing,
+    )
+    if (decision.verb === "noop") {
+      result.duplicate += 1
+      await logServerEvent({
+        level: "info",
+        surface: "web-api",
+        area: "memory",
+        event: "memory.personal_fact_noop",
+        message: "Personal fact already represented — skipped.",
+        userId,
+        context: {
+          category: fact.category,
+          matchedId: decision.matchedId,
+          derivedFromProjectId: options.derivedFromProjectId,
+        },
+      })
+      continue
+    }
+
+    const created = await createMemoryItem(userId, {
+      projectId: personalProjectId,
+      type: "note",
+      content: fact.content,
+      sourceSurface: options.sourceSurface ?? "auto",
+      capturedAt: new Date().toISOString(),
+      metadata: {
+        source: "personal-router",
+        autoRouted: true,
+        personalCategory: fact.category,
+        salienceConfidence: fact.confidence,
+        derivedFromProjectId: options.derivedFromProjectId,
+        authority: "inferred",
+        durability: "durable",
+        validationState: "inferred",
+      },
+    })
+    result.written += 1
+    // Keep the in-memory existing set current so later facts dedupe against
+    // just-added ones.
+    existing.push({
+      id: created.id,
+      content: created.content,
+      capturedAt: created.capturedAt,
+      type: created.type,
+      pinned: created.pinned,
+      sourceSurface: created.sourceSurface,
+      metadata: created.metadata,
+    })
+  }
+  return result
+}
+
+/**
+ * Personal-ORIGIN capture: the user explicitly captured a chat while parked on
+ * their personal project. Classify the transcript and write salient user facts
+ * directly — NEVER a project digest (no decisions/constraints/tasks/state/brief
+ * in personal). Unlike routePersonalMemory there is no early-return, because the
+ * personal project is the intended target here.
+ */
+export async function routePersonalFromTranscript(
+  userId: string,
+  content: string,
+  options: RoutePersonalMemoryOptions = {},
+): Promise<PersonalRoutingResult> {
+  try {
+    const repositories = createRepositoryBundle(userId)
+    const personal = await repositories.projects.getPersonalProject(userId)
+    if (!personal) return emptyRoutingResult(null)
+
+    const facts = await classifyPersonalSalience(content, options.classifyDeps)
+    if (facts.length === 0) return emptyRoutingResult(personal.id)
+
+    return writePersonalFacts(userId, personal.id, facts, {
+      sourceSurface: options.sourceSurface ?? null,
+      derivedFromProjectId: personal.id,
+    })
+  } catch (error) {
+    await logServerEvent({
+      level: "error",
+      surface: "web-api",
+      area: "memory",
+      event: "memory.personal_routing_failed",
+      message: "Personal-origin routing failed.",
+      userId,
+      context: { derivedFromProjectId: "personal" },
+      error,
+    }).catch(() => {})
+    return emptyRoutingResult(null)
+  }
+}
+
+/**
  * Derive durable user facts from a captured text and route the high-confidence
  * ones into the user's personal project. Best-effort + fire-and-forget — never
  * throws into the caller. The original capture into `activeProjectId` is the
@@ -248,110 +428,10 @@ export async function routePersonalMemory(
     const facts = await classifyPersonalSalience(content, options.classifyDeps)
     if (facts.length === 0) return emptyRoutingResult(personal.id)
 
-    const result = emptyRoutingResult(personal.id)
-    const autoWriteEnabled = process.env.RELAY_PERSONAL_MEMORY_AUTOWRITE === "true"
-
-    // Load existing personal items once for the ADD/NOOP decision.
-    const existingRows = await repositories.memory.listByProject(personal.id, {
-      types: ["note"],
-      limit: 200,
+    return writePersonalFacts(userId, personal.id, facts, {
+      sourceSurface: options.sourceSurface ?? null,
+      derivedFromProjectId: activeProjectId,
     })
-    const existing: MemoryItemForConflictResolution[] = existingRows.map((row) => ({
-      id: row.id,
-      content: row.content,
-      capturedAt: row.capturedAt,
-      type: row.type,
-      pinned: row.pinned,
-      sourceSurface: row.sourceSurface,
-      metadata: row.metadata,
-    }))
-
-    for (const fact of facts) {
-      const eligible = autoWriteEnabled && fact.confidence >= PERSONAL_SALIENCE_WRITE_THRESHOLD
-      if (!eligible) {
-        if (
-          fact.confidence >= PERSONAL_SALIENCE_UNSURE_THRESHOLD &&
-          fact.confidence < PERSONAL_SALIENCE_WRITE_THRESHOLD
-        ) {
-          result.unsure += 1
-        }
-        // Soak: log the candidate for prompt tuning, never write.
-        await logServerEvent({
-          level: "info",
-          surface: "web-api",
-          area: "memory",
-          event: "memory.personal_fact_skipped",
-          message: "Personal fact candidate not written (soak/below-threshold).",
-          userId,
-          context: {
-            category: fact.category,
-            confidence: fact.confidence,
-            autoWriteEnabled,
-            derivedFromProjectId: activeProjectId,
-            content: fact.content,
-          },
-        })
-        continue
-      }
-
-      const decision = decidePersonalCrud(
-        {
-          id: "incoming",
-          content: fact.content,
-          capturedAt: new Date().toISOString(),
-          type: "note",
-        },
-        existing,
-      )
-      if (decision.verb === "noop") {
-        result.duplicate += 1
-        await logServerEvent({
-          level: "info",
-          surface: "web-api",
-          area: "memory",
-          event: "memory.personal_fact_noop",
-          message: "Personal fact already represented — skipped.",
-          userId,
-          context: {
-            category: fact.category,
-            matchedId: decision.matchedId,
-            derivedFromProjectId: activeProjectId,
-          },
-        })
-        continue
-      }
-
-      const created = await createMemoryItem(userId, {
-        projectId: personal.id,
-        type: "note",
-        content: fact.content,
-        sourceSurface: options.sourceSurface ?? "auto",
-        capturedAt: new Date().toISOString(),
-        metadata: {
-          source: "personal-router",
-          autoRouted: true,
-          personalCategory: fact.category,
-          salienceConfidence: fact.confidence,
-          derivedFromProjectId: activeProjectId,
-          authority: "inferred",
-          durability: "durable",
-          validationState: "inferred",
-        },
-      })
-      result.written += 1
-      // Keep the in-memory existing set current so later facts in the same
-      // batch dedupe against just-added ones.
-      existing.push({
-        id: created.id,
-        content: created.content,
-        capturedAt: created.capturedAt,
-        type: created.type,
-        pinned: created.pinned,
-        sourceSurface: created.sourceSurface,
-        metadata: created.metadata,
-      })
-    }
-    return result
   } catch (error) {
     await logServerEvent({
       level: "error",
