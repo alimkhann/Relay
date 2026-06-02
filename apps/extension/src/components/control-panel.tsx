@@ -84,6 +84,7 @@ import {
 } from "@relay/shared/utils/capture-settings";
 import type { CaptureResolutionInput } from "@relay/shared/utils/capture-settings";
 import { supportedPlatforms } from "@relay/shared/constants/platforms";
+import { PERSONAL_CATEGORY_META, isPersonalCategory } from "@relay/shared/constants/memory-taxonomy";
 import type { SupportedPlatform, UserSettingsRow } from "@relay/shared/types/database";
 import type { BillingStatusDto, EntitlementLimitsDto } from "@relay/shared/types/billing";
 import {
@@ -4026,6 +4027,10 @@ function SidepanelNoteItem({
   const favicon = note.hostname
     ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(note.hostname)}&sz=32`
     : null;
+  const categoryMeta =
+    note.personalCategory && isPersonalCategory(note.personalCategory)
+      ? PERSONAL_CATEGORY_META[note.personalCategory]
+      : null;
 
   if (editing) {
     return (
@@ -4056,7 +4061,15 @@ function SidepanelNoteItem({
       {/* Meta (source + time) on top, then text, then right-aligned icon
           actions — matching the decision/constraint/task item layout. */}
       <div className={styles.noteFooter}>
-        {note.sourceUrl && note.hostname ? (
+        {categoryMeta ? (
+          <span className={styles.contextItemBadge} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span
+              aria-hidden="true"
+              style={{ width: 7, height: 7, borderRadius: "50%", background: categoryMeta.color }}
+            />
+            {categoryMeta.label}
+          </span>
+        ) : note.sourceUrl && note.hostname ? (
           <a
             href={note.sourceUrl}
             target="_blank"

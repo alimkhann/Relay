@@ -1,4 +1,5 @@
 import type { MemoryItemDto, MemoryItemType, ProjectSourceKind, ProjectSourceStatus, SourceSurface } from "@relay/shared";
+import { PERSONAL_CATEGORY_META, personalCategoryFromMetadata } from "@relay/shared";
 
 export const MIN_GRAPH_ITEMS = 8;
 
@@ -10,6 +11,16 @@ export const TYPE_COLORS: Record<MemoryItemType, string> = {
   requirement: "#ef4444",
   artifact: "#6366f1",
 };
+
+/**
+ * Node fill color. Personal-memory nodes (metadata.personalCategory set) use the
+ * Folk category palette; everything else uses the project TYPE_COLORS.
+ */
+export function nodeColor(node: Pick<GraphNode, "type" | "metadata">): string {
+  const personalCategory = personalCategoryFromMetadata(node.metadata);
+  if (personalCategory) return PERSONAL_CATEGORY_META[personalCategory].color;
+  return TYPE_COLORS[node.type];
+}
 
 export const TYPE_LABELS: Record<MemoryItemType, string> = {
   decision: "Decisions",

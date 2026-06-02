@@ -35,6 +35,12 @@ function summarizeMemory(item: MemoryItemRow, relations: MemoryRelationRow[] = [
     tags,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
+    // Minimal metadata passthrough so personal-memory category coloring works on
+    // surfaces that read this endpoint (graph project-switch refetch, etc.).
+    metadata: {
+      personalCategory:
+        typeof metadata.personalCategory === "string" ? metadata.personalCategory : null,
+    },
     provenance: {
       sourceSurface: item.sourceSurface ?? null,
       sourceConversationId: item.sourceConversationId ?? null,

@@ -236,7 +236,7 @@ Use manage_memory whenever get_brief or recall shows stale, completed, contradic
 What to save (be selective — quality over volume):
 - SAVE durable project facts: decisions made, constraints/requirements, open tasks, and stable artifacts. One atomic fact per item; phrase so it stands alone without this chat.
 - DO NOT save: transient state (the current bug, "right now"), questions, raw code/config/logs, or anything already in the brief.
-- Personal vs project: durable facts about the USER (identity, stable preferences, what they're building, skills, goals, personal constraints) belong in the kind='personal' project — switch to it with set_current_project (or pass its projectId) before add_memory. Keep project-technical detail out of personal memory, and keep personal bio out of project memory.`,
+- Personal vs project: durable facts about the USER (identity, stable preferences, what they're building, skills, goals, personal constraints) belong in the kind='personal' project — pass projectId "personal" (or its id) to add_memory. Keep project-technical detail out of personal memory, and personal bio out of project memory. Relay auto-classifies personal facts into Folk-style categories (person, company, concept, event, meeting, signals, note); you don't set the category — just write the atomic fact.`,
     saveSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)

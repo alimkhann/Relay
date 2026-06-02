@@ -273,6 +273,7 @@ export function MemoryGraphContainer({
           const payload = (await res.json()) as { memory: Array<{
             id: string; type: MemoryItemDto["type"]; title: string | null;
             content: string; pinned: boolean; updatedAt?: string;
+            metadata?: Record<string, unknown>;
             provenance?: { sourceSurface?: string | null; sourceUrl?: string | null; capturedAt?: string | null };
             status?: { lastReaffirmedAt?: string | null };
           }> };
@@ -283,6 +284,9 @@ export function MemoryGraphContainer({
             content: i.content,
             pinned: i.pinned,
             updatedAt: i.updatedAt ?? new Date().toISOString(),
+            // Carry metadata so personal-category coloring works on the
+            // project-switch refetch path too (not just initial render).
+            metadata: i.metadata,
             sourceSurface: (i.provenance?.sourceSurface as MemoryItemDto["sourceSurface"]) ?? null,
             sourceUrl: i.provenance?.sourceUrl ?? null,
             capturedAt: i.provenance?.capturedAt ?? null,

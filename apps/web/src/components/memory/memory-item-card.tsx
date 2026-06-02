@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 
 import type { MemoryItemDto, MemoryItemType, SourceSurface } from "@relay/shared"
+import { PERSONAL_CATEGORY_META, personalCategoryFromMetadata } from "@relay/shared"
 
 import { cn } from "@/lib/cn"
 import { Markdown } from "@/components/markdown"
@@ -130,6 +131,10 @@ export function MemoryItemCard({
   busy,
 }: MemoryItemCardProps) {
   const [expanded, setExpanded] = useState(false)
+  // Personal-memory items carry a Folk category in metadata.personalCategory
+  // (the item type stays 'note'). When present it drives the accent + label.
+  const personalCategory = personalCategoryFromMetadata(item.metadata)
+  const personalMeta = personalCategory ? PERSONAL_CATEGORY_META[personalCategory] : null
   const accent = accentClass ?? TYPE_ACCENT[item.type] ?? "bg-zinc-400"
   const created = item.capturedAt ?? item.updatedAt
   const wasEdited =
@@ -148,12 +153,24 @@ export function MemoryItemCard({
     >
       <span
         aria-hidden="true"
-        className={cn("absolute inset-y-2 left-0 w-1 rounded-r-sm", accent)}
+        className={cn("absolute inset-y-2 left-0 w-1 rounded-r-sm", personalMeta ? null : accent)}
+        style={personalMeta ? { backgroundColor: personalMeta.color } : undefined}
       />
       <div className="ml-2 flex-1 min-w-0">
         <header className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-[var(--relay-faint)]">
-          {showTypeLabel && (
-            <span className="capitalize text-[var(--relay-muted)]">{item.type}</span>
+          {personalMeta ? (
+            <span className="inline-flex items-center gap-1.5 text-[var(--relay-muted)]">
+              <span
+                aria-hidden="true"
+                className="size-2 rounded-full"
+                style={{ backgroundColor: personalMeta.color }}
+              />
+              {personalMeta.label}
+            </span>
+          ) : (
+            showTypeLabel && (
+              <span className="capitalize text-[var(--relay-muted)]">{item.type}</span>
+            )
           )}
           {pill && (
             <span

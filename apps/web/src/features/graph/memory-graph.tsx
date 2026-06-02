@@ -7,10 +7,10 @@ import {
   graphEndpointId,
   isHubNode,
   labelOpacity,
+  nodeColor,
   nodeOpacity,
   nodeRadius,
   RELATION_COLORS,
-  TYPE_COLORS,
   type MemoryGraphSettings,
   type GraphData,
   type GraphLink,
@@ -324,7 +324,7 @@ export function MemoryGraph({
     if (!hasPosition(node)) return;
 
     const isHub = isHubNode(node);
-    const color = node.hub === "root" ? "#94a3b8" : TYPE_COLORS[node.type];
+    const color = node.hub === "root" ? "#94a3b8" : nodeColor(node);
     const isActive = activeNodeId === node.id;
 
     if (node.kind === "source-file") {

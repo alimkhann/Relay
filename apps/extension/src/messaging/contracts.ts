@@ -75,6 +75,8 @@ export interface RelayContextNoteItem {
   sourceUrl: string | null;
   hostname: string | null;
   capturedAt: string;
+  /** Folk personal category (metadata.personalCategory) for personal-memory notes. */
+  personalCategory?: string | null;
 }
 
 export interface RelayContextPreview {

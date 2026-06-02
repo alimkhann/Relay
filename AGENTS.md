@@ -88,6 +88,7 @@ This is the canonical repository policy for coding agents working in Relay. Clie
 - Use `sources` for project source lifecycle: resolve, index, search, read, refresh, import, promote, delete, and purge.
 - Use `save` for session writeback, checkpoints, durable memory, memory cleanup, state updates, and brief/session maintenance.
 - If Relay context is stale, completed, contradicted, or superseded, clean it up with `save` action `manage_memory` or `set_state`.
+- Durable facts about the USER go to personal memory: pass `projectId: "personal"` to `save`/`add_memory`. Relay auto-classifies them into Folk-style categories (person, company, concept, event, meeting, signals, note) — write the atomic fact, do not set the category.
 - Hookless clients should call `save` action `checkpoint` only at meaningful boundaries:
   - before compaction-equivalent actions
   - before switching threads or tasks

@@ -20,6 +20,7 @@
  */
 
 import {
+  personalCategories,
   resolveMemoryConflict,
   type MemoryItemForConflictResolution,
 } from "@relay/shared"
@@ -55,20 +56,11 @@ export const PERSONAL_SALIENCE_WRITE_THRESHOLD = 0.7
  */
 export const PERSONAL_SALIENCE_UNSURE_THRESHOLD = 0.4
 
-// Folk-style personal taxonomy (matches Folk by Nozomio: company, concept,
-// event, meeting, note, person, signals). These live ONLY in
-// memory_items.metadata.personalCategory (items still store as type 'note') —
-// not the project memory_items.type enum — so this is classifier-local with no
-// DB/UI/MCP change.
-export const PERSONAL_FACT_CATEGORIES = [
-  "person", // a specific named person in their life/work (mentor, friend, family, collaborator)
-  "company", // a company/org relevant to them: employer, school, key vendor/tool provider
-  "concept", // a durable idea/topic/preference/skill/value/goal that defines them
-  "event", // a dated or scheduled milestone worth remembering
-  "meeting", // a specific conversation/call/session worth remembering
-  "signals", // a notable behavioral signal or state about the user (intent, momentum, change)
-  "note", // any other durable user-centric fact that doesn't fit the above
-] as const
+// Folk-style personal taxonomy. Single source of truth lives in
+// @relay/shared (personalCategories) so the classifier, dashboard, graph, and
+// extension all agree. These live ONLY in metadata.personalCategory (items
+// store as type 'note') — not the project memory_items.type enum.
+export const PERSONAL_FACT_CATEGORIES = personalCategories
 
 export type PersonalFactCategory = (typeof PERSONAL_FACT_CATEGORIES)[number]
 

@@ -4,6 +4,7 @@ import {
 } from "@relay/shared/utils/capture-settings";
 import { createFlowId } from "@relay/shared/utils/telemetry";
 import { buildProjectContextPreview, getProjectContextCounts } from "@relay/shared/utils/project-context";
+import { personalCategoryFromMetadata } from "@relay/shared/constants/memory-taxonomy";
 import { normalizeText, slugify } from "@relay/shared/utils/text";
 import type {
   BillingStatusDto,
@@ -546,6 +547,7 @@ function buildDashboardContextPreview(
         sourceUrl: item.sourceUrl,
         hostname,
         capturedAt: item.capturedAt ?? item.updatedAt,
+        personalCategory: personalCategoryFromMetadata(item.metadata),
       };
     });
 

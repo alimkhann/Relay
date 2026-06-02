@@ -3,9 +3,11 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 
-import type { MemoryItemDto } from "@relay/shared"
+import type { MemoryItemDto, PersonalCategory } from "@relay/shared"
+import { personalCategoryFromMetadata } from "@relay/shared"
 
 import { MemoryItemList } from "@/components/memory/memory-item-card"
+import { PersonalCategoryLegend } from "@/components/memory/personal-category-legend"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
 
 interface MemoryItemListClientProps {
@@ -62,16 +64,29 @@ export function MemoryItemListClient({
     })
   }
 
+  // Show the Folk legend only when the list actually contains personal-memory
+  // items (personalCategory in metadata) — otherwise it's a normal project list.
+  const presentCategories = Array.from(
+    new Set(
+      items
+        .map((item) => personalCategoryFromMetadata(item.metadata))
+        .filter((c): c is PersonalCategory => c !== null),
+    ),
+  )
+
   return (
-    <MemoryItemList
-      items={items}
-      emptyLabel={emptyLabel}
-      showTypeLabel={showTypeLabel}
-      accentClass={accentClass}
-      maxHeight={maxHeight}
-      onDelete={onDelete}
-      busyIds={busyIds}
-      lifecycleByItemId={lifecycleByItemId}
-    />
+    <div className="flex flex-col gap-2">
+      {presentCategories.length > 0 && <PersonalCategoryLegend present={presentCategories} />}
+      <MemoryItemList
+        items={items}
+        emptyLabel={emptyLabel}
+        showTypeLabel={showTypeLabel}
+        accentClass={accentClass}
+        maxHeight={maxHeight}
+        onDelete={onDelete}
+        busyIds={busyIds}
+        lifecycleByItemId={lifecycleByItemId}
+      />
+    </div>
   )
 }
