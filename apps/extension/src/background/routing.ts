@@ -212,42 +212,6 @@ function hasPersonalProfileIntent(haystack: string | null | undefined) {
     /\bwhat\b[\s\S]{0,60}\byou\b[\s\S]{0,60}\bknow\b[\s\S]{0,60}\bme\b/.test(normalizedHaystack)
 }
 
-// Broader, "personal-leaning" detector for auto-routing to the personal
-// project: durable first-person SELF-DISCLOSURE about who the user is, not a
-// task ("fix my bug") or a transient request. We require a self-referential
-// phrase AND an identity/preference/life cue, so "fix my code" / "help me debug"
-// don't qualify but "I'm a CS student from Kazakhstan", "I prefer TypeScript",
-// "my goal is to launch by Q2" do.
-function hasPersonalDisclosure(haystack: string | null | undefined) {
-  const text = normalizeText(haystack ?? "").toLowerCase()
-  if (!text) return false
-
-  const selfReference =
-    /\b(i am|i'?m|my name is|i live in|i'?m from|i work|i study|i'?m studying|i prefer|i like|i love|i hate|i want to|my goal|i'?m building|i'?m learning|i'?m a|i'?m an|about myself)\b/.test(
-      text,
-    )
-  if (!selfReference) return false
-
-  // Exclude obvious task/transient framing that merely contains "my/me".
-  const taskFraming =
-    /\b(my (code|bug|error|function|component|file|repo|project code|test|build|deploy))\b/.test(text) ||
-    /\b(fix|debug|implement|refactor|optimi[sz]e)\b[\s\S]{0,40}\bmy\b/.test(text)
-  return !taskFraming
-}
-
-/** True when the chat is durable, user-centric content that belongs in personal memory. */
-function hasPersonalLeaningContent(page: RelayPageState): boolean {
-  const title = page.title
-  const recent = page.recentRoutingText ?? page.recentUserTurnText ?? null
-  const full = page.fullVisibleRoutingText ?? recent
-  return (
-    hasPersonalProfileIntent(title) ||
-    hasPersonalProfileIntent(recent) ||
-    hasPersonalProfileIntent(full) ||
-    hasPersonalDisclosure(recent) ||
-    hasPersonalDisclosure(full)
-  )
-}
 
 function collectProjectTokens(project: RelayProjectOption) {
   return uniqueTokens([project.name, project.slug ?? null])
@@ -766,51 +730,14 @@ export function evaluateProjectRouting(input: EvaluateProjectRoutingInput): Rela
     }
   }
 
-  // Personal-leaning content (self-disclosure / "what do you know about me")
-  // auto-routes the SESSION into the personal project even when it isn't the
-  // active/selected project. Personal otherwise has no name/description to match
-  // a chat and is bootstrap-phase (capped at medium), so it could never win on
-  // content score alone. Short-circuit here at the decision level. Capture into
-  // personal is salience-safe server-side (durable user facts, never a project
-  // digest). An EXPLICIT project name mention still wins (handled by letting the
-  // scorer run first below when a project scores a strong name signal).
-  const personalProject = input.projects.find((project) => project.kind === "personal")
-  if (personalProject && hasPersonalLeaningContent(input.page)) {
-    // Defer to a project only when the chat explicitly, strongly names it
-    // (verbatim project name in title/recent turn) — otherwise personal wins.
-    const explicitProjectMatch = input.projects.some(
-      (project) =>
-        project.kind !== "personal" &&
-        (hasProjectNameMention(project, input.page.title) ||
-          hasProjectNameMention(project, getRecentRoutingText(input.page))),
-    )
-    if (!explicitProjectMatch) {
-      return {
-        mode: "auto-save",
-        confidence: "high",
-        candidateProjectId: personalProject.id,
-        candidateProjectName: personalProject.name,
-        score: 100,
-        reasons: ["This chat is about you — saving to personal memory."],
-        diagnostics: {
-          phase: "context-aware",
-          scoreGap: 100,
-          explicitNameSignal: true,
-          wholeChatExactMention: false,
-          highConfidenceEligible: true,
-          signalCategories: ["context"],
-        },
-        topCandidates: [
-          {
-            projectId: personalProject.id,
-            projectName: personalProject.name,
-            score: 100,
-            reasons: ["This chat is about you — saving to personal memory."],
-          },
-        ],
-      }
-    }
-  }
+  // NOTE: we deliberately do NOT route the whole session into the personal
+  // project on self-disclosure. The server's item-level fan-out
+  // (routePersonalMemory) already runs on every non-personal capture and
+  // extracts ONLY the durable user facts into Personal as categorized notes —
+  // so a mixed chat keeps its session in the right project while its personal
+  // bits still land in Personal. Whole-session routing here would dump unrelated
+  // project context into Personal. (Personal is still the target when the user
+  // deliberately selects it — handled in the capture path, not the scorer.)
 
   const candidates = input.projects
     .map((project) => scoreProjectCandidate(project, input))
