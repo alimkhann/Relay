@@ -20,6 +20,7 @@ import { queryKeys } from "@/lib/query/keys";
 import { DashboardStats } from "@/features/projects/dashboard-stats";
 import { DashboardAnalyticsBar } from "@/features/projects/dashboard-analytics-bar";
 import { DashboardMemoryCard } from "@/features/projects/dashboard-memory-card";
+import { PersonalCategorySummary } from "@/features/projects/personal-category-summary";
 import { DashboardBriefCard } from "@/features/projects/dashboard-brief-card";
 import { DashboardActivityCard } from "@/features/projects/dashboard-activity-card";
 import { DashboardGovernanceSummary } from "@/features/projects/dashboard-governance-summary";
@@ -85,7 +86,7 @@ function groupSessionsByConversation(
 /* ─── Component ─── */
 
 interface DashboardContentProps {
-  project: { id: string; name: string; description?: string | null; projectUrl?: string | null };
+  project: { id: string; name: string; description?: string | null; projectUrl?: string | null; kind?: "project" | "personal" };
   walkthroughInitiallyOpen?: boolean;
   walkthroughInitialStep?: number;
 }
@@ -444,12 +445,16 @@ export function DashboardContent({ project, walkthroughInitiallyOpen = false, wa
       {/* ─── 2-column: Memory + Brief ─── */}
       <FadeIn delay={0.1}>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          <DashboardMemoryCard
-            projectId={project.id}
-            overview={dashboard.projectState?.projectOverview ?? project.description ?? ""}
-            objective={dashboard.projectState?.currentObjective ?? ""}
-            progress={dashboard.projectState?.recentProgress ?? ""}
-          />
+          {project.kind === "personal" ? (
+            <PersonalCategorySummary projectId={project.id} memory={dashboard.memory} />
+          ) : (
+            <DashboardMemoryCard
+              projectId={project.id}
+              overview={dashboard.projectState?.projectOverview ?? project.description ?? ""}
+              objective={dashboard.projectState?.currentObjective ?? ""}
+              progress={dashboard.projectState?.recentProgress ?? ""}
+            />
+          )}
           <DashboardBriefCard
             projectId={project.id}
             packets={dashboard.packets}

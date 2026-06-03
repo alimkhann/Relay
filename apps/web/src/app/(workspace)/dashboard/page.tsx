@@ -173,6 +173,7 @@ export default async function DashboardPage({
               name: currentProject.name,
               description: currentProject.description,
               projectUrl: currentProject.projectUrl,
+              kind: currentProject.kind,
             }}
             walkthroughInitiallyOpen={
               walkthroughParam === "extension" ||
