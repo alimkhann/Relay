@@ -1,5 +1,10 @@
 import type { MemoryItemDto, MemoryItemType, ProjectSourceKind, ProjectSourceStatus, SourceSurface } from "@relay/shared";
-import { PERSONAL_CATEGORY_META, personalCategoryFromMetadata } from "@relay/shared";
+import {
+  PERSONAL_CATEGORY_META,
+  personalCategories,
+  personalCategoryFromMetadata,
+  type PersonalCategory,
+} from "@relay/shared";
 
 export const MIN_GRAPH_ITEMS = 8;
 
@@ -220,6 +225,34 @@ function makeHubNode(type: MemoryItemType): GraphNode {
   };
 }
 
+/**
+ * Personal graph: hub per Folk category (metadata.personalCategory) instead of
+ * per project type — personal items are all type 'note', so type-hubs would
+ * collapse them into one. The hub carries the category in metadata so node
+ * coloring + the hub→item link match by category.
+ */
+function makeCategoryHubNode(category: PersonalCategory): GraphNode {
+  const meta = PERSONAL_CATEGORY_META[category];
+  return {
+    id: `${HUB_NODE_PREFIX}cat:${category}`,
+    label: meta.label,
+    type: "note" as MemoryItemType,
+    kind: "hub",
+    decayScore: 1,
+    pinned: false,
+    archived: false,
+    hub: "type-hub",
+    sourceSurface: null,
+    sourceUrl: null,
+    content: `Hub node for ${meta.label}`,
+    title: meta.label,
+    updatedAt: new Date().toISOString(),
+    capturedAt: null,
+    lastReaffirmedAt: null,
+    metadata: { personalCategory: category },
+  };
+}
+
 function makeRootNode(projectName: string): GraphNode {
   return {
     id: ROOT_NODE_ID,
@@ -313,8 +346,23 @@ export function buildGraphNodes(
     metadata: item.metadata,
   }));
 
-  const presentTypes = new Set(items.map((i) => i.type));
-  const hubNodes = Array.from(presentTypes).map(makeHubNode);
+  // Personal graph: if any item carries a Folk category, hub by category;
+  // otherwise hub by project type as usual.
+  const isPersonalGraph = items.some((i) => personalCategoryFromMetadata(i.metadata) !== null);
+  let hubNodes: GraphNode[];
+  if (isPersonalGraph) {
+    const presentCategories = new Set(
+      items
+        .map((i) => personalCategoryFromMetadata(i.metadata))
+        .filter((c): c is PersonalCategory => c !== null),
+    );
+    hubNodes = personalCategories
+      .filter((category) => presentCategories.has(category))
+      .map(makeCategoryHubNode);
+  } else {
+    const presentTypes = new Set(items.map((i) => i.type));
+    hubNodes = Array.from(presentTypes).map(makeHubNode);
+  }
   const rootNode = makeRootNode(projectName ?? "Project");
 
   return [rootNode, ...hubNodes, ...sources.map(makeSourceNode), ...entities.map(makeEntityNode), ...itemNodes];
@@ -369,8 +417,14 @@ export function buildGraphLinks(
       });
       seen.add(linkKey(ROOT_NODE_ID, hub.id, "extends"));
 
+      // Category hubs (personal) match items by personalCategory; type hubs
+      // match by item type. A hub is a category hub when it carries a category.
+      const hubCategory = personalCategoryFromMetadata(hub.metadata);
       for (const item of itemNodes) {
-        if (item.type === hub.type && !sourceLinkedMemoryIds.has(item.id) && !entityLinkedMemoryIds.has(item.id)) {
+        const matchesHub = hubCategory
+          ? personalCategoryFromMetadata(item.metadata) === hubCategory
+          : item.type === hub.type;
+        if (matchesHub && !sourceLinkedMemoryIds.has(item.id) && !entityLinkedMemoryIds.has(item.id)) {
           const key = linkKey(hub.id, item.id, "extends");
           links.push({
             source: hub.id,

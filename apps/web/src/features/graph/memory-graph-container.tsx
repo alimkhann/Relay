@@ -3,6 +3,12 @@
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { MemoryItemDto } from "@relay/shared";
+import {
+  PERSONAL_CATEGORY_META,
+  personalCategories,
+  personalCategoryFromMetadata,
+  type PersonalCategory,
+} from "@relay/shared";
 import { ChevronDown, Expand, Minimize2, Network, RotateCcw, Settings2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -72,15 +78,34 @@ function useElementSize<T extends HTMLElement>() {
   return { ref, size };
 }
 
-function GraphLegend({ nodeCount, linkCount }: { nodeCount: number; linkCount: number }) {
+function GraphLegend({
+  nodeCount,
+  linkCount,
+  personalCategoriesPresent,
+}: {
+  nodeCount: number;
+  linkCount: number;
+  personalCategoriesPresent?: PersonalCategory[];
+}) {
+  const isPersonal = Boolean(personalCategoriesPresent && personalCategoriesPresent.length > 0);
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[var(--relay-muted)]">
-      {(Object.keys(TYPE_COLORS) as Array<keyof typeof TYPE_COLORS>).map((type) => (
-        <span key={type} className="inline-flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: TYPE_COLORS[type] }} />
-          {TYPE_LABELS[type]}
-        </span>
-      ))}
+      {isPersonal
+        ? personalCategoriesPresent!.map((category) => (
+            <span key={category} className="inline-flex items-center gap-1.5">
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: PERSONAL_CATEGORY_META[category].color }}
+              />
+              {PERSONAL_CATEGORY_META[category].label}
+            </span>
+          ))
+        : (Object.keys(TYPE_COLORS) as Array<keyof typeof TYPE_COLORS>).map((type) => (
+            <span key={type} className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: TYPE_COLORS[type] }} />
+              {TYPE_LABELS[type]}
+            </span>
+          ))}
       <span className="text-[var(--relay-line)]">·</span>
       <span>{nodeCount} nodes</span>
       <span>{linkCount} edges</span>
@@ -248,6 +273,12 @@ export function MemoryGraphContainer({
     : projects.find((p) => p.id === activeProjectId)?.name;
   const { data, loading, error } = useGraphData(activeProjectId, effectiveItems, activeProjectName);
 
+  // Personal graph: the legend lists the present Folk categories instead of the
+  // project memory types.
+  const personalCategoriesPresent = personalCategories.filter((category) =>
+    effectiveItems.some((item) => personalCategoryFromMetadata(item.metadata) === category),
+  );
+
   useEffect(() => {
     if (!expanded) return;
     void (async () => {
@@ -387,7 +418,7 @@ export function MemoryGraphContainer({
                   {title}
                 </div>
                 <div className="mt-1">
-                  <GraphLegend nodeCount={data.nodes.length} linkCount={data.links.length} />
+                  <GraphLegend nodeCount={data.nodes.length} linkCount={data.links.length} personalCategoriesPresent={personalCategoriesPresent} />
                 </div>
               </div>
               <Button
@@ -457,7 +488,7 @@ export function MemoryGraphContainer({
             <Settings2 className="h-4 w-4" />
           </button>
           <div className="absolute bottom-4 left-4 z-20 max-w-[calc(100%-32px)] rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]/88 px-3 py-2 backdrop-blur">
-            <GraphLegend nodeCount={data.nodes.length} linkCount={data.links.length} />
+            <GraphLegend nodeCount={data.nodes.length} linkCount={data.links.length} personalCategoriesPresent={personalCategoriesPresent} />
           </div>
           <div className="h-full">
             {renderGraphBody("fullscreen")}
