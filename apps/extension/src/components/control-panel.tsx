@@ -84,7 +84,12 @@ import {
 } from "@relay/shared/utils/capture-settings";
 import type { CaptureResolutionInput } from "@relay/shared/utils/capture-settings";
 import { supportedPlatforms } from "@relay/shared/constants/platforms";
-import { PERSONAL_CATEGORY_META, isPersonalCategory } from "@relay/shared/constants/memory-taxonomy";
+import {
+  PERSONAL_CATEGORY_META,
+  isPersonalCategory,
+  personalCategories,
+  type PersonalCategory,
+} from "@relay/shared/constants/memory-taxonomy";
 import type { SupportedPlatform, UserSettingsRow } from "@relay/shared/types/database";
 import type { BillingStatusDto, EntitlementLimitsDto } from "@relay/shared/types/billing";
 import {
@@ -400,6 +405,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     activeState.projectOptions,
     session?.projectOptions ?? [],
   );
+  // Active project is the personal project? Drives the Folk-category notes view.
+  const activeProjectIsPersonal =
+    panelProjectOptions.find((option) => option.id === activeState.projectId)?.kind === "personal";
+  const [personalNotesCategory, setPersonalNotesCategory] = useState<PersonalCategory | "all">("all");
   const walkthroughChecked = useRef(false);
   const activeStateRequestInFlight = useRef(false);
   const lastActiveStateRefreshAt = useRef(0);
@@ -3323,6 +3332,42 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             </div>
 
             {/* ─── Subtabs ─── */}
+            {activeProjectIsPersonal ? (
+              /* Personal project: Folk category tabs filtering the notes list. */
+              <div className={styles.contextTabs}>
+                {(["all", ...personalCategories] as const)
+                  .map((tab) => {
+                    const count =
+                      tab === "all"
+                        ? activeState.contextPreview.notes.length
+                        : activeState.contextPreview.notes.filter(
+                            (note) => note.personalCategory === tab,
+                          ).length;
+                    return { tab, count };
+                  })
+                  .filter(({ tab, count }) => tab === "all" || count > 0)
+                  .map(({ tab, count }) => {
+                    const meta = tab === "all" ? null : PERSONAL_CATEGORY_META[tab as PersonalCategory];
+                    return (
+                      <button
+                        key={tab}
+                        type="button"
+                        className={`${styles.contextTab} ${personalNotesCategory === tab ? styles.contextTabActive : ""}`}
+                        onClick={() => setPersonalNotesCategory(tab as PersonalCategory | "all")}
+                      >
+                        {meta ? (
+                          <span
+                            aria-hidden="true"
+                            style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: meta.color, marginRight: 5 }}
+                          />
+                        ) : null}
+                        {meta ? meta.label : "All"}
+                        <span className={styles.contextTabCount}>{count}</span>
+                      </button>
+                    );
+                  })}
+              </div>
+            ) : (
             <div className={styles.contextTabs}>
               {(["all", "decisions", "tasks", "constraints", "notes"] as const).map(
                 (tab) => {
@@ -3353,9 +3398,51 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 },
               )}
             </div>
+            )}
 
             {/* ─── Tab content ─── */}
-            {activeContextTab === "all" ? (
+            {activeProjectIsPersonal ? (
+              /* Personal: notes filtered by the selected Folk category. */
+              <div className={`${styles.contextItemList} ${styles.contextItemListScroll}`}>
+                {(() => {
+                  const notes =
+                    personalNotesCategory === "all"
+                      ? activeState.contextPreview.notes
+                      : activeState.contextPreview.notes.filter(
+                          (note) => note.personalCategory === personalNotesCategory,
+                        );
+                  if (notes.length === 0) {
+                    return contextLoading ? (
+                      <ContextSkeleton lines={3} />
+                    ) : (
+                      <p className={styles.emptyHint}>
+                        Nothing here yet. Relay fills your personal memory as you chat about yourself.
+                      </p>
+                    );
+                  }
+                  return notes.map((note) => (
+                    <SidepanelNoteItem
+                      key={note.memoryId}
+                      note={note}
+                      busy={busy}
+                      editing={editingKey === `note:${note.memoryId}`}
+                      editingText={editingText}
+                      onChangeEditingText={setEditingText}
+                      onStartEdit={() => {
+                        setEditingKey(`note:${note.memoryId}`);
+                        setEditingText(note.text);
+                      }}
+                      onSaveEdit={() => void saveNoteEdit(note.memoryId)}
+                      onCancelEdit={() => {
+                        setEditingKey(null);
+                        setEditingText("");
+                      }}
+                      onDelete={() => void removeNote(note.memoryId)}
+                    />
+                  ));
+                })()}
+              </div>
+            ) : activeContextTab === "all" ? (
               /* All tab: 3-card layout + notes row */
               <>
               <div className={styles.contextStack}>
