@@ -23,6 +23,7 @@ import { MemoryGraphContainer } from "@/features/graph/memory-graph-container";
 import { MIN_GRAPH_ITEMS } from "@/features/graph/memory-graph-utils";
 import { GovernanceSection } from "@/features/projects/governance-section";
 import { MemoryItemsList } from "@/features/memory/memory-items-list";
+import { PersonalCategoryBoard } from "@/features/memory/personal-category-board";
 import { NotesSection } from "@/features/memory/notes-section";
 import { selectPinnedNotes } from "@/features/memory/notes-selector";
 import {
@@ -391,12 +392,24 @@ export function MemoryPageContent({
           <FadeIn delay={0.15}>
             <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
               {(() => {
-                const items =
-                  personalTab === "all"
-                    ? (dashboard.memory ?? []).filter(
-                        (i) => personalCategoryFromMetadata(i.metadata) !== null,
-                      )
-                    : personalByCategory[personalTab];
+                // "All" → sectioned category board (project-dashboard style);
+                // a single category tab → that category's flat list.
+                if (personalTab === "all") {
+                  const allCategorized = (dashboard.memory ?? []).filter(
+                    (i) => personalCategoryFromMetadata(i.metadata) !== null,
+                  );
+                  if (allCategorized.length === 0) {
+                    return (
+                      <EmptyState
+                        title="Nothing here yet"
+                        description="Relay fills your personal memory as you chat about yourself."
+                        className="py-6"
+                      />
+                    );
+                  }
+                  return <PersonalCategoryBoard items={allCategorized} />;
+                }
+                const items = personalByCategory[personalTab];
                 if (items.length === 0) {
                   return (
                     <EmptyState
@@ -409,7 +422,7 @@ export function MemoryPageContent({
                 return (
                   <MemoryItemsList
                     items={items}
-                    label={personalTab === "all" ? "Personal memory" : PERSONAL_CATEGORY_META[personalTab].label}
+                    label={PERSONAL_CATEGORY_META[personalTab].label}
                     projectId={project.id}
                   />
                 );
