@@ -33,6 +33,7 @@ import type {
 import {
   clearIgnoredChatKey,
   clearManualOverride,
+  isFreshChatKeyUpgrade,
   isIgnoredChatKey,
   readAssociationAdjudication,
   readApprovedAssociations,
@@ -756,11 +757,22 @@ async function reconcileManualOverride(state: RelayTabState): Promise<void> {
   if (!state.page.supported) return;
   const currentChatKey = buildAssociationKey(state.page);
 
-  // Navigated to a different conversation — the override no longer applies.
   if (state.manualProjectChatKey && state.manualProjectChatKey !== currentChatKey) {
-    await clearManualOverride(state.manualProjectChatKey);
-    state.manualProjectId = null;
-    state.manualProjectChatKey = null;
+    if (isFreshChatKeyUpgrade(state.manualProjectChatKey, currentChatKey)) {
+      // Same chat, just gained a stable id — migrate the override to the new key
+      // so Personal (or any manual pick) stays after the first answer.
+      const projectId = state.manualProjectId;
+      await clearManualOverride(state.manualProjectChatKey);
+      if (projectId) {
+        await rememberManualOverride(currentChatKey, projectId);
+        state.manualProjectChatKey = currentChatKey;
+      }
+    } else {
+      // Navigated to a genuinely different conversation — drop the override.
+      await clearManualOverride(state.manualProjectChatKey);
+      state.manualProjectId = null;
+      state.manualProjectChatKey = null;
+    }
   }
 
   // Rehydrate from durable storage when memory was cleared.
@@ -2920,17 +2932,27 @@ async function captureObservedChange(
       ? session.projectOptions.find((option) => option.id === effectiveActiveProjectId)
       : undefined;
 
-    // Personal memory is durable-facts-only (server-side gated routing). Never
-    // auto-capture or auto-associate a full chat session into it — only an
-    // explicit user manual save may target personal.
-    if (activeProjectOption?.kind === "personal" && !manualSelection) {
+    // Personal capture is salience-safe server-side: when the origin project is
+    // personal, the server skips the project digest and runs the salience
+    // classifier (durable user facts only, never decisions/constraints/tasks).
+    // And personal is NEVER auto-selected (loadSessionData excludes it), so the
+    // active project is personal ONLY because the user deliberately parked on it
+    // — via an explicit pick, a manual override on this chat, or a manual save.
+    // In all those cases auto-capture/held→continue into Personal is exactly the
+    // intended personal-memory UX, so allow it. We only block the impossible
+    // "accidentally landed on personal with no deliberate signal" case.
+    const personalIsDeliberate =
+      Boolean(manualSelection) ||
+      Boolean(explicitProjectId) ||
+      Boolean(manualOverrideProjectId);
+    if (activeProjectOption?.kind === "personal" && !personalIsDeliberate) {
       recordBackgroundTelemetry({
         level: "info",
         surface: "extension-background",
         area: "capture",
         event: "capture_skipped",
         flowId,
-        message: "Skipped auto-capture into the personal project.",
+        message: "Skipped auto-capture into the personal project (not deliberately selected).",
         projectId: effectiveActiveProjectId,
         tabId,
         context: {

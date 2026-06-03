@@ -65,6 +65,24 @@ function normalizeApprovedAssociation(input: RelayApprovedAssociation): RelayApp
   }
 }
 
+/**
+ * A fresh chat has no stable conversation id, so its key is a pre-id `:path:` /
+ * `:url:` form. Once the platform assigns an id (e.g. Perplexity navigates
+ * `/` → `/search/{id}` after the first answer), the key flips to a stable
+ * `:conversation:` / `:fingerprint:` form ON THE SAME TAB. That's the same chat
+ * gaining an id — NOT a navigation to a different conversation — so a manual
+ * project override must migrate to the new key, not be dropped (else Personal
+ * reverts to the domain binding right after the first answer).
+ */
+export function isFreshChatKeyUpgrade(oldKey: string, newKey: string): boolean {
+  const oldPlatform = oldKey.split(":", 1)[0]
+  const newPlatform = newKey.split(":", 1)[0]
+  if (oldPlatform !== newPlatform) return false
+  const oldIsPreId = oldKey.includes(":path:") || oldKey.includes(":url:")
+  const newIsStable = newKey.includes(":conversation:") || newKey.includes(":fingerprint:")
+  return oldIsPreId && newIsStable
+}
+
 export function buildChatLookupKey(page: Pick<RelayPageState, "platform" | "pageFingerprint" | "pathname" | "url" | "sourceConversationId">) {
   const platform = page.platform ?? "unknown"
   const sourceConversationId = page.sourceConversationId?.trim()

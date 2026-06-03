@@ -91,3 +91,27 @@ describe("manual project overrides", () => {
     expect(await mod.readManualOverride("key_0")).toBeNull()
   })
 })
+
+describe("isFreshChatKeyUpgrade", () => {
+  it("treats a fresh chat gaining a conversation id as the same chat (migrate)", async () => {
+    const mod = await loadModule()
+    // Perplexity: `/` (no id) → `/search/{id}` after the first answer.
+    expect(mod.isFreshChatKeyUpgrade("perplexity:url:https://www.perplexity.ai/", "perplexity:conversation:abc-123")).toBe(true)
+    expect(mod.isFreshChatKeyUpgrade("perplexity:path:/", "perplexity:fingerprint:abc-123")).toBe(true)
+  })
+
+  it("treats two different stable conversations as a real navigation (drop)", async () => {
+    const mod = await loadModule()
+    expect(mod.isFreshChatKeyUpgrade("perplexity:conversation:abc", "perplexity:conversation:def")).toBe(false)
+  })
+
+  it("never migrates across platforms", async () => {
+    const mod = await loadModule()
+    expect(mod.isFreshChatKeyUpgrade("perplexity:url:x", "claude:conversation:abc")).toBe(false)
+  })
+
+  it("does not migrate a stable key into another (only pre-id upgrades)", async () => {
+    const mod = await loadModule()
+    expect(mod.isFreshChatKeyUpgrade("claude:conversation:abc", "claude:url:y")).toBe(false)
+  })
+})
