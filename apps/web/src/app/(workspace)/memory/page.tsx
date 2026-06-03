@@ -42,6 +42,7 @@ export default async function MemoryPage({
           id: currentProject.id,
           name: currentProject.name,
           description: currentProject.description,
+          kind: currentProject.kind,
         }}
       />
     </>

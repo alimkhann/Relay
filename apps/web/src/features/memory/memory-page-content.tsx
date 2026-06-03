@@ -4,6 +4,13 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { getProjectContextCounts } from "@relay/shared/utils/project-context";
+import {
+  PERSONAL_CATEGORY_META,
+  personalCategories,
+  personalCategoryFromMetadata,
+  type PersonalCategory,
+} from "@relay/shared";
+import type { MemoryItemDto } from "@relay/shared";
 import { Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -28,7 +35,7 @@ import { relayClientFetch } from "@/lib/telemetry/fetch";
 type MemoryTab = "all" | "decisions" | "tasks" | "constraints" | "notes" | "requirements" | "artifacts";
 
 interface MemoryPageContentProps {
-  project: { id: string; name: string; description?: string | null };
+  project: { id: string; name: string; description?: string | null; kind?: "project" | "personal" };
 }
 
 export function MemoryPageContent({
@@ -47,6 +54,12 @@ export function MemoryPageContent({
   const urlTab: MemoryTab = tabParam && validTabs.includes(tabParam) ? tabParam : "all";
   const [localTab, setLocalTab] = useState<MemoryTab>(urlTab);
   const [tabPending, startTabTransition] = useTransition();
+  // Personal dashboard uses a separate tab set (All + Folk categories).
+  const personalUrlTab =
+    tabParam && (personalCategories as readonly string[]).includes(tabParam)
+      ? (tabParam as PersonalCategory)
+      : "all";
+  const [personalTab, setPersonalTab] = useState<PersonalCategory | "all">(personalUrlTab);
 
   // Sync local tab when URL changes externally (e.g. governance links)
   useEffect(() => {
@@ -81,6 +94,20 @@ export function MemoryPageContent({
     requirements: (dashboard?.memory ?? []).filter((i) => i.type === "requirement"),
     artifacts: (dashboard?.memory ?? []).filter((i) => i.type === "artifact"),
   }), [dashboard?.memory]);
+
+  // Personal dashboard: tabs are the Folk categories, not the project memory
+  // types. Items are bucketed by metadata.personalCategory.
+  const isPersonal = project.kind === "personal";
+  const personalByCategory = useMemo(() => {
+    const buckets: Record<PersonalCategory, MemoryItemDto[]> = {
+      person: [], company: [], concept: [], event: [], meeting: [], signals: [], note: [],
+    };
+    for (const item of dashboard?.memory ?? []) {
+      const cat = personalCategoryFromMetadata(item.metadata);
+      if (cat) buckets[cat].push(item);
+    }
+    return buckets;
+  }, [dashboard?.memory]);
 
   const initialDrafts = dashboard
     ? deriveProjectMemoryDrafts({ dashboard, fallbackOverview: project.description })
@@ -313,7 +340,87 @@ export function MemoryPageContent({
         </FadeIn>
       )}
 
-      {/* Tab pills */}
+      {/* Personal dashboard: Folk category tabs + lists */}
+      {isPersonal && (
+        <>
+          <FadeIn delay={0.1}>
+            <div className="flex flex-wrap items-center gap-2">
+              {([
+                { key: "all" as const, label: "All", count: dashboard.memory.length },
+                ...personalCategories.map((category) => ({
+                  key: category,
+                  label: PERSONAL_CATEGORY_META[category].label,
+                  count: personalByCategory[category].length,
+                  color: PERSONAL_CATEGORY_META[category].color,
+                })),
+              ])
+                .filter((tab) => tab.key === "all" || tab.count > 0)
+                .map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => {
+                      setPersonalTab(tab.key as PersonalCategory | "all");
+                      const params = new URLSearchParams(searchParams.toString());
+                      if (tab.key === "all") params.delete("tab");
+                      else params.set("tab", tab.key);
+                      startTabTransition(() => {
+                        router.replace(`?${params.toString()}`, { scroll: false });
+                      });
+                    }}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium transition-colors",
+                      personalTab === tab.key
+                        ? "bg-[var(--relay-ink)] text-[var(--relay-bg)]"
+                        : "text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]",
+                    )}
+                  >
+                    {"color" in tab && tab.color ? (
+                      <span
+                        aria-hidden="true"
+                        className="size-2 rounded-full"
+                        style={{ backgroundColor: tab.color }}
+                      />
+                    ) : null}
+                    {tab.label} ({tab.count})
+                  </button>
+                ))}
+            </div>
+          </FadeIn>
+
+          <FadeIn delay={0.15}>
+            <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
+              {(() => {
+                const items =
+                  personalTab === "all"
+                    ? (dashboard.memory ?? []).filter(
+                        (i) => personalCategoryFromMetadata(i.metadata) !== null,
+                      )
+                    : personalByCategory[personalTab];
+                if (items.length === 0) {
+                  return (
+                    <EmptyState
+                      title="Nothing here yet"
+                      description="Relay fills your personal memory as you chat about yourself."
+                      className="py-6"
+                    />
+                  );
+                }
+                return (
+                  <MemoryItemsList
+                    items={items}
+                    label={personalTab === "all" ? "Personal memory" : PERSONAL_CATEGORY_META[personalTab].label}
+                    projectId={project.id}
+                  />
+                );
+              })()}
+            </div>
+          </FadeIn>
+        </>
+      )}
+
+      {/* Tab pills (project dashboards) */}
+      {!isPersonal && (
       <FadeIn delay={0.1}>
         <div className="flex items-center gap-2">
           {([
@@ -352,9 +459,10 @@ export function MemoryPageContent({
           ))}
         </div>
       </FadeIn>
+      )}
 
       {/* Governance (decisions, tasks, constraints) */}
-      {visibleSections.length > 0 && (
+      {!isPersonal && visibleSections.length > 0 && (
         <FadeIn delay={0.15}>
           <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
             <GovernanceSection
@@ -367,7 +475,7 @@ export function MemoryPageContent({
       )}
 
       {/* Memory items for notes/requirements/artifacts tabs (only shown on their specific tabs) */}
-      {activeTab === "notes" && memoryItemsByType.notes.length > 0 && (
+      {!isPersonal && activeTab === "notes" && memoryItemsByType.notes.length > 0 && (
         <FadeIn delay={0.15}>
           <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
             <MemoryItemsList items={memoryItemsByType.notes} label="Notes" projectId={project.id} />
@@ -375,7 +483,7 @@ export function MemoryPageContent({
         </FadeIn>
       )}
 
-      {activeTab === "requirements" && memoryItemsByType.requirements.length > 0 && (
+      {!isPersonal && activeTab === "requirements" && memoryItemsByType.requirements.length > 0 && (
         <FadeIn delay={0.18}>
           <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
             <MemoryItemsList items={memoryItemsByType.requirements} label="Requirements" projectId={project.id} />
@@ -383,7 +491,7 @@ export function MemoryPageContent({
         </FadeIn>
       )}
 
-      {activeTab === "artifacts" && memoryItemsByType.artifacts.length > 0 && (
+      {!isPersonal && activeTab === "artifacts" && memoryItemsByType.artifacts.length > 0 && (
         <FadeIn delay={0.2}>
           <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
             <MemoryItemsList items={memoryItemsByType.artifacts} label="Artifacts" projectId={project.id} />
@@ -392,7 +500,7 @@ export function MemoryPageContent({
       )}
 
       {/* Pinned notes (only show in All tab or when not on notes-specific tab) */}
-      {activeTab === "all" && (
+      {!isPersonal && activeTab === "all" && (
         <FadeIn delay={0.25}>
           <NotesSection
             notes={selectPinnedNotes(dashboard.memory)}

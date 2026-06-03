@@ -744,4 +744,77 @@ describe("evaluateProjectRouting", () => {
     expect(result.topCandidates.find((candidate) => candidate.projectId === "project_relay")?.score)
       .toBeLessThanOrEqual(20)
   })
+
+  it("auto-routes a self-disclosure chat to personal even when personal is not selected", () => {
+    const result = evaluateProjectRouting({
+      page: {
+        supported: true,
+        platform: "perplexity",
+        pathname: "/search/abc-123",
+        title: "About me",
+        recentRoutingText:
+          "user: I'm a CS student from Kazakhstan, I prefer TypeScript, and my goal is to launch my startup this year.",
+        recentUserTurnText:
+          "I'm a CS student from Kazakhstan, I prefer TypeScript, and my goal is to launch my startup this year.",
+      },
+      projects: [
+        {
+          id: "project_relay",
+          name: "Relay",
+          slug: "relay",
+          memoryCount: 50,
+          sessionCount: 10,
+          routingContext: { hasMeaningfulContext: true, keywords: ["ai", "memory"] },
+        },
+        {
+          id: "project_personal",
+          name: "Personal",
+          slug: "personal",
+          kind: "personal",
+          memoryCount: 0,
+          sessionCount: 0,
+          routingContext: { hasMeaningfulContext: false, keywords: [] },
+        },
+      ],
+      selectedProjectId: "project_relay",
+      lastTabProjectId: "project_relay",
+      boundProject: { projectId: "project_relay", bindingKind: "domain" },
+      approvedAssociations: [],
+    })
+
+    expect(result.mode).toBe("auto-save")
+    expect(result.confidence).toBe("high")
+    expect(result.candidateProjectId).toBe("project_personal")
+  })
+
+  it("does NOT route a task chat mentioning 'my code' to personal", () => {
+    const result = evaluateProjectRouting({
+      page: {
+        supported: true,
+        platform: "claude",
+        pathname: "/chat/xyz",
+        title: "Fix my bug",
+        recentRoutingText: "user: help me fix my code, the function throws on null input.",
+        recentUserTurnText: "help me fix my code, the function throws on null input.",
+      },
+      projects: [
+        {
+          id: "project_personal",
+          name: "Personal",
+          slug: "personal",
+          kind: "personal",
+          memoryCount: 0,
+          sessionCount: 0,
+          routingContext: { hasMeaningfulContext: false, keywords: [] },
+        },
+      ],
+      selectedProjectId: null,
+      lastTabProjectId: null,
+      boundProject: null,
+      approvedAssociations: [],
+    })
+
+    // Task framing ("fix my code") is not self-disclosure → no personal route.
+    expect(result.candidateProjectId).not.toBe("project_personal")
+  })
 })
