@@ -1,4 +1,4 @@
-import { createRepositoryBundle } from "@relay/db"
+import { createRepositoryBundle, getProjectSummaries } from "@relay/db"
 import { capturePayloadSchema, withCaptureSignature } from "@relay/shared"
 
 import { invalidateProjectCache } from "@/server/cache/invalidation"
@@ -10,6 +10,7 @@ import {
   routePersonalMemory,
   type PersonalRoutingResult,
 } from "./personal-memory-service"
+import { classifyProjectRelevance } from "./project-relevance-service"
 import { logServerEvent } from "@/server/logging/logger"
 
 const PERSONAL_ROUTING_MAX_CHARS = 6_000
@@ -74,6 +75,61 @@ async function fanOutSessionProjects(
       status: "deferred",
     })
     scheduleDigestDrainForProject(userId, projectId, 1)
+  }
+}
+
+/**
+ * Automatic multi-project fan-out: classify which of the user's OTHER projects the
+ * transcript is relevant to and link + fan a deferred digest into each. Best-effort
+ * + fire-and-forget (never blocks the capture ack). Excludes the origin, personal,
+ * and any already-linked manual targets. Personal facts are fanned separately by
+ * routePersonalMemory. Gated by the caller (RELAY_MULTI_PROJECT_CAPTURE).
+ */
+async function autoFanOutByRelevance(
+  repositories: CaptureRepositories,
+  userId: string,
+  input: {
+    sessionId: string
+    captureSignature: string
+    transcript: string
+    excludeProjectIds: string[]
+  },
+): Promise<void> {
+  try {
+    const exclude = new Set(input.excludeProjectIds)
+    const summaries = await getProjectSummaries(repositories, userId, { includePersonal: false })
+    const candidates = summaries
+      .filter((project) => project.kind !== "personal" && !exclude.has(project.id))
+      .map((project) => ({
+        id: project.id,
+        name: project.name,
+        summary: project.description ?? "",
+      }))
+    if (candidates.length === 0) return
+
+    const relevantIds = (
+      await classifyProjectRelevance(userId, input.transcript, candidates)
+    ).filter((id) => !exclude.has(id))
+    if (relevantIds.length === 0) return
+
+    await repositories.sessions.linkToProjects(input.sessionId, relevantIds)
+    await fanOutSessionProjects(repositories, userId, {
+      sessionId: input.sessionId,
+      captureSignature: input.captureSignature,
+      extraProjectIds: relevantIds,
+      personalProjectId: null,
+    })
+  } catch (error) {
+    await logServerEvent({
+      level: "error",
+      surface: "web-api",
+      area: "capture",
+      event: "auto_fanout_failed",
+      message: "Automatic multi-project fan-out failed.",
+      userId,
+      context: { sessionId: input.sessionId },
+      error,
+    }).catch(() => {})
   }
 }
 
@@ -324,6 +380,26 @@ export async function saveCapture(userId: string, input: unknown) {
           personalSourceText,
           { sourceSurface: normalizedInput.platform ?? "extension" },
         )
+  }
+
+  // Automatic multi-project fan-out: fans into any OTHER project the transcript
+  // is genuinely about. Fire-and-forget; deferred per-project digests + budget
+  // keep it cheap. Excludes origin + manual extras (already linked above);
+  // personal is excluded by kind inside autoFanOutByRelevance (includePersonal:false
+  // + kind!==personal filter) so personal-origin captures safely fan to other
+  // projects without double-routing back into personal.
+  if (
+    multiProjectEnabled &&
+    personalSourceText &&
+    shouldQueueDigest &&
+    normalizedInput.session.captureSignature
+  ) {
+    void autoFanOutByRelevance(repositories, userId, {
+      sessionId: session.id,
+      captureSignature: normalizedInput.session.captureSignature,
+      transcript: personalSourceText,
+      excludeProjectIds: [normalizedInput.projectId, ...extraProjectIds],
+    }).catch(() => {})
   }
 
   return {

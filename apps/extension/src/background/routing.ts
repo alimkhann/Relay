@@ -730,14 +730,48 @@ export function evaluateProjectRouting(input: EvaluateProjectRoutingInput): Rela
     }
   }
 
-  // NOTE: we deliberately do NOT route the whole session into the personal
-  // project on self-disclosure. The server's item-level fan-out
-  // (routePersonalMemory) already runs on every non-personal capture and
-  // extracts ONLY the durable user facts into Personal as categorized notes —
-  // so a mixed chat keeps its session in the right project while its personal
-  // bits still land in Personal. Whole-session routing here would dump unrelated
-  // project context into Personal. (Personal is still the target when the user
-  // deliberately selects it — handled in the capture path, not the scorer.)
+  // Personal-profile intent: route directly to the personal project so the UI
+  // shows a visible "Saved to Personal" capture instead of a silent background
+  // harvest. Server uses routeFromTranscript (facts-only, no project digest)
+  // when the origin is personal — the "dumped unrelated context into Personal"
+  // concern from revert 9a096a4 does not apply here. Falls through to normal
+  // scoring when no personal project exists (harvestOnly in index.ts is fallback).
+  const personalProject = input.projects.find((p) => p.kind === "personal")
+  if (personalProject) {
+    const routingText = getRecentRoutingText(input.page)
+    const fullText = getFullVisibleRoutingText(input.page)
+    const isPersonalIntent =
+      hasPersonalProfileIntent(input.page.title) ||
+      hasPersonalProfileIntent(routingText) ||
+      hasPersonalProfileIntent(fullText)
+    if (isPersonalIntent) {
+      return {
+        mode: "auto-save",
+        confidence: "high",
+        candidateProjectId: personalProject.id,
+        candidateProjectName: personalProject.name,
+        score: 100,
+        reasons: ["The chat is a personal inquiry — saving to your Personal project."],
+        diagnostics: {
+          phase: "context-aware",
+          scoreGap: 80,
+          explicitNameSignal: false,
+          wholeChatExactMention: false,
+          highConfidenceEligible: true,
+          signalCategories: [],
+        },
+        topCandidates: [{
+          projectId: personalProject.id,
+          projectName: personalProject.name,
+          score: 100,
+          reasons: ["Personal profile intent detected."],
+        }],
+      }
+    }
+  }
+
+  // The personalProfileIntent cap in scoreProjectCandidate still protects
+  // non-personal projects when no personal project exists (no early return above).
 
   const candidates = input.projects
     .map((project) => scoreProjectCandidate(project, input))
