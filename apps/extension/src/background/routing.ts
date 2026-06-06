@@ -730,12 +730,13 @@ export function evaluateProjectRouting(input: EvaluateProjectRoutingInput): Rela
     }
   }
 
-  // Personal-profile intent: route directly to the personal project so the UI
-  // shows a visible "Saved to Personal" capture instead of a silent background
-  // harvest. Server uses routeFromTranscript (facts-only, no project digest)
-  // when the origin is personal — the "dumped unrelated context into Personal"
-  // concern from revert 9a096a4 does not apply here. Falls through to normal
-  // scoring when no personal project exists (harvestOnly in index.ts is fallback).
+  // Personal-profile intent: route to Personal when the chat is primarily a
+  // personal inquiry AND no other project clearly wins. Score non-personal
+  // candidates first — if one reaches auto-save confidence (score ≥ 70,
+  // highConfidenceEligible), that project takes priority. This prevents
+  // mixed-intent chats ("what do you know about me and my Relay project")
+  // from misrouting to Personal when the user is clearly working on a project.
+  // Falls through to normal scoring when no personal project exists.
   const personalProject = input.projects.find((p) => p.kind === "personal")
   if (personalProject) {
     const routingText = getRecentRoutingText(input.page)
@@ -745,28 +746,39 @@ export function evaluateProjectRouting(input: EvaluateProjectRoutingInput): Rela
       hasPersonalProfileIntent(routingText) ||
       hasPersonalProfileIntent(fullText)
     if (isPersonalIntent) {
-      return {
-        mode: "auto-save",
-        confidence: "high",
-        candidateProjectId: personalProject.id,
-        candidateProjectName: personalProject.name,
-        score: 100,
-        reasons: ["The chat is a personal inquiry — saving to your Personal project."],
-        diagnostics: {
-          phase: "context-aware",
-          scoreGap: 80,
-          explicitNameSignal: false,
-          wholeChatExactMention: false,
-          highConfidenceEligible: true,
-          signalCategories: [],
-        },
-        topCandidates: [{
-          projectId: personalProject.id,
-          projectName: personalProject.name,
+      const topNonPersonal = input.projects
+        .filter((p) => p.kind !== "personal")
+        .map((project) => scoreProjectCandidate(project, input))
+        .sort((a, b) => b.score - a.score)[0]
+      const nonPersonalWins =
+        topNonPersonal &&
+        topNonPersonal.highConfidenceEligible &&
+        topNonPersonal.score >= 70
+      if (!nonPersonalWins) {
+        return {
+          mode: "auto-save",
+          confidence: "high",
+          candidateProjectId: personalProject.id,
+          candidateProjectName: personalProject.name,
           score: 100,
-          reasons: ["Personal profile intent detected."],
-        }],
+          reasons: ["The chat is a personal inquiry — saving to your Personal project."],
+          diagnostics: {
+            phase: "context-aware",
+            scoreGap: topNonPersonal ? 100 - topNonPersonal.score : 100,
+            explicitNameSignal: false,
+            wholeChatExactMention: false,
+            highConfidenceEligible: true,
+            signalCategories: [],
+          },
+          topCandidates: [{
+            projectId: personalProject.id,
+            projectName: personalProject.name,
+            score: 100,
+            reasons: ["Personal profile intent detected — no competing project."],
+          }],
+        }
       }
+      // Non-personal project clearly wins — fall through to full scoring below.
     }
   }
 

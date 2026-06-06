@@ -260,11 +260,12 @@ export async function runHygieneTick(
 }
 
 async function listAllProjectIds(provider: DatabaseProvider): Promise<string[]> {
-  // Bounded scan: most-recently-touched projects first. At current scale (~100s)
-  // this covers every project; once project counts grow past the limit, switch to
-  // cursor-based pagination across ticks (tracked for a later PR).
+  // Only scan projects touched in the last 48 hours. Dormant projects have no
+  // pending lifecycle transitions so scanning them burns Neon compute for nothing.
+  // Projects with new captures update updated_at and re-enter the window
+  // automatically. At beta scale this cuts the per-tick row load dramatically.
   const rows = await provider.query(
-    `SELECT id FROM projects ORDER BY updated_at DESC NULLS LAST LIMIT 500`,
+    `SELECT id FROM projects WHERE updated_at > now() - interval '48 hours' ORDER BY updated_at DESC LIMIT 100`,
   )
   return rows.map((r) => String((r as Record<string, unknown>).id))
 }

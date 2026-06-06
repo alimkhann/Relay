@@ -21,12 +21,14 @@
 
 import {
   personalCategories,
+  personalCategoryFromMetadata,
   resolveMemoryConflict,
   type MemoryItemForConflictResolution,
 } from "@relay/shared"
 
 import { createRepositoryBundle } from "@relay/db"
 
+import { invalidateProjectCache } from "@/server/cache/invalidation"
 import { logServerEvent } from "@/server/logging/logger"
 import { buildPipelineBudgetGate, type PipelineBudgetGate } from "./memory-pipeline-providers"
 import { createMemoryItem } from "./memory-service"
@@ -237,7 +239,10 @@ async function writePersonalFacts(
   const result = emptyRoutingResult(personalProjectId)
   const autoWriteEnabled = process.env.RELAY_PERSONAL_MEMORY_AUTOWRITE === "true"
 
-  // Load existing personal items once for the ADD/NOOP decision.
+  // Load existing notes once for ADD/NOOP conflict resolution — O(existing × incoming).
+  // TODO(personal-dedup-v2): replace with HNSW top-k embedding similarity query
+  // (ORDER BY embedding <=> $fact_embedding LIMIT 5) once all personal facts have
+  // embeddings via the cron backstop. Reduces from O(n×m) to O(log n) per fact.
   const existingRows = await repositories.memory.listByProject(personalProjectId, {
     types: ["note"],
     limit: 200,
@@ -337,7 +342,112 @@ async function writePersonalFacts(
       metadata: created.metadata,
     })
   }
+  // Personal memory changed — refresh the derived "About you" state card. Gated
+  // by the shared budget gate + only when something was actually written, so a
+  // capture that yields no new facts costs nothing extra.
+  if (result.written > 0) {
+    void regeneratePersonalState(userId).catch(() => {})
+  }
   return result
+}
+
+// ── Derived "About you" personal state ───────────────────────────────────────
+// Personal projects have no digest pipeline, so we summarize the user's durable
+// facts into the same project_state columns a regular project uses (overview +
+// objective). The dashboard DTO merges this derived state with the user's manual
+// override (project_state_overrides) exactly as it does for projects, so the
+// Personal State card is editable and "reset to auto" comes for free.
+
+const STATE_USD = 0.002
+const STATE_MAX_OUTPUT = 700
+/** Keep generated text within the override schema's edit limits (overview 500,
+ * objective 320) so a manual edit round-trips. */
+const STATE_ABOUT_MAX = 500
+const STATE_GOALS_MAX = 320
+
+const STATE_SYSTEM_INSTRUCTION = [
+  "You maintain a concise 'About you' profile for a single user, written from a list of durable facts Relay has learned about them.",
+  'Return JSON exactly in this shape: {"about":"...","goals":"..."}',
+  `about = a warm 2-4 sentence summary of who the user is — identity, work, what they are building, and their defining traits/preferences. Address the user in second person ("You are…", "You prefer…"). Plain prose, no bullet points, no markdown. At most ${STATE_ABOUT_MAX} characters.`,
+  `goals = one short second-person line on what the user is currently working toward, if the facts support one ("You are working toward…"). At most ${STATE_GOALS_MAX} characters. Empty string if the facts don't say.`,
+  "Use only what the facts state — never invent or infer beyond them. If there is too little to summarize, return both fields as empty strings.",
+].join("\n")
+
+interface PersonalStateModel {
+  about?: string
+  goals?: string
+}
+
+/**
+ * Regenerate the personal project's derived "About you" state from its memory
+ * items and persist it to project_state. Best-effort + never throws; gated by
+ * the shared classification budget. Triggered after personal facts are written
+ * (auto-route, capture) and after a manual personal add.
+ */
+export async function regeneratePersonalState(
+  userId: string,
+  deps: ClassifyDeps = {},
+): Promise<void> {
+  try {
+    const repositories = createRepositoryBundle(userId)
+    const personal = await repositories.projects.getPersonalProject(userId)
+    if (!personal) return
+
+    const rows = await repositories.memory.listByProject(personal.id, {
+      types: ["note"],
+      limit: 200,
+    })
+    const facts = rows
+      .map((row) => {
+        const category = personalCategoryFromMetadata(row.metadata) ?? "note"
+        const content = row.content?.trim()
+        return content ? `- [${category}] ${content}` : null
+      })
+      .filter((line): line is string => line !== null)
+    if (facts.length === 0) return
+
+    const gate = deps.gate ?? classifyGate()
+    if (!gate.shouldRun(STATE_USD)) return
+
+    const runJson = deps.runJson ?? runGeminiJsonWithFallback
+    const result = await runJson<PersonalStateModel>({
+      primaryModel: CLASSIFY_MODEL_PRIMARY,
+      fallbackModel: CLASSIFY_MODEL_FALLBACK,
+      maxInputTokens: CLASSIFY_MAX_INPUT,
+      maxOutputTokens: STATE_MAX_OUTPUT,
+      systemInstruction: STATE_SYSTEM_INSTRUCTION,
+      prompt: facts.join("\n"),
+    })
+    gate.record(STATE_USD)
+
+    const about = (result.data.about ?? "").trim().slice(0, STATE_ABOUT_MAX)
+    const goals = (result.data.goals ?? "").trim().slice(0, STATE_GOALS_MAX)
+    if (!about && !goals) return
+
+    const existing = await repositories.projectState.getByProject(personal.id)
+    await repositories.projectState.upsert({
+      projectId: personal.id,
+      projectOverview: about || null,
+      currentObjective: goals || null,
+      stackDomain: existing?.stackDomain ?? null,
+      recentProgress: existing?.recentProgress ?? null,
+      // Personal state has no governed lists — those stay empty (the card only
+      // reads overview + objective).
+      decisions: [],
+      constraints: [],
+      openTasks: [],
+      relevantTools: [],
+      dirty: false,
+    })
+    // Bust the cached dashboard read-model so the "About you" card reflects the
+    // new state immediately (mirrors the project digest pipeline).
+    invalidateProjectCache(userId, personal.id)
+  } catch (error) {
+    console.warn(
+      "[personal-memory] state regeneration failed:",
+      error instanceof Error ? error.message : error,
+    )
+  }
 }
 
 /**
