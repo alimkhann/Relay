@@ -66,6 +66,7 @@ import {
   buildAssociationKey,
   evaluateProjectRouting,
   findApprovedAssociationMatch,
+  hasPersonalProfileIntent,
   pickPreferredProjectId,
   type RelayRoutingDecision,
   type RelayBoundProjectSignal,
@@ -524,39 +525,56 @@ function buildDashboardContextPreview(
       if (bt) return 1;
       return 0;
     });
-  const notes = (dashboard.memory ?? [])
-    .filter((item) => item.type === "note" && item.pinned)
-    .sort((a, b) => {
+  // Personal memory is auto-routed (pinned=false) and surfaced by Folk category,
+  // so the personal panel shows ALL notes; regular projects keep the compact
+  // pinned-only preview.
+  const isPersonal = dashboard.project?.kind === "personal";
+  const byCapturedDesc = <T extends { capturedAt?: string | null; updatedAt: string }>(items: T[]): T[] =>
+    [...items].sort((a, b) => {
       const aTime = a.capturedAt ?? a.updatedAt;
       const bTime = b.capturedAt ?? b.updatedAt;
       return bTime.localeCompare(aTime);
-    })
-    .slice(0, 5)
-    .map((item) => {
-      let hostname: string | null = null;
-      if (item.sourceUrl) {
-        try {
-          hostname = new URL(item.sourceUrl).hostname.replace(/^www\./, "");
-        } catch {
-          hostname = null;
-        }
-      }
-      return {
-        key: `note:${item.id}`,
-        memoryId: item.id,
-        text: item.content,
-        sourceUrl: item.sourceUrl,
-        hostname,
-        capturedAt: item.capturedAt ?? item.updatedAt,
-        personalCategory: personalCategoryFromMetadata(item.metadata),
-      };
     });
+  const toNoteItem = (item: ProjectDashboardPayload["memory"][number]) => {
+    let hostname: string | null = null;
+    if (item.sourceUrl) {
+      try {
+        hostname = new URL(item.sourceUrl).hostname.replace(/^www\./, "");
+      } catch {
+        hostname = null;
+      }
+    }
+    return {
+      key: `note:${item.id}`,
+      memoryId: item.id,
+      text: item.content,
+      sourceUrl: item.sourceUrl,
+      hostname,
+      sourceSurface: item.sourceSurface,
+      capturedAt: item.capturedAt ?? item.updatedAt,
+      personalCategory: personalCategoryFromMetadata(item.metadata),
+    };
+  };
+
+  const notes = byCapturedDesc(
+    (dashboard.memory ?? []).filter(
+      (item) => item.type === "note" && (isPersonal || item.pinned),
+    ),
+  )
+    .slice(0, isPersonal ? 200 : 5)
+    .map(toNoteItem);
+  const requirements = byCapturedDesc(
+    (dashboard.memory ?? []).filter((item) => item.type === "requirement"),
+  )
+    .slice(0, 100)
+    .map(toNoteItem);
 
   return {
     decisions: byRecency(base.decisions),
     constraints: byRecency(base.constraints),
     tasks: byRecency(base.tasks),
     notes,
+    requirements,
   };
 }
 
@@ -3166,6 +3184,28 @@ async function captureObservedChange(
         };
 
         if (routingDecision.mode === "ignore") {
+          // Personal-profile chats: harvest durable facts into Personal even
+          // when ignored for the active project. Fire-and-forget, non-fatal.
+          // Uses the visible page text already fetched for routing.
+          const harvestContent = state.page.fullVisibleRoutingText ?? state.page.title ?? ""
+          const originProjectId = state.projectId
+          if (
+            originProjectId &&
+            harvestContent &&
+            hasPersonalProfileIntent(harvestContent)
+          ) {
+            void relayFetch(`/api/projects/${originProjectId}/memory`, {
+              method: "POST",
+              body: JSON.stringify({
+                content: harvestContent.slice(0, 6000),
+                type: "note",
+                routingHint: "auto",
+                harvestOnly: true,
+                sourceSurface: state.page.platform ?? "extension",
+              }),
+            }).catch(() => {})
+          }
+
           const ignoredReason = routingDecision.reasons[0]
             ? `${routingDecision.reasons[0]} Manually associate this chat if Relay should keep it.`
             : "Relay will ignore this chat until you manually associate it.";

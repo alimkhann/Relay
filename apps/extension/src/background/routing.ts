@@ -192,7 +192,7 @@ function hasIncidentalReferenceMention(project: RelayProjectOption, haystack: st
   ].some((phrase) => normalizedHaystack.includes(phrase))
 }
 
-function hasPersonalProfileIntent(haystack: string | null | undefined) {
+export function hasPersonalProfileIntent(haystack: string | null | undefined) {
   const normalizedHaystack = normalizeText(haystack ?? "").toLowerCase()
   if (!normalizedHaystack) return false
 

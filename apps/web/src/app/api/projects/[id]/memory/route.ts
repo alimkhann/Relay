@@ -9,7 +9,7 @@ import {
   consumeMcpWriteQuota,
 } from "@/server/services/entitlement-service"
 import { createMemoryItem } from "@/server/services/memory-service"
-import { routePersonalMemory } from "@/server/services/personal-memory-service"
+import { regeneratePersonalState, routePersonalMemory } from "@/server/services/personal-memory-service"
 
 export const GET = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   const viewer = await resolveViewer(request.headers.get("authorization"))
@@ -50,6 +50,17 @@ export const POST = withApiAuth(async (request: Request, { params }: { params: P
     await consumeExtensionMemoryWriteQuota(viewer.userId)
   }
   const body = await request.json()
+
+  // harvestOnly: skip primary item creation — only extract personal facts.
+  // Used by the extension ignore-mode path where the chat isn't relevant to
+  // the active project but personal facts should still land in Personal.
+  if (body?.harvestOnly === true && body?.routingHint === "auto" && typeof body?.content === "string") {
+    void routePersonalMemory(viewer.userId, id, body.content, {
+      sourceSurface: body.sourceSurface ?? null,
+    })
+    return NextResponse.json({ harvested: true })
+  }
+
   const item = await createMemoryItem(viewer.userId, { ...body, projectId: id })
 
   // Auto-capture (routingHint:"auto") additionally derives durable user facts
@@ -59,6 +70,12 @@ export const POST = withApiAuth(async (request: Request, { params }: { params: P
     void routePersonalMemory(viewer.userId, id, body.content, {
       sourceSurface: body.sourceSurface ?? null,
     })
+  }
+
+  // A manual add into a personal Folk category (note + metadata.personalCategory)
+  // refreshes the derived "About you" state. Self-guards to the personal project.
+  if (typeof body?.metadata?.personalCategory === "string") {
+    void regeneratePersonalState(viewer.userId).catch(() => {})
   }
 
   return NextResponse.json({ item }, { status: 201 })
