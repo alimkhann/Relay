@@ -91,6 +91,7 @@ import {
 } from "./remote-sync-policy";
 import { RETRY_DRAIN_DELAY_MS, scheduleDrain } from "./drain-scheduler";
 import { requestGoogleIdentityTokens } from "./oauth";
+import { authGrace, dashboardCache, sessionCache, tabStates } from "./state";
 import type {
   ExtensionAuthSessionPayload,
   PendingInsertedBriefState,
@@ -132,8 +133,6 @@ import {
   clearPersistedBackgroundCache,
 } from "../storage/background-cache";
 
-const tabStates = new Map<number, RelayTabState>();
-
 /**
  * In-memory cache of persisted capture signatures, loaded from
  * chrome.storage.session on worker wake. Consumed once per tab
@@ -155,29 +154,12 @@ void getAllPersistedSignatures()
     }
   })
   .catch(() => { rehydratedSignatures = {}; });
-const dashboardCache = new Map<
-  string,
-  { dashboard: ProjectDashboardPayload | null; fetchedAt: number }
->();
-let sessionDataCache: {
-  token: string;
-  data: {
-    connected: boolean;
-    projects: RelayProjectOption[];
-    settings: RemoteSettingsPayload | null;
-    onboarding: RelayOnboardingState;
-    entitlements: UserEntitlementsDto | null;
-  };
-  fetchedAt: number;
-} | null = null;
-
-let authGraceUntil = 0;
 
 initializeBackgroundTelemetry();
 
 async function resetStoredSession(reason: string) {
   const session = await getRelaySession();
-  sessionDataCache = null;
+  sessionCache.current = null;
   dashboardCache.clear();
   await clearPersistedBackgroundCache(session.userId || undefined);
   await clearRelaySession();
@@ -198,7 +180,7 @@ async function storeAuthenticatedExtensionSession(
   payload: ExtensionAuthSessionPayload,
   lastStatus: string,
 ) {
-  sessionDataCache = null;
+  sessionCache.current = null;
   await setRelaySession({
     apiBase: payload.apiBase,
     token: payload.token,
@@ -926,7 +908,7 @@ async function readErrorResponse(response: Response, fallback: string) {
 async function loadSessionData(force = false) {
   const session = await getRelaySession();
   if (!session.token) {
-    sessionDataCache = null;
+    sessionCache.current = null;
     return {
       connected: false,
       projects: [] as RelayProjectOption[],
@@ -938,11 +920,11 @@ async function loadSessionData(force = false) {
 
   if (
     !force &&
-    sessionDataCache &&
-    sessionDataCache.token === session.token &&
-    Date.now() - sessionDataCache.fetchedAt < SESSION_CACHE_TTL_MS
+    sessionCache.current &&
+    sessionCache.current.token === session.token &&
+    Date.now() - sessionCache.current.fetchedAt < SESSION_CACHE_TTL_MS
   ) {
-    return sessionDataCache.data;
+    return sessionCache.current.data;
   }
 
   // Durability: after an MV3 worker wake, in-memory cache is gone. Seed it
@@ -950,17 +932,17 @@ async function loadSessionData(force = false) {
   // (and acts as the failure fallback) while the network refresh runs. A forced
   // refresh skips this early return so a fresh network value is fetched (used
   // after a settings write so per-project overrides reflect immediately).
-  if (!sessionDataCache || sessionDataCache.token !== session.token) {
+  if (!sessionCache.current || sessionCache.current.token !== session.token) {
     const persisted = await readPersistedSessionData(session.userId);
     if (persisted) {
-      type SessionCacheData = NonNullable<typeof sessionDataCache>["data"];
-      sessionDataCache = {
+      type SessionCacheData = NonNullable<typeof sessionCache.current>["data"];
+      sessionCache.current = {
         token: session.token,
         data: persisted.data as unknown as SessionCacheData,
         fetchedAt: persisted.fetchedAt,
       };
       if (!force && Date.now() - persisted.fetchedAt < SESSION_CACHE_TTL_MS) {
-        return sessionDataCache.data;
+        return sessionCache.current.data;
       }
     }
   }
@@ -978,7 +960,7 @@ async function loadSessionData(force = false) {
         sessionResponse.status === 403 ||
         isAuthFailureMessage(message)
       ) {
-        if (Date.now() < authGraceUntil) {
+        if (Date.now() < authGrace.until) {
           console.log("[Relay BG] auth grace period active, skipping session reset after", sessionResponse.status);
           return {
             connected: session.connected,
@@ -1111,7 +1093,7 @@ async function loadSessionData(force = false) {
     };
 
     const fetchedAt = Date.now();
-    sessionDataCache = {
+    sessionCache.current = {
       token: session.token,
       data,
       fetchedAt,
@@ -1128,8 +1110,8 @@ async function loadSessionData(force = false) {
       message: "Failed to refresh extension session data from the Relay API.",
       error: cause,
     });
-    if (sessionDataCache && sessionDataCache.token === session.token) {
-      return sessionDataCache.data;
+    if (sessionCache.current && sessionCache.current.token === session.token) {
+      return sessionCache.current.data;
     }
 
     throw cause;
@@ -1527,7 +1509,7 @@ async function buildActiveProjectState(
     onboarding,
     lastReconciliation: state.lastReconciliation,
     lastBudgetStatus: state.lastBudgetStatus,
-    entitlements: sessionDataCache?.data.entitlements ?? null,
+    entitlements: sessionCache.current?.data.entitlements ?? null,
   });
 }
 
@@ -4446,7 +4428,7 @@ chrome.runtime.onMessage.addListener(
               payload,
               "Signed in with Google.",
             );
-            authGraceUntil = Date.now() + 5_000;
+            authGrace.until = Date.now() + 5_000;
             await loadSessionData();
             const storedSession = await getRelaySession();
             await identifyExtensionUser(storedSession.userId);
@@ -4622,7 +4604,7 @@ chrome.runtime.onMessage.addListener(
               payload,
               "Signed in locally.",
             );
-            authGraceUntil = Date.now() + 5_000;
+            authGrace.until = Date.now() + 5_000;
             await loadSessionData();
             const storedSession = await getRelaySession();
             await identifyExtensionUser(storedSession.userId);
@@ -4783,7 +4765,7 @@ chrome.runtime.onMessage.addListener(
               payload,
               "Signed in with email.",
             );
-            authGraceUntil = Date.now() + 5_000;
+            authGrace.until = Date.now() + 5_000;
             await loadSessionData();
             const storedSession = await getRelaySession();
             await identifyExtensionUser(storedSession.userId);
@@ -4975,7 +4957,7 @@ chrome.runtime.onMessage.addListener(
               project: { id: string; name: string; slug?: string };
               onboarding?: RelayOnboardingState;
             };
-            sessionDataCache = null;
+            sessionCache.current = null;
             await setRelaySession({
               projectId: payload.project.id,
               assumedProjectId: payload.project.id,
@@ -5048,7 +5030,7 @@ chrome.runtime.onMessage.addListener(
                 ? { ...p, name: payload.project.name, description: payload.project.description, projectUrl: payload.project.projectUrl }
                 : p
             ) ?? [];
-            sessionDataCache = null;
+            sessionCache.current = null;
             await setRelaySession({
               projectOptions: updatedOptions,
               ...(session.assumedProjectId === payload.project.id
@@ -5078,7 +5060,7 @@ chrome.runtime.onMessage.addListener(
             const remainingOptions = session.projectOptions?.filter((p) => p.id !== message.payload.projectId) ?? [];
             const wasActive = session.projectId === message.payload.projectId || session.assumedProjectId === message.payload.projectId;
             const nextProject = wasActive ? (remainingOptions[0] ?? null) : null;
-            sessionDataCache = null;
+            sessionCache.current = null;
             await setRelaySession({
               projectOptions: remainingOptions,
               ...(wasActive
@@ -5104,7 +5086,7 @@ chrome.runtime.onMessage.addListener(
 
         if (message.type === "RELAY_REFRESH_SESSION") {
           const force = message.payload?.force === true;
-          sessionDataCache = null;
+          sessionCache.current = null;
           const payload = await loadSessionData(force);
           sendResponse({ ok: true, ...payload });
           return;
@@ -5517,7 +5499,7 @@ chrome.runtime.onMessageExternal.addListener(
     void (async () => {
       try {
         if (message?.type === "billing.refresh" || message?.type === "RELAY_BILLING_REFRESH") {
-          sessionDataCache = null;
+          sessionCache.current = null;
           dashboardCache.clear();
           try {
             await loadSessionData();
@@ -5554,7 +5536,7 @@ chrome.runtime.onMessageExternal.addListener(
             return;
           }
 
-          sessionDataCache = null;
+          sessionCache.current = null;
           if (typeof nextSettings.autoCapture === "boolean") {
             await setRelaySession({ autoCapture: nextSettings.autoCapture });
           }
