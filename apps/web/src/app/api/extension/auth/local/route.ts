@@ -9,7 +9,7 @@ import { getRequestContext, withRequestContext } from "@/server/logging/request-
 import { assertIpRateLimit } from "@/server/services/rate-limit-service"
 import { resolveOrCreateLocalAuthUser } from "@/server/services/local-auth-service"
 import { getResolvedOnboardingStateForUser } from "@/server/services/onboarding-service"
-import { listProjectsForUser } from "@/server/services/project-service"
+import { ensurePersonalProjectForUser, listProjectsForUser } from "@/server/services/project-service"
 import { getUserSettings } from "@/server/services/settings-service"
 import { createExtensionTokenForUser } from "@/server/services/extension-token-service"
 
@@ -82,6 +82,7 @@ export async function POST(request: Request) {
         deviceName: body.deviceName || "Chrome Extension",
       })
 
+      await ensurePersonalProjectForUser(user.id)
       const [projects, settings, onboarding] = await Promise.all([
         listProjectsForUser(user.id, { includePersonal: true }),
         getUserSettings(user.id),

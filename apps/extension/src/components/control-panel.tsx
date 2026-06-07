@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, lazy, Suspense } from "react";
-import { Pencil, Trash2, ChevronDown } from "lucide-react";
+import { Pencil, Trash2, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 
 // ── OTP cell component ──────────────────────────────────────────────────────
 
@@ -86,8 +86,7 @@ import type { CaptureResolutionInput } from "@relay/shared/utils/capture-setting
 import { supportedPlatforms } from "@relay/shared/constants/platforms";
 import {
   PERSONAL_CATEGORY_META,
-  isPersonalCategory,
-  personalCategories,
+  sortPersonalCategoriesByFill,
   type PersonalCategory,
 } from "@relay/shared/constants/memory-taxonomy";
 import type { SupportedPlatform, UserSettingsRow } from "@relay/shared/types/database";
@@ -145,7 +144,7 @@ interface ControlPanelProps {
 }
 
 type ContextSection = "decisions" | "constraints" | "tasks";
-type ContextTab = "all" | ContextSection | "notes";
+type ContextTab = "all" | ContextSection | "notes" | "requirements";
 type ContextItem = RelayActiveProjectState["contextPreview"][ContextSection][number];
 
 const sectionColorClass: Record<ContextSection, string> = {
@@ -238,6 +237,7 @@ const emptyActiveState: RelayActiveProjectState = {
     constraints: [],
     tasks: [],
     notes: [],
+    requirements: [],
   },
   chatAssociation: {
     status: "none",
@@ -390,6 +390,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     tasks: "",
   });
   const [noteDraft, setNoteDraft] = useState("");
+  // Regular All-tab memory-item sections (notes/requirements): per-section expand
+  // + add draft, keyed by memory type.
+  const [memorySectionExpanded, setMemorySectionExpanded] = useState<Record<string, boolean>>({});
+  const [memorySectionDrafts, setMemorySectionDrafts] = useState<Record<string, string>>({});
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
   const [themeMode, setThemeMode] = useState<RelayThemeMode>("system");
@@ -409,6 +413,13 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const activeProjectIsPersonal =
     panelProjectOptions.find((option) => option.id === activeState.projectId)?.kind === "personal";
   const [personalNotesCategory, setPersonalNotesCategory] = useState<PersonalCategory | "all">("all");
+  // Personal panel: expanded category sections (All tab), per-category add drafts,
+  // and a page index for the single-category tab.
+  const [personalExpanded, setPersonalExpanded] = useState<Record<string, boolean>>({});
+  const [personalDrafts, setPersonalDrafts] = useState<Record<string, string>>({});
+  const [personalPage, setPersonalPage] = useState(0);
+  // Page index for a regular single-section tab (decisions/tasks/constraints/notes).
+  const [sectionPage, setSectionPage] = useState(0);
   const walkthroughChecked = useRef(false);
   const activeStateRequestInFlight = useRef(false);
   const lastActiveStateRefreshAt = useRef(0);
@@ -1845,6 +1856,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           ...current,
           projectId: nextProjectId,
           projectName: nextProject.name,
+          // Drop the previous project's preview immediately so the new project
+          // never shows the old project's memory (e.g. personal notes) while the
+          // fresh dashboard loads.
+          contextPreview: emptyActiveState.contextPreview,
+          remoteStatus: "loading",
           chatAssociation: {
             ...current.chatAssociation,
             projectId: nextProjectId,
@@ -1893,6 +1909,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           ...current,
           projectId: nextProjectId,
           projectName: nextProject.name,
+          contextPreview: emptyActiveState.contextPreview,
+          remoteStatus: "loading",
         }));
       }
       setStatus(
@@ -2072,6 +2090,55 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         throw new Error(await readErrorMessage(response, "Note creation failed."));
       }
       setNoteDraft("");
+    });
+  }
+
+  // Add a note/requirement (regular project memory-item sections) from a
+  // per-type draft. Notes are pinned so they surface in the preview.
+  async function addMemorySectionItem(type: "note" | "requirement") {
+    const content = (memorySectionDrafts[type] ?? "").trim();
+    if (!content) return;
+    const projectId = activeState.projectId ?? session?.projectId ?? "";
+    if (!projectId) return;
+    await runBusyAction("Saving…", "Saved.", async () => {
+      const response = await relayFetch(`/api/projects/${projectId}/memory`, {
+        method: "POST",
+        body: JSON.stringify({
+          type,
+          title: null,
+          content,
+          pinned: type === "note" ? true : undefined,
+          sourceSurface: "manual",
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Creation failed."));
+      }
+      setMemorySectionDrafts((current) => ({ ...current, [type]: "" }));
+    });
+  }
+
+  async function addPersonalNote(category: PersonalCategory) {
+    const content = (personalDrafts[category] ?? "").trim();
+    if (!content) return;
+    const personalProject =
+      panelProjectOptions.find((project) => project.kind === "personal") ?? null;
+    if (!personalProject) return;
+    await runBusyAction("Saving…", "Saved.", async () => {
+      const response = await relayFetch(`/api/projects/${personalProject.id}/memory`, {
+        method: "POST",
+        body: JSON.stringify({
+          type: "note",
+          title: null,
+          content,
+          metadata: { personalCategory: category },
+          sourceSurface: "manual",
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Note creation failed."));
+      }
+      setPersonalDrafts((current) => ({ ...current, [category]: "" }));
     });
   }
 
@@ -3333,9 +3400,15 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
             {/* ─── Subtabs ─── */}
             {activeProjectIsPersonal ? (
-              /* Personal project: Folk category tabs filtering the notes list. */
+              /* Personal project: Folk category tabs filtering the notes list,
+                 ordered most-filled + most-recent first. */
               <div className={styles.contextTabs}>
-                {(["all", ...personalCategories] as const)
+                {(["all", ...sortPersonalCategoriesByFill(
+                  activeState.contextPreview.notes.map((note) => ({
+                    metadata: { personalCategory: note.personalCategory },
+                    capturedAt: note.capturedAt,
+                  })),
+                )] as const)
                   .map((tab) => {
                     const count =
                       tab === "all"
@@ -3353,7 +3426,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                         key={tab}
                         type="button"
                         className={`${styles.contextTab} ${personalNotesCategory === tab ? styles.contextTabActive : ""}`}
-                        onClick={() => setPersonalNotesCategory(tab as PersonalCategory | "all")}
+                        onClick={() => {
+                          setPersonalNotesCategory(tab as PersonalCategory | "all");
+                          setPersonalPage(0);
+                        }}
                       >
                         {meta ? (
                           <span
@@ -3369,7 +3445,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               </div>
             ) : (
             <div className={styles.contextTabs}>
-              {(["all", "decisions", "tasks", "constraints", "notes"] as const).map(
+              {(["all", "decisions", "tasks", "constraints", "notes", "requirements"] as const).map(
                 (tab) => {
                   const count =
                     tab === "all"
@@ -3383,14 +3459,32 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                       ? "All"
                       : tab === "notes"
                         ? "Notes"
-                        : sectionLabels[tab];
+                        : tab === "requirements"
+                          ? "Requirements"
+                          : sectionLabels[tab];
+                  const dotColor: Record<string, string> = {
+                    decisions: "#60a5fa",
+                    tasks: "#34d399",
+                    constraints: "#fbbf24",
+                    notes: "#a1a1aa",
+                    requirements: "#ef4444",
+                  };
                   return (
                     <button
                       key={tab}
                       type="button"
                       className={`${styles.contextTab} ${activeContextTab === tab ? styles.contextTabActive : ""}`}
-                      onClick={() => setActiveContextTab(tab)}
+                      onClick={() => {
+                        setActiveContextTab(tab);
+                        setSectionPage(0);
+                      }}
                     >
+                      {dotColor[tab] ? (
+                        <span
+                          aria-hidden="true"
+                          style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: dotColor[tab], marginRight: 5 }}
+                        />
+                      ) : null}
                       {label}
                       <span className={styles.contextTabCount}>{count}</span>
                     </button>
@@ -3402,46 +3496,197 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
             {/* ─── Tab content ─── */}
             {activeProjectIsPersonal ? (
-              /* Personal: notes filtered by the selected Folk category. */
-              <div className={`${styles.contextItemList} ${styles.contextItemListScroll}`}>
-                {(() => {
-                  const notes =
-                    personalNotesCategory === "all"
-                      ? activeState.contextPreview.notes
-                      : activeState.contextPreview.notes.filter(
-                          (note) => note.personalCategory === personalNotesCategory,
-                        );
-                  if (notes.length === 0) {
-                    return contextLoading ? (
-                      <ContextSkeleton lines={3} />
-                    ) : (
-                      <p className={styles.emptyHint}>
-                        Nothing here yet. Relay fills your personal memory as you chat about yourself.
-                      </p>
+              personalNotesCategory === "all" ? (
+                /* Personal All: one section card per non-empty Folk category
+                   (sorted most-filled first), limited preview + per-category add. */
+                <div className={styles.contextStack}>
+                  {(() => {
+                    const notes = activeState.contextPreview.notes;
+                    const ordered = sortPersonalCategoriesByFill(
+                      notes.map((note) => ({
+                        metadata: { personalCategory: note.personalCategory },
+                        capturedAt: note.capturedAt,
+                      })),
+                    ).filter((category) =>
+                      notes.some((note) => note.personalCategory === category),
                     );
-                  }
-                  return notes.map((note) => (
-                    <SidepanelNoteItem
-                      key={note.memoryId}
-                      note={note}
-                      busy={busy}
-                      editing={editingKey === `note:${note.memoryId}`}
-                      editingText={editingText}
-                      onChangeEditingText={setEditingText}
-                      onStartEdit={() => {
-                        setEditingKey(`note:${note.memoryId}`);
-                        setEditingText(note.text);
-                      }}
-                      onSaveEdit={() => void saveNoteEdit(note.memoryId)}
-                      onCancelEdit={() => {
-                        setEditingKey(null);
-                        setEditingText("");
-                      }}
-                      onDelete={() => void removeNote(note.memoryId)}
-                    />
-                  ));
-                })()}
-              </div>
+                    if (ordered.length === 0) {
+                      return contextLoading ? (
+                        // Match the regular panel's sectioned skeleton (cards with
+                        // a header + skeleton lines), not a flat list.
+                        <>
+                          {[0, 1, 2].map((i) => (
+                            <div key={i} className={styles.contextSection} style={{ borderLeft: "2px solid #a1a1aa" }}>
+                              <div className={styles.contextSectionHeader}>
+                                <span className={styles.skeletonLine} style={{ width: 64, height: 10 }} />
+                              </div>
+                              <ContextSkeleton lines={2} />
+                            </div>
+                          ))}
+                        </>
+                      ) : (
+                        <p className={styles.emptyHint}>
+                          Nothing here yet. Relay fills your personal memory as you chat about yourself.
+                        </p>
+                      );
+                    }
+                    return ordered.map((category) => {
+                      const meta = PERSONAL_CATEGORY_META[category];
+                      const categoryNotes = notes.filter(
+                        (note) => note.personalCategory === category,
+                      );
+                      const expanded = personalExpanded[category];
+                      const visible = expanded
+                        ? categoryNotes.slice(0, 5)
+                        : categoryNotes.slice(0, 1);
+                      return (
+                        <div
+                          key={category}
+                          className={styles.contextSection}
+                          style={{ borderLeft: `2px solid ${meta.color}` }}
+                        >
+                          <div className={styles.contextSectionHeader}>
+                            <span className={styles.contextLabel}>
+                              {meta.label}
+                              <span className={styles.contextTabCount} style={{ marginLeft: 6 }}>
+                                {categoryNotes.length}
+                              </span>
+                            </span>
+                            <button
+                              className={styles.ghostButton}
+                              type="button"
+                              aria-label={expanded ? "Collapse" : "Expand"}
+                              aria-expanded={expanded}
+                              onClick={() =>
+                                setPersonalExpanded((current) => ({
+                                  ...current,
+                                  [category]: !current[category],
+                                }))
+                              }
+                            >
+                              <ChevronDown
+                                size={14}
+                                style={{ transform: expanded ? "rotate(180deg)" : undefined, transition: "transform 150ms ease" }}
+                              />
+                            </button>
+                          </div>
+                          {visible.map((note) => (
+                            <SidepanelNoteItem
+                              key={note.memoryId}
+                              note={note}
+                              busy={busy}
+                              editing={editingKey === `note:${note.memoryId}`}
+                              editingText={editingText}
+                              onChangeEditingText={setEditingText}
+                              onStartEdit={() => {
+                                setEditingKey(`note:${note.memoryId}`);
+                                setEditingText(note.text);
+                              }}
+                              onSaveEdit={() => void saveNoteEdit(note.memoryId)}
+                              onCancelEdit={() => {
+                                setEditingKey(null);
+                                setEditingText("");
+                              }}
+                              onDelete={() => void removeNote(note.memoryId)}
+                            />
+                          ))}
+                          {expanded ? (
+                            <div className={styles.contextComposer}>
+                              <textarea
+                                className={styles.contextEditor}
+                                value={personalDrafts[category] ?? ""}
+                                placeholder={`Add a ${meta.label.toLowerCase()} fact.`}
+                                onChange={(event) =>
+                                  setPersonalDrafts((current) => ({
+                                    ...current,
+                                    [category]: event.target.value,
+                                  }))
+                                }
+                              />
+                              <button
+                                className={styles.secondaryButton}
+                                disabled={busy || !(personalDrafts[category] ?? "").trim()}
+                                onClick={() => void addPersonalNote(category)}
+                              >
+                                Add
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              ) : (
+                /* Personal single category: paginated list + add composer. */
+                (() => {
+                  const category = personalNotesCategory;
+                  const meta = PERSONAL_CATEGORY_META[category];
+                  const categoryNotes = activeState.contextPreview.notes.filter(
+                    (note) => note.personalCategory === category,
+                  );
+                  const PAGE = 10;
+                  const totalPages = Math.max(1, Math.ceil(categoryNotes.length / PAGE));
+                  const page = Math.min(personalPage, totalPages - 1);
+                  const pageNotes = categoryNotes.slice(page * PAGE, (page + 1) * PAGE);
+                  return (
+                    <div className={`${styles.contextItemList} ${styles.contextItemListScroll}`}>
+                      <ContextPager page={page} totalPages={totalPages} onPage={setPersonalPage} />
+                      {categoryNotes.length === 0 ? (
+                        contextLoading ? (
+                          <ContextSkeleton lines={3} />
+                        ) : (
+                          <p className={styles.emptyHint}>No {meta.label.toLowerCase()} yet.</p>
+                        )
+                      ) : (
+                        pageNotes.map((note) => (
+                          <SidepanelNoteItem
+                            key={note.memoryId}
+                            note={note}
+                            variant="unified"
+                            stripeColor={meta.color}
+                            busy={busy}
+                            editing={editingKey === `note:${note.memoryId}`}
+                            editingText={editingText}
+                            onChangeEditingText={setEditingText}
+                            onStartEdit={() => {
+                              setEditingKey(`note:${note.memoryId}`);
+                              setEditingText(note.text);
+                            }}
+                            onSaveEdit={() => void saveNoteEdit(note.memoryId)}
+                            onCancelEdit={() => {
+                              setEditingKey(null);
+                              setEditingText("");
+                            }}
+                            onDelete={() => void removeNote(note.memoryId)}
+                          />
+                        ))
+                      )}
+                      <ContextPager page={page} totalPages={totalPages} onPage={setPersonalPage} />
+                      <div className={styles.contextComposer}>
+                        <textarea
+                          className={styles.contextEditor}
+                          value={personalDrafts[category] ?? ""}
+                          placeholder={`Add a ${meta.label.toLowerCase()} fact.`}
+                          onChange={(event) =>
+                            setPersonalDrafts((current) => ({
+                              ...current,
+                              [category]: event.target.value,
+                            }))
+                          }
+                        />
+                        <button
+                          className={styles.secondaryButton}
+                          disabled={busy || !(personalDrafts[category] ?? "").trim()}
+                          onClick={() => void addPersonalNote(category)}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()
+              )
             ) : activeContextTab === "all" ? (
               /* All tab: 3-card layout + notes row */
               <>
@@ -3567,41 +3812,92 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   );
                 })}
               </div>
-              <div className={`${styles.contextSection} ${styles.contextSectionNotes}`}>
-                <div className={styles.contextSectionHeader}>
-                  <span className={styles.contextLabel}>Notes</span>
-                </div>
-                {activeState.contextPreview.notes.length === 0 ? (
-                  contextLoading ? (
-                    <ContextSkeleton lines={2} />
-                  ) : (
-                    <p className={styles.emptyHint}>
-                      Right-click any text on the web → Save to Relay.
-                    </p>
-                  )
-                ) : (
-                  activeState.contextPreview.notes.map((note) => (
-                    <SidepanelNoteItem
-                      key={note.memoryId}
-                      note={note}
-                      busy={busy}
-                      editing={editingKey === `note:${note.memoryId}`}
-                      editingText={editingText}
-                      onChangeEditingText={setEditingText}
-                      onStartEdit={() => {
-                        setEditingKey(`note:${note.memoryId}`);
-                        setEditingText(note.text);
-                      }}
-                      onSaveEdit={() => void saveNoteEdit(note.memoryId)}
-                      onCancelEdit={() => {
-                        setEditingKey(null);
-                        setEditingText("");
-                      }}
-                      onDelete={() => void removeNote(note.memoryId)}
-                    />
-                  ))
-                )}
-              </div>
+              {([
+                { type: "note" as const, label: "Notes", sectionClass: styles.contextSectionNotes, items: activeState.contextPreview.notes, empty: "Right-click any text on the web → Save to Relay." },
+                { type: "requirement" as const, label: "Requirements", sectionClass: styles.contextSectionRequirements, items: activeState.contextPreview.requirements, empty: "No requirements yet." },
+              ]).map(({ type, label, sectionClass, items, empty }) => {
+                const expanded = memorySectionExpanded[type];
+                const visible = expanded ? items.slice(0, 5) : items.slice(0, 1);
+                return (
+                  <div key={type} className={`${styles.contextSection} ${sectionClass}`}>
+                    <div className={styles.contextSectionHeader}>
+                      <span className={styles.contextLabel}>
+                        {label}
+                        <span className={styles.contextTabCount} style={{ marginLeft: 6 }}>
+                          {items.length}
+                        </span>
+                      </span>
+                      <button
+                        className={styles.ghostButton}
+                        type="button"
+                        aria-label={expanded ? "Collapse" : "Expand"}
+                        aria-expanded={expanded}
+                        onClick={() =>
+                          setMemorySectionExpanded((current) => ({
+                            ...current,
+                            [type]: !current[type],
+                          }))
+                        }
+                      >
+                        <ChevronDown
+                          size={14}
+                          style={{ transform: expanded ? "rotate(180deg)" : undefined, transition: "transform 150ms ease" }}
+                        />
+                      </button>
+                    </div>
+                    {visible.length === 0 ? (
+                      contextLoading ? (
+                        <ContextSkeleton lines={2} />
+                      ) : (
+                        <p className={styles.emptyHint}>{empty}</p>
+                      )
+                    ) : (
+                      visible.map((note) => (
+                        <SidepanelNoteItem
+                          key={note.memoryId}
+                          note={note}
+                          busy={busy}
+                          editing={editingKey === `note:${note.memoryId}`}
+                          editingText={editingText}
+                          onChangeEditingText={setEditingText}
+                          onStartEdit={() => {
+                            setEditingKey(`note:${note.memoryId}`);
+                            setEditingText(note.text);
+                          }}
+                          onSaveEdit={() => void saveNoteEdit(note.memoryId)}
+                          onCancelEdit={() => {
+                            setEditingKey(null);
+                            setEditingText("");
+                          }}
+                          onDelete={() => void removeNote(note.memoryId)}
+                        />
+                      ))
+                    )}
+                    {expanded ? (
+                      <div className={styles.contextComposer}>
+                        <textarea
+                          className={styles.contextEditor}
+                          value={memorySectionDrafts[type] ?? ""}
+                          placeholder={`Add a ${type} Relay should keep.`}
+                          onChange={(event) =>
+                            setMemorySectionDrafts((current) => ({
+                              ...current,
+                              [type]: event.target.value,
+                            }))
+                          }
+                        />
+                        <button
+                          className={styles.secondaryButton}
+                          disabled={busy || !(memorySectionDrafts[type] ?? "").trim()}
+                          onClick={() => void addMemorySectionItem(type)}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
               </>
             ) : activeContextTab === "notes" ? (
               /* Notes tab: scrollable list + composer */
@@ -3620,6 +3916,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                     <SidepanelNoteItem
                       key={note.memoryId}
                       note={note}
+                      variant="unified"
+                      stripeColor="#a1a1aa"
                       busy={busy}
                       editing={editingKey === `note:${note.memoryId}`}
                       editingText={editingText}
@@ -3654,14 +3952,74 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   </button>
                 </div>
               </div>
+            ) : activeContextTab === "requirements" ? (
+              /* Requirements tab: scrollable list + composer */
+              <div className={`${styles.contextItemList} ${styles.contextItemListScroll}`}>
+                {activeState.contextPreview.requirements.length === 0 ? (
+                  contextLoading ? (
+                    <ContextSkeleton lines={3} />
+                  ) : (
+                    <p className={styles.emptyHint}>No requirements yet. Add one below.</p>
+                  )
+                ) : (
+                  activeState.contextPreview.requirements.map((note) => (
+                    <SidepanelNoteItem
+                      key={note.memoryId}
+                      note={note}
+                      variant="unified"
+                      stripeColor="#ef4444"
+                      busy={busy}
+                      editing={editingKey === `note:${note.memoryId}`}
+                      editingText={editingText}
+                      onChangeEditingText={setEditingText}
+                      onStartEdit={() => {
+                        setEditingKey(`note:${note.memoryId}`);
+                        setEditingText(note.text);
+                      }}
+                      onSaveEdit={() => void saveNoteEdit(note.memoryId)}
+                      onCancelEdit={() => {
+                        setEditingKey(null);
+                        setEditingText("");
+                      }}
+                      onDelete={() => void removeNote(note.memoryId)}
+                    />
+                  ))
+                )}
+
+                <div className={styles.contextComposer}>
+                  <textarea
+                    className={styles.contextEditor}
+                    value={memorySectionDrafts.requirement ?? ""}
+                    placeholder="Add a requirement Relay should keep."
+                    onChange={(event) =>
+                      setMemorySectionDrafts((current) => ({
+                        ...current,
+                        requirement: event.target.value,
+                      }))
+                    }
+                  />
+                  <button
+                    className={styles.secondaryButton}
+                    disabled={busy || !(memorySectionDrafts.requirement ?? "").trim()}
+                    onClick={() => void addMemorySectionItem("requirement")}
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
             ) : (
               /* Single-section tab: unified list with composer */
               (() => {
                 const section = activeContextTab;
                 const items = activeState.contextPreview[section];
+                const PAGE = 10;
+                const totalPages = Math.max(1, Math.ceil(items.length / PAGE));
+                const page = Math.min(sectionPage, totalPages - 1);
+                const pageItems = items.slice(page * PAGE, (page + 1) * PAGE);
 
                 return (
                   <div className={`${styles.contextItemList} ${styles.contextItemListScroll}`}>
+                    <ContextPager page={page} totalPages={totalPages} onPage={setSectionPage} />
                     {items.length === 0 ? (
                       contextLoading ? (
                         <ContextSkeleton lines={3} />
@@ -3671,7 +4029,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                         </p>
                       )
                     ) : (
-                      items.map((item) => (
+                      pageItems.map((item) => (
                         <div
                           key={item.key}
                           className={`${styles.contextItemUnified} ${styles[sectionItemColorClass[section]]}`}
@@ -3732,6 +4090,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                         </div>
                       ))
                     )}
+
+                    <ContextPager page={page} totalPages={totalPages} onPage={setSectionPage} />
 
                     {/* Composer always visible in single-section tab */}
                     <div className={styles.contextComposer}>
@@ -3848,8 +4208,10 @@ const SURFACE_LABELS: Record<string, string> = {
 };
 
 function ContextItemMeta({ item }: { item: ContextItem }) {
+  // Derived lines surface the project's predominant capture platform when known
+  // (set server-side); only a sourceless derived line shows the bare "Derived".
   const label =
-    item.source === "derived"
+    item.source === "derived" && !item.sourceSurface
       ? "Derived"
       : SURFACE_LABELS[item.sourceSurface ?? "manual"] ?? "Manual";
   const time = item.capturedAt ? formatNoteRelativeTime(item.capturedAt) : null;
@@ -3861,6 +4223,46 @@ function ContextItemMeta({ item }: { item: ContextItem }) {
           {time}
         </time>
       ) : null}
+    </div>
+  );
+}
+
+/** Compact, minimal pager reused above and below long context lists. */
+function ContextPager({
+  page,
+  totalPages,
+  onPage,
+}: {
+  page: number;
+  totalPages: number;
+  onPage: (next: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+  return (
+    <div
+      style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "3px 0" }}
+    >
+      <button
+        type="button"
+        className={styles.ghostButton}
+        disabled={page === 0}
+        aria-label="Previous page"
+        onClick={() => onPage(Math.max(0, page - 1))}
+      >
+        <ChevronLeft size={13} />
+      </button>
+      <span style={{ fontSize: 10, opacity: 0.7, minWidth: 24, textAlign: "center" }}>
+        {page + 1}/{totalPages}
+      </span>
+      <button
+        type="button"
+        className={styles.ghostButton}
+        disabled={page >= totalPages - 1}
+        aria-label="Next page"
+        onClick={() => onPage(Math.min(totalPages - 1, page + 1))}
+      >
+        <ChevronRight size={13} />
+      </button>
     </div>
   );
 }
@@ -4083,6 +4485,11 @@ interface SidepanelNoteItemProps {
   onSaveEdit: () => void;
   onCancelEdit: () => void;
   onDelete: () => void;
+  /** "section" = inside a section card (no stripe, like regular contextItem);
+   *  "unified" = standalone single-tab item with a colored left stripe. */
+  variant?: "section" | "unified";
+  /** Stripe color for the unified variant (Folk category / type color). */
+  stripeColor?: string;
 }
 
 function ContextSkeleton({ lines = 2 }: { lines?: number }) {
@@ -4110,18 +4517,22 @@ function SidepanelNoteItem({
   onSaveEdit,
   onCancelEdit,
   onDelete,
+  variant = "section",
+  stripeColor,
 }: SidepanelNoteItemProps) {
-  const favicon = note.hostname
-    ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(note.hostname)}&sz=32`
-    : null;
-  const categoryMeta =
-    note.personalCategory && isPersonalCategory(note.personalCategory)
-      ? PERSONAL_CATEGORY_META[note.personalCategory]
-      : null;
+  // Identical markup to the regular decision/task/constraint item: section
+  // variant has no stripe (the section card carries the color); unified variant
+  // (single-tab) has a colored left stripe via the --stripe custom property.
+  const containerClass =
+    variant === "unified" ? styles.contextItemUnified : styles.contextItem;
+  const containerStyle =
+    variant === "unified" && stripeColor
+      ? ({ "--stripe": stripeColor } as React.CSSProperties)
+      : undefined;
 
   if (editing) {
     return (
-      <article className={styles.noteItem}>
+      <div className={containerClass} style={containerStyle}>
         <textarea
           className={styles.contextEditor}
           value={editingText}
@@ -4139,44 +4550,33 @@ function SidepanelNoteItem({
             Cancel
           </button>
         </div>
-      </article>
+      </div>
     );
   }
 
   return (
-    <article className={styles.noteItem}>
-      {/* Meta (source + time) on top, then text, then right-aligned icon
-          actions — matching the decision/constraint/task item layout. */}
-      <div className={styles.noteFooter}>
-        {categoryMeta ? (
-          <span className={styles.contextItemBadge} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-            <span
-              aria-hidden="true"
-              style={{ width: 7, height: 7, borderRadius: "50%", background: categoryMeta.color }}
-            />
-            {categoryMeta.label}
-          </span>
-        ) : note.sourceUrl && note.hostname ? (
+    <div className={containerClass} style={containerStyle}>
+      <div className={styles.contextItemMeta}>
+        {note.sourceUrl && note.hostname ? (
           <a
             href={note.sourceUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className={styles.noteSourceChip}
+            className={styles.contextItemBadge}
             onClick={(event) => event.stopPropagation()}
           >
-            {favicon ? (
-              <img src={favicon} alt="" width={12} height={12} />
-            ) : null}
-            <span className={styles.noteHostname}>{note.hostname}</span>
+            {note.hostname}
           </a>
         ) : (
-          <span className={styles.contextItemBadge}>Note</span>
+          <span className={styles.contextItemBadge}>
+            {SURFACE_LABELS[note.sourceSurface ?? "manual"] ?? "Note"}
+          </span>
         )}
-        <time className={styles.noteTime} dateTime={note.capturedAt}>
+        <time className={styles.contextItemTime} dateTime={note.capturedAt}>
           {formatNoteRelativeTime(note.capturedAt)}
         </time>
       </div>
-      <p className={styles.noteText}>{note.text}</p>
+      <p className={styles.contextText}>{note.text}</p>
       <div className={styles.contextActions}>
         <button
           type="button"
@@ -4199,7 +4599,7 @@ function SidepanelNoteItem({
           <Trash2 size={14} />
         </button>
       </div>
-    </article>
+    </div>
   );
 }
 

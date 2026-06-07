@@ -31,10 +31,35 @@ function buildDerivedKey(section: ProjectContextSection, text: string) {
   return `derived:${section}:${normalized}`
 }
 
+/**
+ * Derived governed lines are aggregated from session digests and carry no single
+ * source row. Rather than label them a bare "Derived", surface the project's
+ * predominant capture platform (mode of the memory items' real source surfaces)
+ * so the user sees where the project's context comes from.
+ */
+function predominantSourceSurface(dashboard: ProjectDashboardDto): SourceSurface | null {
+  const counts = new Map<SourceSurface, number>()
+  for (const item of dashboard.memory) {
+    const surface = item.sourceSurface
+    if (!surface || surface === "manual") continue
+    counts.set(surface, (counts.get(surface) ?? 0) + 1)
+  }
+  let best: SourceSurface | null = null
+  let bestCount = 0
+  for (const [surface, count] of counts) {
+    if (count > bestCount) {
+      best = surface
+      bestCount = count
+    }
+  }
+  return best
+}
+
 export function buildProjectContextItems(
   dashboard: ProjectDashboardDto,
   section: ProjectContextSection,
 ): ProjectContextItem[] {
+  const derivedSurface = predominantSourceSurface(dashboard)
   const effectiveItems = dashboard.projectState?.[projectStateKeyBySection[section]] ?? []
   const manualItems = dashboard.memory.filter(
     (item) => item.type === memoryTypeBySection[section],
@@ -65,7 +90,9 @@ export function buildProjectContextItems(
         text,
         source: "derived" as const,
         memoryId: null,
-        sourceSurface: null,
+        // Surface the project's predominant capture platform instead of a bare
+        // "Derived" (null → the UI falls back to "Derived").
+        sourceSurface: derivedSurface,
         // Derived items have no capture event — stamp the time the project
         // state was last rederived so the UI can show a relative time.
         capturedAt: dashboard.projectState?.updatedAt ?? null,

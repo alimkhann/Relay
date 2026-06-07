@@ -24,8 +24,7 @@ import { MIN_GRAPH_ITEMS } from "@/features/graph/memory-graph-utils";
 import { GovernanceSection } from "@/features/projects/governance-section";
 import { MemoryItemsList } from "@/features/memory/memory-items-list";
 import { PersonalCategoryBoard } from "@/features/memory/personal-category-board";
-import { NotesSection } from "@/features/memory/notes-section";
-import { selectPinnedNotes } from "@/features/memory/notes-selector";
+import { PersonalStateCard } from "@/features/projects/personal-state-card";
 import {
   buildProjectMemoryOverridePatch,
   deriveProjectMemoryDrafts,
@@ -34,6 +33,16 @@ import { cn } from "@/lib/cn";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
 
 type MemoryTab = "all" | "decisions" | "tasks" | "constraints" | "notes" | "requirements" | "artifacts";
+
+// Color dot per regular tab, mirroring the personal Folk-category tab dots.
+const TAB_DOT_COLOR: Partial<Record<MemoryTab, string>> = {
+  decisions: "var(--relay-section-decision)",
+  tasks: "var(--relay-section-task)",
+  constraints: "var(--relay-section-constraint)",
+  notes: "#a1a1aa",
+  requirements: "#ef4444",
+  artifacts: "#8b5cf6",
+};
 
 interface MemoryPageContentProps {
   project: { id: string; name: string; description?: string | null; kind?: "project" | "personal" };
@@ -167,8 +176,13 @@ export function MemoryPageContent({
     });
   }
 
-  if (!dashboard) {
-    if (isPending) {
+  // `useMemory` keeps the previous project's data as a placeholder across project
+  // switches, which would briefly flash the OLD project's memory (e.g. personal
+  // notes in a normal project's Notes column). Treat a dashboard whose project id
+  // doesn't match as still-loading.
+  const dashboardMatchesProject = dashboard?.project?.id === project.id;
+  if (!dashboard || !dashboardMatchesProject) {
+    if (isPending || dashboard) {
       return (
         <div className="space-y-6 pt-6">
           <div className="space-y-2">
@@ -230,7 +244,9 @@ export function MemoryPageContent({
         </FadeIn>
       )}
 
-      {/* Overview / Objective / Progress */}
+      {/* Overview / Objective / Progress — project state, not for personal
+          (personal's "About you" state lives on the Overview tab). */}
+      {!isPersonal && (
       <FadeIn delay={0.05}>
         <div className="rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--relay-line)]">
@@ -330,6 +346,7 @@ export function MemoryPageContent({
           </div>
         </div>
       </FadeIn>
+      )}
 
       {dashboard.memory.length >= MIN_GRAPH_ITEMS && (
         <FadeIn delay={0.08}>
@@ -341,9 +358,26 @@ export function MemoryPageContent({
         </FadeIn>
       )}
 
-      {/* Personal dashboard: Folk category tabs + lists */}
+      {/* Personal dashboard: editable "About you" state + Folk category tabs */}
       {isPersonal && (
         <>
+          <FadeIn delay={0.05}>
+            <PersonalStateCard
+              editable
+              projectId={project.id}
+              overview={dashboard.projectState?.projectOverview ?? ""}
+              objective={dashboard.projectState?.currentObjective ?? ""}
+              overridden={Boolean(
+                dashboard.stateOverrides?.projectOverviewOverride ||
+                  dashboard.stateOverrides?.currentObjectiveOverride,
+              )}
+              onSaved={() =>
+                void queryClient.invalidateQueries({
+                  queryKey: queryKeys.dashboard(project.id),
+                })
+              }
+            />
+          </FadeIn>
           <FadeIn delay={0.1}>
             <div className="flex flex-wrap items-center gap-2">
               {([
@@ -391,42 +425,13 @@ export function MemoryPageContent({
 
           <FadeIn delay={0.15}>
             <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
-              {(() => {
-                // "All" → sectioned category board (project-dashboard style);
-                // a single category tab → that category's flat list.
-                if (personalTab === "all") {
-                  const allCategorized = (dashboard.memory ?? []).filter(
-                    (i) => personalCategoryFromMetadata(i.metadata) !== null,
-                  );
-                  if (allCategorized.length === 0) {
-                    return (
-                      <EmptyState
-                        title="Nothing here yet"
-                        description="Relay fills your personal memory as you chat about yourself."
-                        className="py-6"
-                      />
-                    );
-                  }
-                  return <PersonalCategoryBoard items={allCategorized} />;
-                }
-                const items = personalByCategory[personalTab];
-                if (items.length === 0) {
-                  return (
-                    <EmptyState
-                      title="Nothing here yet"
-                      description="Relay fills your personal memory as you chat about yourself."
-                      className="py-6"
-                    />
-                  );
-                }
-                return (
-                  <MemoryItemsList
-                    items={items}
-                    label={PERSONAL_CATEGORY_META[personalTab].label}
-                    projectId={project.id}
-                  />
-                );
-              })()}
+              {/* "All" → every Folk category column (scrollable); a single tab →
+                  that one category's column. Same board chrome + CRUD either way. */}
+              <PersonalCategoryBoard
+                projectId={project.id}
+                items={dashboard.memory}
+                categories={personalTab === "all" ? undefined : [personalTab]}
+              />
             </div>
           </FadeIn>
         </>
@@ -461,12 +466,19 @@ export function MemoryPageContent({
                 });
               }}
               className={cn(
-                "rounded-full px-3 py-1 text-[12px] font-medium transition-colors",
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium transition-colors",
                 activeTab === tab.key
                   ? "bg-[var(--relay-ink)] text-[var(--relay-bg)]"
                   : "text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]",
               )}
             >
+              {TAB_DOT_COLOR[tab.key] && (
+                <span
+                  aria-hidden="true"
+                  className="size-2 rounded-full"
+                  style={{ backgroundColor: TAB_DOT_COLOR[tab.key] }}
+                />
+              )}
               {tab.label} ({tab.count})
             </button>
           ))}
@@ -474,52 +486,31 @@ export function MemoryPageContent({
       </FadeIn>
       )}
 
-      {/* Governance (decisions, tasks, constraints) */}
-      {!isPersonal && visibleSections.length > 0 && (
-        <FadeIn delay={0.15}>
-          <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
-            <GovernanceSection
-              projectId={project.id}
-              dashboard={dashboard}
-              visibleSections={visibleSections}
-            />
-          </div>
-        </FadeIn>
-      )}
-
-      {/* Memory items for notes/requirements/artifacts tabs (only shown on their specific tabs) */}
-      {!isPersonal && activeTab === "notes" && memoryItemsByType.notes.length > 0 && (
-        <FadeIn delay={0.15}>
-          <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
-            <MemoryItemsList items={memoryItemsByType.notes} label="Notes" projectId={project.id} />
-          </div>
-        </FadeIn>
-      )}
-
-      {!isPersonal && activeTab === "requirements" && memoryItemsByType.requirements.length > 0 && (
-        <FadeIn delay={0.18}>
-          <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
-            <MemoryItemsList items={memoryItemsByType.requirements} label="Requirements" projectId={project.id} />
-          </div>
-        </FadeIn>
-      )}
+      {/* Governance board (decisions, tasks, constraints + Notes column on
+          the All / Notes tabs — notes are plain memory items). */}
+      {!isPersonal &&
+        (visibleSections.length > 0 ||
+          activeTab === "all" ||
+          activeTab === "notes" ||
+          activeTab === "requirements") && (
+          <FadeIn delay={0.15}>
+            <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
+              <GovernanceSection
+                projectId={project.id}
+                dashboard={dashboard}
+                visibleSections={visibleSections}
+                includeNotes={activeTab === "all" || activeTab === "notes"}
+                includeRequirements={activeTab === "all" || activeTab === "requirements"}
+              />
+            </div>
+          </FadeIn>
+        )}
 
       {!isPersonal && activeTab === "artifacts" && memoryItemsByType.artifacts.length > 0 && (
         <FadeIn delay={0.2}>
           <div className={cn("transition-opacity duration-150", tabPending && "opacity-50")}>
             <MemoryItemsList items={memoryItemsByType.artifacts} label="Artifacts" projectId={project.id} />
           </div>
-        </FadeIn>
-      )}
-
-      {/* Pinned notes (only show in All tab or when not on notes-specific tab) */}
-      {!isPersonal && activeTab === "all" && (
-        <FadeIn delay={0.25}>
-          <NotesSection
-            notes={selectPinnedNotes(dashboard.memory)}
-            variant="memory-page"
-            projectId={project.id}
-          />
         </FadeIn>
       )}
 

@@ -335,7 +335,10 @@ export function MemoryGraph({
     if (isHub) {
       const hubRadius = node.hub === "root" ? 12 * settings.nodeScale : 8 * settings.nodeScale;
       const radius = isActive || hoveredNodeId === node.id ? hubRadius + 2 : hubRadius;
-      const opacity = 0.92;
+      // Full opacity so the hub's core fill reads as the true category color,
+      // matching the solid dots on the memory-tab category board (the glow/ring
+      // below are intentionally translucent auras).
+      const opacity = 1;
 
       ctx.save();
 

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server"
 import { logServerEvent } from "@/server/logging/logger"
 import { getRequestContext, withRequestContext } from "@/server/logging/request-context"
 import { getAuthProvider } from "@/lib/auth/provider"
-import { requireAuthServer } from "@/lib/auth/server"
+import { getAuthServer, requireAuthServer } from "@/lib/auth/server"
 
 async function handleAuthMethod(
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
@@ -11,7 +11,7 @@ async function handleAuthMethod(
   context: { params: Promise<{ path: string[] }> }
 ) {
   return withRequestContext(request, async () => {
-    if (getAuthProvider() === "local") {
+    if (getAuthProvider() === "local" && !getAuthServer({ allowInLocal: true })) {
       return NextResponse.json(
         { error: "Local auth does not use the Neon auth route." },
         { status: 404 }
@@ -19,7 +19,7 @@ async function handleAuthMethod(
     }
 
     try {
-      const response = await requireAuthServer().handler()[method](request, context)
+      const response = await requireAuthServer({ allowInLocal: true }).handler()[method](request, context)
       const requestId = getRequestContext()?.requestId
       if (requestId) {
         response.headers.set("x-relay-request-id", requestId)

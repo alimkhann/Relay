@@ -2,14 +2,13 @@ import { NextResponse } from "next/server"
 
 import { createFlowId } from "@relay/shared"
 
-import { getAuthProvider } from "@/lib/auth/provider"
 import { applyExtensionCorsHeaders, buildExtensionPreflightResponse } from "@/server/http/extension-cors"
 import { logServerEvent } from "@/server/logging/logger"
 import { getRequestContext, withRequestContext } from "@/server/logging/request-context"
 import { assertIpRateLimit } from "@/server/services/rate-limit-service"
 import { resolveGoogleAuthUser } from "@/server/services/google-auth-service"
 import { getResolvedOnboardingStateForUser } from "@/server/services/onboarding-service"
-import { listProjectsForUser } from "@/server/services/project-service"
+import { ensurePersonalProjectForUser, listProjectsForUser } from "@/server/services/project-service"
 import { getUserSettings } from "@/server/services/settings-service"
 import { createExtensionTokenForUser } from "@/server/services/extension-token-service"
 
@@ -25,15 +24,6 @@ export function OPTIONS(request: Request) {
 
 export async function POST(request: Request) {
   return withRequestContext(request, async () => {
-    if (getAuthProvider() !== "neon") {
-      return applyExtensionCorsHeaders(
-        withRequestId(
-        NextResponse.json({ error: "Google auth is not enabled." }, { status: 404 })
-        ),
-        request.headers.get("origin")
-      )
-    }
-
     const flowId =
       request.headers.get("x-relay-flow-id") ??
       getRequestContext()?.flowId ??
@@ -118,6 +108,7 @@ export async function POST(request: Request) {
         deviceName: body.deviceName || "Chrome Extension"
       })
 
+      await ensurePersonalProjectForUser(authUser.id)
       const [projects, settings, onboarding] = await Promise.all([
         listProjectsForUser(authUser.id, { includePersonal: true }),
         getUserSettings(authUser.id),

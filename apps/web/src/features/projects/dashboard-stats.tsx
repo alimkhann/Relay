@@ -10,6 +10,7 @@ interface DashboardStatsProps {
   totalContextItems: number;
   briefStatus: "ready" | "stale" | "none";
   briefGeneratedAt?: string | null;
+  kind?: "project" | "personal";
 }
 
 // ---------------------------------------------------------------------------
@@ -37,8 +38,13 @@ export function DashboardStats({
   totalContextItems,
   briefStatus,
   briefGeneratedAt,
+  kind = "project",
 }: DashboardStatsProps) {
   const brief = briefDisplayMap[briefStatus];
+  const memorySubLabel =
+    kind === "personal"
+      ? "people · concepts · notes"
+      : "decisions · tasks · constraints";
 
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -72,7 +78,7 @@ export function DashboardStats({
             </p>
             <p className="text-sm leading-snug mt-1">Memory items</p>
             <p className="text-xs text-[var(--relay-muted)]">
-              decisions &middot; tasks &middot; constraints
+              {memorySubLabel}
             </p>
           </div>
         </div>

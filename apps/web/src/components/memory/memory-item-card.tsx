@@ -5,7 +5,6 @@ import {
   Boxes,
   ChevronDown,
   ChevronUp,
-  Chrome,
   Globe,
   MessageSquare,
   Pencil,
@@ -60,7 +59,7 @@ const TYPE_ACCENT: Record<MemoryItemType, string> = {
   decision: "bg-[var(--relay-accent-blue)]",
   task: "bg-amber-500",
   constraint: "bg-rose-500",
-  requirement: "bg-emerald-500",
+  requirement: "bg-red-500",
   note: "bg-zinc-400 dark:bg-zinc-500",
   artifact: "bg-violet-500",
 }

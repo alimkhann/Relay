@@ -1,5 +1,5 @@
 import type { ProjectStateStatusDto } from "@relay/shared"
-import type { RelayChatAssociation } from "../messaging/contracts"
+import type { RelayChatAssociation, RelayProjectOption } from "../messaging/contracts"
 
 interface ControlPanelStateInput {
   connected: boolean
@@ -10,6 +10,19 @@ interface ControlPanelStateInput {
 
 function isActiveDigest(status: ProjectStateStatusDto | null) {
   return status?.activeJobStatus === "pending" || status?.activeJobStatus === "running"
+}
+
+export function resolvePanelProjectOptions(
+  activeOptions: RelayProjectOption[],
+  sessionOptions: RelayProjectOption[],
+) {
+  const baseOptions = activeOptions.length > 0 ? activeOptions : sessionOptions
+  if (baseOptions.some((project) => project.kind === "personal")) {
+    return baseOptions
+  }
+
+  const personalProject = sessionOptions.find((project) => project.kind === "personal")
+  return personalProject ? [personalProject, ...baseOptions] : baseOptions
 }
 
 function humanizeStage(stage: string | null | undefined) {

@@ -35,6 +35,11 @@ export async function listProjectsForUser(
   return getProjectSummaries(repositories, userId, options)
 }
 
+export async function ensurePersonalProjectForUser(userId: string) {
+  const repositories = createRepositoryBundle(userId)
+  return repositories.projects.ensurePersonalProject(userId)
+}
+
 export async function getProjectDashboardForUser(userId: string, projectId: string) {
   const repositories = createRepositoryBundle(userId)
   const dashboard = await getProjectDashboard(repositories, userId, projectId)

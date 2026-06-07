@@ -101,11 +101,13 @@ export function ProvenanceChip({
   compact = false,
   derived = false,
 }: ProvenanceChipProps) {
-  // Derived items have no capture surface — match the extension's "Derived"
-  // badge. Otherwise an untracked surface badges as a manual/user save.
-  const meta = derived
-    ? { label: "Derived", classes: surfaceMap.manual.classes }
-    : (sourceSurface ? surfaceMap[sourceSurface] : null) ?? surfaceMap.manual;
+  // Derived items aggregate from session digests. When we know the project's
+  // predominant capture platform, show that (it's where the context came from);
+  // only fall back to a bare "Derived" when no surface is recoverable.
+  const meta =
+    derived && !sourceSurface
+      ? { label: "Derived", classes: surfaceMap.manual.classes }
+      : (sourceSurface ? surfaceMap[sourceSurface] : null) ?? surfaceMap.manual;
 
   const chip = (
     <span

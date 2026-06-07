@@ -13,7 +13,7 @@ import { assertIpRateLimit } from "@/server/services/rate-limit-service"
 import { extractAuthUser } from "@/server/services/google-auth-service"
 import { reconcileProfileForAuthUser } from "@/server/services/auth-sync-service"
 import { getResolvedOnboardingStateForUser } from "@/server/services/onboarding-service"
-import { listProjectsForUser } from "@/server/services/project-service"
+import { ensurePersonalProjectForUser, listProjectsForUser } from "@/server/services/project-service"
 import { getUserSettings } from "@/server/services/settings-service"
 import { createExtensionTokenForUser } from "@/server/services/extension-token-service"
 import { sendEmailVerificationOtp } from "@/server/services/email-service"
@@ -297,6 +297,7 @@ export async function POST(request: Request) {
         deviceName: body.deviceName || "Chrome Extension",
       })
 
+      await ensurePersonalProjectForUser(authUser.id)
       const [projects, settings, onboarding] = await Promise.all([
         listProjectsForUser(authUser.id, { includePersonal: true }),
         getUserSettings(authUser.id),

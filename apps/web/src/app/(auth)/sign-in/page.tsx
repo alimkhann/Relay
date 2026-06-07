@@ -35,9 +35,11 @@ export default async function SignInPage({
   }
 
   const authProvider = getAuthProvider();
+  const googleAuthConfigured = Boolean(
+    process.env.NEON_AUTH_BASE_URL && process.env.NEON_AUTH_COOKIE_SECRET,
+  );
   const authConfigured = Boolean(
-    authProvider === "local" ||
-      (process.env.NEON_AUTH_BASE_URL && process.env.NEON_AUTH_COOKIE_SECRET),
+    authProvider === "local" || googleAuthConfigured,
   );
   const authBackgroundSrc = pickRandomLandingBackground();
   const referralCode = decodeReferralCookie((await cookies()).get(REFERRAL_COOKIE_NAME)?.value) ?? undefined;
@@ -107,6 +109,7 @@ export default async function SignInPage({
       <div className="flex flex-1 items-center justify-center px-6 py-12">
         <SignInAuthPanel
           authConfigured={authConfigured}
+          googleAuthConfigured={googleAuthConfigured}
           authProvider={authProvider}
           intent={intent}
           nextPath={nextPath}

@@ -73,6 +73,7 @@ describe("readSessionUserFromCookie", () => {
     cookiesMock.mockClear()
     headersMock.mockClear()
     clearAuthCacheForTests()
+    vi.unstubAllEnvs()
     vi.stubEnv("NEON_AUTH_COOKIE_SECRET", COOKIE_SECRET)
     vi.stubEnv("NEON_AUTH_BASE_URL", "https://auth.example.com")
     vi.unstubAllGlobals()
@@ -128,6 +129,29 @@ describe("readSessionUserFromCookie", () => {
       method: "GET",
       headers: expect.any(Headers),
       cache: "no-store"
+    })
+  })
+
+  it("accepts a Neon Google session cookie as a fallback in local auth mode", async () => {
+    vi.stubEnv("AUTH_PROVIDER", "local")
+    cookieState.set(SESSION_TOKEN_COOKIE_NAME, "session-token")
+    cookieState.set(
+      SESSION_DATA_COOKIE_NAME,
+      await signSessionCookie({
+        user: {
+          id: "google-user-1",
+          email: "google@example.com",
+          name: "Google User",
+          image: null
+        }
+      })
+    )
+
+    await expect(readSessionUserFromCookie()).resolves.toEqual({
+      id: "google-user-1",
+      email: "google@example.com",
+      name: "Google User",
+      image: null
     })
   })
 

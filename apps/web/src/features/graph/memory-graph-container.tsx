@@ -82,10 +82,12 @@ function GraphLegend({
   nodeCount,
   linkCount,
   personalCategoriesPresent,
+  hasEntities,
 }: {
   nodeCount: number;
   linkCount: number;
   personalCategoriesPresent?: PersonalCategory[];
+  hasEntities?: boolean;
 }) {
   const isPersonal = Boolean(personalCategoriesPresent && personalCategoriesPresent.length > 0);
   return (
@@ -106,6 +108,14 @@ function GraphLegend({
               {TYPE_LABELS[type]}
             </span>
           ))}
+      {/* Entity nodes (e.g. people/things mentioned across items) are structural,
+          not a Folk category, so they get their own legend entry. */}
+      {isPersonal && hasEntities && (
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: TYPE_COLORS.note }} />
+          Entity
+        </span>
+      )}
       <span className="text-[var(--relay-line)]">·</span>
       <span>{nodeCount} nodes</span>
       <span>{linkCount} edges</span>
@@ -278,6 +288,7 @@ export function MemoryGraphContainer({
   const personalCategoriesPresent = personalCategories.filter((category) =>
     effectiveItems.some((item) => personalCategoryFromMetadata(item.metadata) === category),
   );
+  const hasEntityNodes = (data?.nodes ?? []).some((node) => node.kind === "entity");
 
   useEffect(() => {
     if (!expanded) return;
@@ -418,7 +429,7 @@ export function MemoryGraphContainer({
                   {title}
                 </div>
                 <div className="mt-1">
-                  <GraphLegend nodeCount={data.nodes.length} linkCount={data.links.length} personalCategoriesPresent={personalCategoriesPresent} />
+                  <GraphLegend nodeCount={data.nodes.length} linkCount={data.links.length} personalCategoriesPresent={personalCategoriesPresent} hasEntities={hasEntityNodes} />
                 </div>
               </div>
               <Button
@@ -488,7 +499,7 @@ export function MemoryGraphContainer({
             <Settings2 className="h-4 w-4" />
           </button>
           <div className="absolute bottom-4 left-4 z-20 max-w-[calc(100%-32px)] rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]/88 px-3 py-2 backdrop-blur">
-            <GraphLegend nodeCount={data.nodes.length} linkCount={data.links.length} personalCategoriesPresent={personalCategoriesPresent} />
+            <GraphLegend nodeCount={data.nodes.length} linkCount={data.links.length} personalCategoriesPresent={personalCategoriesPresent} hasEntities={hasEntityNodes} />
           </div>
           <div className="h-full">
             {renderGraphBody("fullscreen")}

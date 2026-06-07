@@ -78,3 +78,43 @@ export function personalCategoryFromMetadata(
   const raw = metadata?.personalCategory
   return isPersonalCategory(raw) ? raw : null
 }
+
+/** Minimal shape a personal item needs to participate in fill/recency sorting. */
+export interface PersonalSortableItem {
+  metadata?: Record<string, unknown> | null
+  capturedAt?: string | null
+  updatedAt?: string | null
+}
+
+/**
+ * Order Folk categories "most useful first": by item count descending, tie-broken
+ * by the most-recent item in the category. Empty categories sort last (count 0).
+ * Single source of truth for column/tab ordering across the dashboard board, the
+ * overview summary, and the extension panel.
+ */
+export function sortPersonalCategoriesByFill(
+  items: ReadonlyArray<PersonalSortableItem>,
+  categories: readonly PersonalCategory[] = personalCategories,
+): PersonalCategory[] {
+  const stats = new Map<PersonalCategory, { count: number; recent: number }>()
+  for (const category of categories) stats.set(category, { count: 0, recent: 0 })
+
+  for (const item of items) {
+    const category = personalCategoryFromMetadata(item.metadata)
+    if (!category) continue
+    const stat = stats.get(category)
+    if (!stat) continue
+    stat.count += 1
+    const time = Date.parse(item.capturedAt ?? item.updatedAt ?? "")
+    if (!Number.isNaN(time) && time > stat.recent) stat.recent = time
+  }
+
+  // Preserve the canonical order as the final tie-break (stable, deterministic).
+  return [...categories].sort((a, b) => {
+    const sa = stats.get(a)!
+    const sb = stats.get(b)!
+    if (sb.count !== sa.count) return sb.count - sa.count
+    if (sb.recent !== sa.recent) return sb.recent - sa.recent
+    return categories.indexOf(a) - categories.indexOf(b)
+  })
+}

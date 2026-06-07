@@ -1,54 +1,147 @@
 "use client";
 
-import type { MemoryItemDto } from "@relay/shared";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+
+import type { MemoryItemDto, PersonalCategory } from "@relay/shared";
 import {
   PERSONAL_CATEGORY_META,
   personalCategories,
   personalCategoryFromMetadata,
+  sortPersonalCategoriesByFill,
 } from "@relay/shared";
 
-import { MemoryItemCard } from "@/components/memory/memory-item-card";
-import { cn } from "@/lib/cn";
+import {
+  MemoryColumnBoard,
+  type BoardColumn,
+} from "@/features/memory/memory-column-board";
+import { relayClientFetch } from "@/lib/telemetry/fetch";
 
 /**
- * Read-only column board for personal memory, mirroring the project dashboard's
- * GovernanceSection layout but keyed on the Folk personalCategory
- * (metadata.personalCategory) instead of the project type enum. One column per
- * category that has at least one item. Personal-only.
+ * Personal memory board: one column per Folk category (all seven, even empty),
+ * laid out on a single horizontally-scrollable row. Mirrors the project
+ * GovernanceSection chrome via the shared MemoryColumnBoard, but personal items
+ * are plain memory rows (type 'note' + metadata.personalCategory) so the
+ * mutations are direct memory CRUD — no project-state override machinery.
  */
-export function PersonalCategoryBoard({ items }: { items: MemoryItemDto[] }) {
-  const columns = personalCategories
-    .map((category) => ({
-      category,
-      meta: PERSONAL_CATEGORY_META[category],
-      items: items.filter((item) => personalCategoryFromMetadata(item.metadata) === category),
-    }))
-    .filter((column) => column.items.length > 0);
+export function PersonalCategoryBoard({
+  projectId,
+  items,
+  categories = personalCategories,
+}: {
+  projectId: string;
+  items: MemoryItemDto[];
+  /** Subset of categories to render as columns (defaults to all seven). */
+  categories?: readonly PersonalCategory[];
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [status, setStatus] = useState("");
 
-  if (columns.length === 0) return null;
+  function runMutation(
+    action: () => Promise<void>,
+    pendingMsg: string,
+    doneMsg: string,
+  ) {
+    startTransition(() => {
+      void (async () => {
+        setStatus(pendingMsg);
+        try {
+          await action();
+          setStatus(doneMsg);
+          router.refresh();
+        } catch (cause) {
+          setStatus(cause instanceof Error ? cause.message : "Request failed.");
+        }
+      })();
+    });
+  }
+
+  function addNote(category: PersonalCategory, text: string) {
+    const value = text.trim();
+    if (!value) return;
+    runMutation(
+      async () => {
+        const res = await relayClientFetch(`/api/projects/${projectId}/memory`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            type: "note",
+            title: null,
+            content: value,
+            metadata: { personalCategory: category },
+            sourceSurface: "web",
+          }),
+        });
+        if (!res.ok) throw new Error("Creation failed.");
+      },
+      "Adding…",
+      "Added.",
+    );
+  }
+
+  function editNote(item: MemoryItemDto, nextText: string) {
+    const value = nextText.trim();
+    if (!value) return;
+    runMutation(
+      async () => {
+        const res = await relayClientFetch(`/api/memory/${item.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ content: value }),
+        });
+        if (!res.ok) throw new Error("Update failed.");
+      },
+      "Saving…",
+      "Saved.",
+    );
+  }
+
+  function deleteNote(item: MemoryItemDto) {
+    runMutation(
+      async () => {
+        const res = await relayClientFetch(`/api/memory/${item.id}`, {
+          method: "DELETE",
+        });
+        if (!res.ok) throw new Error("Removal failed.");
+      },
+      "Removing…",
+      "Removed.",
+    );
+  }
+
+  // Most-filled + most-recent categories first; empties sink right.
+  const orderedCategories = sortPersonalCategoriesByFill(items, categories);
+
+  const columns: BoardColumn[] = orderedCategories.map((category) => {
+    const meta = PERSONAL_CATEGORY_META[category];
+    const columnItems = items.filter(
+      (item) => personalCategoryFromMetadata(item.metadata) === category,
+    );
+    return {
+      key: category,
+      label: meta.label,
+      color: meta.color,
+      emptyHint: `No ${meta.label.toLowerCase()} yet.`,
+      addPlaceholder: `Add ${meta.label.toLowerCase()}…`,
+      onAdd: (text) => addNote(category, text),
+      rows: columnItems.map((item) => ({
+        key: item.id,
+        text: item.content,
+        sourceSurface: item.sourceSurface,
+        capturedAt: item.capturedAt ?? item.updatedAt,
+        onEdit: (next) => editNote(item, next),
+        onDelete: () => deleteNote(item),
+      })),
+    };
+  });
 
   return (
-    <div className={cn("grid gap-3 grid-cols-1 lg:grid-cols-3")}>
-      {columns.map(({ category, meta, items: columnItems }) => (
-        <div
-          key={category}
-          className="flex flex-col rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] overflow-hidden"
-          style={{ borderLeftWidth: 2, borderLeftColor: meta.color }}
-        >
-          {/* Column header */}
-          <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-[var(--relay-line)]">
-            <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: meta.color }} />
-            <span className="text-xs font-medium text-[var(--relay-ink)]">{meta.label}</span>
-            <span className="text-[11px] text-[var(--relay-faint)] tabular-nums">{columnItems.length}</span>
-          </div>
-          {/* Column body */}
-          <div className="flex flex-col gap-2 p-2.5">
-            {columnItems.map((item) => (
-              <MemoryItemCard key={item.id} item={item} showTypeLabel={false} />
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
+    <MemoryColumnBoard
+      columns={columns}
+      layout={columns.length > 1 ? "scroll" : "grid"}
+      pending={pending}
+      status={status}
+    />
   );
 }

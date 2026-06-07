@@ -781,22 +781,32 @@
   border-radius: var(--radius-sm);
   background: var(--bg);
   border: 1px solid var(--line);
+  /* Left-edge color stripe via a custom property so the color can come from a
+   * fixed type class OR an inline style (personal Folk categories). */
+  border-left: 2px solid var(--stripe, transparent);
   transition: border-color 120ms;
 }
 
-/* Per-type left-edge color stripe so when the user filters to a single
- * memory-type tab the visual cue persists (matches the All-tab section
- * stripe colors). */
+/* Per-type stripe color (single-tab items) — set the custom property only, so
+ * the base + hover rules handle the actual border. */
 .contextItemUnifiedDecisions {
-  border-left: 2px solid #60a5fa;
+  --stripe: #60a5fa;
 }
 
 .contextItemUnifiedConstraints {
-  border-left: 2px solid #fbbf24;
+  --stripe: #fbbf24;
 }
 
 .contextItemUnifiedTasks {
-  border-left: 2px solid #34d399;
+  --stripe: #34d399;
+}
+
+.contextItemUnifiedNotes {
+  --stripe: #a1a1aa;
+}
+
+.contextItemUnifiedRequirements {
+  --stripe: #ef4444;
 }
 
 .contextItemListScroll {
@@ -815,6 +825,8 @@
 
 .contextItemUnified:hover {
   border-color: var(--muted);
+  /* Brighten the stripe on hover. */
+  border-left-color: color-mix(in srgb, var(--stripe, transparent), #ffffff 35%);
 }
 
 .contextItemUnified:hover .contextActions {
@@ -1510,7 +1522,12 @@
 }
 
 .contextSectionNotes {
-  border-left: 2px solid #f59e0b;
+  border-left: 2px solid #a1a1aa;
+  margin-top: 12px;
+}
+
+.contextSectionRequirements {
+  border-left: 2px solid #ef4444;
   margin-top: 12px;
 }
 

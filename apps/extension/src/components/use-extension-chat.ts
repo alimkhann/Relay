@@ -545,8 +545,25 @@ export function useExtensionChat(opts?: {
     setError(null)
   }, [revokePreviewUrls, updateAttachments])
 
+  // Reverse a reversible agent mutation (parity with the web assistant). The
+  // action card flips to its "undone" label locally on success.
+  const undo = useCallback(async (result: AssistantActionResult): Promise<boolean> => {
+    if (!result.undoRef) return false
+    try {
+      const res = await api("/api/assistant/undo", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(result.undoRef),
+      })
+      return res.ok
+    } catch {
+      return false
+    }
+  }, [])
+
   return {
     messages: path,
+    undo,
     chatId,
     streaming,
     activeTool,

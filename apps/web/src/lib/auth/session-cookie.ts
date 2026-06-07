@@ -152,7 +152,8 @@ async function fetchSessionUserFromAuthServer(
 
 export async function readSessionUserFromCookie(): Promise<SessionCookieUser | null> {
   if (getAuthProvider() === "local") {
-    return readLocalSessionUserFromCookie()
+    const localUser = await readLocalSessionUserFromCookie()
+    if (localUser) return localUser
   }
 
   const cookieStore = await cookies()

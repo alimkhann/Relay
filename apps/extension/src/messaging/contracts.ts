@@ -74,6 +74,8 @@ export interface RelayContextNoteItem {
   text: string;
   sourceUrl: string | null;
   hostname: string | null;
+  /** Real capture surface (perplexity/chatgpt/…) so the badge shows the source. */
+  sourceSurface?: SourceSurface | null;
   capturedAt: string;
   /** Folk personal category (metadata.personalCategory) for personal-memory notes. */
   personalCategory?: string | null;
@@ -84,6 +86,7 @@ export interface RelayContextPreview {
   constraints: RelayContextPreviewItem[];
   tasks: RelayContextPreviewItem[];
   notes: RelayContextNoteItem[];
+  requirements: RelayContextNoteItem[];
 }
 
 export interface RelayChatAssociation {

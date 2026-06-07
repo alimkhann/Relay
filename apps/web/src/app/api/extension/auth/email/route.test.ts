@@ -49,6 +49,7 @@ vi.mock("@/server/services/onboarding-service", () => ({
 }))
 
 vi.mock("@/server/services/project-service", () => ({
+  ensurePersonalProjectForUser: vi.fn(async () => null),
   listProjectsForUser: vi.fn(async () => []),
 }))
 

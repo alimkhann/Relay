@@ -41,7 +41,12 @@ export class ProjectStateOverrideRepository {
          hidden_constraints,
          hidden_open_tasks
        )
-       values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb)
+       values (
+         $1, $2, $3, $4,
+         coalesce($5::jsonb, '[]'::jsonb),
+         coalesce($6::jsonb, '[]'::jsonb),
+         coalesce($7::jsonb, '[]'::jsonb)
+       )
        on conflict (project_id) do update
          set project_overview_override = case when $8::boolean then $2 else project_state_overrides.project_overview_override end,
              current_objective_override = case when $9::boolean then $3 else project_state_overrides.current_objective_override end,

@@ -28,7 +28,7 @@ import {
   type LucideIcon
 } from "lucide-react"
 
-import type { AssistantActionResult, AssistantAttachmentDto, UiMessage } from "@relay/shared"
+import type { AssistantActionItem, AssistantActionResult, AssistantAttachmentDto, UiMessage } from "@relay/shared"
 
 import { MiniMarkdown } from "../utils/mini-markdown"
 import { getRelaySession } from "../storage/session"
@@ -102,7 +102,25 @@ function toolLabelFor(tool: string): string {
   return map[tool] ?? `Running ${tool.replace(/_/g, " ")}`
 }
 
-function ActionCard({ r }: { r: AssistantActionResult }) {
+const LIFECYCLE_PILL: Record<
+  NonNullable<AssistantActionItem["lifecycle"]>,
+  { label: string; bg: string; fg: string }
+> = {
+  active: { label: "active", bg: "rgba(16,185,129,0.12)", fg: "#10b981" },
+  cooling: { label: "cooling", bg: "rgba(245,158,11,0.12)", fg: "#f59e0b" },
+  archived: { label: "archived", bg: "rgba(113,113,122,0.16)", fg: "#a1a1aa" },
+  forgotten: { label: "forgotten", bg: "rgba(244,63,94,0.12)", fg: "#f43f5e" },
+}
+
+function ActionCard({
+  r,
+  onUndo,
+}: {
+  r: AssistantActionResult
+  onUndo?: (r: AssistantActionResult) => Promise<boolean>
+}) {
+  const [undone, setUndone] = useState(false)
+  const [undoing, setUndoing] = useState(false)
   const ToolGlyph = toolIconFor(r.tool)
   const ActionGlyph =
     r.action === "deleted"
@@ -128,15 +146,46 @@ function ActionCard({ r }: { r: AssistantActionResult }) {
         </span>
         <ActionGlyph size={12} />
         <span>
-          {verb} {r.count} {r.entity}
-          {r.count === 1 ? "" : "s"}
+          {undone ? `${r.entity} (undone)` : `${verb} ${r.count} ${r.entity}${r.count === 1 ? "" : "s"}`}
         </span>
+        {r.undoRef && onUndo && !undone ? (
+          <button
+            type="button"
+            disabled={undoing}
+            onClick={async () => {
+              setUndoing(true)
+              const ok = await onUndo(r)
+              setUndoing(false)
+              if (ok) setUndone(true)
+            }}
+            style={{
+              marginLeft: "auto",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              background: "none",
+              border: "none",
+              cursor: undoing ? "default" : "pointer",
+              color: "var(--ec-muted)",
+              fontSize: 11,
+              padding: 0,
+            }}
+          >
+            <Undo2 size={12} />
+            {undoing ? "Undoing…" : "Undo"}
+          </button>
+        ) : r.irreversible && !undone ? (
+          <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--ec-muted)" }}>
+            Can&apos;t be undone
+          </span>
+        ) : null}
       </div>
       {r.items.length > 0 ? (
         <ul className={styles.actionItems}>
           {r.items.slice(0, 5).map((item, i) => {
             const isUrl =
               typeof item.id === "string" && /^https?:\/\//i.test(item.id)
+            const pill = item.lifecycle ? LIFECYCLE_PILL[item.lifecycle] : null
             return (
               <li key={item.id ?? i} className={styles.actionItem}>
                 <span style={{ color: "var(--ec-muted)" }}>—</span>
@@ -147,6 +196,21 @@ function ActionCard({ r }: { r: AssistantActionResult }) {
                 ) : (
                   <span>{item.label}</span>
                 )}
+                {pill ? (
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      borderRadius: 999,
+                      padding: "1px 6px",
+                      fontSize: 10,
+                      fontWeight: 500,
+                      background: pill.bg,
+                      color: pill.fg,
+                    }}
+                  >
+                    {pill.label}
+                  </span>
+                ) : null}
               </li>
             )
           })}
@@ -321,7 +385,8 @@ function MessageRow({
   onFeedback,
   streaming,
   projectId,
-  onSaveAttachment
+  onSaveAttachment,
+  onUndo
 }: {
   m: UiMessage
   onEdit: (m: UiMessage, text: string) => void
@@ -332,6 +397,7 @@ function MessageRow({
   streaming: boolean
   projectId: string | null
   onSaveAttachment: (id: string, projectId: string) => Promise<void>
+  onUndo?: (r: AssistantActionResult) => Promise<boolean>
 }) {
   const isUser = m.role === "user"
   const [editing, setEditing] = useState(false)
@@ -406,7 +472,7 @@ function MessageRow({
       ) : null}
 
       {m.actionResults.map((r, i) => (
-        <ActionCard key={i} r={r} />
+        <ActionCard key={i} r={r} onUndo={onUndo} />
       ))}
 
       {m.pending ? (
@@ -856,6 +922,7 @@ export function ExtensionChat() {
               onFeedback={chat.setFeedback}
               projectId={projectId}
               onSaveAttachment={chat.saveAttachmentToSources}
+              onUndo={chat.undo}
             />
           ))
         )}
