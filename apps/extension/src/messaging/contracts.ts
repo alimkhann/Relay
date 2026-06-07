@@ -158,6 +158,7 @@ export type RelayMessage =
       type: "RELAY_EXTENSION_USER_SETTINGS_CHANGED";
       payload: { settings: Record<string, unknown> };
     }
+  | { type: "RELAY_EXTENSION_BILLING_CHANGED" }
   | { type: "RELAY_PAGE_STATE_UPDATE"; payload: RelayPageState }
   | {
       type: "RELAY_SHOW_INLINE_CHIP";

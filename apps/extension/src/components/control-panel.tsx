@@ -163,7 +163,7 @@ const BILLING_UPGRADE_URL = "https://www.onrelay.app/settings?section=billing";
 const HTML_ONBOARDING_STEP_KEY = "relay.onboarding.htmlStep";
 const HTML_ONBOARDING_META_KEY = "relay.onboarding.htmlMeta";
 const PANEL_SETTINGS_REFRESH_MS = 60_000;
-const PANEL_BILLING_REFRESH_MS = 60_000;
+const PANEL_BILLING_REFRESH_MS = 30 * 60 * 1_000;
 const PANEL_ACTIVE_STATE_REFRESH_MS = 1_500;
 
 async function readErrorMessage(response: Response, fallback: string) {
@@ -542,6 +542,18 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             : "system";
         setThemeMode(nextTheme);
         applyResolvedTheme(resolveRelayThemeMode(nextTheme));
+        return;
+      }
+
+      if (
+        message &&
+        typeof message === "object" &&
+        "type" in message &&
+        message.type === "RELAY_EXTENSION_BILLING_CHANGED"
+      ) {
+        billingLoadedAt.current = 0;
+        setBilling(null);
+        void loadBilling();
         return;
       }
 
