@@ -23,13 +23,12 @@ Supported AI chat sites: ChatGPT, Claude, Gemini, Grok, Perplexity, DeepSeek, an
 
 Built for developers, indie builders, and AI power users who work across multiple AI tools every day.
 
-## What’s New in 0.3.0
+## What’s New in 0.5.1
 
-- Faster and more reliable automatic chat association
-- Better existing-chat capture on ChatGPT project conversations
-- Cleaner settings inside the extension
-- Save notes from any webpage into the active project
-- Improved toast flow and project-status visibility while captures are processing
+- Ask Relay directly from the extension side panel, including optional voice input and file attachments
+- Save selected webpage text into the active Relay project
+- Keep unsupported and idle tabs local so the extension makes substantially fewer background requests
+- Refresh project, authentication, billing, and capture state immediately after user actions
 
 ## Category
 
