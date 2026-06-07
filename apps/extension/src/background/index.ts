@@ -91,6 +91,14 @@ import {
 } from "./remote-sync-policy";
 import { RETRY_DRAIN_DELAY_MS, scheduleDrain } from "./drain-scheduler";
 import { requestGoogleIdentityTokens } from "./oauth";
+import type {
+  ExtensionAuthSessionPayload,
+  PendingInsertedBriefState,
+  ProjectDashboardPayload,
+  RelayTabState,
+  RemoteSettingsPayload,
+  RemoteSettingsResponsePayload,
+} from "./bg-types";
 import {
   AUTO_CAPTURE_GRACE_MS,
   CAPTURE_API_TIMEOUT_MS,
@@ -123,96 +131,6 @@ import {
   persistDashboard,
   clearPersistedBackgroundCache,
 } from "../storage/background-cache";
-
-interface RemoteSettingsPayload {
-  settings: {
-    autoCapture: boolean;
-    defaultTargetProfileKey: string;
-    showSidepanelOnSupportedSites?: boolean;
-    autoCapturePrompt?: {
-      eligible: boolean;
-      dismissedAt: string | null;
-      activatedAt: string | null;
-    };
-  };
-}
-
-interface RemoteSettingsResponsePayload {
-  settings: { settings: RemoteSettingsPayload["settings"] };
-  onboarding?: RelayOnboardingState;
-}
-
-interface ExtensionAuthSessionPayload {
-  token: string;
-  apiBase: string;
-  userId?: string;
-  projectId: string;
-  projects?: RelayProjectOption[];
-  onboarding?: RelayOnboardingState;
-  settings?: { settings?: Partial<RemoteSettingsPayload["settings"]> };
-}
-
-type ProjectDashboardPayload = ProjectDashboardDto;
-
-interface RelayTabState {
-  tabId: number;
-  page: RelayPageState;
-  projectId: string | null;
-  projectName: string | null;
-  projectOptions: RelayProjectOption[];
-  trust: RelayTrustMetadata;
-  stateStatus: ProjectStateStatusDto | null;
-  contextPreview: RelayContextPreview;
-  chatAssociation: RelayChatAssociation;
-  routingReview: RelayRoutingReview | null;
-  boundProject: RelayBoundProjectSignal | null;
-  showCue: boolean;
-  remoteStatus: RelayRemoteStatus;
-  lastSuccessfulSyncAt: string | null;
-  lastError: string | null;
-  retryDelayMs: number;
-  retryTimer: ReturnType<typeof setTimeout> | null;
-  syncInFlight: boolean;
-  syncQueued: boolean;
-  syncRequestKey: string | null;
-  lastSyncedRequestKey: string | null;
-  capturePending: boolean;
-  capturePendingAt: number | null;
-  captureTimer: ReturnType<typeof setTimeout> | null;
-  associationToast: RelayAssociationToastState;
-  associationToastTimer: ReturnType<typeof setTimeout> | null;
-  associationSuppressed: boolean;
-  // Manual "switch to project" override. Wins over the chat's auto-derived
-  // association for the active/picker project AND the next save, and survives
-  // re-syncs of the same chat. Cleared when the user navigates to a different
-  // conversation (chat key change) or retargets the chat association.
-  manualProjectId: string | null;
-  manualProjectChatKey: string | null;
-  insertState: RelayInsertState;
-  insertStateTimer: ReturnType<typeof setTimeout> | null;
-  pendingInsertedBrief: PendingInsertedBriefState | null;
-  lastObservedSignature: string | null;
-  lastObservedTurns: number;
-  lastCapturedSignature: string | null;
-  lastCapturedTurns: number;
-  lastRoutedSignature: string | null;
-  lastReconciliation: { archivedCount: number; archivedItems: string[] } | null;
-  lastBudgetStatus: { aiUsed: number; aiLimit: number; aiRemaining: number; plan: string } | null;
-}
-
-interface PendingInsertedBriefState {
-  projectId: string;
-  projectName: string;
-  packetId: string | null;
-  insertKind: "fresh_chat_bootstrap" | "quick_continuity";
-  chatKey: string | null;
-  insertedAtSignature: string | null;
-  insertedContent: string;
-  insertedContentHash: string;
-  matchSnippet: string;
-  matchSnippets: string[];
-  expiresAt: number;
-}
 
 const tabStates = new Map<number, RelayTabState>();
 
