@@ -21,7 +21,7 @@ export default function PrivacyPage() {
           Privacy Policy
         </h1>
         <p className="mt-2 text-sm text-gray-400">
-          Last updated: May 27, 2026
+          Last updated: June 7, 2026
         </p>
 
         <div className="mt-10 space-y-8 text-[15px] leading-relaxed text-gray-600">
@@ -103,12 +103,21 @@ export default function PrivacyPage() {
               </p>
               <p>
                 <strong className="text-gray-900">Extension Data:</strong>{" "}
-                Relay Chrome extension 0.5.0 collects and stores only the
+                Relay Chrome extension 0.5.1 collects and stores only the
                 extension data needed to connect your browser to your Relay
                 account: device tokens, connection status, capture state, and
                 extension preferences. This data is stored locally in your
                 browser via Chrome storage APIs and, where needed, on Relay
                 servers to authenticate the extension connection.
+              </p>
+              <p>
+                <strong className="text-gray-900">
+                  Ask Relay Messages and Files:
+                </strong>{" "}
+                When you use Ask Relay, we collect the messages, instructions,
+                and files you choose to submit so Relay can answer your
+                request. Uploaded files and source documents may include their
+                file name, type, content, and extracted text.
               </p>
               <p>
                 <strong className="text-gray-900">
@@ -203,6 +212,15 @@ export default function PrivacyPage() {
                 </li>
                 <li>
                   <strong className="text-gray-900">
+                    optional audioCapture:
+                  </strong>{" "}
+                  accesses microphone audio only after you choose voice input
+                  in Ask Relay. Relay does not store or send raw microphone
+                  audio to Relay servers. Chrome&apos;s browser-provided speech
+                  recognition may process the audio to return dictated text.
+                </li>
+                <li>
+                  <strong className="text-gray-900">
                     Host access to AI chat sites
                   </strong>{" "}
                   (ChatGPT, Claude, Gemini, Grok, Codex, Perplexity, DeepSeek):
@@ -253,6 +271,10 @@ export default function PrivacyPage() {
                 <li>
                   Improving service reliability and diagnosing failures
                 </li>
+                <li>
+                  Answering Ask Relay messages and processing files or source
+                  documents you explicitly submit
+                </li>
               </ul>
               <p>
                 Relay handles captured chat content as user-controlled project
@@ -290,9 +312,11 @@ export default function PrivacyPage() {
               </p>
               <p>
                 <strong className="text-gray-900">Storage Location:</strong>{" "}
-                Your data is stored in a Neon PostgreSQL database with
-                encryption at rest and in transit, hosted in a secure cloud
-                environment.
+                Account, project, captured chat, derived memory, and billing
+                records are stored in a Neon PostgreSQL database with
+                encryption at rest and in transit. Uploaded source documents
+                and Ask Relay attachments are stored as encrypted objects in
+                Cloudflare R2 or another S3-compatible object-storage service.
               </p>
               <p>
                 <strong className="text-gray-900">Local Storage:</strong>{" "}
@@ -327,51 +351,89 @@ export default function PrivacyPage() {
               <p>
                 We do{" "}
                 <strong className="text-gray-900">not sell</strong> your
-                personal data or chat content to third parties. We only share
-                data with trusted third-party service providers under strict
-                confidentiality to operate the Service:
+                personal data or chat content to third parties. We share data
+                only as needed to provide Relay, comply with law, or protect
+                the Service. The parties that may receive user data are:
               </p>
               <ul className="list-disc space-y-1.5 pl-5">
                 <li>
-                  <strong className="text-gray-900">
-                    Infrastructure Providers:
-                  </strong>{" "}
-                  We share necessary data with our hosting and database
-                  providers (Neon, Vercel) solely to run the application
-                  securely.
+                  <strong className="text-gray-900">Vercel:</strong> hosts
+                  Relay&apos;s web application and API and therefore processes
+                  requests, account identifiers, submitted content, IP
+                  addresses, and operational logs needed to deliver and secure
+                  the Service.
                 </li>
                 <li>
                   <strong className="text-gray-900">
-                    Analytics Provider:
+                    Neon and Neon Auth:
                   </strong>{" "}
-                  We use PostHog (posthog.com) for privacy-respecting, aggregated
-                  usage analytics and error tracking. Data sent to PostHog
-                  includes usage events, error traces, browser/OS metadata, and
-                  approximate location. Analytics data does not include captured
-                  chat content or AI responses. PostHog processes this data on
-                  our behalf under a data processing agreement; see
-                  PostHog&apos;s privacy policy at posthog.com/privacy for
-                  details.
+                  store Relay account, authentication, project, captured chat,
+                  derived memory, extension-token, and billing records.
                 </li>
                 <li>
                   <strong className="text-gray-900">
-                    Authentication Provider:
+                    Google Gemini API / Google AI:
                   </strong>{" "}
-                  Google OAuth is used for sign-in. We do not control
-                  Google&apos;s privacy practices.
+                  receives the portions of captured chat content, project
+                  context, Ask Relay messages, submitted files or extracted
+                  text, and instructions needed to generate answers,
+                  summaries, embeddings, classifications, and other
+                  user-requested Relay features. When you choose voice input,
+                  Chrome&apos;s browser-provided speech-recognition service may
+                  also send microphone audio to Google to return dictated text;
+                  Relay does not store the raw audio.
+                </li>
+                <li>
+                  <strong className="text-gray-900">
+                    Cloudflare R2 or configured S3-compatible object storage:
+                  </strong>{" "}
+                  stores encrypted source documents and Ask Relay attachments
+                  that you upload.
+                </li>
+                <li>
+                  <strong className="text-gray-900">PostHog:</strong> receives
+                  product-usage events, error traces, account or anonymous
+                  analytics identifiers, browser and operating-system
+                  metadata, approximate country-level location, and extension
+                  version for analytics and error tracking. PostHog does not
+                  receive captured chat content, Ask Relay messages, uploaded
+                  files, or AI responses.
+                </li>
+                <li>
+                  <strong className="text-gray-900">Google OAuth:</strong>{" "}
+                  processes sign-in requests and provides your name, email
+                  address, and profile picture when you choose Google sign-in.
+                </li>
+                <li>
+                  <strong className="text-gray-900">Polar:</strong> receives
+                  your Relay account identifier, name, email address, selected
+                  plan, and subscription metadata when you start or manage a
+                  paid subscription. Payment details are handled by Polar and
+                  its payment processor, not stored by Relay.
+                </li>
+                <li>
+                  <strong className="text-gray-900">Resend:</strong> receives
+                  your email address and the transactional email content and
+                  delivery metadata needed when Relay sends account,
+                  verification, billing, or service emails.
+                </li>
+                <li>
+                  <strong className="text-gray-900">
+                    Legal authorities or a successor:
+                  </strong>{" "}
+                  we may disclose data when required by applicable law or to
+                  protect against fraud, abuse, or security threats. Data would
+                  be transferred as part of a merger, acquisition, or sale only
+                  after obtaining any consent required by applicable policy or
+                  law.
                 </li>
               </ul>
               <p>
-                Captured chat content, project memory, and extension connection
-                data are not shared with analytics providers and are not used
-                for advertising, credit, lending, or resale.
-              </p>
-              <p>
-                We do not share captured chat content or AI responses with
-                PostHog. We share only the minimum data needed for each service
-                provider to perform its role: hosting and database operations
-                with Vercel and Neon, authentication with Google OAuth, and
-                product analytics and error reporting with PostHog.
+                Captured chat content, project memory, Ask Relay messages, and
+                uploaded files are not shared with analytics, billing, or
+                email providers. They are shared only with the infrastructure,
+                storage, and AI-processing providers described above as needed
+                to deliver the feature you requested.
               </p>
               <p>
                 We are not responsible for the privacy practices of the AI
@@ -420,11 +482,15 @@ export default function PrivacyPage() {
                 identifiable information (name, email address, and profile
                 picture for account sign-in), authentication information
                 (session and device tokens), website content (supported AI chat
-                text and relevant chat markup), user activity and analytics
-                events (feature usage, errors, browser type, operating system,
-                approximate country-level region, and extension version), and
-                extension settings (connection state, capture preferences,
-                project selection, and enabled platforms).
+                text and relevant chat markup), personal communications and
+                user-generated content (Ask Relay messages, selected text, and
+                files you submit), optional microphone access for voice input
+                handled by Chrome&apos;s speech-recognition service, user
+                activity and analytics events (feature usage, errors, browser
+                type, operating system, approximate country-level region, and
+                extension version), and extension settings (connection state,
+                capture preferences, project selection, and enabled
+                platforms).
               </p>
               <p>
                 Relay&apos;s use of information received from Google APIs will

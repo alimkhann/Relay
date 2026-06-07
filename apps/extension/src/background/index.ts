@@ -7,7 +7,6 @@ import { buildProjectContextPreview, getProjectContextCounts } from "@relay/shar
 import { personalCategoryFromMetadata } from "@relay/shared/constants/memory-taxonomy";
 import { normalizeText, slugify } from "@relay/shared/utils/text";
 import type {
-  BillingStatusDto,
   ProjectDashboardDto,
   ProjectStateStatusDto,
   RelayOnboardingState,
@@ -84,6 +83,12 @@ import {
   shouldScheduleAutoCaptureRouting,
   shouldScheduleIncrementalCapture,
 } from "./tab-state";
+import {
+  DASHBOARD_CACHE_TTL_MS,
+  SESSION_CACHE_TTL_MS,
+  shouldSyncMissingRemoteState,
+  TAB_REMOTE_SYNC_FRESH_MS,
+} from "./remote-sync-policy";
 import {
   flushBackgroundTelemetry,
   identifyExtensionUser,
@@ -283,9 +288,6 @@ let sessionDataCache: {
 } | null = null;
 
 let authGraceUntil = 0;
-const SESSION_CACHE_TTL_MS = 15_000;
-const DASHBOARD_CACHE_TTL_MS = 20_000;
-const TAB_REMOTE_SYNC_FRESH_MS = 30_000;
 const REMOTE_RETRY_DELAY_MS = 300;
 // Exponential backoff schedule between retry attempts (3x growth).
 // 4 attempts total: initial + 3 retries at 300ms, 900ms, 2700ms.
@@ -1224,13 +1226,7 @@ async function loadSessionData(force = false) {
   }
 
   try {
-    // Fetch session + billing in parallel. Billing is a nice-to-have — if it
-    // fails the side panel still renders, it just assumes free until the next
-    // refresh cycle.
-    const [sessionResponse, billingResponse] = await Promise.all([
-      retryRemote(() => relayFetch("/api/extension/session")),
-      relayFetch("/api/billing/status").catch(() => null),
-    ]);
+    const sessionResponse = await retryRemote(() => relayFetch("/api/extension/session"));
 
     if (!sessionResponse.ok) {
       const message = await readErrorResponse(
@@ -1287,6 +1283,7 @@ async function loadSessionData(force = false) {
       settings: RemoteSettingsResponsePayload["settings"];
       onboarding?: RelayOnboardingState | null;
       features?: { multiProjectCapture?: boolean } | null;
+      entitlements?: UserEntitlementsDto | null;
     };
     const settingsPayload = {
       settings: sessionPayload.settings,
@@ -1365,22 +1362,12 @@ async function loadSessionData(force = false) {
       },
     });
 
-    let entitlements: UserEntitlementsDto | null = null;
-    if (billingResponse && billingResponse.ok) {
-      try {
-        const billingPayload = (await billingResponse.json()) as { billing: BillingStatusDto };
-        entitlements = billingPayload.billing?.entitlements ?? null;
-      } catch {
-        entitlements = null;
-      }
-    }
-
     const data = {
       connected: true,
       projects,
       settings: settingsPayload.settings,
       onboarding,
-      entitlements,
+      entitlements: sessionPayload.entitlements ?? null,
     };
 
     const fetchedAt = Date.now();
@@ -1720,6 +1707,20 @@ async function requestPageStateFromTab(tabId: number) {
   return page;
 }
 
+async function refreshPageStateAndSyncIfMissing(tabId: number, reason: string) {
+  await requestPageStateFromTab(tabId);
+  const state = getOrCreateTabState(tabId);
+  if (
+    shouldSyncMissingRemoteState({
+      pageSupported: state.page.supported,
+      remoteStatus: state.remoteStatus,
+      lastSuccessfulSyncAt: state.lastSuccessfulSyncAt,
+    })
+  ) {
+    await syncTabRemoteState(tabId, { reason });
+  }
+}
+
 async function buildActiveProjectState(
   tabId: number,
 ): Promise<RelayActiveProjectState> {
@@ -1854,6 +1855,13 @@ async function syncTabRemoteState(
   options: { force?: boolean; reason?: string } = {},
 ) {
   const state = getOrCreateTabState(tabId);
+  if (!state.page.supported) {
+    state.remoteStatus = "unavailable";
+    state.lastError = null;
+    await broadcastActiveProjectState(tabId);
+    return;
+  }
+
   const session = await getRelaySession();
   hydrateTabStateFromSession(state, session);
   const requestKey = `${state.page.url ?? ""}|${state.page.captureSignature ?? ""}|${state.page.turns ?? 0}`;
@@ -4131,8 +4139,7 @@ chrome.contextMenus.onClicked.addListener(
 chrome.tabs.onUpdated.addListener(
   (tabId: number, changeInfo: { status?: string }) => {
     if (changeInfo.status === "complete") {
-      void requestPageStateFromTab(tabId);
-      void syncTabRemoteState(tabId, { reason: "tab_complete" });
+      void refreshPageStateAndSyncIfMissing(tabId, "tab_complete");
     }
   },
 );
@@ -4142,11 +4149,8 @@ chrome.runtime.onSuspend.addListener(() => {
 });
 
 chrome.tabs.onActivated.addListener((activeInfo: { tabId: number }) => {
-  void requestPageStateFromTab(activeInfo.tabId);
+  void refreshPageStateAndSyncIfMissing(activeInfo.tabId, "tab_focus");
   const state = tabStates.get(activeInfo.tabId);
-  void syncTabRemoteState(activeInfo.tabId, {
-    reason: "tab_focus",
-  });
 
   if (
     state &&
@@ -5402,9 +5406,18 @@ chrome.runtime.onMessage.addListener(
           });
           updateTabPageState(sender.tab.id, message.payload);
           await broadcastActiveProjectState(sender.tab.id);
-          void syncTabRemoteState(sender.tab.id, {
-            reason: "page_state_update",
-          });
+          const state = getOrCreateTabState(sender.tab.id);
+          if (
+            shouldSyncMissingRemoteState({
+              pageSupported: state.page.supported,
+              remoteStatus: state.remoteStatus,
+              lastSuccessfulSyncAt: state.lastSuccessfulSyncAt,
+            })
+          ) {
+            void syncTabRemoteState(sender.tab.id, {
+              reason: "page_state_update",
+            });
+          }
           void scheduleAutoCapture(sender.tab.id);
           sendResponse({ ok: true });
           return;
@@ -5441,7 +5454,13 @@ chrome.runtime.onMessage.addListener(
 
           sendResponse(await buildActiveProjectState(tabId));
 
-          if (state.remoteStatus !== "ready" || !state.projectOptions.length) {
+          if (
+            shouldSyncMissingRemoteState({
+              pageSupported: state.page.supported,
+              remoteStatus: state.remoteStatus,
+              lastSuccessfulSyncAt: state.lastSuccessfulSyncAt,
+            })
+          ) {
             void syncTabRemoteState(tabId, {
               force: true,
               reason: "active_state_request",
@@ -5765,6 +5784,10 @@ chrome.runtime.onMessageExternal.addListener(
           } catch {
             // Ignored — next natural refresh will pick up the state.
           }
+          const billingChangedMessage: RelayMessage = {
+            type: "RELAY_EXTENSION_BILLING_CHANGED",
+          };
+          void chrome.runtime.sendMessage(billingChangedMessage).catch(() => undefined);
           sendResponse({ ok: true });
           return;
         }

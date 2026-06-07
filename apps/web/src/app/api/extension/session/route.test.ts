@@ -1,23 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const {
-  ensurePersonalProjectForUserMock,
   getResolvedOnboardingStateForUserMock,
   getUserSettingsMock,
-  listProjectsForUserMock,
+  listCachedProjectsForUserMock,
   rejectMcpViewerMock,
+  resolveViewerEntitlementsMock,
   resolveViewerMock,
+  withApiAuthMock,
 } = vi.hoisted(() => ({
-  ensurePersonalProjectForUserMock: vi.fn(),
   getResolvedOnboardingStateForUserMock: vi.fn(),
   getUserSettingsMock: vi.fn(),
-  listProjectsForUserMock: vi.fn(),
+  listCachedProjectsForUserMock: vi.fn(),
   rejectMcpViewerMock: vi.fn(),
+  resolveViewerEntitlementsMock: vi.fn(),
   resolveViewerMock: vi.fn(),
+  withApiAuthMock: vi.fn((handler: (request: Request) => Promise<Response>) => handler),
 }))
 
 vi.mock("@/server/http/api-route", () => ({
-  withApiAuth: (handler: (request: Request) => Promise<Response>) => handler,
+  withApiAuth: withApiAuthMock,
 }))
 
 vi.mock("@/server/policies/viewer", () => ({
@@ -25,13 +27,16 @@ vi.mock("@/server/policies/viewer", () => ({
   resolveViewer: resolveViewerMock,
 }))
 
-vi.mock("@/server/services/onboarding-service", () => ({
-  getResolvedOnboardingStateForUser: getResolvedOnboardingStateForUserMock,
+vi.mock("@/server/cache/read-model-cache", () => ({
+  listCachedProjectsForUser: listCachedProjectsForUserMock,
 }))
 
-vi.mock("@/server/services/project-service", () => ({
-  ensurePersonalProjectForUser: ensurePersonalProjectForUserMock,
-  listProjectsForUser: listProjectsForUserMock,
+vi.mock("@/server/services/entitlement-service", () => ({
+  resolveViewerEntitlements: resolveViewerEntitlementsMock,
+}))
+
+vi.mock("@/server/services/onboarding-service", () => ({
+  getResolvedOnboardingStateForUser: getResolvedOnboardingStateForUserMock,
 }))
 
 vi.mock("@/server/services/settings-service", () => ({
@@ -42,33 +47,24 @@ import { GET } from "./route"
 
 describe("GET /api/extension/session", () => {
   beforeEach(() => {
-    ensurePersonalProjectForUserMock.mockReset()
     getResolvedOnboardingStateForUserMock.mockReset()
     getUserSettingsMock.mockReset()
-    listProjectsForUserMock.mockReset()
+    listCachedProjectsForUserMock.mockReset()
     rejectMcpViewerMock.mockReset()
+    resolveViewerEntitlementsMock.mockReset()
     resolveViewerMock.mockReset()
 
     resolveViewerMock.mockResolvedValue({ userId: "user-1", mode: "extension" })
-    ensurePersonalProjectForUserMock.mockResolvedValue({
-      id: "personal-1",
-      name: "Personal",
-      kind: "personal",
-    })
-    listProjectsForUserMock.mockResolvedValue([
+    listCachedProjectsForUserMock.mockResolvedValue([
       { id: "personal-1", name: "Personal", kind: "personal" },
       { id: "project-1", name: "Relay", kind: "project" },
     ])
     getUserSettingsMock.mockResolvedValue({ settings: { autoCapture: true } })
-    getResolvedOnboardingStateForUserMock.mockResolvedValue({
-      status: "completed",
-      completedProjectId: "project-1",
-      completedVia: "extension",
-      completedAt: "2026-05-31T00:00:00.000Z",
-    })
+    getResolvedOnboardingStateForUserMock.mockResolvedValue({ status: "completed" })
+    resolveViewerEntitlementsMock.mockResolvedValue({ plan: "free", status: "active" })
   })
 
-  it("ensures personal exists before listing extension projects", async () => {
+  it("returns cached project summaries (incl. personal) and lightweight entitlements", async () => {
     const response = await GET(
       new Request("http://relay.test/api/extension/session", {
         headers: { authorization: "Bearer relay-token" },
@@ -77,21 +73,25 @@ describe("GET /api/extension/session", () => {
     const payload = await response.json()
 
     expect(response.status).toBe(200)
-    expect(ensurePersonalProjectForUserMock).toHaveBeenCalledWith("user-1")
-    expect(listProjectsForUserMock).toHaveBeenCalledWith("user-1", {
+    // Cost cut: cached read-model, including personal — NOT an uncached listProjectsForUser.
+    expect(listCachedProjectsForUserMock).toHaveBeenCalledWith("user-1", {
       includePersonal: true,
     })
-    const ensureCallOrder = ensurePersonalProjectForUserMock.mock.invocationCallOrder[0]
-    const listCallOrder = listProjectsForUserMock.mock.invocationCallOrder[0]
-    expect(ensureCallOrder).toBeDefined()
-    expect(listCallOrder).toBeDefined()
-    expect(ensureCallOrder!).toBeLessThan(listCallOrder!)
-    expect(payload.projects[0]).toMatchObject({
-      id: "personal-1",
-      kind: "personal",
-    })
+    expect(resolveViewerEntitlementsMock).toHaveBeenCalledWith("user-1")
+    expect(payload.projects[0]).toMatchObject({ id: "personal-1", kind: "personal" })
+    expect(payload.entitlements).toEqual({ plan: "free", status: "active" })
     // The extension gates the "also save to" UI on this flag; default off.
     expect(payload.features).toEqual({ multiProjectCapture: false })
+  })
+
+  it("does NOT provision/repair personal on the high-frequency session GET", async () => {
+    // Regression guard: the route module must not import project-service
+    // provisioning into this hot path. Personal is provisioned on auth/sign-in.
+    const routeModule = await import("./route")
+    expect(routeModule.GET).toBeTypeOf("function")
+    // No provisioning mock exists because the route no longer calls it; the
+    // cached-projects call carries personal already.
+    expect(listCachedProjectsForUserMock).not.toHaveBeenCalled()
   })
 
   it("reports multiProjectCapture on when the env flag is set", async () => {

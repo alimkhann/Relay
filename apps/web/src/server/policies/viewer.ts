@@ -97,7 +97,12 @@ export async function resolveViewer(authorizationHeader?: string | null): Promis
 
   if (token) {
     const repositories = createRepositoryBundle()
-    const mcpTokenRecord = await repositories.mcpTokens.getValidAccessTokenByHash(hashContent(token))
+    const tokenHash = hashContent(token)
+    const shouldCheckMcp = token.startsWith("relay_mcp_") || !token.startsWith("relay_")
+    const shouldCheckExtension = !token.startsWith("relay_mcp_")
+    const mcpTokenRecord = shouldCheckMcp
+      ? await repositories.mcpTokens.getValidAccessTokenByHash(tokenHash)
+      : null
 
     if (mcpTokenRecord) {
       await repositories.mcpTokens.touchIfStale(mcpTokenRecord.id)
@@ -115,7 +120,9 @@ export async function resolveViewer(authorizationHeader?: string | null): Promis
 
     // Accept expired MCP access tokens if their refresh token is still valid (30-day window).
     // This keeps stateless HTTP clients (Smithery) working without token rotation.
-    const expiredMcpToken = await repositories.mcpTokens.getExpiredButRefreshableByHash(hashContent(token))
+    const expiredMcpToken = shouldCheckMcp
+      ? await repositories.mcpTokens.getExpiredButRefreshableByHash(tokenHash)
+      : null
     if (expiredMcpToken) {
       await repositories.mcpTokens.touchIfStale(expiredMcpToken.id)
       return {
@@ -130,7 +137,9 @@ export async function resolveViewer(authorizationHeader?: string | null): Promis
       }
     }
 
-    const tokenRecord = await repositories.extensionTokens.getValidByHash(hashContent(token))
+    const tokenRecord = shouldCheckExtension
+      ? await repositories.extensionTokens.getValidByHash(tokenHash)
+      : null
 
     if (tokenRecord) {
       await repositories.extensionTokens.touchIfStale(tokenRecord.id)
