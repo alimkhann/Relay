@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const {
+  ensurePersonalProjectForUserMock,
   getResolvedOnboardingStateForUserMock,
   getUserSettingsMock,
   listCachedProjectsForUserMock,
@@ -9,6 +10,7 @@ const {
   resolveViewerMock,
   withApiAuthMock,
 } = vi.hoisted(() => ({
+  ensurePersonalProjectForUserMock: vi.fn(),
   getResolvedOnboardingStateForUserMock: vi.fn(),
   getUserSettingsMock: vi.fn(),
   listCachedProjectsForUserMock: vi.fn(),
@@ -16,6 +18,14 @@ const {
   resolveViewerEntitlementsMock: vi.fn(),
   resolveViewerMock: vi.fn(),
   withApiAuthMock: vi.fn((handler: (request: Request) => Promise<Response>) => handler),
+}))
+
+// Provisioning belongs on the auth/sign-in path, NOT this high-frequency GET.
+// If the route ever re-imports and calls it, this spy will fire and the
+// no-provisioning regression guard below will fail.
+vi.mock("@/server/services/project-service", () => ({
+  ensurePersonalProjectForUser: ensurePersonalProjectForUserMock,
+  listProjectsForUser: vi.fn(),
 }))
 
 vi.mock("@/server/http/api-route", () => ({
@@ -85,13 +95,18 @@ describe("GET /api/extension/session", () => {
   })
 
   it("does NOT provision/repair personal on the high-frequency session GET", async () => {
-    // Regression guard: the route module must not import project-service
-    // provisioning into this hot path. Personal is provisioned on auth/sign-in.
-    const routeModule = await import("./route")
-    expect(routeModule.GET).toBeTypeOf("function")
-    // No provisioning mock exists because the route no longer calls it; the
-    // cached-projects call carries personal already.
-    expect(listCachedProjectsForUserMock).not.toHaveBeenCalled()
+    ensurePersonalProjectForUserMock.mockReset()
+    await GET(
+      new Request("http://relay.test/api/extension/session", {
+        headers: { authorization: "Bearer relay-token" },
+      }),
+    )
+    // Cost-cut regression guard: personal must NOT be provisioned per-request;
+    // the cached projects call carries personal already.
+    expect(ensurePersonalProjectForUserMock).not.toHaveBeenCalled()
+    expect(listCachedProjectsForUserMock).toHaveBeenCalledWith("user-1", {
+      includePersonal: true,
+    })
   })
 
   it("reports multiProjectCapture on when the env flag is set", async () => {
