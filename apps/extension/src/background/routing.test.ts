@@ -738,11 +738,16 @@ describe("evaluateProjectRouting", () => {
       approvedAssociations: [],
     })
 
-    expect(result.mode).toBe("hold")
-    expect(result.confidence).toBe("medium")
+    // Personal-profile intent routes visibly to Personal (commit 08343d6) when no
+    // other project clearly wins — NOT to the incidentally-mentioned Relay project.
+    expect(result.mode).toBe("auto-save")
+    expect(result.confidence).toBe("high")
     expect(result.candidateProjectId).toBe("project_personal")
-    expect(result.topCandidates.find((candidate) => candidate.projectId === "project_relay")?.score)
-      .toBeLessThanOrEqual(20)
+    // The incidental project must never be the capture target.
+    expect(result.candidateProjectId).not.toBe("project_relay")
+    expect(
+      result.topCandidates.some((candidate) => candidate.projectId === "project_relay"),
+    ).toBe(false)
   })
 
 })
