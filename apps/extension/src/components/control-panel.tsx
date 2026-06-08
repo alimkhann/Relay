@@ -545,7 +545,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       changeInfo: { status?: string },
       tab: { active?: boolean },
     ) => {
-      if (changeInfo.status === "complete" && tab.active) {
+      if (changeInfo.status === "complete" && tab.active && !activeStateRequestInFlight.current) {
         void refreshActiveProjectState({ throttle: true });
       }
     };
@@ -1104,7 +1104,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
       applyActiveState(response);
     } catch {
-      setActiveState(emptyActiveState);
+      // SW unavailable (restart or resource exhaustion) — preserve last state
+      setActiveState((current) => (current.projectId ? current : emptyActiveState));
     } finally {
       activeStateRequestInFlight.current = false;
     }
@@ -2043,6 +2044,16 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           throw new Error(await readErrorMessage(response, "Context item creation failed."));
         }
 
+        setActiveState((current) => ({
+          ...current,
+          contextPreview: {
+            ...current.contextPreview,
+            [section]: [
+              ...current.contextPreview[section],
+              { key: `opt-${Date.now()}`, text: content, source: "manual" as const },
+            ],
+          },
+        }));
         setDrafts((current) => ({
           ...current,
           [section]: "",
@@ -2101,6 +2112,23 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       if (!response.ok) {
         throw new Error(await readErrorMessage(response, "Note creation failed."));
       }
+      setActiveState((current) => ({
+        ...current,
+        contextPreview: {
+          ...current.contextPreview,
+          notes: [
+            ...current.contextPreview.notes,
+            {
+              key: `opt-${Date.now()}`,
+              text: content,
+              memoryId: "",
+              sourceUrl: null,
+              hostname: null,
+              capturedAt: new Date().toISOString(),
+            },
+          ],
+        },
+      }));
       setNoteDraft("");
     });
   }
@@ -3711,7 +3739,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   return (
                     <div key={section} className={`${styles.contextSection} ${styles[sectionColorClass[section]]}`}>
                       <div className={styles.contextSectionHeader}>
-                        <span className={styles.contextLabel}>{sectionLabels[section]}</span>
+                        <span className={styles.contextLabel}>
+                          {sectionLabels[section]}
+                          <span style={{ marginLeft: 4, opacity: 0.5, fontVariantNumeric: "tabular-nums" }}>{items.length}</span>
+                        </span>
                         <button
                           className={styles.ghostButton}
                           type="button"
