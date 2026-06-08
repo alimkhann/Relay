@@ -97,8 +97,11 @@ import {
   type UsageMetric,
 } from "@relay/shared/utils/usage-metrics";
 
+import type { AssistantActionResult } from "@relay/shared";
+
 import type { RelayActiveProjectState, RelayProjectOption } from "../messaging/contracts";
 import { contextPreviewHasItems } from "../utils/context-preview";
+import { applyActionResultToContextPreview } from "../utils/context-preview-mutations";
 import { getActiveTab } from "../utils/browser";
 import { relayFetch } from "../utils/api";
 import {
@@ -560,19 +563,37 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     };
   }, []);
 
-  // Reflect agent writes from the embedded chat: when Ask Relay creates /
-  // updates / deletes memory, refresh the panel so it isn't stale.
+  // Reflect agent writes from the embedded Ask Relay chat in the memory tabs.
   useEffect(() => {
+    const onMutated = (event: Event) => {
+      const result = (event as CustomEvent<AssistantActionResult>).detail;
+      if (result) {
+        applyAgentMemoryMutation(result);
+        return;
+      }
+      void refreshActiveProjectState();
+    };
+
     let channel: BroadcastChannel | null = null;
     try {
       channel = new BroadcastChannel("relay-mutations");
-      channel.onmessage = () => {
+      channel.onmessage = (event) => {
+        const data = event.data as { type?: string; result?: AssistantActionResult };
+        if (data?.type === "memory-mutated" && data.result) {
+          applyAgentMemoryMutation(data.result);
+          return;
+        }
         void refreshActiveProjectState();
       };
     } catch {
       /* BroadcastChannel unavailable */
     }
-    return () => channel?.close();
+
+    window.addEventListener("relay:memory-mutated", onMutated);
+    return () => {
+      channel?.close();
+      window.removeEventListener("relay:memory-mutated", onMutated);
+    };
   }, []);
 
   useEffect(() => {
@@ -723,6 +744,22 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       window.removeEventListener("unhandledrejection", handleRejection);
     };
   }, []);
+
+  function applyAgentMemoryMutation(result: AssistantActionResult) {
+    const projectId = activeStateRef.current.projectId;
+    if (!projectId) return;
+    setActiveState((current) => {
+      if (!current.projectId || current.projectId !== projectId) return current;
+      return {
+        ...current,
+        contextPreview: applyActionResultToContextPreview(
+          current.contextPreview,
+          result,
+          projectId,
+        ),
+      };
+    });
+  }
 
   function applyActiveState(nextState: RelayActiveProjectState) {
     setActiveState((current) => {

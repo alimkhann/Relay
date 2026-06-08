@@ -1,4 +1,7 @@
+import { actionResultToMemoryMutations } from "@relay/shared";
+
 import type { RelayActiveProjectState, RelayMessage, RelayPageState } from "../messaging/contracts";
+import { applyMemoryMutationToContextPreview } from "../utils/context-preview-mutations";
 import { rememberManualOverride } from "../storage/routing";
 import { clearRelaySession, getRelaySession, resolveRelayApiBase, setRelaySession } from "../storage/session";
 import { relayFetch } from "../utils/api";
@@ -15,6 +18,7 @@ import {
   hydrateTabStateDashboardPreview,
   invalidateProjectCache,
   loadSessionData,
+  patchProjectDashboardCache,
 } from "./session-cache";
 import { readErrorResponse } from "./bg-utils";
 import { recordBackgroundTelemetry } from "./telemetry";
@@ -103,6 +107,49 @@ chrome.runtime.onMessage.addListener(
           const invalidateTabId = sender.tab?.id;
           if (invalidateTabId) {
             void deps.syncTabRemoteState(invalidateTabId, {
+              force: true,
+              reason: "cache_invalidated",
+            });
+          }
+          sendResponse({ ok: true });
+          return;
+        }
+
+        if (message.type === "RELAY_APPLY_AGENT_MEMORY_MUTATION") {
+          const tabId = sender.tab?.id;
+          const result = message.payload.result;
+          const projectId =
+            message.payload.projectId ??
+            result.items[0]?.projectId ??
+            result.previews?.[0]?.after?.projectId ??
+            result.previews?.[0]?.before?.projectId ??
+            null;
+          if (projectId) {
+            patchProjectDashboardCache(projectId, result, projectId);
+          }
+          if (tabId) {
+            const state = getOrCreateTabState(tabId);
+            const effectiveProjectId =
+              projectId ??
+              state.manualProjectId ??
+              state.projectId ??
+              null;
+            if (effectiveProjectId) {
+              const mutations = actionResultToMemoryMutations(result, effectiveProjectId);
+              let preview = state.contextPreview;
+              for (const mutation of mutations) {
+                if (
+                  mutation.sourceProjectId === effectiveProjectId ||
+                  mutation.targetProjectId === effectiveProjectId
+                ) {
+                  preview = applyMemoryMutationToContextPreview(preview, mutation);
+                }
+              }
+              state.contextPreview = preview;
+              invalidateProjectCache(effectiveProjectId);
+              void deps.broadcastActiveProjectState(tabId);
+            }
+            void deps.syncTabRemoteState(tabId, {
               force: true,
               reason: "cache_invalidated",
             });

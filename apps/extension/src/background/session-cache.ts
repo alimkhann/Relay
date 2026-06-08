@@ -32,7 +32,10 @@ import {
   readErrorResponse,
   retryRemote,
 } from "./bg-utils";
+import type { AssistantActionResult } from "@relay/shared";
+
 import { buildDashboardContextPreview, buildTrustMetadata } from "./context-preview";
+import { applyActionResultToDashboardCache } from "../utils/context-preview-mutations";
 import { DASHBOARD_CACHE_TTL_MS, SESSION_CACHE_TTL_MS } from "./remote-sync-policy";
 import { authGrace, dashboardCache, sessionCache } from "./state";
 import { createEmptyTrustMetadata } from "./tab-state";
@@ -304,6 +307,22 @@ export async function loadSessionData(force = false) {
 export function invalidateProjectCache(projectId: string | null | undefined) {
   if (!projectId) return;
   dashboardCache.delete(projectId);
+}
+
+export function patchProjectDashboardCache(
+  projectId: string,
+  result: AssistantActionResult,
+  fallbackProjectId?: string | null,
+) {
+  const cached = dashboardCache.get(projectId);
+  if (!cached?.dashboard) return null;
+  const nextDashboard = applyActionResultToDashboardCache(
+    cached.dashboard,
+    result,
+    fallbackProjectId ?? projectId,
+  );
+  dashboardCache.set(projectId, { dashboard: nextDashboard, fetchedAt: Date.now() });
+  return nextDashboard;
 }
 
 /** Cache-first preview hydrate (stale-while-revalidate) for project switches. */

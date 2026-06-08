@@ -680,20 +680,19 @@ export function ExtensionChat() {
   }, [voice.status])
 
   const chat = useExtensionChat(projectId, {
-    onMutation: () => {
-      // Bust dashboard cache so the panel re-fetches fresh contextPreview.
+    onMutation: (result) => {
       void chrome.runtime.sendMessage({
-        type: "RELAY_INVALIDATE_PROJECT_CACHE",
-        payload: { projectId },
+        type: "RELAY_APPLY_AGENT_MEMORY_MUTATION",
+        payload: { projectId, result },
       })
       try {
         const bc = new BroadcastChannel(MUTATION_CHANNEL)
-        bc.postMessage({ type: "memory-mutated", at: Date.now() })
+        bc.postMessage({ type: "memory-mutated", result })
         bc.close()
       } catch {
         /* BroadcastChannel unavailable */
       }
-      window.dispatchEvent(new CustomEvent("relay:memory-mutated"))
+      window.dispatchEvent(new CustomEvent("relay:memory-mutated", { detail: result }))
     },
     onChatChanged: () => setHistoryRefreshTick((tick) => tick + 1)
   })
