@@ -1,11 +1,58 @@
 # Next-session handoff — review → fixes → cutover
 
-Branch `feat/memory-v2-architecture` (PR #35), **all pushed** (HEAD `8bfc618`).
+Branch `feat/memory-v2-architecture` (PR #35).
 Next session = your last checks → Claude review → fixes → **production cutover**
 if you're satisfied.
 
 This file supersedes the older state. Read `docs/memory-v2/HANDOFF.md` for the
 full cutover runbook (env vars, migration runner, RLS swap).
+
+---
+
+## 2026-06-08 — Phase 1 (cost cuts merged) + Phase 2 (ext bg refactor, partial)
+
+**NOT pushed yet** (13 local commits on top of `origin/main`). No prod touched.
+
+### Phase 1 — origin/main cost hotfixes merged into the branch ✅
+- The branch had forked *before* main's `cf6e278`/`aebf63b`/`bd79e1f` cost cuts and
+  never had them. Merged `origin/main` (merge commit `506e29a`); dirty tree preserved
+  as WIP `c4628b5` first.
+- Hand-resolved `session/route.ts`: now `listCachedProjectsForUser({includePersonal:true})`
+  + lightweight `entitlements`, **no per-GET `ensurePersonalProjectForUser`** (provisioning
+  stays on the 3 auth routes). Kept `features.multiProjectCapture`.
+- Verified all 7 cost protections survive the (mostly silent) auto-merge: unsupported
+  tabs → 0 remote (refreshPageStateAndSyncIfMissing gates on shouldSyncMissingRemoteState,
+  verbatim main); no routine focus/nav/page-state sync; 30-min TTLs (remote-sync-policy.ts
+  verbatim main); no billing in bg refresh; forced refresh = lazy mark-stale; bearer
+  prefix/token order (viewer.ts verbatim main).
+- Cost regression tests 10/10 (remote-sync-policy, session route incl. a real
+  no-provisioning spy guard, viewer). test:stable 75/75.
+- **Issue fixes:** routing test `does not route personal-profile…` was a STALE test
+  (predated `08343d6` visible-Personal routing) — updated to assert auto-save→Personal,
+  never to the incidental project. Probed: code routes to Personal (score 100), not a
+  privacy bug.
+- **Neon `suspend_timeout=0` was a FALSE alarm:** prod compute `ep-broad-glitter-ag5sv14w`
+  (branch `br-small-moon-agn70urq` = production, primary+default) already has
+  `suspend_timeout_seconds=300`. The `=0` was only the project-level *default template*
+  for new endpoints (cosmetic; dashboard-only fix, low priority). Prod already scales to zero.
+
+### Phase 2 — background/index.ts modularization (foundation done, blobs deferred)
+index.ts **5834 → 5129 lines** (−705). 8 new modules, each a verbatim move +
+typecheck + focused tests + Plasmo build green (no runtime/Playwright pass yet):
+`drain-scheduler`, `oauth`, `bg-utils` (+ readErrorResponse), `bg-types`, `state`
+(tabStates/dashboardCache/sessionCache holder/authGrace), `context-preview`,
+`session-cache` (loadSessionData + dashboard cache + session mutators).
+
+**STOP line (verification-bounded, Playwright deferred).** The remaining middle layer
+(tab-lifecycle ↔ broadcast ↔ sync ↔ capture ↔ message-handler) is mutually recursive —
+e.g. tab-lifecycle calls **up** into `broadcastActiveProjectState`. The two big blobs
+(`captureObservedChange` ~770, `chrome.runtime.onMessage` ~1215) carry runtime-only
+risk (MV3 `return true` port semantics, listener-registration timing) that
+typecheck+units can't verify. **Do these only with the deferred runtime pass.**
+
+**Idempotency note:** Personal harvest already dedups on `lastRoutedSignature`, which IS
+persisted + rehydrated on SW wake — so restart-repeat is largely mitigated. Gap: it's
+best-effort tab-signature dedup, not atomic server-side dedup (Phase-3 item).
 
 ---
 
