@@ -82,6 +82,54 @@ Phase 4 verification:
 - Web production build remains blocked by the existing unrelated client-bundle
   `node:crypto` import through `@relay/shared` / `utils/hashing.ts`.
 
+### CWS shipping strategy (how to ship this huge PR smoothly)
+
+Web (Vercel) and extension (Chrome Web Store) deploy independently:
+
+1. **Merge and deploy web to Vercel** → dashboard users get all improvements immediately
+   (graph, personal, Folk taxonomy, governance board, settings matrix). Old extension users
+   are unaffected — no breaking API changes.
+2. **Submit extension 0.6.0 to CWS simultaneously** → typical review: 1–7 days. During review:
+   - Dashboard users: full new experience
+   - Extension users (old build): prior behavior intact — background refactor is
+     behavior-preserving and ships transparently once approved
+   - `RELAY_PERSONAL_MEMORY_AUTOWRITE` stays OFF → no personal routing in prod yet,
+     so old extension not knowing Folk categories causes no data issues
+3. **After CWS approves** → extension auto-updates for all users. Then flip
+   `RELAY_PERSONAL_MEMORY_AUTOWRITE=true` in Vercel.
+4. Phase 6 / cutover can begin **in parallel with CWS review** since it's web-only.
+
+CWS approval gates only: `RELAY_PERSONAL_MEMORY_AUTOWRITE` flag flip + any functionality
+requiring the new extension (edge save, settings matrix). Everything else ships immediately.
+
+### Before cutover: pricing, limits, and analytics (separate phase, do NOT implement now)
+
+**Pricing:**
+- Starter: raise to $8/mo (no current Starter users; safe to change anytime)
+- Goal: conversion; current funnel/onboarding issue is the real blocker (tackle later)
+
+**Limits model (needs PostHog evidence first):**
+- Unify to two types: **reads** and **writes** (drop granular per-feature limits)
+- Monthly primary + daily sub-limits (daily × N = monthly, not 1/30 × monthly)
+  - e.g. 300 mo/reads → 20/day reads (users hit limits sooner → upgrade incentive)
+- Rolling ticker in extension/dashboard settings (cycle every 10s):
+  daily reads → monthly reads → daily writes → monthly writes
+- Marketing cards: monthly only (cleaner). Settings + docs: both daily and monthly.
+- Internal hard limits (Relay AI messages/day): docs/settings only, NOT pricing page.
+- PostHog PAT: `phx_TtFC7MwjjnP7Y4ytQ5kxyGBmqRnV4VFD4m8iE8i2ZyxeALox`
+  - Check actual limit-hit rates on paid plans before tightening limits
+  - Check Relay AI / MCP tool call frequency (too aggressive on casual chat)
+
+**MCP tool call reduction:**
+- Relay AI calls tools too often during casual conversation
+- Fix: tighten system prompt gate or add intent classifier before tool dispatch
+
+**Analytics gaps to fill:**
+- Separate funnel for agent/MCP surface (distinct from web/extension)
+- Extension → dashboard conversion events
+- Limit-hit → upgrade conversion events
+- Onboarding milestones: first capture, first recall, first project
+
 - **Next: `/review`** the Phase 1–4 branch before adding cutover tooling.
 - **Phase 5 — release/cutover tooling.** Prod at migration 0039; do NOT apply 0040–0052
   unchanged. Remove 0049's auto full-prod re-enqueue → explicit bounded operator backfill;
