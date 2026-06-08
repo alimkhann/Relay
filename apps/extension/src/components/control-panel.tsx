@@ -724,7 +724,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   }, []);
 
   function applyActiveState(nextState: RelayActiveProjectState) {
-    setActiveState(nextState);
+    setActiveState((current) =>
+      !nextState.page.supported && current.projectId === nextState.projectId
+        ? { ...nextState, contextPreview: current.contextPreview }
+        : nextState,
+    );
     setSession((current) =>
       current
         ? {
