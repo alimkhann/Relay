@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest"
 
+import type { AssistantActionResult } from "../types/assistant"
 import type { MemoryItemDto, ProjectDashboardDto } from "../types/project"
-import { applyMemoryMutationToDashboard, type MemoryMutationEnvelope } from "./memory-mutations"
+import {
+  actionResultToMemoryMutations,
+  applyMemoryMutationToDashboard,
+  type MemoryMutationEnvelope,
+} from "./memory-mutations"
 
 function item(id: string, content: string): MemoryItemDto {
   return {
@@ -22,6 +27,65 @@ function item(id: string, content: string): MemoryItemDto {
 function dashboard(projectId: string, memory: MemoryItemDto[]): ProjectDashboardDto {
   return { project: { id: projectId }, memory } as ProjectDashboardDto
 }
+
+describe("actionResultToMemoryMutations", () => {
+  it("maps add_memory creates into dashboard mutation envelopes", () => {
+    const result: AssistantActionResult = {
+      tool: "add_memory",
+      action: "created",
+      entity: "memory item",
+      count: 1,
+      items: [
+        {
+          id: "m-new",
+          label: "Use focused tests",
+          content: "Use focused tests",
+          type: "decision",
+          projectId: "p1",
+        },
+      ],
+      previews: [
+        {
+          after: {
+            id: "m-new",
+            label: "Use focused tests",
+            content: "Use focused tests",
+            type: "decision",
+            projectId: "p1",
+          },
+        },
+      ],
+    }
+
+    expect(actionResultToMemoryMutations(result, "p1")).toEqual([
+      expect.objectContaining({
+        operation: "create",
+        sourceProjectId: "p1",
+        after: expect.objectContaining({ id: "m-new", type: "decision" }),
+      }),
+    ])
+  })
+
+  it("maps manage_memory deletes into remove envelopes", () => {
+    const result: AssistantActionResult = {
+      tool: "manage_memory",
+      action: "deleted",
+      entity: "memory item",
+      count: 1,
+      items: [{ id: "m-old", label: "old", content: "old", type: "note", projectId: "p1" }],
+      previews: [
+        {
+          before: { id: "m-old", label: "old", content: "old", type: "note", projectId: "p1" },
+        },
+      ],
+    }
+
+    expect(actionResultToMemoryMutations(result)[0]).toMatchObject({
+      operation: "delete",
+      sourceProjectId: "p1",
+    })
+  })
+})
 
 describe("applyMemoryMutationToDashboard", () => {
   it("prepends creates and replaces updates at the top", () => {

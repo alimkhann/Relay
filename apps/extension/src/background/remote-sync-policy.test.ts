@@ -69,9 +69,9 @@ describe("background remote sync policy", () => {
     ).toBe(false)
   })
 
-  it("keeps session and dashboard data fresh for thirty minutes", () => {
-    expect(SESSION_CACHE_TTL_MS).toBe(30 * 60 * 1_000)
-    expect(DASHBOARD_CACHE_TTL_MS).toBe(30 * 60 * 1_000)
-    expect(TAB_REMOTE_SYNC_FRESH_MS).toBe(30 * 60 * 1_000)
+  it("aligns extension TTLs with web stale-while-revalidate policy", () => {
+    expect(SESSION_CACHE_TTL_MS).toBe(10 * 60 * 1_000)
+    expect(DASHBOARD_CACHE_TTL_MS).toBe(5 * 60 * 1_000)
+    expect(TAB_REMOTE_SYNC_FRESH_MS).toBe(5 * 60 * 1_000)
   })
 })

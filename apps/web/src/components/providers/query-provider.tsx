@@ -6,9 +6,10 @@ import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister"
 import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval"
 
+import { AUTHENTICATED_READ_STALE_TIME_MS } from "@/lib/query/policy"
+
 // Bump when the cached query shape changes so old deploys' caches are dropped.
 const APP_CACHE_VERSION = "2"
-const AUTHENTICATED_READ_STALE_TIME_MS = 5 * 60_000
 
 const idbStorage = {
   getItem: (key: string) => idbGet<string>(key).then((v) => v ?? null),

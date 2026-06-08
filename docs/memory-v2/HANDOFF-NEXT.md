@@ -10,6 +10,74 @@ prod Neon, flip prod flags, or delete branches without explicit approval. Keep
 `RELAY_PERSONAL_MEMORY_AUTOWRITE` / `RELAY_MULTI_PROJECT_CAPTURE` /
 `RELAY_MEMORY_PIPELINE_FULL` dark.
 
+### 2026-06-09 — Responsive memory + cache/SWR standard (DONE; no prod cutover)
+
+**Two commits on `feat/memory-v2-architecture`:** `b84ef8c` (agent wiring + extension fixes) +
+the cache/SWR commit from this session (see `git log -2`). **Do NOT cutover yet** — user will run
+their cutover pass later; keep dev stack + Neon dev branch alive until then.
+
+#### Round A — `b84ef8c` responsive agent memory + extension fixes
+
+| Area | What changed |
+|------|----------------|
+| Extension Ask Relay | `resolveChatProjectId()` reads sidebar active project via `RELAY_GET_ACTIVE_PROJECT_STATE` + runtime/BroadcastChannel listeners (`extension-chat.tsx`) |
+| Web Ask Relay writes | `wantsWriteTools()` enables add/create tools (`assistant-agent-service.ts`) |
+| Non-AI dashboard sync | `syncProjectDashboardOnly` + `shouldSyncProjectDashboardOnly` — sidepanel loads memory on non-AI tabs without full capture sync (`sync-controller.ts`, `message-dispatcher.ts`) |
+| Extension D/T/C pills | Tab counter pills in `control-panel.tsx` |
+| Tests | `assistant-agent-service.test.ts`, `remote-sync-policy.test.ts` |
+
+#### Round B — cache/SWR standardization (this session)
+
+**Root cause of stale web UI:** `router.refresh()` on Ask Relay mutations does **not** refetch
+TanStack Query (`useProjectDashboard` / `useMemory`). `relay:memory-mutated` fired but nothing
+listened.
+
+**Fix — one read path for dashboard data:**
+
+| Layer | Policy | Files |
+|-------|--------|-------|
+| Shared | `actionResultToMemoryMutations()` maps assistant tool results → `MemoryMutationEnvelope[]` | `packages/shared/src/utils/memory-mutations.ts` + tests |
+| Web client policy | `AUTHENTICATED_READ_STALE_TIME_MS = 5m`; `invalidateDashboard()` helper; **no `router.refresh()` for memory/dashboard** | `apps/web/src/lib/query/policy.ts` |
+| RQ sync | `syncDashboardFromActionResult()` optimistic `setQueryData` + `invalidateQueries`; `useMemoryCacheSync()` listens to `relay:memory-mutated` | `apps/web/src/lib/query/memory-cache-sync.ts` |
+| Ask Relay | `onMutation` → sync + dispatch event; removed debounced `router.refresh()` | `chat-view.tsx` |
+| Dashboard surfaces | `useMemoryCacheSync(project.id)` on memory, overview, brief, graph pages | `memory-page-content.tsx`, `dashboard-content.tsx`, `brief-page-content.tsx`, `graph-page-content.tsx` |
+| Governance hide-override | `invalidateDashboard` instead of `router.refresh` | `governance-section.tsx` |
+| Extension TTLs | Session **10m**, dashboard/tab sync **5m** (was 30m — aligned with web staleTime) | `remote-sync-policy.ts` + test |
+
+**Three-tier cache model (document for cutover agents):**
+
+1. **TanStack Query client** — 5m `staleTime`, IndexedDB persist; instant revisits; background refetch when stale/invalidated.
+2. **Next `unstable_cache` server** — 300s revalidate; tag invalidation on writes (`invalidateProjectMemoryCache`).
+3. **Extension persisted cache** — 5m dashboard/tab, 10m session; `RELAY_INVALIDATE_PROJECT_CACHE` still busts on writes.
+
+**Mutations:** optimistic `setQueryData` first → API → `invalidateQueries` in `finally` (existing `useOptimisticMemoryMutation` path unchanged).
+
+#### Verification (this session)
+
+- `vitest`: `memory-mutations.test.ts` 4/4, `remote-sync-policy.test.ts` 5/5
+- `pnpm --filter @relay/web typecheck`: passed
+- `pnpm test:stable`: 75/75
+
+#### Remaining follow-ups (not blockers for cutover prep)
+
+- `project-governance-panel.tsx`, `memory-item-list-client.tsx`, `notes-section.tsx`, `personal-state-card.tsx` still call `router.refresh()` for some paths — migrate to `invalidateDashboard` when touched.
+- Full `router.refresh` audit outside memory/governance (project picker, auth, billing) is intentional for SSR shell refresh.
+- User functional pass still required (see below).
+
+#### User test checklist (before cutover)
+
+1. Web at `http://localhost:3000` (200); Plasmo dev → load **`chrome-mv3-dev`** (NOT prod build).
+2. **Web:** Memory tab instant revisit; manual add; Ask Relay add decision → Allow → list updates without full reload; Network shows one `/api/projects/:id` refetch per action.
+3. **Extension:** Non-AI site sidepanel shows memory; project switch = one fetch; agent CRUD updates panel; no fetch storm on rapid tab switches.
+4. Reload extension after each build (`chrome://extensions`).
+
+#### Next agent — before user's cutover
+
+1. Confirm both commits pushed; re-run focused tests above if anything else lands on the branch.
+2. Proceed with **Phase 5–6** from this doc (cutover tooling + rollout plan) — **still no prod execution**.
+3. Keep dev branch `br-muddy-morning-ag55csrg` + local stack alive until user confirms post-cutover.
+4. Teardown only after prod cutover verified (see §TEARDOWN owed).
+
 ### Phase 3 completed
 
 - Removed `.github/workflows/memory-pipeline-cron.yml`. `/api/cron/memory-pipeline`

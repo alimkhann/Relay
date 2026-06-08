@@ -4,6 +4,7 @@ import { FadeIn } from "@/components/ui/fade-in";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProjectDashboard } from "@/features/projects/use-project-dashboard";
+import { useMemoryCacheSync } from "@/lib/query/memory-cache-sync";
 import { MemoryGraphContainer } from "./memory-graph-container";
 
 interface GraphPageContentProps {
@@ -12,6 +13,7 @@ interface GraphPageContentProps {
 
 export function GraphPageContent({ project }: GraphPageContentProps) {
   const { data: dashboard, isPending } = useProjectDashboard(project.id);
+  useMemoryCacheSync(project.id);
 
   return (
     <div className="min-h-[calc(100vh-4rem)] pt-6">

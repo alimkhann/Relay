@@ -1,8 +1,8 @@
 import type { RelayRemoteStatus } from "../messaging/contracts"
 
-export const SESSION_CACHE_TTL_MS = 30 * 60 * 1_000
-export const DASHBOARD_CACHE_TTL_MS = 30 * 60 * 1_000
-export const TAB_REMOTE_SYNC_FRESH_MS = 30 * 60 * 1_000
+export const SESSION_CACHE_TTL_MS = 10 * 60 * 1_000
+export const DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1_000
+export const TAB_REMOTE_SYNC_FRESH_MS = 5 * 60 * 1_000
 
 export function shouldSyncMissingRemoteState(input: {
   pageSupported: boolean

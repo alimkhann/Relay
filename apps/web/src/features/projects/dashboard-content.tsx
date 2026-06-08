@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useProjectDashboard } from "@/features/projects/use-project-dashboard";
+import { useMemoryCacheSync } from "@/lib/query/memory-cache-sync";
 import { queryKeys } from "@/lib/query/keys";
 import { DashboardStats } from "@/features/projects/dashboard-stats";
 import { DashboardAnalyticsBar } from "@/features/projects/dashboard-analytics-bar";
@@ -96,6 +97,7 @@ export function DashboardContent({ project, walkthroughInitiallyOpen = false, wa
   const router = useRouter();
   const queryClient = useQueryClient();
   const { data: dashboard, isPending } = useProjectDashboard(project.id);
+  useMemoryCacheSync(project.id);
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
   const [editDialogOpen, setEditDialogOpen] = useState(false);

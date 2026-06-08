@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FadeIn } from "@/components/ui/fade-in";
 import { useMemory } from "@/features/memory/use-memory";
+import { useMemoryCacheSync } from "@/lib/query/memory-cache-sync";
 import { queryKeys } from "@/lib/query/keys";
 import { MemoryGraphContainer } from "@/features/graph/memory-graph-container";
 import { MIN_GRAPH_ITEMS } from "@/features/graph/memory-graph-utils";
@@ -55,6 +56,7 @@ export function MemoryPageContent({
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { data: dashboard, isPending } = useMemory(project.id);
+  useMemoryCacheSync(project.id);
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
   const [editingMemory, setEditingMemory] = useState(false);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   type MemoryItemDto,
   type MemoryMutationEnvelope,
@@ -17,6 +17,7 @@ import {
   type BoardColumn,
 } from "@/features/memory/memory-column-board";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
+import { invalidateDashboard } from "@/lib/query/policy";
 import { useOptimisticMemoryMutation } from "@/features/memory/use-optimistic-memory-mutation";
 
 /* ─── Types ─── */
@@ -73,7 +74,7 @@ export function GovernanceSection({
   /** Append a Requirements column (plain memory items). */
   includeRequirements?: boolean;
 }) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
   const mutateMemory = useOptimisticMemoryMutation(projectId);
@@ -95,7 +96,7 @@ export function GovernanceSection({
         try {
           await action();
           setStatus(doneMsg);
-          router.refresh();
+          await invalidateDashboard(queryClient, projectId);
         } catch (cause) {
           setStatus(
             cause instanceof Error ? cause.message : "Request failed.",

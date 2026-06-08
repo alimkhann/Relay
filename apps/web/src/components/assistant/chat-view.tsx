@@ -1,7 +1,7 @@
 "use client"
 
 import { type ClipboardEvent, type DragEvent, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useQueryClient } from "@tanstack/react-query"
 import { AnimatePresence, motion } from "motion/react"
 import {
   ArrowUp,
@@ -26,6 +26,7 @@ import {
 import type { AssistantSurface } from "@relay/shared"
 
 import { cn } from "@/lib/cn"
+import { syncDashboardFromActionResult } from "@/lib/query/memory-cache-sync"
 import { useVoiceInput } from "@/hooks/use-voice-input"
 
 import { AskRelayHistory } from "./ask-relay-history"
@@ -86,9 +87,7 @@ export function ChatView({
   initialChatId?: string | null
   onChatListChanged?: () => void
 }) {
-  const router = useRouter()
-  const lastRefreshRef = useRef(0)
-  const trailingRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const queryClient = useQueryClient()
   const {
     messages,
     streaming,
@@ -117,23 +116,9 @@ export function ChatView({
     reset
   } = useAssistantChat(surface, projectId, {
     onMutation: (result) => {
-      // Let any same-tab client widget (memory list, brief) react instantly.
+      syncDashboardFromActionResult(queryClient, result, projectId)
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("relay:memory-mutated", { detail: result }))
-      }
-      // Re-fetch server components for this surface. Leading-edge (first
-      // change reflects immediately) + a trailing refresh so the last of a
-      // burst is never dropped.
-      const now = Date.now()
-      if (now - lastRefreshRef.current >= 1500) {
-        lastRefreshRef.current = now
-        router.refresh()
-      } else if (!trailingRefreshRef.current) {
-        trailingRefreshRef.current = setTimeout(() => {
-          trailingRefreshRef.current = null
-          lastRefreshRef.current = Date.now()
-          router.refresh()
-        }, 1500)
       }
     },
     onChatChanged: () => {
@@ -159,13 +144,6 @@ export function ChatView({
   }, [voice.status])
 
   const isVoiceActive = voice.listening || voice.status === "requesting"
-
-  useEffect(
-    () => () => {
-      if (trailingRefreshRef.current) clearTimeout(trailingRefreshRef.current)
-    },
-    []
-  )
 
   useEffect(() => {
     // Load a deep-linked chat (e.g. /chat?chatId=…). loadChat is stable.
