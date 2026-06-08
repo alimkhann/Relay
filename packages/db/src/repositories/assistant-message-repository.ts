@@ -65,6 +65,13 @@ export class AssistantMessageRepository {
     )
   }
 
+  async updateToolPayload(id: string, toolPayload: Record<string, unknown>): Promise<void> {
+    await this.provider.query(
+      `update assistant_messages set tool_payload = $2::jsonb where id = $1`,
+      [id, JSON.stringify(toolPayload)]
+    )
+  }
+
   async listByChat(chatId: string, options: { limit?: number } = {}): Promise<AssistantMessageRow[]> {
     const rows = await this.provider.query(
       `select * from assistant_messages

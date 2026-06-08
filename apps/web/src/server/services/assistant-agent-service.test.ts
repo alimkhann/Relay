@@ -143,6 +143,70 @@ describe("runAssistantTurn confirmation guard (A2 regression)", () => {
     expect(events.some((e) => e.type === "done")).toBe(true)
   })
 
+  it("exposes write tools for add/create memory requests", async () => {
+    mocks.runGeminiAgentStep.mockResolvedValueOnce({
+      text: "I can add that decision.",
+      functionCalls: [],
+      groundingUris: [],
+      groundingChunks: [],
+      finishReason: "STOP",
+      tokenUsage: { inputTokens: 3, outputTokens: 3, totalTokens: 6 }
+    })
+
+    await collect({
+      message: "add a test decision memory item",
+      surface: "extension",
+      parentId: null,
+      projectId: "11111111-1111-4111-8111-111111111111"
+    } as unknown as SendAssistantMessageInput)
+
+    const firstCall = mocks.runGeminiAgentStep.mock.calls[0]?.[0] as
+      | { tools?: Array<{ name: string }> }
+      | undefined
+    const toolNames = firstCall?.tools?.map((tool) => tool.name) ?? []
+    expect(toolNames).toContain("add_memory")
+    expect(toolNames).toContain("manage_memory")
+  })
+
+  it("injects the selected project into scoped tool calls without listing projects first", async () => {
+    mocks.runGeminiAgentStep
+      .mockResolvedValueOnce({
+        text: "",
+        functionCalls: [{ name: "add_memory", args: { type: "decision", content: "Use focused tests." } }],
+        groundingUris: [],
+        groundingChunks: [],
+        finishReason: null,
+        tokenUsage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 }
+      })
+      .mockResolvedValueOnce({
+        text: "Saved the decision.",
+        functionCalls: [],
+        groundingUris: [],
+        groundingChunks: [],
+        finishReason: "STOP",
+        tokenUsage: { inputTokens: 3, outputTokens: 3, totalTokens: 6 }
+      })
+    mocks.executeAssistantTool.mockResolvedValue({
+      modelResponse: { result: "saved" },
+      actionResult: null
+    })
+
+    await collect({
+      message: "create a decision that we use focused tests",
+      surface: "extension",
+      parentId: null,
+      projectId: "11111111-1111-4111-8111-111111111111"
+    } as SendAssistantMessageInput)
+
+    expect(mocks.executeAssistantTool).toHaveBeenCalledWith(
+      expect.anything(),
+      "add_memory",
+      expect.objectContaining({ projectId: "11111111-1111-4111-8111-111111111111" }),
+      expect.anything()
+    )
+    expect(mocks.executeAssistantTool).toHaveBeenCalledTimes(1)
+  })
+
   it("replaying a consumed confirmActionId is an idempotent no-op (no double-run)", async () => {
     const markConsumed = vi.fn(async () => {})
     const pendingMessage = {
@@ -202,6 +266,163 @@ describe("runAssistantTurn confirmation guard (A2 regression)", () => {
     expect(markConsumed).not.toHaveBeenCalled()
     const err = events.find((e) => e.type === "error")
     expect(err && err.type === "error" && err.message).toMatch(/already been confirmed/i)
+  })
+
+  it("declining an action updates it in place without creating a synthetic user message or calling Gemini", async () => {
+    const updateToolPayload = vi.fn(async () => {})
+    const createMessage = vi.fn(async () => ({ id: "m1" }))
+    const pendingMessage = {
+      id: "pm1",
+      chatId: "c1",
+      userId: "u1",
+      role: "assistant",
+      parentId: null,
+      content: "Awaiting confirmation to delete 1 memory item(s).",
+      toolName: "pending_action",
+      toolPayload: {
+        pendingAction: {
+          id: "pending-1",
+          tool: "manage_memory",
+          summary: "delete 1 memory item(s)",
+          args: { action: "delete", memoryId: ["m9"] },
+          status: "pending"
+        }
+      },
+      createdAt: "2026-06-09T00:00:00Z"
+    }
+    mocks.createRepositoryBundle.mockReset().mockReturnValue({
+      assistantChats: {
+        getById: vi.fn(async () => ({
+          id: "c1",
+          userId: "u1",
+          projectId: null,
+          surface: "dashboard",
+          title: "t"
+        })),
+        create: vi.fn(),
+        touch: vi.fn(async () => {})
+      },
+      assistantMessages: {
+        listByChat: vi.fn(async () => [pendingMessage]),
+        create: createMessage,
+        updateToolPayload
+      },
+      assistantAttachments: { listByIds: vi.fn(async () => []) }
+    })
+
+    const events = await collect({
+      message: "decline action",
+      surface: "dashboard",
+      chatId: "c1",
+      parentId: "pm1",
+      projectId: null,
+      actionDecision: { actionId: "pending-1", decision: "decline" }
+    } as SendAssistantMessageInput)
+
+    expect(createMessage).not.toHaveBeenCalled()
+    expect(mocks.runGeminiAgentStep).not.toHaveBeenCalled()
+    expect(updateToolPayload).toHaveBeenCalledWith(
+      "pm1",
+      expect.objectContaining({
+        pendingAction: expect.objectContaining({ id: "pending-1", status: "declined" })
+      })
+    )
+    expect(events.some((event) => event.type === "action_update")).toBe(true)
+  })
+
+  it("persists and resolves a running preview when allow-all executes a destructive action", async () => {
+    const updateToolPayload = vi.fn(async () => {})
+    const createMessage = vi
+      .fn()
+      .mockResolvedValueOnce({ id: "user-1" })
+      .mockResolvedValueOnce({ id: "action-1" })
+      .mockResolvedValueOnce({ id: "tool-1" })
+      .mockResolvedValueOnce({ id: "assistant-1" })
+    mocks.createRepositoryBundle.mockReset().mockReturnValue({
+      ...repoBundle(),
+      assistantMessages: {
+        listByChat: vi.fn(async () => []),
+        create: createMessage,
+        updateToolPayload
+      }
+    })
+    mocks.runGeminiAgentStep
+      .mockResolvedValueOnce({
+        text: "",
+        functionCalls: [{ name: "manage_memory", args: { action: "delete", memoryId: ["m9"] } }],
+        groundingChunks: [],
+        tokenUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+      })
+      .mockResolvedValueOnce({
+        text: "Deleted the memory item.",
+        functionCalls: [],
+        groundingChunks: [],
+        tokenUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+      })
+    mocks.executeAssistantTool.mockResolvedValue({
+      modelResponse: { result: "deleted" },
+      actionResult: {
+        tool: "manage_memory",
+        action: "deleted",
+        entity: "memory item",
+        count: 1
+      }
+    })
+
+    const events = await collect({
+      message: "delete it",
+      surface: "dashboard",
+      parentId: null,
+      projectId: "p1",
+      autoApproveDestructive: true
+    } as SendAssistantMessageInput)
+
+    expect(events).toContainEqual({
+      type: "pending_action",
+      action: expect.objectContaining({ status: "running", tool: "manage_memory" })
+    })
+    expect(events).toContainEqual({
+      type: "action_update",
+      action: expect.objectContaining({ status: "succeeded", tool: "manage_memory" })
+    })
+    expect(updateToolPayload).toHaveBeenCalledWith(
+      "action-1",
+      expect.objectContaining({
+        pendingAction: expect.objectContaining({ status: "succeeded" })
+      })
+    )
+  })
+
+  it("does not repeat an identical failing tool call within a turn", async () => {
+    mocks.runGeminiAgentStep
+      .mockResolvedValueOnce({
+        text: "",
+        functionCalls: [{ name: "search_memory", args: { query: "missing" } }],
+        groundingChunks: [],
+        tokenUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+      })
+      .mockResolvedValueOnce({
+        text: "",
+        functionCalls: [{ name: "search_memory", args: { query: "missing" } }],
+        groundingChunks: [],
+        tokenUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+      })
+      .mockResolvedValueOnce({
+        text: "I could not search memory because the tool failed.",
+        functionCalls: [],
+        groundingChunks: [],
+        tokenUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+      })
+    mocks.executeAssistantTool.mockRejectedValueOnce(new Error("temporary failure"))
+
+    await collect({
+      message: "search my memory for missing",
+      surface: "dashboard",
+      parentId: null,
+      projectId: "p1"
+    } as SendAssistantMessageInput)
+
+    expect(mocks.executeAssistantTool).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -391,5 +612,36 @@ describe("runAssistantTurn web search", () => {
     expect(mocks.runGeminiAgentStep).toHaveBeenCalledWith(
       expect.objectContaining({ tools: [] })
     )
+  })
+
+  it("does not claim Done when Gemini returns an empty answer", async () => {
+    mocks.runGeminiAgentStep
+      .mockResolvedValueOnce({
+        text: "",
+        functionCalls: [],
+        groundingUris: [],
+        groundingChunks: [],
+        finishReason: "STOP",
+        tokenUsage: { inputTokens: 5, outputTokens: 0, totalTokens: 5 }
+      })
+      .mockResolvedValueOnce({
+        text: "",
+        functionCalls: [],
+        groundingUris: [],
+        groundingChunks: [],
+        finishReason: "STOP",
+        tokenUsage: { inputTokens: 5, outputTokens: 0, totalTokens: 5 }
+      })
+
+    const events = await collect({
+      message: "?",
+      surface: "dashboard",
+      parentId: null,
+      projectId: null
+    } as SendAssistantMessageInput)
+
+    const text = events.filter((event) => event.type === "text").map((event) => event.delta).join("")
+    expect(text).not.toBe("Done.")
+    expect(events.some((event) => event.type === "error")).toBe(true)
   })
 })

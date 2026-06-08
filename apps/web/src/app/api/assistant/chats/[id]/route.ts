@@ -5,7 +5,9 @@ import {
   renameAssistantChatSchema,
   type AssistantActionResult,
   type AssistantAttachmentDto,
-  type AssistantMessageDto
+  type AssistantMessageDto,
+  type AssistantMessageRole,
+  type AssistantPendingAction
 } from "@relay/shared"
 
 import { withApiAuth } from "@/server/http/api-route"
@@ -52,11 +54,8 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
         actionResult?: AssistantActionResult
         actionResults?: AssistantActionResult[]
         attachmentIds?: string[]
-        pendingAction?: import("@relay/shared").AssistantPendingAction
-        consumed?: boolean
+        pendingAction?: AssistantPendingAction
       }
-      // Skip consumed pending_action messages — they've been acted on.
-      if (m.toolName === "pending_action" && payload?.consumed) return null
       const actionResults =
         payload?.actionResults ?? (payload?.actionResult ? [payload.actionResult] : [])
       const messageAttachments: AssistantAttachmentDto[] = (payload?.attachmentIds ?? [])
@@ -74,8 +73,11 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
       return {
         id: m.id,
         parentId: effectiveParent(m.parentId),
-        role: (m.toolName === "pending_action" ? "assistant" : m.role) as import("@relay/shared").AssistantMessageRole,
-        content: m.content,
+        role: (m.toolName === "pending_action" ? "assistant" : m.role) as AssistantMessageRole,
+        content:
+          m.toolName === "pending_action" && payload.pendingAction?.status !== "pending"
+            ? ""
+            : m.content,
         toolName: m.toolName,
         actionResult: actionResults[0] ?? null,
         actionResults,
@@ -85,7 +87,6 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
         pending: payload?.pendingAction ?? null,
       }
     })
-    .filter((m): m is NonNullable<typeof m> => m !== null) as AssistantMessageDto[]
 
   return NextResponse.json({
     chat: { id: chat.id, title: chat.title, surface: chat.surface, projectId: chat.projectId },

@@ -9,7 +9,11 @@ import { buildSavedAssociationFromMemory } from "./association-workflow";
 import { buildSavedChatAssociation, getRetargetableAssociationProject, hydrateTabStateFromSession, reconcileManualOverride } from "./association";
 import { REMOTE_RETRY_BACKOFF_MS, retryRemote } from "./bg-utils";
 import { buildDashboardContextPreview, buildTrustMetadata } from "./context-preview";
-import { shouldSyncMissingRemoteState, TAB_REMOTE_SYNC_FRESH_MS } from "./remote-sync-policy";
+import {
+  shouldSyncMissingRemoteState,
+  shouldSyncProjectDashboardOnly,
+  TAB_REMOTE_SYNC_FRESH_MS,
+} from "./remote-sync-policy";
 import { pickPreferredProjectId, findApprovedAssociationMatch } from "./routing";
 import { fetchProjectDashboard, loadSessionData } from "./session-cache";
 import { createEmptyChatAssociation } from "./tab-state";
@@ -158,15 +162,110 @@ export function createSyncController(deps: {
     }, nextDelay);
   }
 
+  async function syncProjectDashboardOnly(
+    tabId: number,
+    options: { force?: boolean; reason?: string } = {},
+  ) {
+    const state = getOrCreateTabState(tabId);
+    const session = await getRelaySession();
+    hydrateTabStateFromSession(state, session);
+
+    if (!session.token) {
+      state.remoteStatus = "unavailable";
+      state.lastError = null;
+      await deps.broadcastActiveProjectState(tabId);
+      return;
+    }
+
+    const projectId =
+      state.manualProjectId ??
+      session.assumedProjectId ??
+      session.projectId ??
+      null;
+    if (!projectId) {
+      state.remoteStatus = "unavailable";
+      state.lastError = null;
+      await deps.broadcastActiveProjectState(tabId);
+      return;
+    }
+
+    const requestKey = `project-only|${projectId}`;
+    const forceRefresh =
+      Boolean(options.force) ||
+      options.reason === "active_state_request" ||
+      options.reason === "project_dashboard_request" ||
+      options.reason === "project_switch";
+    const shouldSkip =
+      !forceRefresh &&
+      state.remoteStatus === "ready" &&
+      state.lastSuccessfulSyncAt &&
+      state.lastSyncedRequestKey === requestKey &&
+      Date.now() - new Date(state.lastSuccessfulSyncAt).getTime() < TAB_REMOTE_SYNC_FRESH_MS;
+    if (shouldSkip) return;
+
+    if (state.syncInFlight) {
+      state.syncQueued = true;
+      return;
+    }
+
+    state.syncInFlight = true;
+    state.syncQueued = false;
+    state.syncRequestKey = requestKey;
+    state.remoteStatus =
+      state.lastSuccessfulSyncAt || session.projectOptions.length > 0 || session.assumedProjectId
+        ? "stale"
+        : "loading";
+    await deps.broadcastActiveProjectState(tabId);
+
+    try {
+      const remote = await loadSessionData();
+      const activeProject = remote.projects.find((project) => project.id === projectId) ?? null;
+      const dashboard = await fetchProjectDashboard(projectId);
+
+      state.projectOptions = remote.projects;
+      state.projectId = activeProject?.id ?? projectId;
+      state.projectName = activeProject?.name ?? session.assumedProjectName ?? state.projectName;
+      state.trust = dashboard ? buildTrustMetadata(dashboard) : state.trust;
+      state.stateStatus = dashboard?.stateStatus ?? state.stateStatus ?? session.stateStatus ?? null;
+      state.contextPreview = buildDashboardContextPreview(dashboard);
+      state.remoteStatus = remote.connected ? "ready" : "unavailable";
+      state.lastSuccessfulSyncAt = new Date().toISOString();
+      state.lastSyncedRequestKey = requestKey;
+      state.lastError = null;
+      state.retryDelayMs = 0;
+      clearRetryTimer(state);
+      await setRelaySession({
+        connected: remote.connected,
+        projectId: remote.onboarding.status === "completed" ? state.projectId ?? "" : "",
+        assumedProjectId: state.projectId ?? "",
+        assumedProjectName: state.projectName ?? "",
+        stateStatus: state.stateStatus,
+        trust: state.trust,
+        projectOptions: remote.projects,
+        onboarding: remote.onboarding,
+      });
+    } catch (cause) {
+      state.lastError = cause instanceof Error ? cause.message : "Failed to fetch";
+      state.remoteStatus = state.lastSuccessfulSyncAt ? "stale" : "unavailable";
+      scheduleRetry(tabId);
+    } finally {
+      state.syncInFlight = false;
+      state.syncRequestKey = null;
+      await deps.broadcastActiveProjectState(tabId);
+      if (state.syncQueued) {
+        state.syncQueued = false;
+        void syncProjectDashboardOnly(tabId, { reason: "queued_refresh" });
+      }
+    }
+  }
+
   async function syncTabRemoteState(
     tabId: number,
     options: { force?: boolean; reason?: string } = {},
   ) {
     const state = getOrCreateTabState(tabId);
     if (!state.page.supported) {
-      state.remoteStatus = "unavailable";
-      state.lastError = null;
-      await deps.broadcastActiveProjectState(tabId);
+      await syncProjectDashboardOnly(tabId, options);
       return;
     }
     const session = await getRelaySession();
@@ -305,7 +404,9 @@ export function createSyncController(deps: {
     resolveActiveProject,
     resolveBoundProject,
     scheduleRetry,
+    syncProjectDashboardOnly,
     syncTabRemoteState,
     shouldSyncMissingRemoteState,
+    shouldSyncProjectDashboardOnly,
   };
 }

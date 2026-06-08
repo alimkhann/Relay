@@ -23,6 +23,13 @@ export const sendAssistantMessageSchema = z.object({
   confirmActionId: z.string().min(1).optional(),
   /** Set when the user declines a previously emitted pending_action (marks it consumed without executing). */
   declineActionId: z.string().min(1).optional(),
+  /** Resolve an action card in place without creating a synthetic chat message. */
+  actionDecision: z
+    .object({
+      actionId: z.string().min(1),
+      decision: z.enum(["allow", "decline"])
+    })
+    .optional(),
   /** When true, the agent executes destructive actions without pausing for confirmation. */
   autoApproveDestructive: z.boolean().optional(),
   /** Attachments (already uploaded to this chat) to feed into the turn. */

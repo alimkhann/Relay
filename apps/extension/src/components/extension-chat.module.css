@@ -305,14 +305,53 @@
 .actionItem a:hover {
   text-decoration: underline;
 }
+.memoryPreviewStack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+.memoryPreview {
+  width: 100%;
+  border: 1px solid var(--ec-line);
+  background: var(--ec-surface);
+  border-radius: 7px;
+  padding: 7px 8px;
+  color: var(--ec-ink);
+  white-space: pre-wrap;
+}
+.memoryPreviewDeleted {
+  border-color: color-mix(in srgb, #ef4444 48%, transparent);
+  background: color-mix(in srgb, #ef4444 6%, var(--ec-surface));
+}
+.memoryPreviewMeta {
+  margin-bottom: 3px;
+  color: var(--ec-muted);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.memoryPreviewStrike {
+  color: var(--ec-muted);
+  text-decoration: line-through;
+}
 
-/* Pending action — amber, like the web confirm card. */
+/* Pending/resolved action card uses the neutral Relay surface. */
 .pending {
-  border: 1px solid color-mix(in srgb, var(--ec-warn) 45%, transparent);
-  background: color-mix(in srgb, var(--ec-warn) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ec-ink) 16%, transparent);
+  background: var(--ec-soft);
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 11px;
+}
+.pendingFailed {
+  border-color: color-mix(in srgb, #ef4444 48%, transparent);
+  background: color-mix(in srgb, #ef4444 6%, var(--ec-soft));
+}
+.pendingError {
+  margin-top: 4px;
+  color: #ef4444;
 }
 .pendingActions {
   display: flex;

@@ -347,6 +347,28 @@ export class MemoryRepository {
     return toMemoryRow(row as Record<string, unknown>)
   }
 
+  async transfer(
+    id: string,
+    targetProjectId: string,
+    patch: { type?: MemoryItemType; metadata?: Record<string, unknown> },
+  ): Promise<MemoryItemRow> {
+    const rows = await this.provider.query(
+      `update memory_items
+       set project_id = $2,
+           type = coalesce($3, type),
+           metadata = coalesce($4::jsonb, metadata),
+           enrichment_status = 'pending',
+           enrichment_error = null,
+           updated_at = now()
+       where id = $1
+       returning ${MEMORY_COLS}`,
+      [id, targetProjectId, patch.type ?? null, patch.metadata ? JSON.stringify(patch.metadata) : null],
+    )
+    const row = rows[0]
+    if (!row) throw new Error("Memory item not found")
+    return toMemoryRow(row as Record<string, unknown>)
+  }
+
   async markPendingEnrichment(id: string): Promise<void> {
     await this.provider.query(
       `update memory_items

@@ -1,9 +1,9 @@
 "use client"
 
 import { motion } from "motion/react"
-import { CheckCircle2, PencilLine, Trash2, Undo2 } from "lucide-react"
+import { ArrowDown, CheckCircle2, PencilLine, Trash2, Undo2 } from "lucide-react"
 
-import type { AssistantActionItem, AssistantActionResult } from "@relay/shared"
+import type { AssistantActionItem, AssistantActionPreview, AssistantActionResult } from "@relay/shared"
 
 import { cn } from "@/lib/cn"
 
@@ -43,6 +43,51 @@ const ACTION_META: Record<
   updated: { Icon: PencilLine, tone: "text-amber-600 dark:text-amber-400", verb: "Updated" },
   deleted: { Icon: Trash2, tone: "text-[var(--relay-danger)]", verb: "Deleted" },
   read: { Icon: CheckCircle2, tone: "text-[var(--relay-muted)]", verb: "Read" }
+}
+
+function PreviewItem({
+  item,
+  deleted = false,
+}: {
+  item: AssistantActionItem
+  deleted?: boolean
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] px-3 py-2",
+        deleted && "border-[var(--relay-danger)]/50 bg-[var(--relay-danger)]/5",
+      )}
+    >
+      <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-[var(--relay-muted)]">
+        {item.type ? <span>{item.type}</span> : null}
+        {item.personalCategory ? <span>· {item.personalCategory}</span> : null}
+      </div>
+      <p
+        className={cn(
+          "mt-1 whitespace-pre-wrap text-xs text-[var(--relay-ink)]",
+          deleted && "text-[var(--relay-muted)] line-through",
+        )}
+      >
+        {item.content ?? item.label}
+      </p>
+    </div>
+  )
+}
+
+export function MemoryActionPreview({ preview }: { preview: AssistantActionPreview }) {
+  if (preview.before && preview.after) {
+    return (
+      <div className="space-y-1.5">
+        <PreviewItem item={preview.before} />
+        <ArrowDown className="mx-auto size-3.5 text-[var(--relay-muted)]" />
+        <PreviewItem item={preview.after} />
+      </div>
+    )
+  }
+  if (preview.before) return <PreviewItem item={preview.before} deleted />
+  if (preview.after) return <PreviewItem item={preview.after} />
+  return null
 }
 
 export function ActionResultCard({
@@ -127,6 +172,13 @@ export function ActionResultCard({
             )
           })}
         </ul>
+      ) : null}
+      {result.previews && result.previews.length > 0 ? (
+        <div className="mt-2 space-y-2">
+          {result.previews.slice(0, 3).map((preview, index) => (
+            <MemoryActionPreview key={index} preview={preview} />
+          ))}
+        </div>
       ) : null}
     </motion.div>
   )

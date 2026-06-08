@@ -1275,6 +1275,14 @@
   color: var(--ink-secondary);
 }
 
+@media (hover: none), (max-width: 420px) {
+  .contextActions,
+  .projectChevron,
+  .projectOptionDots {
+    opacity: 1;
+  }
+}
+
 .projectOptionNew {
   display: flex;
   align-items: center;

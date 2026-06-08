@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  type MemoryItemDto,
+  type MemoryMutationEnvelope,
   type MemoryItemType,
   type ProjectContextItem,
   type ProjectContextSection,
@@ -15,6 +17,7 @@ import {
   type BoardColumn,
 } from "@/features/memory/memory-column-board";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
+import { useOptimisticMemoryMutation } from "@/features/memory/use-optimistic-memory-mutation";
 
 /* ─── Types ─── */
 
@@ -73,6 +76,7 @@ export function GovernanceSection({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
+  const mutateMemory = useOptimisticMemoryMutation(projectId);
 
   const sections: ContextSection[] = visibleSectionsProp
     ? [...visibleSectionsProp]
@@ -101,15 +105,60 @@ export function GovernanceSection({
     });
   }
 
+  function runOptimisticMemoryMutation(
+    optimistic: MemoryMutationEnvelope,
+    request: () => Promise<MemoryMutationEnvelope>,
+    pendingMsg: string,
+    doneMsg: string,
+  ) {
+    startTransition(() => {
+      void (async () => {
+        setStatus(pendingMsg);
+        try {
+          await mutateMemory(optimistic, request);
+          setStatus(doneMsg);
+        } catch (cause) {
+          setStatus(cause instanceof Error ? cause.message : "Request failed.");
+        }
+      })();
+    });
+  }
+
+  function optimisticItem(
+    type: MemoryItemType,
+    content: string,
+    patch: Partial<MemoryItemDto> = {},
+  ): MemoryItemDto {
+    const now = new Date().toISOString();
+    return {
+      id: patch.id ?? `optimistic-${crypto.randomUUID()}`,
+      type,
+      title: patch.title ?? null,
+      content,
+      pinned: patch.pinned ?? false,
+      updatedAt: now,
+      metadata: patch.metadata,
+      sourceSurface: patch.sourceSurface ?? "web",
+      sourceUrl: patch.sourceUrl ?? null,
+      capturedAt: patch.capturedAt ?? now,
+      decayScore: patch.decayScore ?? 1,
+      lastReaffirmedAt: patch.lastReaffirmedAt ?? null,
+    };
+  }
+
   function removeItem(item: ContextItem) {
     if (item.source === "manual" && item.memoryId) {
-      runMutation(
+      const before = dashboard.memory.find((memory) => memory.id === item.memoryId);
+      if (!before) return;
+      runOptimisticMemoryMutation(
+        { operation: "delete", status: "optimistic", sourceProjectId: projectId, before },
         async () => {
           const res = await relayClientFetch(
             `/api/memory/${item.memoryId}`,
             { method: "DELETE" },
           );
           if (!res.ok) throw new Error("Removal failed.");
+          return { operation: "delete", status: "succeeded", sourceProjectId: projectId, before };
         },
         "Removing…",
         "Removed.",
@@ -142,7 +191,9 @@ export function GovernanceSection({
   function addManualContext(section: ContextSection, text: string) {
     const value = text.trim();
     if (!value) return;
-    runMutation(
+    const optimistic = optimisticItem(memoryTypeBySection[section], value);
+    runOptimisticMemoryMutation(
+      { operation: "create", status: "optimistic", sourceProjectId: projectId, after: optimistic },
       async () => {
         const res = await relayClientFetch(
           `/api/projects/${projectId}/memory`,
@@ -158,6 +209,8 @@ export function GovernanceSection({
           },
         );
         if (!res.ok) throw new Error("Creation failed.");
+        const { item } = (await res.json()) as { item: MemoryItemDto };
+        return { operation: "create", status: "succeeded", sourceProjectId: projectId, after: item };
       },
       "Adding…",
       "Added.",
@@ -168,7 +221,11 @@ export function GovernanceSection({
     const value = nextText.trim();
     if (!value) return;
     if (item.source === "manual" && item.memoryId) {
-      runMutation(
+      const before = dashboard.memory.find((memory) => memory.id === item.memoryId);
+      if (!before) return;
+      const after = optimisticItem(before.type, value, { ...before, id: before.id });
+      runOptimisticMemoryMutation(
+        { operation: "update", status: "optimistic", sourceProjectId: projectId, before, after },
         async () => {
           const res = await relayClientFetch(
             `/api/memory/${item.memoryId}`,
@@ -179,6 +236,8 @@ export function GovernanceSection({
             },
           );
           if (!res.ok) throw new Error("Update failed.");
+          const { item: saved } = (await res.json()) as { item: MemoryItemDto };
+          return { operation: "update", status: "succeeded", sourceProjectId: projectId, before, after: saved };
         },
         "Saving…",
         "Saved.",
@@ -227,7 +286,9 @@ export function GovernanceSection({
   function addMemoryItem(type: "note" | "requirement", text: string) {
     const value = text.trim();
     if (!value) return;
-    runMutation(
+    const optimistic = optimisticItem(type, value);
+    runOptimisticMemoryMutation(
+      { operation: "create", status: "optimistic", sourceProjectId: projectId, after: optimistic },
       async () => {
         const res = await relayClientFetch(`/api/projects/${projectId}/memory`, {
           method: "POST",
@@ -240,6 +301,8 @@ export function GovernanceSection({
           }),
         });
         if (!res.ok) throw new Error("Creation failed.");
+        const { item } = (await res.json()) as { item: MemoryItemDto };
+        return { operation: "create", status: "succeeded", sourceProjectId: projectId, after: item };
       },
       "Adding…",
       "Added.",
@@ -249,7 +312,11 @@ export function GovernanceSection({
   function editNote(memoryId: string, nextText: string) {
     const value = nextText.trim();
     if (!value) return;
-    runMutation(
+    const before = dashboard.memory.find((item) => item.id === memoryId);
+    if (!before) return;
+    const after = optimisticItem(before.type, value, { ...before, id: before.id });
+    runOptimisticMemoryMutation(
+      { operation: "update", status: "optimistic", sourceProjectId: projectId, before, after },
       async () => {
         const res = await relayClientFetch(`/api/memory/${memoryId}`, {
           method: "PATCH",
@@ -257,6 +324,8 @@ export function GovernanceSection({
           body: JSON.stringify({ content: value }),
         });
         if (!res.ok) throw new Error("Update failed.");
+        const { item } = (await res.json()) as { item: MemoryItemDto };
+        return { operation: "update", status: "succeeded", sourceProjectId: projectId, before, after: item };
       },
       "Saving…",
       "Saved.",
@@ -264,12 +333,16 @@ export function GovernanceSection({
   }
 
   function deleteNote(memoryId: string) {
-    runMutation(
+    const before = dashboard.memory.find((item) => item.id === memoryId);
+    if (!before) return;
+    runOptimisticMemoryMutation(
+      { operation: "delete", status: "optimistic", sourceProjectId: projectId, before },
       async () => {
         const res = await relayClientFetch(`/api/memory/${memoryId}`, {
           method: "DELETE",
         });
         if (!res.ok) throw new Error("Removal failed.");
+        return { operation: "delete", status: "succeeded", sourceProjectId: projectId, before };
       },
       "Removing…",
       "Removed.",

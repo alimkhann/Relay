@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import {
   ArrowUp,
+  ArrowDown,
   Check,
   CheckCircle2,
   ChevronLeft,
@@ -29,9 +30,11 @@ import {
   type LucideIcon
 } from "lucide-react"
 
-import type { AssistantActionItem, AssistantActionResult, AssistantAttachmentDto, UiMessage } from "@relay/shared"
+import type { AssistantActionItem, AssistantActionPreview, AssistantActionResult, AssistantAttachmentDto, UiMessage } from "@relay/shared"
 
+import type { RelayActiveProjectState } from "../messaging/contracts"
 import { MiniMarkdown } from "../utils/mini-markdown"
+import { getActiveTab } from "../utils/browser"
 import { getRelaySession } from "../storage/session"
 import styles from "./extension-chat.module.css"
 import { useExtensionChat, type ExtChatSummary } from "./use-extension-chat"
@@ -41,6 +44,34 @@ import { VoiceRing } from "./voice-ring"
 
 const MUTATION_CHANNEL = "relay-mutations"
 const MIN_H = 200
+
+function isActiveProjectState(value: unknown): value is RelayActiveProjectState {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      "projectId" in value &&
+      Array.isArray((value as RelayActiveProjectState).projectOptions),
+  )
+}
+
+async function resolveChatProjectId(): Promise<string | null> {
+  try {
+    const tab = await getActiveTab()
+    if (tab?.id) {
+      const response = await chrome.runtime.sendMessage({
+        type: "RELAY_GET_ACTIVE_PROJECT_STATE",
+        payload: { tabId: tab.id },
+      })
+      if (isActiveProjectState(response) && response.projectId) {
+        return response.projectId
+      }
+    }
+  } catch {
+    // Fall through to the session snapshot.
+  }
+  const session = await getRelaySession()
+  return session.assumedProjectId || session.projectId || null
+}
 const TALL_HEIGHT_RATIO = 0.7
 
 // Two visible modes: tall (default, drag-resizable) and full
@@ -111,6 +142,29 @@ const LIFECYCLE_PILL: Record<
   cooling: { label: "cooling", bg: "rgba(245,158,11,0.12)", fg: "#f59e0b" },
   archived: { label: "archived", bg: "rgba(113,113,122,0.16)", fg: "#a1a1aa" },
   forgotten: { label: "forgotten", bg: "rgba(244,63,94,0.12)", fg: "#f43f5e" },
+}
+
+function MemoryPreview({ preview }: { preview: AssistantActionPreview }) {
+  const render = (item: AssistantActionItem, deleted = false) => (
+    <div className={`${styles.memoryPreview} ${deleted ? styles.memoryPreviewDeleted : ""}`}>
+      <div className={styles.memoryPreviewMeta}>
+        {item.type ?? "memory"}{item.personalCategory ? ` · ${item.personalCategory}` : ""}
+      </div>
+      <div className={deleted ? styles.memoryPreviewStrike : ""}>{item.content ?? item.label}</div>
+    </div>
+  )
+  if (preview.before && preview.after) {
+    return (
+      <div className={styles.memoryPreviewStack}>
+        {render(preview.before)}
+        <ArrowDown size={12} />
+        {render(preview.after)}
+      </div>
+    )
+  }
+  if (preview.before) return render(preview.before, true)
+  if (preview.after) return render(preview.after)
+  return null
 }
 
 function ActionCard({
@@ -217,6 +271,9 @@ function ActionCard({
           })}
         </ul>
       ) : null}
+      {r.previews?.slice(0, 3).map((preview, index) => (
+        <MemoryPreview key={index} preview={preview} />
+      ))}
     </div>
   )
 }
@@ -479,24 +536,40 @@ function MessageRow({
       ))}
 
       {m.pending ? (
-        <div className={styles.pending}>
-          Allow agent to <strong>{m.pending.summary}</strong>?
-          <div className={styles.pendingActions}>
-            <button
-              type="button"
-              className={styles.confirmBtn}
-              onClick={() => m.pending && onConfirm(m.pending)}
-            >
-              Allow
-            </button>
-            <button
-              type="button"
-              className={styles.declineBtn}
-              onClick={() => m.pending && onDecline(m.pending)}
-            >
-              Decline
-            </button>
-          </div>
+        <div className={`${styles.pending} ${m.pending.status === "failed" ? styles.pendingFailed : ""}`}>
+          {m.pending.status === "declined"
+            ? "Declined "
+            : m.pending.status === "succeeded"
+              ? "Completed "
+              : m.pending.status === "failed"
+                ? "Failed "
+                : m.pending.status === "running"
+                  ? "Running "
+                  : "Allow agent to "}
+          <strong>{m.pending.summary}</strong>
+          {!m.pending.status || m.pending.status === "pending" ? "?" : ""}
+          {m.pending.error ? <div className={styles.pendingError}>{m.pending.error}</div> : null}
+          {m.pending.previews?.slice(0, 3).map((preview, index) => (
+            <MemoryPreview key={index} preview={preview} />
+          ))}
+          {!m.pending.status || m.pending.status === "pending" ? (
+            <div className={styles.pendingActions}>
+              <button
+                type="button"
+                className={styles.confirmBtn}
+                onClick={() => m.pending && onConfirm(m.pending)}
+              >
+                Allow
+              </button>
+              <button
+                type="button"
+                className={styles.declineBtn}
+                onClick={() => m.pending && onDecline(m.pending)}
+              >
+                Decline
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -606,7 +679,7 @@ export function ExtensionChat() {
     if (voice.status !== "denied") setVoiceDeniedDismissed(false)
   }, [voice.status])
 
-  const chat = useExtensionChat({
+  const chat = useExtensionChat(projectId, {
     onMutation: () => {
       // Bust dashboard cache so the panel re-fetches fresh contextPreview.
       void chrome.runtime.sendMessage({
@@ -656,11 +729,49 @@ export function ExtensionChat() {
     setHeight(Math.max(MIN_H, Math.round(window.innerHeight * TALL_HEIGHT_RATIO)))
   }, [mode])
 
-  // Only enable Save-to-Sources when the target is unambiguous (exactly one
-  // project) — never silently route an attachment into projects[0].
+  // Mirror the control panel's selected project so Ask Relay defaults to it.
   useEffect(() => {
-    void chat.listProjects().then((p) => setProjectId(p.length === 1 ? p[0]!.id : null))
-  }, [chat])
+    const syncProject = () => {
+      void resolveChatProjectId().then((id) => setProjectId(id))
+    }
+    syncProject()
+
+    const handleRuntimeMessage = (message: unknown) => {
+      if (
+        !message ||
+        typeof message !== "object" ||
+        !("type" in message) ||
+        message.type !== "RELAY_ACTIVE_PROJECT_STATE_CHANGED" ||
+        !("payload" in message)
+      ) {
+        return
+      }
+      const payload = (message as { payload?: { state?: RelayActiveProjectState } }).payload
+      if (payload?.state?.projectId) {
+        setProjectId(payload.state.projectId)
+        return
+      }
+      syncProject()
+    }
+
+    let channel: BroadcastChannel | null = null
+    try {
+      channel = new BroadcastChannel(MUTATION_CHANNEL)
+      channel.onmessage = syncProject
+    } catch {
+      /* BroadcastChannel unavailable */
+    }
+
+    const onMutated = () => syncProject()
+    window.addEventListener("relay:memory-mutated", onMutated)
+    chrome.runtime.onMessage.addListener(handleRuntimeMessage)
+
+    return () => {
+      channel?.close()
+      window.removeEventListener("relay:memory-mutated", onMutated)
+      chrome.runtime.onMessage.removeListener(handleRuntimeMessage)
+    }
+  }, [])
 
   useEffect(() => {
     if (!historyOpen) return

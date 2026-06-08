@@ -204,12 +204,12 @@ export function MemoryColumnBoard({
                           </div>
                           <ExpandableText text={row.text} />
                           {(row.onEdit || row.onDelete) && (
-                            <div className="mt-1.5 flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                            <div className="mt-1.5 flex items-center justify-end gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
                               {row.onEdit && (
                                 <button
                                   type="button"
                                   aria-label="Edit"
-                                  className="p-1 rounded text-[var(--relay-faint)] hover:text-[var(--relay-ink)] transition-colors"
+                                  className="rounded p-1.5 text-[var(--relay-faint)] transition-colors hover:text-[var(--relay-ink)] sm:p-1"
                                   onClick={() => {
                                     setEditingKey(row.key);
                                     setEditingText(row.text);
@@ -222,7 +222,7 @@ export function MemoryColumnBoard({
                                 <button
                                   type="button"
                                   aria-label="Delete"
-                                  className="p-1 rounded text-[var(--relay-faint)] hover:text-[var(--relay-danger)] transition-colors"
+                                  className="rounded p-1.5 text-[var(--relay-faint)] transition-colors hover:text-[var(--relay-danger)] sm:p-1"
                                   onClick={() => row.onDelete?.()}
                                 >
                                   <Trash2 className="h-3 w-3" />

@@ -44,6 +44,7 @@ import {
 import { resolveProjectSources } from "@/server/services/source-resolver-service"
 import { getSyncMarkForUser, recordSyncMarkForUser } from "@/server/services/sync-mark-service"
 import { flushWorkSession } from "@/server/services/work-session-flush-service"
+import { transferMemoryItem } from "@/server/services/memory-service"
 
 /**
  * Server-side MCP client that calls repositories and services directly
@@ -417,11 +418,29 @@ export class RelayHttpMcpClient {
       }
     } else if (action === "update") {
       for (const memoryId of memoryIds) {
+        const existing = await repositories.memory.getById(memoryId)
+        const metadata =
+          args.personalCategory === undefined
+            ? undefined
+            : {
+                ...(existing?.metadata ?? {}),
+                personalCategory: String(args.personalCategory),
+              }
         await repositories.memory.update(memoryId, {
           content: args.content as string | undefined,
           title: args.title as string | undefined,
           tags: args.tags as string[] | undefined,
+          type: args.type as never,
+          metadata,
         })
+      }
+    } else if (action === "transfer") {
+      for (const memoryId of memoryIds) {
+        await transferMemoryItem(this.viewer.userId, memoryId, {
+          targetProjectId: String(args.targetProjectId),
+          type: args.type,
+          personalCategory: args.personalCategory,
+        }, this.viewer.mode === "mcp" ? this.viewer.projectId : null)
       }
     }
   }

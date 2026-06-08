@@ -74,7 +74,7 @@ async function api(path: string, init?: RequestInit) {
   })
 }
 
-export function useExtensionChat(opts?: {
+export function useExtensionChat(projectId: string | null, opts?: {
   onMutation?: (r: AssistantActionResult) => void
   onChatChanged?: () => void
 }) {
@@ -198,6 +198,7 @@ export function useExtensionChat(opts?: {
           body: JSON.stringify({
             ...body,
             surface: "extension",
+            projectId,
             chatId: chatIdRef.current,
             pageContext,
             autoApproveDestructive: autoApproveRef.current || undefined
@@ -247,6 +248,13 @@ export function useExtensionChat(opts?: {
                 pending: action,
                 content: m.content || `I can ${action.summary}. Confirm to proceed.`
               }))
+            } else if (ev.type === "action_update") {
+              const action = ev.action
+              patch((m) => ({
+                ...m,
+                pending: action,
+                content: action.status === "pending" ? m.content : ""
+              }))
             } else if (ev.type === "error") {
               setError(ev.message)
             } else if (ev.type === "done") {
@@ -276,7 +284,7 @@ export function useExtensionChat(opts?: {
         }
       }
     },
-    [refresh, attachments]
+    [refresh, attachments, projectId]
   )
 
   const stop = useCallback(() => abortRef.current?.abort(), [])
@@ -346,7 +354,11 @@ export function useExtensionChat(opts?: {
     (action: AssistantPendingAction) => {
       if (streaming) return
       void runStream(
-        { message: `Confirmed: ${action.summary}`, confirmActionId: action.id, parentId: leafId },
+        {
+          message: `Allow: ${action.summary}`,
+          actionDecision: { actionId: action.id, decision: "allow" },
+          parentId: leafId
+        },
         null,
         leafId
       )
@@ -358,7 +370,11 @@ export function useExtensionChat(opts?: {
     (action: AssistantPendingAction) => {
       if (streaming) return
       void runStream(
-        { message: `Declined: ${action.summary}`, declineActionId: action.id, parentId: leafId },
+        {
+          message: `Decline: ${action.summary}`,
+          actionDecision: { actionId: action.id, decision: "decline" },
+          parentId: leafId
+        },
         null,
         leafId
       )
@@ -376,7 +392,7 @@ export function useExtensionChat(opts?: {
       const res = await api("/api/assistant/chats", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ surface: "extension" })
+        body: JSON.stringify({ surface: "extension", projectId })
       })
       if (!res.ok) return null
       const data = (await res.json()) as { chat: { id: string } }
@@ -386,7 +402,7 @@ export function useExtensionChat(opts?: {
     } catch {
       return null
     }
-  }, [])
+  }, [projectId])
 
   const addFiles = useCallback(
     async (files: File[]) => {

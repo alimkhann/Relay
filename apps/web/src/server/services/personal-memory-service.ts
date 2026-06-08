@@ -30,7 +30,7 @@ import {
 
 import { createRepositoryBundle } from "@relay/db"
 
-import { invalidateProjectCache } from "@/server/cache/invalidation"
+import { invalidateProjectMemoryCache } from "@/server/cache/invalidation"
 import { logServerEvent } from "@/server/logging/logger"
 import {
   drainTinyMemoryPipelineBatch,
@@ -225,6 +225,14 @@ export interface PersonalRoutingResult {
   unsure: number
   /** High-confidence facts that already existed (ADD/NOOP -> noop). */
   duplicate: number
+  /** Newly written facts, included so callers can render truthful result cards. */
+  createdItems?: Array<{
+    id: string
+    content: string
+    type: string
+    projectId: string | null
+    metadata: Record<string, unknown>
+  }>
 }
 
 function emptyRoutingResult(personalProjectId: string | null): PersonalRoutingResult {
@@ -381,9 +389,18 @@ async function writePersonalFacts(
     } catch (error) {
       console.warn("[personal-memory] enqueue jobs failed:", error instanceof Error ? error.message : error)
     }
-    invalidateProjectCache(userId, personalProjectId)
+    invalidateProjectMemoryCache(userId, personalProjectId)
   }
-  return result
+  return {
+    ...result,
+    createdItems: createdItems.map((item) => ({
+      id: item.id,
+      content: item.content,
+      type: item.type,
+      projectId: item.projectId,
+      metadata: item.metadata,
+    })),
+  }
 }
 
 // ── Derived "About you" personal state ───────────────────────────────────────
@@ -476,7 +493,7 @@ export async function regeneratePersonalState(
     })
     // Bust the cached dashboard read-model so the "About you" card reflects the
     // new state immediately (mirrors the project digest pipeline).
-    invalidateProjectCache(userId, personal.id)
+    invalidateProjectMemoryCache(userId, personal.id)
   } catch (error) {
     console.warn(
       "[personal-memory] state regeneration failed:",

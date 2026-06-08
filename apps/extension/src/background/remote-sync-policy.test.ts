@@ -4,6 +4,7 @@ import {
   DASHBOARD_CACHE_TTL_MS,
   SESSION_CACHE_TTL_MS,
   shouldSyncMissingRemoteState,
+  shouldSyncProjectDashboardOnly,
   TAB_REMOTE_SYNC_FRESH_MS,
 } from "./remote-sync-policy"
 
@@ -44,6 +45,28 @@ describe("background remote sync policy", () => {
         lastSuccessfulSyncAt: null,
       }),
     ).toBe(true)
+  })
+
+  it("syncs unsupported tabs when a selected project exists but dashboard state is missing", () => {
+    expect(
+      shouldSyncProjectDashboardOnly({
+        pageSupported: false,
+        connected: true,
+        hasProjectId: true,
+        remoteStatus: "unavailable",
+        lastSuccessfulSyncAt: null,
+      }),
+    ).toBe(true)
+
+    expect(
+      shouldSyncProjectDashboardOnly({
+        pageSupported: false,
+        connected: true,
+        hasProjectId: false,
+        remoteStatus: "unavailable",
+        lastSuccessfulSyncAt: null,
+      }),
+    ).toBe(false)
   })
 
   it("keeps session and dashboard data fresh for thirty minutes", () => {

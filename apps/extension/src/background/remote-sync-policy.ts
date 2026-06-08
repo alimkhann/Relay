@@ -14,3 +14,18 @@ export function shouldSyncMissingRemoteState(input: {
     (input.remoteStatus === "unavailable" || !input.lastSuccessfulSyncAt)
   )
 }
+
+export function shouldSyncProjectDashboardOnly(input: {
+  pageSupported: boolean
+  connected: boolean
+  hasProjectId: boolean
+  remoteStatus: RelayRemoteStatus
+  lastSuccessfulSyncAt: string | null
+}) {
+  return (
+    !input.pageSupported &&
+    input.connected &&
+    input.hasProjectId &&
+    (input.remoteStatus === "unavailable" || !input.lastSuccessfulSyncAt)
+  )
+}

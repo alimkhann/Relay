@@ -7,7 +7,10 @@ import { getRetargetableAssociationProject, hydrateTabStateFromSession } from ".
 import { createEmptyActiveProjectState } from "./tab-state";
 import { buildAssociationKey } from "./routing";
 import { sessionCache, tabStates } from "./state";
-import { shouldSyncMissingRemoteState } from "./remote-sync-policy";
+import {
+  shouldSyncMissingRemoteState,
+  shouldSyncProjectDashboardOnly,
+} from "./remote-sync-policy";
 import { invalidateProjectCache, loadSessionData } from "./session-cache";
 import { readErrorResponse } from "./bg-utils";
 import { recordBackgroundTelemetry } from "./telemetry";
@@ -191,6 +194,21 @@ chrome.runtime.onMessage.addListener(
             void deps.syncTabRemoteState(tabId, {
               force: true,
               reason: "active_state_request",
+            });
+          } else if (
+            shouldSyncProjectDashboardOnly({
+              pageSupported: state.page.supported,
+              connected: session.connected,
+              hasProjectId: Boolean(
+                state.manualProjectId || session.assumedProjectId || session.projectId,
+              ),
+              remoteStatus: state.remoteStatus,
+              lastSuccessfulSyncAt: state.lastSuccessfulSyncAt,
+            })
+          ) {
+            void deps.syncTabRemoteState(tabId, {
+              force: true,
+              reason: "project_dashboard_request",
             });
           }
           return;

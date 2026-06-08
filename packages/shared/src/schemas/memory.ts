@@ -64,3 +64,9 @@ export const updateMemoryItemSchema = z.object({
   (v) => v.lifecycleState !== "forgotten" || v.confirm === true,
   { message: "Forgetting a memory requires confirm:true.", path: ["confirm"] },
 )
+
+export const transferMemoryItemSchema = z.object({
+  targetProjectId: z.string().min(1),
+  type: z.enum(["note", "decision", "constraint", "requirement", "task", "artifact"]).optional(),
+  personalCategory: z.string().min(1).nullable().optional(),
+})

@@ -379,7 +379,7 @@ export function MemoryPageContent({
             />
           </FadeIn>
           <FadeIn delay={0.1}>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1">
               {([
                 { key: "all" as const, label: "All", count: dashboard.memory.length },
                 ...personalCategories.map((category) => ({
@@ -404,7 +404,7 @@ export function MemoryPageContent({
                       });
                     }}
                     className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium transition-colors",
+                      "inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium transition-colors",
                       personalTab === tab.key
                         ? "bg-[var(--relay-ink)] text-[var(--relay-bg)]"
                         : "text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]",
@@ -440,7 +440,7 @@ export function MemoryPageContent({
       {/* Tab pills (project dashboards) */}
       {!isPersonal && (
       <FadeIn delay={0.1}>
-        <div className="flex items-center gap-2">
+        <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1">
           {([
             { key: "all" as const, label: "All", count: tabCounts.all },
             { key: "decisions" as const, label: "Decisions", count: tabCounts.decisions },
@@ -466,7 +466,7 @@ export function MemoryPageContent({
                 });
               }}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium transition-colors",
+                "inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium transition-colors",
                 activeTab === tab.key
                   ? "bg-[var(--relay-ink)] text-[var(--relay-bg)]"
                   : "text-[var(--relay-muted)] hover:bg-[var(--relay-soft)] hover:text-[var(--relay-ink)]",

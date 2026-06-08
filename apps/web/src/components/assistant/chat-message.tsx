@@ -27,7 +27,7 @@ import type {
 import { Markdown } from "@/components/markdown"
 import { cn } from "@/lib/cn"
 
-import { ActionResultCard } from "./action-result-card"
+import { ActionResultCard, MemoryActionPreview } from "./action-result-card"
 import type { UiMessage } from "./use-assistant-chat"
 
 function IconButton({
@@ -288,33 +288,61 @@ export function ChatMessage({
         ) : null}
 
         {message.pending ? (
-          <div className="rounded-[var(--relay-radius-lg)] border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+          <div
+            className={cn(
+              "rounded-[var(--relay-radius-lg)] border border-[var(--relay-line)] bg-[var(--relay-soft)]/60 p-3 text-sm",
+              message.pending.status === "failed" &&
+                "border-[var(--relay-danger)]/50 bg-[var(--relay-danger)]/5"
+            )}
+          >
             <p className="text-[var(--relay-ink)]">
-              Allow agent to <span className="font-semibold">{message.pending.summary}</span>?
+              {message.pending.status === "declined"
+                ? "Declined"
+                : message.pending.status === "succeeded"
+                  ? "Completed"
+                  : message.pending.status === "failed"
+                    ? "Failed"
+                    : message.pending.status === "running"
+                      ? "Running"
+                      : "Allow agent to"}{" "}
+              <span className="font-semibold">{message.pending.summary}</span>
+              {!message.pending.status || message.pending.status === "pending" ? "?" : ""}
             </p>
-            <div className="mt-2 flex gap-2">
-              <button
-                type="button"
-                onClick={() => message.pending && onConfirm(message.pending)}
-                className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-accent-blue)] px-3 py-1.5 text-xs font-semibold text-[var(--relay-accent-blue-ink)] hover:bg-[var(--relay-accent-blue-hover)]"
-              >
-                Allow
-              </button>
-              <button
-                type="button"
-                onClick={() => message.pending && onDecline(message.pending)}
-                className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-3 py-1.5 text-xs text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
-              >
-                Decline
-              </button>
-            </div>
+            {message.pending.error ? (
+              <p className="mt-1 text-xs text-[var(--relay-danger)]">{message.pending.error}</p>
+            ) : null}
+            {message.pending.previews && message.pending.previews.length > 0 ? (
+              <div className="mt-2 space-y-2">
+                {message.pending.previews.slice(0, 3).map((preview, index) => (
+                  <MemoryActionPreview key={index} preview={preview} />
+                ))}
+              </div>
+            ) : null}
+            {!message.pending.status || message.pending.status === "pending" ? (
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => message.pending && onConfirm(message.pending)}
+                  className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-accent-blue)] px-3 py-1.5 text-xs font-semibold text-[var(--relay-accent-blue-ink)] hover:bg-[var(--relay-accent-blue-hover)]"
+                >
+                  Allow
+                </button>
+                <button
+                  type="button"
+                  onClick={() => message.pending && onDecline(message.pending)}
+                  className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-3 py-1.5 text-xs text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
+                >
+                  Decline
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
         {!editing && !message.streaming ? (
           <div
             className={cn(
-              "flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100",
+              "flex items-center gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100",
               isUser ? "flex-row-reverse" : "flex-row"
             )}
           >

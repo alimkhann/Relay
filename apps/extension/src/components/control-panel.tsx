@@ -2041,6 +2041,22 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       `Saving ${sectionLabels[section].toLowerCase()}…`,
       `${sectionLabels[section]} updated.`,
       async () => {
+        const optimisticKey = `opt-${crypto.randomUUID()}`;
+        const optimisticItem: ContextItem = {
+          key: optimisticKey,
+          text: content,
+          source: "manual",
+          memoryId: null,
+          sourceSurface: "manual",
+          capturedAt: new Date().toISOString(),
+        };
+        setActiveState((current) => ({
+          ...current,
+          contextPreview: {
+            ...current.contextPreview,
+            [section]: [optimisticItem, ...current.contextPreview[section]],
+          },
+        }));
         const response = await relayFetch(endpoint, {
           method: "POST",
           body: JSON.stringify({
@@ -2052,16 +2068,32 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         });
 
         if (!response.ok) {
+          setActiveState((current) => ({
+            ...current,
+            contextPreview: {
+              ...current.contextPreview,
+              [section]: current.contextPreview[section].filter((item) => item.key !== optimisticKey),
+            },
+          }));
           throw new Error(await readErrorMessage(response, "Context item creation failed."));
         }
-
+        const { item } = (await response.json()) as {
+          item: { id: string; content: string; sourceSurface?: "manual"; capturedAt?: string | null; updatedAt: string };
+        };
         setActiveState((current) => ({
           ...current,
           contextPreview: {
             ...current.contextPreview,
             [section]: [
-              ...current.contextPreview[section],
-              { key: `opt-${Date.now()}`, text: content, source: "manual" as const },
+              {
+                key: `manual:${item.id}`,
+                text: item.content,
+                source: "manual" as const,
+                memoryId: item.id,
+                sourceSurface: item.sourceSurface ?? "manual",
+                capturedAt: item.capturedAt ?? item.updatedAt,
+              },
+              ...current.contextPreview[section].filter((entry) => entry.key !== optimisticKey),
             ],
           },
         }));
@@ -2078,11 +2110,25 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       "Updating project context…",
       "Project context updated.",
       async () => {
+        setActiveState((current) => ({
+          ...current,
+          contextPreview: {
+            ...current.contextPreview,
+            [section]: current.contextPreview[section].filter((entry) => entry.key !== item.key),
+          },
+        }));
         if (item.source === "manual" && item.memoryId) {
           const response = await relayFetch(`/api/memory/${item.memoryId}`, {
             method: "DELETE",
           });
           if (!response.ok) {
+            setActiveState((current) => ({
+              ...current,
+              contextPreview: {
+                ...current.contextPreview,
+                [section]: [item, ...current.contextPreview[section]],
+              },
+            }));
             throw new Error(await readErrorMessage(response, "Manual context removal failed."));
           }
           return;
@@ -2110,6 +2156,26 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       : `/api/projects/${projectId}/memory`;
 
     await runBusyAction("Saving note…", "Note saved.", async () => {
+      const optimisticKey = `opt-${crypto.randomUUID()}`;
+      const capturedAt = new Date().toISOString();
+      setActiveState((current) => ({
+        ...current,
+        contextPreview: {
+          ...current.contextPreview,
+          notes: [
+            {
+              key: optimisticKey,
+              text: content,
+              memoryId: "",
+              sourceUrl: null,
+              hostname: null,
+              sourceSurface: "manual",
+              capturedAt,
+            },
+            ...current.contextPreview.notes,
+          ],
+        },
+      }));
       const response = await relayFetch(endpoint, {
         method: "POST",
         body: JSON.stringify({
@@ -2121,22 +2187,33 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         }),
       });
       if (!response.ok) {
+        setActiveState((current) => ({
+          ...current,
+          contextPreview: {
+            ...current.contextPreview,
+            notes: current.contextPreview.notes.filter((item) => item.key !== optimisticKey),
+          },
+        }));
         throw new Error(await readErrorMessage(response, "Note creation failed."));
       }
+      const { item } = (await response.json()) as {
+        item: { id: string; content: string; sourceSurface?: "manual"; capturedAt?: string | null; updatedAt: string };
+      };
       setActiveState((current) => ({
         ...current,
         contextPreview: {
           ...current.contextPreview,
           notes: [
-            ...current.contextPreview.notes,
             {
-              key: `opt-${Date.now()}`,
-              text: content,
-              memoryId: "",
+              key: `note:${item.id}`,
+              text: item.content,
+              memoryId: item.id,
               sourceUrl: null,
               hostname: null,
-              capturedAt: new Date().toISOString(),
+              sourceSurface: item.sourceSurface ?? "manual",
+              capturedAt: item.capturedAt ?? item.updatedAt,
             },
+            ...current.contextPreview.notes.filter((entry) => entry.key !== optimisticKey),
           ],
         },
       }));
@@ -2197,11 +2274,32 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     const nextText = editingText.trim();
     if (!nextText) return;
     await runBusyAction("Saving note…", "Note updated.", async () => {
+      const previous = activeState.contextPreview.notes.find((note) => note.memoryId === memoryId);
+      setActiveState((current) => ({
+        ...current,
+        contextPreview: {
+          ...current.contextPreview,
+          notes: current.contextPreview.notes.map((note) =>
+            note.memoryId === memoryId ? { ...note, text: nextText, capturedAt: new Date().toISOString() } : note,
+          ),
+        },
+      }));
       const response = await relayFetch(`/api/memory/${memoryId}`, {
         method: "PATCH",
         body: JSON.stringify({ content: nextText }),
       });
       if (!response.ok) {
+        if (previous) {
+          setActiveState((current) => ({
+            ...current,
+            contextPreview: {
+              ...current.contextPreview,
+              notes: current.contextPreview.notes.map((note) =>
+                note.memoryId === memoryId ? previous : note,
+              ),
+            },
+          }));
+        }
         throw new Error(await readErrorMessage(response, "Note update failed."));
       }
       setEditingKey(null);
@@ -2214,10 +2312,27 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       "Removing note…",
       "Note removed.",
       async () => {
+        const previous = activeState.contextPreview.notes.find((note) => note.memoryId === memoryId);
+        setActiveState((current) => ({
+          ...current,
+          contextPreview: {
+            ...current.contextPreview,
+            notes: current.contextPreview.notes.filter((note) => note.memoryId !== memoryId),
+          },
+        }));
         const response = await relayFetch(`/api/memory/${memoryId}`, {
           method: "DELETE",
         });
         if (!response.ok && response.status !== 204) {
+          if (previous) {
+            setActiveState((current) => ({
+              ...current,
+              contextPreview: {
+                ...current.contextPreview,
+                notes: [previous, ...current.contextPreview.notes],
+              },
+            }));
+          }
           throw new Error(await readErrorMessage(response, "Note removal failed."));
         }
       },
@@ -3721,7 +3836,9 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                       <div className={styles.contextSectionHeader}>
                         <span className={styles.contextLabel}>
                           {sectionLabels[section]}
-                          <span style={{ marginLeft: 4, opacity: 0.5, fontVariantNumeric: "tabular-nums" }}>{items.length}</span>
+                          <span className={styles.contextTabCount} style={{ marginLeft: 6 }}>
+                            {items.length}
+                          </span>
                         </span>
                         <button
                           className={styles.ghostButton}

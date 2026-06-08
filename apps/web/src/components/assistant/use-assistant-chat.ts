@@ -262,6 +262,13 @@ export function useAssistantChat(
                   content: m.content || `I can ${event.action.summary}. Confirm to proceed.`
                 }))
                 break
+              case "action_update":
+                patch((m) => ({
+                  ...m,
+                  pending: event.action,
+                  content: event.action.status === "pending" ? m.content : ""
+                }))
+                break
               case "pending_continuation":
                 patch((m) => ({ ...m, pendingContinuation: { reason: event.reason } }))
                 break
@@ -633,7 +640,11 @@ export function useAssistantChat(
     (action: AssistantPendingAction) => {
       if (streaming) return
       void runStream(
-        { message: `Confirmed: ${action.summary}`, confirmActionId: action.id, parentId: leafId },
+        {
+          message: `Allow: ${action.summary}`,
+          actionDecision: { actionId: action.id, decision: "allow" },
+          parentId: leafId
+        },
         null,
         leafId
       )
@@ -645,7 +656,11 @@ export function useAssistantChat(
     (action: AssistantPendingAction) => {
       if (streaming) return
       void runStream(
-        { message: `Declined: ${action.summary}`, declineActionId: action.id, parentId: leafId },
+        {
+          message: `Decline: ${action.summary}`,
+          actionDecision: { actionId: action.id, decision: "decline" },
+          parentId: leafId
+        },
         null,
         leafId
       )

@@ -7,10 +7,11 @@ import {
   DECAY_VISIBILITY_THRESHOLD,
   LIFECYCLE_HALF_LIFE_DAYS,
   updateMemoryItemSchema,
+  transferMemoryItemSchema,
 } from "@relay/shared"
 
 import { embedMemoryItems, generateEmbedding } from "./embedding-service"
-import { invalidateProjectCache } from "@/server/cache/invalidation"
+import { invalidateProjectMemoryCache } from "@/server/cache/invalidation"
 import { extractAndLinkEntities } from "./entity-extraction-service"
 import {
   drainTinyMemoryPipelineBatch,
@@ -158,7 +159,7 @@ export async function createMemoryItem(userId: string, input: unknown) {
   } catch (error) {
     console.warn("[memory-service] enqueue enrichment failed:", error instanceof Error ? error.message : error)
   }
-  if (item.projectId) invalidateProjectCache(userId, item.projectId)
+  if (item.projectId) invalidateProjectMemoryCache(userId, item.projectId)
 
   return item
 }
@@ -198,7 +199,7 @@ export async function createMemoryItemBatch(userId: string, projectId: string, i
   }
   for (const projectId of projectIds) {
     await markProjectHygieneDue(projectId, undefined, repositories).catch(() => {})
-    invalidateProjectCache(userId, projectId)
+    invalidateProjectMemoryCache(userId, projectId)
   }
 
   return created
@@ -466,7 +467,7 @@ export async function updateMemoryItem(userId: string, memoryId: string, input: 
 
   if (item.projectId) {
     await markProjectHygieneDue(item.projectId, undefined, repositories).catch(() => {})
-    invalidateProjectCache(userId, item.projectId)
+    invalidateProjectMemoryCache(userId, item.projectId)
   }
 
   return item
@@ -490,6 +491,56 @@ export async function deleteMemoryItem(userId: string, memoryId: string, project
       payload: { type: existing.type, reason: "deleted" },
     })
     await markProjectHygieneDue(existing.projectId, undefined, repositories).catch(() => {})
-    invalidateProjectCache(userId, existing.projectId)
+    invalidateProjectMemoryCache(userId, existing.projectId)
   }
+}
+
+export async function transferMemoryItem(
+  userId: string,
+  memoryId: string,
+  input: unknown,
+  sourceProjectId?: string | null,
+) {
+  const repositories = createRepositoryBundle(userId)
+  const parsed = transferMemoryItemSchema.parse(input)
+  const existing = await repositories.memory.getById(memoryId)
+  if (!existing?.projectId) throw new Error("Memory item not found.")
+  if (sourceProjectId && existing.projectId !== sourceProjectId) {
+    throw new Error("This MCP token cannot transfer memory from another project.")
+  }
+  const target = await repositories.projects.getById(parsed.targetProjectId)
+  if (!target) throw new Error("Target project not found.")
+
+  const metadata: Record<string, unknown> = {
+    ...(existing.metadata ?? {}),
+    ...(parsed.personalCategory === undefined
+      ? {}
+      : parsed.personalCategory === null
+        ? { personalCategory: undefined }
+        : { personalCategory: parsed.personalCategory }),
+  }
+  if (parsed.personalCategory === null) delete metadata.personalCategory
+  if (target.kind !== "personal" && parsed.personalCategory === undefined) {
+    delete metadata.personalCategory
+  }
+
+  const item = await repositories.memory.transfer(memoryId, parsed.targetProjectId, {
+    type: parsed.type,
+    metadata,
+  })
+  await Promise.all([
+    repositories.projectState.markDirty(existing.projectId),
+    repositories.projectState.markDirty(parsed.targetProjectId),
+    enqueueMemoryPipelineJob({
+      jobType: "enrich_memory_item",
+      userId,
+      projectId: item.projectId,
+      memoryItemId: item.id,
+      repositories,
+    }),
+  ])
+  void drainTinyMemoryPipelineBatch()
+  invalidateProjectMemoryCache(userId, existing.projectId)
+  invalidateProjectMemoryCache(userId, parsed.targetProjectId)
+  return { before: existing, item }
 }

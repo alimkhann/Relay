@@ -65,7 +65,7 @@ export function buildProjectContextItems(
     (item) => item.type === memoryTypeBySection[section],
   )
 
-  return effectiveItems
+  const effective = effectiveItems
     .map((text) => {
       const normalizedText = normalizeText(text).toLowerCase()
       const manualMatch = manualItems.find(
@@ -104,6 +104,24 @@ export function buildProjectContextItems(
           (candidate) => normalizeText(candidate.text).toLowerCase() === normalizeText(item.text).toLowerCase(),
         ) === index,
     )
+
+  const effectiveText = new Set(
+    effective.map((item) => normalizeText(item.text).toLowerCase()),
+  )
+  const unreconciledManual = manualItems
+    .filter((item) => !effectiveText.has(normalizeText(item.content).toLowerCase()))
+    .sort((a, b) => (b.capturedAt ?? b.updatedAt).localeCompare(a.capturedAt ?? a.updatedAt))
+    .map((item) => ({
+      key: `manual:${item.id}`,
+      section,
+      text: item.content,
+      source: "manual" as const,
+      memoryId: item.id,
+      sourceSurface: item.sourceSurface,
+      capturedAt: item.capturedAt ?? item.updatedAt,
+    }))
+
+  return [...unreconciledManual, ...effective]
 }
 
 export function buildProjectContextPreview(dashboard: ProjectDashboardDto) {

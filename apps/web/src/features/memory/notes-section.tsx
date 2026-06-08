@@ -165,7 +165,7 @@ function NoteCard({ note, onDelete, isRemoving }: NoteCardProps) {
         onClick={onDelete}
         disabled={isRemoving}
         aria-label="Delete note"
-        className="absolute right-3 top-3 p-1 rounded text-[var(--relay-faint)] opacity-0 group-hover:opacity-100 hover:text-[var(--relay-danger)] transition-all disabled:cursor-not-allowed"
+        className="absolute right-3 top-3 rounded p-1.5 text-[var(--relay-faint)] opacity-100 transition-all hover:text-[var(--relay-danger)] disabled:cursor-not-allowed sm:p-1 sm:opacity-0 sm:group-hover:opacity-100"
       >
         <Trash2 className="h-3 w-3" />
       </button>

@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 
-import type { MemoryItemDto, PersonalCategory } from "@relay/shared";
+import type { MemoryItemDto, MemoryMutationEnvelope, PersonalCategory } from "@relay/shared";
 import {
   PERSONAL_CATEGORY_META,
   personalCategories,
@@ -16,6 +15,7 @@ import {
   type BoardColumn,
 } from "@/features/memory/memory-column-board";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
+import { useOptimisticMemoryMutation } from "@/features/memory/use-optimistic-memory-mutation";
 
 /**
  * Personal memory board: one column per Folk category (all seven, even empty),
@@ -34,12 +34,13 @@ export function PersonalCategoryBoard({
   /** Subset of categories to render as columns (defaults to all seven). */
   categories?: readonly PersonalCategory[];
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
+  const mutateMemory = useOptimisticMemoryMutation(projectId);
 
-  function runMutation(
-    action: () => Promise<void>,
+  function runOptimistic(
+    optimistic: MemoryMutationEnvelope,
+    request: () => Promise<MemoryMutationEnvelope>,
     pendingMsg: string,
     doneMsg: string,
   ) {
@@ -47,9 +48,8 @@ export function PersonalCategoryBoard({
       void (async () => {
         setStatus(pendingMsg);
         try {
-          await action();
+          await mutateMemory(optimistic, request);
           setStatus(doneMsg);
-          router.refresh();
         } catch (cause) {
           setStatus(cause instanceof Error ? cause.message : "Request failed.");
         }
@@ -60,7 +60,23 @@ export function PersonalCategoryBoard({
   function addNote(category: PersonalCategory, text: string) {
     const value = text.trim();
     if (!value) return;
-    runMutation(
+    const now = new Date().toISOString();
+    const optimistic: MemoryItemDto = {
+      id: `optimistic-${crypto.randomUUID()}`,
+      type: "note",
+      title: null,
+      content: value,
+      pinned: false,
+      updatedAt: now,
+      metadata: { personalCategory: category },
+      sourceSurface: "web",
+      sourceUrl: null,
+      capturedAt: now,
+      decayScore: 1,
+      lastReaffirmedAt: null,
+    };
+    runOptimistic(
+      { operation: "create", status: "optimistic", sourceProjectId: projectId, after: optimistic },
       async () => {
         const res = await relayClientFetch(`/api/projects/${projectId}/memory`, {
           method: "POST",
@@ -74,6 +90,8 @@ export function PersonalCategoryBoard({
           }),
         });
         if (!res.ok) throw new Error("Creation failed.");
+        const { item } = (await res.json()) as { item: MemoryItemDto };
+        return { operation: "create", status: "succeeded", sourceProjectId: projectId, after: item };
       },
       "Adding…",
       "Added.",
@@ -83,7 +101,9 @@ export function PersonalCategoryBoard({
   function editNote(item: MemoryItemDto, nextText: string) {
     const value = nextText.trim();
     if (!value) return;
-    runMutation(
+    const after = { ...item, content: value, updatedAt: new Date().toISOString() };
+    runOptimistic(
+      { operation: "update", status: "optimistic", sourceProjectId: projectId, before: item, after },
       async () => {
         const res = await relayClientFetch(`/api/memory/${item.id}`, {
           method: "PATCH",
@@ -91,6 +111,8 @@ export function PersonalCategoryBoard({
           body: JSON.stringify({ content: value }),
         });
         if (!res.ok) throw new Error("Update failed.");
+        const { item: saved } = (await res.json()) as { item: MemoryItemDto };
+        return { operation: "update", status: "succeeded", sourceProjectId: projectId, before: item, after: saved };
       },
       "Saving…",
       "Saved.",
@@ -98,12 +120,14 @@ export function PersonalCategoryBoard({
   }
 
   function deleteNote(item: MemoryItemDto) {
-    runMutation(
+    runOptimistic(
+      { operation: "delete", status: "optimistic", sourceProjectId: projectId, before: item },
       async () => {
         const res = await relayClientFetch(`/api/memory/${item.id}`, {
           method: "DELETE",
         });
         if (!res.ok) throw new Error("Removal failed.");
+        return { operation: "delete", status: "succeeded", sourceProjectId: projectId, before: item };
       },
       "Removing…",
       "Removed.",

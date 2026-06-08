@@ -26,7 +26,7 @@ export const POST = withApiAuth(async (request: Request) => {
   await assertAssistantTokenBudget(viewer.userId)
 
   // A confirmation continues an existing turn and is not a new billable message.
-  if (!input.confirmActionId) {
+  if (!input.confirmActionId && input.actionDecision?.decision !== "allow") {
     await consumeAssistantMessageQuota(viewer.userId)
   }
 
