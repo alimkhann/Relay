@@ -1,24 +1,53 @@
-# Next-session handoff — review → fixes → cutover
+# Next-session handoff — Phase 3 complete; next: graph → cutover tooling → rollout
 
-Branch `feat/memory-v2-architecture` (PR #35, HEAD `d339f81`, pushed).
+Branch `feat/memory-v2-architecture` (PR #35).
 
-## ▶ START HERE (next session): Phases 3–6
+## START HERE (next session): Phases 4–6
 
-**Phase 1 (cost-cut merge) and Phase 2 (extension bg → thin entrypoint) are DONE,
-verified, and pushed** (details below). Constraints still hold: do NOT deploy, touch
+**Phase 1 (cost-cut merge), Phase 2 (extension bg decomposition), and Phase 3
+(cost-safe memory-v2 scheduling) are DONE.** Constraints still hold: do NOT deploy, touch
 prod Neon, flip prod flags, or delete branches without explicit approval. Keep
 `RELAY_PERSONAL_MEMORY_AUTOWRITE` / `RELAY_MULTI_PROJECT_CAPTURE` /
-`RELAY_MEMORY_PIPELINE_FULL` dark. Recommend a **fresh session** for 3–6 (different
-domains: server scheduling, graph, migrations, cutover — clean context helps).
+`RELAY_MEMORY_PIPELINE_FULL` dark.
 
-- **Phase 3 — cost-safe Personal/memory-v2 scheduling.** Replace the every-2h GH
-  Actions cron (`.github/workflows/memory-pipeline-cron.yml`) with enqueue-on-write +
-  event-driven enrichment; separate hygiene (daily / indexed `next_hygiene_at`); atomic
-  dedup/supersession + Personal item cap + debounced "About You" regen before autowrite;
-  review removing canonical-entity embeddings; batch/checkpoint embedding backfills;
-  revisit migrations 0050/0052 by query plan; pagination + default limits on memory reads.
-  (Idempotency note: Personal harvest already dedups on persisted+rehydrated
-  `lastRoutedSignature`; the gap is atomic server-side dedup — do it here.)
+### Phase 3 completed
+
+- Removed `.github/workflows/memory-pipeline-cron.yml`. `/api/cron/memory-pipeline`
+  is manual/operator-only; existing daily `/api/internal/jobs/cron` is bounded recovery.
+- Added migration `0053_cost_safe_memory_scheduling.sql`: durable
+  `memory_pipeline_jobs`, `projects.next_hygiene_at` / `last_hygiene_at`, and due indexes.
+- Memory create/update/batch/personal writes enqueue idempotent enrichment jobs and
+  opportunistically drain a tiny batch. Broad fixed wakeups and routine full-project
+  hygiene scans are gone.
+- Personal dedup is serialized per personal project in one transaction; cap defaults to
+  `RELAY_PERSONAL_MEMORY_ITEM_CAP=500`; About You regeneration is a debounced queued job.
+- `RELAY_EMBED_CANONICAL_ENTITIES=false` by default. Entity graph rows remain; canonical
+  entity vectors are opt-in. Routine `table=all` backfill covers `memory_items`,
+  `observations`, and `source_chunks`.
+- `GET /api/projects/:id/memory` clamps limits and returns additive `nextCursor`.
+- New scheduler API: `enqueueMemoryPipelineJob`, `drainMemoryPipelineJobs`,
+  `markProjectHygieneDue`, `enqueuePersonalStateRegeneration`.
+- No deploy, prod Neon change, flag flip, or branch deletion was performed.
+
+Verification run during Phase 3:
+
+- Focused Phase 3 tests: **41/41 passed** (worker, scheduler, personal, DB job repo,
+  memory-list route, embedding-backfill route).
+- `pnpm --filter @relay/web typecheck`: passed.
+- `pnpm --filter @relay/db typecheck`: passed.
+- `pnpm --filter @relay/memory-pipeline typecheck`: passed.
+- Changed-file ESLint: passed.
+- `pnpm test:stable`: **75/75 passed**.
+- Full `pnpm --filter @relay/web lint` remains blocked by a pre-existing unrelated
+  missing-rule error in `apps/web/src/app/(marketing)/components/hero-section.tsx`
+  (`@next/next/no-img-element`).
+
+New safe defaults:
+
+```env
+RELAY_PERSONAL_MEMORY_ITEM_CAP=500
+RELAY_EMBED_CANONICAL_ENTITIES=false
+```
 - **Phase 4 — rework memory graph** from persisted facts (entities/items/sources +
   real relations); types/Folk categories → filters not nodes; remove synthetic hubs /
   fake `extends` / `REAL_EDGE_MIN` / O(n²) all-pairs; one snapshot/API contract.
@@ -29,6 +58,30 @@ domains: server scheduling, graph, migrations, cutover — clean context helps).
 
 Full original 6-phase spec: the session's initial prompt + `docs/memory-v2/HANDOFF.md`
 (cutover runbook: env vars, migration runner, RLS swap).
+
+### Phase 4 prompt: graph rework
+
+Implement Phase 4: replace synthetic/fake graph structure with one bounded snapshot built
+from persisted memory items, observations, canonical entities, mentions, real relations,
+sessions, and sources. Treat types/Folk categories as filters, remove O(n²) all-pairs and
+synthetic hubs as the default, preserve Personal and normal-project quality, avoid hot-load
+graph computation, add graph tests and a Playwright smoke, commit, and update handoffs.
+Do not deploy, touch prod Neon, flip flags, or delete branches.
+
+### Phase 5 prompt: release/cutover tooling
+
+Plan and implement Phase 5 tooling without performing prod cutover. Audit migrations 0040+,
+replace automatic full-prod re-enqueue/backfill assumptions with explicit bounded operator
+commands, fix verification SQL, reconcile worker/app/RLS roles, gate RLS swap last, add
+dry-run/progress output and a stop/go rollback runbook, test, commit, and update handoffs.
+
+### Phase 6 prompt: safe rollout plan and stop
+
+Produce the final operator-ready rollout plan coordinating CWS 0.6.0, web deploy, migrations,
+bounded backfills, flags, monitoring, rollback, and branch cleanup. Prefer CWS approval before
+Personal-dependent behavior; keep Personal autowrite, multi-project capture, and full pipeline
+dark initially; include 48-hour Neon cost/autosuspend monitoring. Update docs and commit only;
+do not execute production steps.
 
 ---
 

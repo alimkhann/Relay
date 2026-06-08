@@ -170,6 +170,39 @@ export class ProjectRepository {
     return rows.length > 0
   }
 
+  async markHygieneDue(projectId: string, at: Date | string = new Date()): Promise<void> {
+    await this.provider.query(
+      `update projects
+       set next_hygiene_at = least(coalesce(next_hygiene_at, $2::timestamptz), $2::timestamptz)
+       where id = $1`,
+      [projectId, new Date(at).toISOString()],
+    )
+  }
+
+  async listDueForHygiene(limit = 20, now: Date | string = new Date()): Promise<ProjectRow[]> {
+    const rows = await this.provider.query(
+      `select *
+       from projects
+       where is_archived = false
+         and next_hygiene_at is not null
+         and next_hygiene_at <= $2::timestamptz
+       order by next_hygiene_at asc, updated_at desc
+       limit $1`,
+      [Math.min(Math.max(limit, 1), 100), new Date(now).toISOString()],
+    )
+    return rows.map((record) => toProjectRow(record as Record<string, unknown>))
+  }
+
+  async markHygieneCompleted(projectId: string, nextAt: Date | string): Promise<void> {
+    await this.provider.query(
+      `update projects
+       set last_hygiene_at = now(),
+           next_hygiene_at = $2::timestamptz
+       where id = $1`,
+      [projectId, new Date(nextAt).toISOString()],
+    )
+  }
+
   async update(id: string, patch: Partial<Pick<ProjectRow, "name" | "slug" | "description" | "projectUrl" | "isArchived">>): Promise<ProjectRow> {
     const rows = await this.provider.query(
       `update projects

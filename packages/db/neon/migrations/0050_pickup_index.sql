@@ -13,8 +13,12 @@
 
 drop index if exists idx_memory_items_enrichment_pending;
 create index if not exists idx_memory_items_enrichment_pending
-  on memory_items (project_id, enrichment_status, enrichment_version, created_at)
+  on memory_items (enrichment_status, enrichment_version, created_at)
   where enrichment_status in ('pending','failed');
+
+create index if not exists idx_memory_items_embedding_missing_pickup
+  on memory_items (created_at)
+  where enrichment_status in ('pending','failed') and embedding is null;
 
 -- DOWN
 -- drop index if exists idx_memory_items_enrichment_pending;

@@ -80,6 +80,7 @@ export interface CachedMemoryListOptions {
   types?: MemoryItemRow["type"][]
   limit?: number
   sort?: "updated_desc" | "created_desc"
+  cursor?: { pinned: boolean; at: string; id: string } | null
 }
 
 export async function listCachedMemoryForExplainability(

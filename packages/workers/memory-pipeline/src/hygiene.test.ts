@@ -54,6 +54,26 @@ const STALE_ITEM = {
 }
 
 describe("runHygieneTick", () => {
+  it("selects only projects explicitly marked due when projectIds are omitted", async () => {
+    const provider = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.includes("next_hygiene_at <= now()")) return [{ id: "due-project" }]
+        if (sql.includes("FROM memory_items")) return []
+        if (sql.includes("FROM observations")) return []
+        if (sql.includes("WITH new_facts AS")) return []
+        return []
+      }),
+    }
+
+    const result = await runHygieneTick(makeRepos(provider), {
+      halfLifeDays: HALF_LIVES,
+      dryRun: true,
+    })
+
+    expect(result.projectsProcessed).toBe(1)
+    expect(provider.query).toHaveBeenCalledWith(expect.stringContaining("next_hygiene_at <= now()"))
+  })
+
   it("archives a long-decayed item and writes an event when not in dry-run", async () => {
     const { provider, writes } = makeProvider(STALE_ITEM)
     const repos = makeRepos(provider)

@@ -26,7 +26,7 @@ import {
 } from "@relay/shared"
 
 export interface HygieneOptions {
-  /** Projects to process this tick. If omitted, every project is scanned. */
+  /** Projects to process this tick. If omitted, only due projects are selected. */
   projectIds?: string[]
   /** Items per project per tick. Default 100. */
   perProjectLimit?: number
@@ -260,12 +260,16 @@ export async function runHygieneTick(
 }
 
 async function listAllProjectIds(provider: DatabaseProvider): Promise<string[]> {
-  // Only scan projects touched in the last 48 hours. Dormant projects have no
-  // pending lifecycle transitions so scanning them burns Neon compute for nothing.
-  // Projects with new captures update updated_at and re-enter the window
-  // automatically. At beta scale this cuts the per-tick row load dramatically.
+  // Never broad-scan projects. Writes mark hygiene due; the daily recovery cron
+  // drains this bounded list and advances next_hygiene_at after processing.
   const rows = await provider.query(
-    `SELECT id FROM projects WHERE updated_at > now() - interval '48 hours' ORDER BY updated_at DESC LIMIT 100`,
+    `SELECT id
+     FROM projects
+     WHERE is_archived = false
+       AND next_hygiene_at IS NOT NULL
+       AND next_hygiene_at <= now()
+     ORDER BY next_hygiene_at ASC
+     LIMIT 100`,
   )
   return rows.map((r) => String((r as Record<string, unknown>).id))
 }

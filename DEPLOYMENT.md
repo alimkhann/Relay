@@ -75,15 +75,14 @@ Recommended options:
 - GitHub Actions scheduled workflow with a protected secret
 - External scheduler hitting the endpoint over HTTPS
 
-## Memory v2 — async pipeline cron
+## Memory v2 — cost-safe async pipeline
 
-`/api/cron/memory-pipeline` runs the embed + hygiene + (optionally) extractor tick.
+Memory writes enqueue durable `memory_pipeline_jobs` and opportunistically drain a
+tiny bounded batch. The existing daily `/api/internal/jobs/cron` is the recovery
+backstop and processes only queued jobs plus projects marked due for hygiene.
 
-- **Vercel Hobby tier** allows one cron/day total. That slot is taken by the
-  existing `/api/internal/jobs/cron` daily drain.
-- The memory-pipeline cron is driven from **GitHub Actions** instead — see
-  `.github/workflows/memory-pipeline-cron.yml` (every 15 min, plus
-  `workflow_dispatch` for ad-hoc runs).
+`/api/cron/memory-pipeline` is manual/operator-only. Do not schedule it at a fixed
+cadence: frequent wakeups prevent Neon scale-to-zero.
 
 Required env / secrets:
 
@@ -94,8 +93,8 @@ Required env / secrets:
 | Vercel env | `RELAY_MEMORY_PIPELINE_FULL` | `true` → Gemini extractors run. Default `false` (embed-only). Flip after a quality soak. |
 | Vercel env | `RELAY_HYGIENE_DRY_RUN` | `true` (default) logs proposed transitions; `false` writes. |
 | Vercel env | `RELAY_PIPELINE_DAILY_USD_CAP` | Default `5`. In-process circuit-breaker on extractor spend per UTC day. |
-| GH secret | `CRON_SECRET` | Same value as the Vercel env. |
-| GH secret | `MEMORY_PIPELINE_URL` | Base URL, e.g. `https://www.onrelay.app` (no trailing slash). |
+| Vercel env | `RELAY_EMBED_CANONICAL_ENTITIES` | Default `false`. Opt-in vectors for newly created canonical entities only. |
+| Vercel env | `RELAY_PERSONAL_MEMORY_ITEM_CAP` | Default `500`. Archives oldest non-pinned personal overflow. |
 
 ### Worker role provisioning (optional, future hardening)
 

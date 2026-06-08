@@ -9,10 +9,14 @@ import {
   updateMemoryItemSchema,
 } from "@relay/shared"
 
-import { embedMemoryItem, embedMemoryItems, generateEmbedding } from "./embedding-service"
+import { embedMemoryItems, generateEmbedding } from "./embedding-service"
 import { invalidateProjectCache } from "@/server/cache/invalidation"
-import { logServerEvent } from "@/server/logging/logger"
 import { extractAndLinkEntities } from "./entity-extraction-service"
+import {
+  drainTinyMemoryPipelineBatch,
+  enqueueMemoryPipelineJob,
+  markProjectHygieneDue,
+} from "./memory-pipeline-scheduler"
 import { decomposeQuery } from "./query-decomposition-service"
 import { buildCurrentPreviousHint, buildReasoningEvidenceTable, buildTemporalResolutionHint } from "./reasoning-assembly-service"
 import { conditionalRerank } from "./reranker-service"
@@ -82,19 +86,6 @@ export async function emitMemoryEvent(
   }
 }
 
-/** Fire-and-forget: generate embedding + detect relations for a new item */
-async function postCreateHook(item: MemoryItemRow, repos: ReturnType<typeof createRepositoryBundle>) {
-  try {
-    await embedMemoryItem(item, repos)
-    await detectRelations(item, repos)
-    if (item.projectId) {
-      await extractAndLinkEntities(repos, item.projectId, item.id, item.content, item.title)
-    }
-  } catch (error) {
-    console.error("[memory-service] post-create hook failed:", error instanceof Error ? error.message : error)
-  }
-}
-
 /** Generate embeddings, detect relations, and extract entities for a batch of items (fire-and-forget safe) */
 export async function embedAndRelateItems(items: MemoryItemRow[], repos: RepositoryBundle): Promise<void> {
   if (items.length === 0) return
@@ -133,10 +124,8 @@ export async function createMemoryItem(userId: string, input: unknown) {
   // the row lands.
   //
   // The web write path remains fast and stateless: insert row, emit event,
-  // kick off the legacy postCreateHook for back-compat embeddings, return.
-  // The worker tick reconciles afterwards. Reads tolerate this because the
-  // default lifecycle_state is 'active' and recall filters cooling out of
-  // the top channels.
+  // enqueue worker enrichment, return. A tiny opportunistic drain may run in
+  // this user-triggered request; fixed background wakeups are intentionally gone.
 
   const item = await repositories.memory.create(userId, parsed)
   if (parsed.projectId) {
@@ -154,11 +143,21 @@ export async function createMemoryItem(userId: string, input: unknown) {
     })
   }
 
-  // Async: generate embedding + detect relations (don't block response).
-  // The new memory-pipeline worker eventually supersedes this hook; until
-  // the worker is deployed, keep the inline best-effort enrichment so
-  // dashboards don't see empty embedding columns for a tick or two.
-  void postCreateHook(item, repositories)
+  try {
+    await Promise.all([
+      enqueueMemoryPipelineJob({
+        jobType: "enrich_memory_item",
+        userId,
+        projectId: item.projectId,
+        memoryItemId: item.id,
+        repositories,
+      }),
+      ...(item.projectId ? [markProjectHygieneDue(item.projectId, undefined, repositories)] : []),
+    ])
+    void drainTinyMemoryPipelineBatch()
+  } catch (error) {
+    console.warn("[memory-service] enqueue enrichment failed:", error instanceof Error ? error.message : error)
+  }
   if (item.projectId) invalidateProjectCache(userId, item.projectId)
 
   return item
@@ -179,43 +178,18 @@ export async function createMemoryItemBatch(userId: string, projectId: string, i
     })
   }
 
-  // Async: generate embeddings, detect relations, extract entities for all new items.
-  // Embedding failures here MUST surface — the prior fire-and-forget masked the
-  // text-embedding-004 deprecation for two months. logServerEvent forwards to
-  // PostHog so the next model deprecation pages instead of silently dropping
-  // embeddings on the floor.
-  void embedMemoryItems(created, repositories).then(async () => {
-    for (const item of created) {
-      try {
-        await detectRelations(item, repositories)
-        if (item.projectId) {
-          await extractAndLinkEntities(repositories, item.projectId, item.id, item.content, item.title)
-        }
-      } catch (error) {
-        await logServerEvent({
-          level: "error",
-          surface: "web-api",
-          area: "memory",
-          event: "memory.post_batch_enrichment_failed",
-          message: "Post-batch enrichment (relations/entities) failed for one item.",
-          userId,
-          context: { memoryItemId: item.id, projectId: item.projectId ?? null },
-          error,
-        })
-      }
-    }
-  }).catch(async (error) => {
-    await logServerEvent({
-      level: "error",
-      surface: "web-api",
-      area: "memory",
-      event: "memory.batch_embedding_failed",
-      message: "Batch embedding failed — items landed without embeddings.",
+  try {
+    await Promise.all(created.map((item) => enqueueMemoryPipelineJob({
+      jobType: "enrich_memory_item",
       userId,
-      context: { batchSize: created.length },
-      error,
-    })
-  })
+      projectId: item.projectId,
+      memoryItemId: item.id,
+      repositories,
+    })))
+    void drainTinyMemoryPipelineBatch()
+  } catch (error) {
+    console.warn("[memory-service] enqueue batch enrichment failed:", error instanceof Error ? error.message : error)
+  }
 
   // Invalidate the cache for every distinct project touched by this batch.
   const projectIds = new Set<string>()
@@ -223,6 +197,7 @@ export async function createMemoryItemBatch(userId: string, projectId: string, i
     projectIds.add(item.projectId)
   }
   for (const projectId of projectIds) {
+    await markProjectHygieneDue(projectId, undefined, repositories).catch(() => {})
     invalidateProjectCache(userId, projectId)
   }
 
@@ -423,6 +398,22 @@ export async function updateMemoryItem(userId: string, memoryId: string, input: 
     nullContent: isForgetting,
   })
 
+  if (parsed.content !== undefined || parsed.title !== undefined || parsed.type !== undefined || parsed.metadata !== undefined) {
+    await repositories.memory.markPendingEnrichment(item.id)
+    try {
+      await enqueueMemoryPipelineJob({
+        jobType: "enrich_memory_item",
+        userId,
+        projectId: item.projectId,
+        memoryItemId: item.id,
+        repositories,
+      })
+      void drainTinyMemoryPipelineBatch()
+    } catch (error) {
+      console.warn("[memory-service] enqueue update enrichment failed:", error instanceof Error ? error.message : error)
+    }
+  }
+
   const dirtyProjectId = existing?.projectId ?? item.projectId
   if (dirtyProjectId) {
     await repositories.projectState.markDirty(dirtyProjectId)
@@ -473,7 +464,10 @@ export async function updateMemoryItem(userId: string, memoryId: string, input: 
     })
   }
 
-  if (item.projectId) invalidateProjectCache(userId, item.projectId)
+  if (item.projectId) {
+    await markProjectHygieneDue(item.projectId, undefined, repositories).catch(() => {})
+    invalidateProjectCache(userId, item.projectId)
+  }
 
   return item
 }
@@ -495,6 +489,7 @@ export async function deleteMemoryItem(userId: string, memoryId: string, project
       userId,
       payload: { type: existing.type, reason: "deleted" },
     })
+    await markProjectHygieneDue(existing.projectId, undefined, repositories).catch(() => {})
     invalidateProjectCache(userId, existing.projectId)
   }
 }

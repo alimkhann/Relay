@@ -59,6 +59,8 @@ export interface ExtractedEntity {
 export interface PipelineProviders {
   /** Embed a single text fragment to a numeric vector. */
   embed: (text: string) => Promise<{ vector: number[]; model: string }>
+  /** Optional cost lever: canonical entity vectors are graph-adjacent, not recall-critical. */
+  embedCanonicalEntities?: boolean
   /** Extract canonical entities from the item content. */
   extractEntities?: (ctx: EnrichmentContext) => Promise<ExtractedEntity[]>
   /** Extract observations from the item content. */
@@ -195,7 +197,7 @@ export async function processItem(
       // F4 — embed-on-insert. If the entity row landed without an embedding
       // (freshly created), give it one now using `name (kind)` as the embed
       // text. Non-fatal — the backfill route still catches misses.
-      if (!entity.hasEmbedding) {
+      if (!entity.hasEmbedding && providers.embedCanonicalEntities === true) {
         try {
           const text = entity.kind && entity.kind !== "unknown"
             ? `${entity.name} (${entity.kind})`

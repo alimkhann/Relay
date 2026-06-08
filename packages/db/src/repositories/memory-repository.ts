@@ -108,6 +108,7 @@ export class MemoryRepository {
       pinned?: boolean
       limit?: number
       sort?: "updated_desc" | "created_desc"
+      cursor?: { pinned: boolean; at: string; id: string } | null
     } = {},
   ): Promise<MemoryItemRow[]> {
     const conditions = ["project_id = $1"]
@@ -136,9 +137,16 @@ export class MemoryRepository {
       paramIndex += 1
     }
 
+    const cursorColumn = options.sort === "created_desc" ? "created_at" : "updated_at"
+    if (options.cursor) {
+      conditions.push(`(pinned, ${cursorColumn}, id) < ($${paramIndex}::boolean, $${paramIndex + 1}::timestamptz, $${paramIndex + 2}::uuid)`)
+      params.push(options.cursor.pinned, options.cursor.at, options.cursor.id)
+      paramIndex += 3
+    }
+
     const orderBy = options.sort === "created_desc"
-      ? "pinned desc, created_at desc"
-      : "pinned desc, updated_at desc"
+      ? "pinned desc, created_at desc, id desc"
+      : "pinned desc, updated_at desc, id desc"
 
     let limitClause = ""
     if (typeof options.limit === "number") {
@@ -154,6 +162,21 @@ export class MemoryRepository {
       params
     )
 
+    return rows.map((record) => toMemoryRow(record as Record<string, unknown>))
+  }
+
+  async listActiveNotesForUpdate(projectId: string, limit = 500): Promise<MemoryItemRow[]> {
+    const rows = await this.provider.query(
+      `select ${MEMORY_COLS}
+       from memory_items
+       where project_id = $1
+         and type = 'note'
+         and is_archived = false
+       order by pinned desc, updated_at desc, id desc
+       limit $2
+       for update`,
+      [projectId, Math.min(Math.max(limit, 1), 1000)],
+    )
     return rows.map((record) => toMemoryRow(record as Record<string, unknown>))
   }
 
@@ -322,6 +345,17 @@ export class MemoryRepository {
     const row = rows[0]
     if (!row) throw new Error("Memory item not found")
     return toMemoryRow(row as Record<string, unknown>)
+  }
+
+  async markPendingEnrichment(id: string): Promise<void> {
+    await this.provider.query(
+      `update memory_items
+       set enrichment_status = 'pending',
+           enrichment_error = null,
+           updated_at = now()
+       where id = $1`,
+      [id],
+    )
   }
 
   async search(projectId: string, query: string, options?: { types?: string[]; tags?: string[]; limit?: number } & ScopeLifecycleOptions): Promise<MemorySearchResult[]> {

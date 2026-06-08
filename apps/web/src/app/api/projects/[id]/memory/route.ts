@@ -9,7 +9,34 @@ import {
   consumeMcpWriteQuota,
 } from "@/server/services/entitlement-service"
 import { createMemoryItem } from "@/server/services/memory-service"
-import { regeneratePersonalState, routePersonalMemory } from "@/server/services/personal-memory-service"
+import { enqueuePersonalStateRegeneration } from "@/server/services/memory-pipeline-scheduler"
+import { routePersonalMemory } from "@/server/services/personal-memory-service"
+
+function decodeCursor(raw: string | null): CachedMemoryListOptions["cursor"] {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as Record<string, unknown>
+    if (
+      typeof parsed.pinned === "boolean" &&
+      typeof parsed.at === "string" &&
+      typeof parsed.id === "string"
+    ) {
+      return { pinned: parsed.pinned, at: parsed.at, id: parsed.id }
+    }
+  } catch {}
+  return null
+}
+
+function encodeCursor(item: Record<string, unknown> | undefined, sort: "updated_desc" | "created_desc"): string | null {
+  if (!item) return null
+  const at = sort === "created_desc" ? item.createdAt : item.updatedAt
+  if (typeof item.id !== "string" || typeof at !== "string") return null
+  return Buffer.from(JSON.stringify({
+    pinned: Boolean(item.pinned),
+    at,
+    id: item.id,
+  }), "utf8").toString("base64url")
+}
 
 export const GET = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   const viewer = await resolveViewer(request.headers.get("authorization"))
@@ -21,16 +48,22 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
   const { searchParams } = new URL(request.url)
   const types = searchParams.getAll("type")
   try {
+    const requestedLimit = searchParams.get("limit") ? Number(searchParams.get("limit")) : 50
+    const limit = Math.min(Math.max(Number.isFinite(requestedLimit) ? requestedLimit : 50, 1), 200)
+    const sort = searchParams.get("sort") === "created_desc" ? "created_desc" : "updated_desc"
     const options: CachedMemoryListOptions = {
       archived: searchParams.get("archived") === "true",
       pinned: searchParams.has("pinned") ? searchParams.get("pinned") === "true" : undefined,
       tag: searchParams.get("tag") ?? undefined,
-      limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : undefined,
-      sort: searchParams.get("sort") === "created_desc" ? "created_desc" : "updated_desc",
+      limit: limit + 1,
+      sort,
+      cursor: decodeCursor(searchParams.get("cursor")),
       types: types.length > 0 ? [...types].sort() as CachedMemoryListOptions["types"] : undefined,
     }
-    const memory = await listCachedMemoryForExplainability(viewer.userId, id, options)
-    return NextResponse.json({ memory })
+    const rows = await listCachedMemoryForExplainability(viewer.userId, id, options)
+    const memory = rows.slice(0, limit)
+    const nextCursor = rows.length > limit ? encodeCursor(memory[memory.length - 1] as Record<string, unknown> | undefined, sort) : null
+    return NextResponse.json({ memory, nextCursor })
   } catch (error) {
     console.error(
       `[api/projects/${id}/memory] GET failed for user ${viewer.userId}:`,
@@ -75,7 +108,7 @@ export const POST = withApiAuth(async (request: Request, { params }: { params: P
   // A manual add into a personal Folk category (note + metadata.personalCategory)
   // refreshes the derived "About you" state. Self-guards to the personal project.
   if (typeof body?.metadata?.personalCategory === "string") {
-    void regeneratePersonalState(viewer.userId).catch(() => {})
+    void enqueuePersonalStateRegeneration(viewer.userId, id).catch(() => {})
   }
 
   return NextResponse.json({ item }, { status: 201 })

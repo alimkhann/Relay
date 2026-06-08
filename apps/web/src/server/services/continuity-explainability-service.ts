@@ -215,6 +215,7 @@ export async function listMemoryForExplainability(
     types?: MemoryItemRow["type"][]
     limit?: number
     sort?: "updated_desc" | "created_desc"
+    cursor?: { pinned: boolean; at: string; id: string } | null
   } = {},
 ) {
   const repositories = createRepositoryBundle(userId)
@@ -225,6 +226,7 @@ export async function listMemoryForExplainability(
     types: input.types,
     limit: input.limit,
     sort: input.sort,
+    cursor: input.cursor,
   })
   const summaries: ReturnType<typeof summarizeMemory>[] = []
   for (const item of items) {

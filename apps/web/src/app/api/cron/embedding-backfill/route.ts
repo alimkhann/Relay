@@ -28,8 +28,11 @@ import {
  * in production when `CRON_SECRET` is unset.
  *
  * Query params:
- *   ?table = memory_items | canonical_entities | source_chunks (default: all)
+ *   ?table = memory_items | observations | canonical_entities | source_chunks (default: all)
  *   ?limit = max rows per table per call (default 50, max 500)
+ *   ?includeCanonicalEntities=true opt-in when table=all
+ *   ?cursor is accepted for operator loops and echoed back; table-specific
+ *    keyset pagination is used where direct route queries own the selection.
  *
  * Returns per-table { embedded, remaining } counts.
  */
@@ -47,10 +50,27 @@ function authorize(request: Request): boolean {
   return auth === `Bearer ${secret}`
 }
 
-type TableKey = "memory_items" | "canonical_entities" | "source_chunks"
-const VALID_TABLES: ReadonlyArray<TableKey> = ["memory_items", "canonical_entities", "source_chunks"]
+type TableKey = "memory_items" | "observations" | "canonical_entities" | "source_chunks"
+const DEFAULT_TABLES: ReadonlyArray<TableKey> = ["memory_items", "observations", "source_chunks"]
+const VALID_TABLES: ReadonlyArray<TableKey> = [...DEFAULT_TABLES, "canonical_entities"]
 
-type TableResult = { embedded: number; failed: number; remaining: number }
+type TableResult = { embedded: number; failed: number; remaining: number; nextCursor?: string | null }
+
+function encodeCursor(row: { created_at?: unknown; id?: unknown } | undefined): string | null {
+  if (!row?.created_at || !row.id) return null
+  return Buffer.from(JSON.stringify({ createdAt: String(row.created_at), id: String(row.id) }), "utf8").toString("base64url")
+}
+
+function decodeCursor(raw: string | null): { createdAt: string; id: string } | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as Record<string, unknown>
+    if (typeof parsed.createdAt === "string" && typeof parsed.id === "string") {
+      return { createdAt: parsed.createdAt, id: parsed.id }
+    }
+  } catch {}
+  return null
+}
 
 async function backfillCanonicalEntities(
   provider: ReturnType<typeof createRepositoryBundle>["provider"],
@@ -91,14 +111,16 @@ async function backfillCanonicalEntities(
 async function backfillSourceChunks(
   provider: ReturnType<typeof createRepositoryBundle>["provider"],
   limit: number,
+  cursor: { createdAt: string; id: string } | null = null,
 ): Promise<TableResult> {
   const rows = (await provider.query(
-    `SELECT id, content FROM source_chunks
-     WHERE embedding IS NULL OR embedding_model IS DISTINCT FROM $1::text
+    `SELECT id, content, created_at FROM source_chunks
+     WHERE (embedding IS NULL OR embedding_model IS DISTINCT FROM $1::text)
+       AND ($3::timestamptz IS NULL OR (created_at, id) > ($3::timestamptz, $4::uuid))
      ORDER BY created_at ASC
      LIMIT $2::int`,
-    [EMBEDDING_MODEL, limit],
-  )) as Array<{ id: string; content: string }>
+    [EMBEDDING_MODEL, limit, cursor?.createdAt ?? null, cursor?.id ?? null],
+  )) as Array<{ id: string; content: string; created_at: string }>
 
   let embedded = 0
   let failed = 0
@@ -124,7 +146,48 @@ async function backfillSourceChunks(
     [EMBEDDING_MODEL],
   )) as Array<{ remaining: number }>
 
-  return { embedded, failed, remaining: remainingRows[0]?.remaining ?? 0 }
+  return { embedded, failed, remaining: remainingRows[0]?.remaining ?? 0, nextCursor: encodeCursor(rows.at(-1)) }
+}
+
+async function backfillObservations(
+  provider: ReturnType<typeof createRepositoryBundle>["provider"],
+  limit: number,
+  cursor: { createdAt: string; id: string } | null = null,
+): Promise<TableResult> {
+  const rows = (await provider.query(
+    `SELECT id, content, created_at FROM observations
+     WHERE (embedding IS NULL OR embedding_model IS DISTINCT FROM $1::text)
+       AND ($3::timestamptz IS NULL OR (created_at, id) > ($3::timestamptz, $4::uuid))
+     ORDER BY created_at ASC
+     LIMIT $2::int`,
+    [EMBEDDING_MODEL, limit, cursor?.createdAt ?? null, cursor?.id ?? null],
+  )) as Array<{ id: string; content: string; created_at: string }>
+
+  let embedded = 0
+  let failed = 0
+  for (const row of rows) {
+    try {
+      const vector = await generateEmbedding(row.content, "RETRIEVAL_DOCUMENT")
+      await provider.query(
+        `UPDATE observations
+           SET embedding = $2::vector, embedding_model = $3::text
+         WHERE id = $1::uuid`,
+        [row.id, JSON.stringify(vector), EMBEDDING_MODEL],
+      )
+      embedded += 1
+    } catch (err) {
+      failed += 1
+      console.error("[embedding-backfill] observations row failed", row.id, err)
+    }
+  }
+
+  const remainingRows = (await provider.query(
+    `SELECT COUNT(*)::int AS remaining FROM observations
+      WHERE embedding IS NULL OR embedding_model IS DISTINCT FROM $1::text`,
+    [EMBEDDING_MODEL],
+  )) as Array<{ remaining: number }>
+
+  return { embedded, failed, remaining: remainingRows[0]?.remaining ?? 0, nextCursor: encodeCursor(rows.at(-1)) }
 }
 
 async function backfillMemoryItems(
@@ -176,7 +239,11 @@ async function handle(request: Request): Promise<Response> {
 
   const repositories = createRepositoryBundle()
 
-  const tables: TableKey[] = tableParam === "all" ? [...VALID_TABLES] : [tableParam]
+  const includeCanonicalEntities = url.searchParams.get("includeCanonicalEntities") === "true"
+  const tables: TableKey[] = tableParam === "all"
+    ? [...DEFAULT_TABLES, ...(includeCanonicalEntities ? ["canonical_entities" as const] : [])]
+    : [tableParam]
+  const cursor = decodeCursor(url.searchParams.get("cursor"))
 
   const startedAt = Date.now()
   const results: Record<string, TableResult> = {}
@@ -184,16 +251,20 @@ async function handle(request: Request): Promise<Response> {
   for (const table of tables) {
     if (table === "memory_items") {
       results[table] = await backfillMemoryItems(repositories, limit)
+    } else if (table === "observations") {
+      results[table] = await backfillObservations(repositories.provider, limit, cursor)
     } else if (table === "canonical_entities") {
       results[table] = await backfillCanonicalEntities(repositories.provider, limit)
     } else if (table === "source_chunks") {
-      results[table] = await backfillSourceChunks(repositories.provider, limit)
+      results[table] = await backfillSourceChunks(repositories.provider, limit, cursor)
     }
   }
 
   return NextResponse.json({
     embeddingModel: EMBEDDING_MODEL,
     limit,
+    includeCanonicalEntities,
+    acceptedCursor: url.searchParams.get("cursor") ?? null,
     durationMs: Date.now() - startedAt,
     tables: results,
   })

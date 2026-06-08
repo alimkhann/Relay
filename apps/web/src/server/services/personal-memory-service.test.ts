@@ -3,18 +3,41 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { MemoryItemForConflictResolution } from "@relay/shared"
 
 const getPersonalProjectMock = vi.fn()
-const listByProjectMock = vi.fn()
+const listActiveNotesForUpdateMock = vi.fn()
 const createMemoryItemMock = vi.fn()
+const archiveOverBudgetMock = vi.fn()
+const markDirtyMock = vi.fn()
+const memoryEventCreateMock = vi.fn()
+const enqueueMemoryPipelineJobMock = vi.fn()
+const enqueuePersonalStateRegenerationMock = vi.fn()
+const markProjectHygieneDueMock = vi.fn()
+const drainTinyMemoryPipelineBatchMock = vi.fn()
+const providerQueryMock = vi.fn()
 
 vi.mock("@relay/db", () => ({
   createRepositoryBundle: () => ({
+    provider: {
+      transaction: async (callback: (provider: unknown) => Promise<unknown>) => callback({}),
+      query: providerQueryMock,
+    },
     projects: { getPersonalProject: getPersonalProjectMock },
-    memory: { listByProject: listByProjectMock },
+    projectState: { markDirty: markDirtyMock },
+    memoryEvents: { create: memoryEventCreateMock },
+    memory: {
+      listByProject: listActiveNotesForUpdateMock,
+      listActiveNotesForUpdate: listActiveNotesForUpdateMock,
+      create: createMemoryItemMock,
+      archiveOverBudget: archiveOverBudgetMock,
+    },
   }),
 }))
 
-vi.mock("./memory-service", () => ({
-  createMemoryItem: (...args: unknown[]) => createMemoryItemMock(...args),
+vi.mock("./memory-pipeline-scheduler", () => ({
+  drainTinyMemoryPipelineBatch: (...args: unknown[]) => drainTinyMemoryPipelineBatchMock(...args),
+  enqueueMemoryPipelineJob: (...args: unknown[]) => enqueueMemoryPipelineJobMock(...args),
+  enqueuePersonalStateRegeneration: (...args: unknown[]) => enqueuePersonalStateRegenerationMock(...args),
+  markProjectHygieneDue: (...args: unknown[]) => markProjectHygieneDueMock(...args),
+  personalMemoryItemCap: () => 500,
 }))
 
 import {
@@ -162,8 +185,16 @@ describe("routePersonalMemory result", () => {
   afterEach(() => {
     vi.unstubAllEnvs()
     getPersonalProjectMock.mockReset()
-    listByProjectMock.mockReset()
+    listActiveNotesForUpdateMock.mockReset()
     createMemoryItemMock.mockReset()
+    archiveOverBudgetMock.mockReset()
+    markDirtyMock.mockReset()
+    memoryEventCreateMock.mockReset()
+    enqueueMemoryPipelineJobMock.mockReset()
+    enqueuePersonalStateRegenerationMock.mockReset()
+    markProjectHygieneDueMock.mockReset()
+    drainTinyMemoryPipelineBatchMock.mockReset()
+    providerQueryMock.mockReset()
   })
 
   function classifyWith(facts: PersonalFact[]) {
@@ -192,7 +223,7 @@ describe("routePersonalMemory result", () => {
   it("counts borderline facts as unsure during soak (autowrite off)", async () => {
     vi.stubEnv("RELAY_PERSONAL_MEMORY_AUTOWRITE", "")
     getPersonalProjectMock.mockResolvedValue({ id: "personal-1" })
-    listByProjectMock.mockResolvedValue([])
+    listActiveNotesForUpdateMock.mockResolvedValue([])
     const result = await routePersonalMemory("u1", "proj-1", "hi", {
       classifyDeps: classifyWith([
         { category: "concept", content: "likes dark mode", confidence: 0.55 },
@@ -207,7 +238,7 @@ describe("routePersonalMemory result", () => {
   it("writes high-confidence facts when autowrite is enabled", async () => {
     vi.stubEnv("RELAY_PERSONAL_MEMORY_AUTOWRITE", "true")
     getPersonalProjectMock.mockResolvedValue({ id: "personal-1" })
-    listByProjectMock.mockResolvedValue([])
+    listActiveNotesForUpdateMock.mockResolvedValue([])
     createMemoryItemMock.mockImplementation(async (_u: string, input: { content: string }) => ({
       id: `m-${input.content}`,
       content: input.content,
@@ -225,6 +256,7 @@ describe("routePersonalMemory result", () => {
     expect(result.written).toBe(1)
     expect(result.unsure).toBe(0)
     expect(createMemoryItemMock).toHaveBeenCalledOnce()
+    expect(providerQueryMock).toHaveBeenCalledWith(expect.stringContaining("pg_advisory_xact_lock"), ["personal-1"])
   })
 })
 
@@ -232,8 +264,16 @@ describe("routePersonalFromTranscript (personal-origin capture)", () => {
   afterEach(() => {
     vi.unstubAllEnvs()
     getPersonalProjectMock.mockReset()
-    listByProjectMock.mockReset()
+    listActiveNotesForUpdateMock.mockReset()
     createMemoryItemMock.mockReset()
+    archiveOverBudgetMock.mockReset()
+    markDirtyMock.mockReset()
+    memoryEventCreateMock.mockReset()
+    enqueueMemoryPipelineJobMock.mockReset()
+    enqueuePersonalStateRegenerationMock.mockReset()
+    markProjectHygieneDueMock.mockReset()
+    drainTinyMemoryPipelineBatchMock.mockReset()
+    providerQueryMock.mockReset()
   })
 
   function classifyWith(facts: PersonalFact[]) {
@@ -245,7 +285,7 @@ describe("routePersonalFromTranscript (personal-origin capture)", () => {
     // the transcript path must NOT, or a personal-origin capture writes nothing.
     vi.stubEnv("RELAY_PERSONAL_MEMORY_AUTOWRITE", "true")
     getPersonalProjectMock.mockResolvedValue({ id: "personal-1" })
-    listByProjectMock.mockResolvedValue([])
+    listActiveNotesForUpdateMock.mockResolvedValue([])
     createMemoryItemMock.mockImplementation(async (_u: string, input: { content: string }) => ({
       id: `m-${input.content}`,
       content: input.content,

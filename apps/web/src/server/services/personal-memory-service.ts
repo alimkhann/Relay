@@ -24,14 +24,22 @@ import {
   personalCategoryFromMetadata,
   resolveMemoryConflict,
   type MemoryItemForConflictResolution,
+  type MemoryItemRow,
+  type SourceSurface,
 } from "@relay/shared"
 
 import { createRepositoryBundle } from "@relay/db"
 
 import { invalidateProjectCache } from "@/server/cache/invalidation"
 import { logServerEvent } from "@/server/logging/logger"
+import {
+  drainTinyMemoryPipelineBatch,
+  enqueueMemoryPipelineJob,
+  enqueuePersonalStateRegeneration,
+  markProjectHygieneDue,
+  personalMemoryItemCap,
+} from "./memory-pipeline-scheduler"
 import { buildPipelineBudgetGate, type PipelineBudgetGate } from "./memory-pipeline-providers"
-import { createMemoryItem } from "./memory-service"
 import { runGeminiJsonWithFallback } from "./gemini-service"
 
 const CLASSIFY_MODEL_PRIMARY =
@@ -236,117 +244,144 @@ async function writePersonalFacts(
   options: { sourceSurface: string | null; derivedFromProjectId: string },
 ): Promise<PersonalRoutingResult> {
   const repositories = createRepositoryBundle(userId)
-  const result = emptyRoutingResult(personalProjectId)
   const autoWriteEnabled = process.env.RELAY_PERSONAL_MEMORY_AUTOWRITE === "true"
+  const createdItems: MemoryItemRow[] = []
 
-  // Load existing notes once for ADD/NOOP conflict resolution — O(existing × incoming).
-  // TODO(personal-dedup-v2): replace with HNSW top-k embedding similarity query
-  // (ORDER BY embedding <=> $fact_embedding LIMIT 5) once all personal facts have
-  // embeddings via the cron backstop. Reduces from O(n×m) to O(log n) per fact.
-  const existingRows = await repositories.memory.listByProject(personalProjectId, {
-    types: ["note"],
-    limit: 200,
-  })
-  const existing: MemoryItemForConflictResolution[] = existingRows.map((row) => ({
-    id: row.id,
-    content: row.content,
-    capturedAt: row.capturedAt,
-    type: row.type,
-    pinned: row.pinned,
-    sourceSurface: row.sourceSurface,
-    metadata: row.metadata,
-  }))
+  const result = await repositories.provider.transaction(async (provider) => {
+    const tx = createRepositoryBundle(userId, provider)
+    const result = emptyRoutingResult(personalProjectId)
+    // Serialize even the first concurrent write, when there are no note rows
+    // yet for SELECT ... FOR UPDATE to lock.
+    await tx.provider.query(`select pg_advisory_xact_lock(hashtext($1))`, [personalProjectId])
+    const existingRows = await tx.memory.listActiveNotesForUpdate(personalProjectId, personalMemoryItemCap())
+    const existing: MemoryItemForConflictResolution[] = existingRows.map((row) => ({
+      id: row.id,
+      content: row.content,
+      capturedAt: row.capturedAt,
+      type: row.type,
+      pinned: row.pinned,
+      sourceSurface: row.sourceSurface,
+      metadata: row.metadata,
+    }))
 
-  for (const fact of facts) {
-    const eligible = autoWriteEnabled && fact.confidence >= PERSONAL_SALIENCE_WRITE_THRESHOLD
-    if (!eligible) {
-      if (
-        fact.confidence >= PERSONAL_SALIENCE_UNSURE_THRESHOLD &&
-        fact.confidence < PERSONAL_SALIENCE_WRITE_THRESHOLD
-      ) {
-        result.unsure += 1
+    for (const fact of facts) {
+      const eligible = autoWriteEnabled && fact.confidence >= PERSONAL_SALIENCE_WRITE_THRESHOLD
+      if (!eligible) {
+        if (
+          fact.confidence >= PERSONAL_SALIENCE_UNSURE_THRESHOLD &&
+          fact.confidence < PERSONAL_SALIENCE_WRITE_THRESHOLD
+        ) {
+          result.unsure += 1
+        }
+        await logServerEvent({
+          level: "info",
+          surface: "web-api",
+          area: "memory",
+          event: "memory.personal_fact_skipped",
+          message: "Personal fact candidate not written (soak/below-threshold).",
+          userId,
+          context: {
+            category: fact.category,
+            confidence: fact.confidence,
+            autoWriteEnabled,
+            derivedFromProjectId: options.derivedFromProjectId,
+            content: fact.content,
+          },
+        })
+        continue
       }
-      // Soak: log the candidate for prompt tuning, never write.
-      await logServerEvent({
-        level: "info",
-        surface: "web-api",
-        area: "memory",
-        event: "memory.personal_fact_skipped",
-        message: "Personal fact candidate not written (soak/below-threshold).",
-        userId,
-        context: {
-          category: fact.category,
-          confidence: fact.confidence,
-          autoWriteEnabled,
-          derivedFromProjectId: options.derivedFromProjectId,
+
+      const capturedAt = new Date().toISOString()
+      const decision = decidePersonalCrud(
+        {
+          id: "incoming",
           content: fact.content,
+          capturedAt,
+          type: "note",
         },
-      })
-      continue
-    }
+        existing,
+      )
+      if (decision.verb === "noop") {
+        result.duplicate += 1
+        await logServerEvent({
+          level: "info",
+          surface: "web-api",
+          area: "memory",
+          event: "memory.personal_fact_noop",
+          message: "Personal fact already represented — skipped.",
+          userId,
+          context: {
+            category: fact.category,
+            matchedId: decision.matchedId,
+            derivedFromProjectId: options.derivedFromProjectId,
+          },
+        })
+        continue
+      }
 
-    const decision = decidePersonalCrud(
-      {
-        id: "incoming",
-        content: fact.content,
-        capturedAt: new Date().toISOString(),
+      const created = await tx.memory.create(userId, {
+        projectId: personalProjectId,
         type: "note",
-      },
-      existing,
-    )
-    if (decision.verb === "noop") {
-      result.duplicate += 1
-      await logServerEvent({
-        level: "info",
-        surface: "web-api",
-        area: "memory",
-        event: "memory.personal_fact_noop",
-        message: "Personal fact already represented — skipped.",
-        userId,
-        context: {
-          category: fact.category,
-          matchedId: decision.matchedId,
+        content: fact.content,
+        sourceSurface: (options.sourceSurface ?? "auto") as SourceSurface,
+        capturedAt,
+        metadata: {
+          source: "personal-router",
+          autoRouted: true,
+          personalCategory: fact.category,
+          salienceConfidence: fact.confidence,
           derivedFromProjectId: options.derivedFromProjectId,
+          authority: "inferred",
+          durability: "durable",
+          validationState: "inferred",
         },
       })
-      continue
+      await tx.projectState.markDirty(personalProjectId)
+      await tx.memoryEvents.create({
+        projectId: personalProjectId,
+        memoryItemId: created.id,
+        eventType: "created",
+        sourceSurface: created.sourceSurface,
+        userId,
+        payload: { type: created.type, personal: true },
+      })
+      result.written += 1
+      createdItems.push(created)
+      existing.push({
+        id: created.id,
+        content: created.content,
+        capturedAt: created.capturedAt,
+        type: created.type,
+        pinned: created.pinned,
+        sourceSurface: created.sourceSurface,
+        metadata: created.metadata,
+      })
     }
 
-    const created = await createMemoryItem(userId, {
-      projectId: personalProjectId,
-      type: "note",
-      content: fact.content,
-      sourceSurface: options.sourceSurface ?? "auto",
-      capturedAt: new Date().toISOString(),
-      metadata: {
-        source: "personal-router",
-        autoRouted: true,
-        personalCategory: fact.category,
-        salienceConfidence: fact.confidence,
-        derivedFromProjectId: options.derivedFromProjectId,
-        authority: "inferred",
-        durability: "durable",
-        validationState: "inferred",
-      },
-    })
-    result.written += 1
-    // Keep the in-memory existing set current so later facts dedupe against
-    // just-added ones.
-    existing.push({
-      id: created.id,
-      content: created.content,
-      capturedAt: created.capturedAt,
-      type: created.type,
-      pinned: created.pinned,
-      sourceSurface: created.sourceSurface,
-      metadata: created.metadata,
-    })
-  }
-  // Personal memory changed — refresh the derived "About you" state card. Gated
-  // by the shared budget gate + only when something was actually written, so a
-  // capture that yields no new facts costs nothing extra.
+    if (result.written > 0) {
+      await tx.memory.archiveOverBudget(personalProjectId, personalMemoryItemCap())
+    }
+    return result
+  })
+
   if (result.written > 0) {
-    void regeneratePersonalState(userId).catch(() => {})
+    try {
+      await Promise.all([
+        ...createdItems.map((item) => enqueueMemoryPipelineJob({
+          jobType: "enrich_memory_item",
+          userId,
+          projectId: personalProjectId,
+          memoryItemId: item.id,
+          repositories,
+        })),
+        enqueuePersonalStateRegeneration(userId, personalProjectId, repositories),
+        markProjectHygieneDue(personalProjectId, undefined, repositories),
+      ])
+      void drainTinyMemoryPipelineBatch()
+    } catch (error) {
+      console.warn("[personal-memory] enqueue jobs failed:", error instanceof Error ? error.message : error)
+    }
+    invalidateProjectCache(userId, personalProjectId)
   }
   return result
 }

@@ -7,6 +7,7 @@ import { createRepositoryBundle } from "@relay/db"
 import { runContinuityMaintenanceForUser } from "@/server/services/continuity-maintenance-service"
 import { emitDailyCostSnapshots } from "@/server/services/cost-snapshot-service"
 import { drainDigestJobs } from "@/server/services/digest-service"
+import { drainDueProjectHygiene, drainMemoryPipelineJobs } from "@/server/services/memory-pipeline-scheduler"
 import { sweepStaleProcessingSources } from "@/server/services/source-service"
 
 const MAX_USERS_PER_INVOCATION = 1
@@ -78,5 +79,17 @@ export async function GET(request: Request) {
       }))
     : { skipped: "work budget exhausted" }
 
-  return NextResponse.json({ processed: results.length, results, costSnapshots, staleSources })
+  const memoryPipeline = Date.now() - startedAt < MAX_WORK_MS
+    ? await drainMemoryPipelineJobs({ limit: 10, maxMs: 10_000 }).catch((error) => ({
+        error: error instanceof Error ? error.message : "Unknown error",
+      }))
+    : { skipped: "work budget exhausted" }
+
+  const memoryHygiene = Date.now() - startedAt < MAX_WORK_MS
+    ? await drainDueProjectHygiene({ limit: 5, maxMs: 10_000 }).catch((error) => ({
+        error: error instanceof Error ? error.message : "Unknown error",
+      }))
+    : { skipped: "work budget exhausted" }
+
+  return NextResponse.json({ processed: results.length, results, costSnapshots, staleSources, memoryPipeline, memoryHygiene })
 }

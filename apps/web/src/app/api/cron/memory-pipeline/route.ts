@@ -4,21 +4,10 @@ import { NextResponse } from "next/server"
 // (HANDOFF §7 drain stats). Default Vercel timeout is too tight.
 export const maxDuration = 300
 
-import { createRepositoryBundle, createWorkerRepositoryProvider } from "@relay/db"
 import {
-  PIPELINE_VERSION,
-  runHygieneTick,
-  tick,
-  type MemoryPipelineRepos,
-  type PipelineProviders,
-} from "@relay/memory-pipeline"
-
-import { EMBEDDING_MODEL, generateEmbedding } from "@/server/services/embedding-service"
-import {
-  buildEntityExtractor,
-  buildObservationExtractor,
-  buildPipelineBudgetGate,
-} from "@/server/services/memory-pipeline-providers"
+  drainDueProjectHygiene,
+  drainMemoryPipelineJobs,
+} from "@/server/services/memory-pipeline-scheduler"
 
 /**
  * Cron entry for the memory-pipeline worker.
@@ -55,60 +44,24 @@ async function handle(request: Request): Promise<Response> {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  // Uses WORKER_DATABASE_URL when set so the worker can run under a dedicated
-  // role (e.g. relay_worker with bypassrls). Falls back to DATABASE_URL when
-  // unset — current production behavior preserved.
-  const repositories = createRepositoryBundle(undefined, createWorkerRepositoryProvider())
-  const repos: MemoryPipelineRepos = {
-    provider: repositories.provider,
-    memory: repositories.memory,
-    observation: repositories.observations,
-    entityRelation: repositories.entityRelations,
-    entity: repositories.entities,
-    graph: repositories.graph,
-  }
-
-  // Entity + observation extractors gated behind RELAY_MEMORY_PIPELINE_FULL.
-  // When disabled the worker only embeds new rows + sweeps decay — safe
-  // default for first deploy. Flip the env after prompt-quality soak.
-  const fullExtraction = process.env.RELAY_MEMORY_PIPELINE_FULL === "true"
-  const budgetGate = fullExtraction ? buildPipelineBudgetGate() : null
-  const providers: PipelineProviders = {
-    embed: async (text: string) => ({
-      vector: await generateEmbedding(text),
-      model: EMBEDDING_MODEL,
-    }),
-    ...(fullExtraction && budgetGate
-      ? {
-          extractEntities: buildEntityExtractor(budgetGate),
-          extractObservations: buildObservationExtractor(budgetGate),
-        }
-      : {}),
-  }
-
   const dryRunHygiene = process.env.RELAY_HYGIENE_DRY_RUN !== "false"
-  const tickStarted = Date.now()
-  const tickResults = await tick(repos, providers, { batchSize: 25 })
+  const jobsStarted = Date.now()
+  const jobs = await drainMemoryPipelineJobs({ limit: 25, maxMs: 180_000 })
   const hygieneStarted = Date.now()
-  const hygiene = await runHygieneTick(repos, { dryRun: dryRunHygiene })
+  const hygiene = await drainDueProjectHygiene({ limit: 10, maxMs: 90_000, dryRun: dryRunHygiene })
   const finishedAt = Date.now()
 
   return NextResponse.json({
-    pipelineVersion: PIPELINE_VERSION,
-    tick: {
-      processed: tickResults.length,
-      durationMs: hygieneStarted - tickStarted,
-      results: tickResults,
+    jobs: {
+      ...jobs,
+      durationMs: hygieneStarted - jobsStarted,
     },
     hygiene: {
       ...hygiene,
       durationMs: finishedAt - hygieneStarted,
     },
-    flags: {
-      fullExtraction,
-      dryRunHygiene,
-    },
-    budget: budgetGate?.snapshot() ?? null,
+    flags: { ...jobs.flags, dryRunHygiene },
+    budget: jobs.budget,
   })
 }
 

@@ -29,7 +29,10 @@
 - Eyes-on the W3 tri-state trees (built blind): node rollup display, project-node clearing leaves, leaf writes, inline-chip actually gating `showCue`.
 - W6: confirm a single scrollbar in the expanded side panel.
 
-**Then: cutover** — see "Production cutover" below (migrations `0040`–`0050` to prod, `CRON_SECRET`, embedding-backfill loop, `RELAY_MEMORY_PIPELINE_FULL=true` + `RELAY_HYGIENE_DRY_RUN=true` for a week). Soak `RELAY_PERSONAL_MEMORY_AUTOWRITE` (log-only) before flipping personal-routing on. Chrome resubmission after W8.
+**Then: cutover tooling review, not immediate cutover** — Phase 3 removed the old
+every-2h GitHub Actions cron and added durable enqueue-on-write jobs plus daily bounded
+recovery. Audit migrations `0040+` and the operator backfills in Phase 5 before touching
+production. Soak `RELAY_PERSONAL_MEMORY_AUTOWRITE` before flipping personal routing.
 
 **Dev branch for testing:** `br-muddy-morning-ag55csrg` (prod fork, migrations `0040`–`0050` applied, 80 profiles backfilled). Existing rows are prod-encrypted → need the prod key to decrypt.
 - Pull it (Vercel CLI is logged in as `alimkhan`): `vercel env pull /tmp/p.env --environment=production --yes`, extract `RELAY_CONTENT_ENCRYPTION_KEY`, **shred the dump**.
@@ -435,9 +438,9 @@ with real user data before any prod deploy. New work landed:
 | Assistant chat command parser | new `packages/shared/src/utils/assistant-command-parser.ts` + 19 unit tests. Parses `/reaffirm`, `/forget`, `/obsolete`, `/archive`, `/restore` and maps to `/api/memory/[id]` PATCH payloads. Hook integration into `use-assistant-chat.ts` + cooling/archived pills in `action-result-card.tsx` DEFERRED to a follow-up UI PR. |
 | Graph CTE cycle guard | `expandFromEntities` recursive CTE now tracks visited entity IDs in a `visited` array column and excludes them on each iteration. Prevents infinite loops once the worker populates real edges. |
 | Spaces archived listing | `GET /api/spaces/[id]/memory?include=archived` returns active + cooling + archived (default still active + cooling). |
-| GitHub Actions cron | new `.github/workflows/memory-pipeline-cron.yml` fires every 15 min + supports manual `workflow_dispatch`. Vercel Hobby tier is 1 cron/day — out-of-band scheduling via GH Actions sidesteps the cap. Requires repo secrets `CRON_SECRET` + `MEMORY_PIPELINE_URL`. |
+| Memory pipeline scheduling | **Phase 3 supersedes the old GitHub Actions cron.** Writes enqueue durable `memory_pipeline_jobs` and opportunistically drain a tiny batch; the existing daily internal cron is bounded recovery. `/api/cron/memory-pipeline` is manual/operator-only. |
 | Backfill migration | new `packages/db/neon/migrations/0049_backfill_v1_to_v2_extraction.sql` flips legacy rows `enrichment_status='done' AND enrichment_version=1` back to `pending` so the v2 worker reprocesses them. Apply only after `RELAY_MEMORY_PIPELINE_FULL=true` has soaked on new writes. |
-| Docs | DEPLOYMENT.md + `.env.example` updated with the new env vars + GH Actions cron section. |
+| Docs | DEPLOYMENT.md + `.env.example` updated with memory-v2 env vars. Phase 3 later removed the GH Actions cron. |
 
 ### Deferred to follow-up PRs (small, contained)
 
@@ -671,7 +674,7 @@ After deploying the merged branch and applying migrations 0040–0049 to prod:
    migration runner.
 5. **Set `RELAY_MEMORY_PIPELINE_FULL=true`** + `RELAY_HYGIENE_DRY_RUN=true`
    (keep dry-run for the first week of hygiene observations). The Vercel
-   cron or GH Actions cron will start draining the v2 extraction queue.
+   write-triggered jobs and the daily recovery cron will drain the v2 extraction queue.
 6. **Watch** `memory_events` for `observation_created` + `entity_relation_*`.
    Sample 10 rows after the first 100 items drained; sanity-check Gemini
    output before flipping `RELAY_HYGIENE_DRY_RUN=false`.
@@ -758,7 +761,9 @@ once more for clarity:
 2. Apply migrations `0040`–`0049`.
 3. Deploy merged `main`.
 4. Set `CRON_SECRET` in Vercel env.
-5. Run the embedding-backfill loop until all three `remaining` counters hit 0.
+5. Run the bounded embedding-backfill loop for recall-critical tables:
+   `memory_items`, `observations`, and `source_chunks`. Canonical entity embeddings
+   are opt-in only (`includeCanonicalEntities=true`) and are not a cutover requirement.
 6. Set `RELAY_MEMORY_PIPELINE_FULL=true` + keep `RELAY_HYGIENE_DRY_RUN=true`.
 7. Watch `memory_events` for one week. Sample 10 obs after first 100 drained.
 8. Flip `RELAY_HYGIENE_DRY_RUN=false`. Drop `RELAY_PIPELINE_DAILY_USD_CAP` to `5`.

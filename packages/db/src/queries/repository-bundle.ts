@@ -22,6 +22,7 @@ import { EntitlementRepository } from "../repositories/entitlement-repository"
 import { ExtensionTokenRepository } from "../repositories/extension-token-repository"
 import { MemberRepository } from "../repositories/member-repository"
 import { MemoryEventRepository } from "../repositories/memory-event-repository"
+import { MemoryPipelineJobRepository } from "../repositories/memory-pipeline-job-repository"
 import { MemoryRepository } from "../repositories/memory-repository"
 import { McpAuthSessionRepository } from "../repositories/mcp-auth-session-repository"
 import { McpTokenRepository } from "../repositories/mcp-token-repository"
@@ -65,6 +66,7 @@ export interface RepositoryBundle {
   sessions: SessionRepository
   turns: TurnRepository
   memory: MemoryRepository
+  memoryPipelineJobs: MemoryPipelineJobRepository
   memoryEvents: MemoryEventRepository
   canonEntries: CanonEntryRepository
   canonEvidence: CanonEvidenceRepository
@@ -125,6 +127,7 @@ export function createRepositoryBundle(
     sessions: new SessionRepository(provider),
     turns: new TurnRepository(provider),
     memory: new MemoryRepository(provider),
+    memoryPipelineJobs: new MemoryPipelineJobRepository(provider),
     memoryEvents: new MemoryEventRepository(provider),
     canonEntries: new CanonEntryRepository(provider),
     canonEvidence: new CanonEvidenceRepository(provider),
