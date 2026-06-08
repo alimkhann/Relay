@@ -1,17 +1,74 @@
 # Next-session handoff — review → fixes → cutover
 
-Branch `feat/memory-v2-architecture` (PR #35).
-Next session = your last checks → Claude review → fixes → **production cutover**
-if you're satisfied.
+Branch `feat/memory-v2-architecture` (PR #35, HEAD `d339f81`, pushed).
 
-This file supersedes the older state. Read `docs/memory-v2/HANDOFF.md` for the
-full cutover runbook (env vars, migration runner, RLS swap).
+## ▶ START HERE (next session): Phases 3–6
+
+**Phase 1 (cost-cut merge) and Phase 2 (extension bg → thin entrypoint) are DONE,
+verified, and pushed** (details below). Constraints still hold: do NOT deploy, touch
+prod Neon, flip prod flags, or delete branches without explicit approval. Keep
+`RELAY_PERSONAL_MEMORY_AUTOWRITE` / `RELAY_MULTI_PROJECT_CAPTURE` /
+`RELAY_MEMORY_PIPELINE_FULL` dark. Recommend a **fresh session** for 3–6 (different
+domains: server scheduling, graph, migrations, cutover — clean context helps).
+
+- **Phase 3 — cost-safe Personal/memory-v2 scheduling.** Replace the every-2h GH
+  Actions cron (`.github/workflows/memory-pipeline-cron.yml`) with enqueue-on-write +
+  event-driven enrichment; separate hygiene (daily / indexed `next_hygiene_at`); atomic
+  dedup/supersession + Personal item cap + debounced "About You" regen before autowrite;
+  review removing canonical-entity embeddings; batch/checkpoint embedding backfills;
+  revisit migrations 0050/0052 by query plan; pagination + default limits on memory reads.
+  (Idempotency note: Personal harvest already dedups on persisted+rehydrated
+  `lastRoutedSignature`; the gap is atomic server-side dedup — do it here.)
+- **Phase 4 — rework memory graph** from persisted facts (entities/items/sources +
+  real relations); types/Folk categories → filters not nodes; remove synthetic hubs /
+  fake `extends` / `REAL_EDGE_MIN` / O(n²) all-pairs; one snapshot/API contract.
+- **Phase 5 — release/cutover tooling.** Prod at migration 0039; do NOT apply 0040–0052
+  unchanged. Remove 0049's auto full-prod re-enqueue → explicit bounded operator backfill;
+  fix stale verification SQL; reconcile roles vs RLS audit; RLS swap last. Run live gates.
+- **Phase 6 — safe rollout plan, then STOP** (no prod cutover). Prefer CWS 0.6.0 first.
+
+Full original 6-phase spec: the session's initial prompt + `docs/memory-v2/HANDOFF.md`
+(cutover runbook: env vars, migration runner, RLS swap).
 
 ---
 
-## 2026-06-08 — Phase 1 (cost cuts merged) + Phase 2 (ext bg refactor, partial)
+## 2026-06-08 — Phase 1 ✅ + Phase 2 ✅ COMPLETE (pushed). Next: Phases 3–6.
 
-**NOT pushed yet** (13 local commits on top of `origin/main`). No prod touched.
+**Pushed** to `origin/feat/memory-v2-architecture` (PR #35, HEAD `d339f81`). No prod
+touched, no flags flipped, no branches deleted.
+
+### Phase 2 — background/index.ts modularization: DONE (thin entrypoint)
+`background/index.ts` **5834 → 8 lines** (init telemetry → `createBackgroundRuntime()`
+→ `registerBackgroundListeners(runtime)`). Decomposed into ~25 cohesive modules
+(largest non-pre-existing: `association-controller` 684, `capture-controller` 610,
+`auth-message-handlers` 520, `message-dispatcher` 493). The sync↔capture cycle was
+broken via a dependency-injected `runtime` object (controllers receive their callees
+as deps) — not verbatim, but behavior-preserving and verified.
+
+**Verified (this session, the reviewer pass):** ext + web typecheck clean; 160 ext
+unit tests; ext prod build clean (no circular deps); **e2e runtime net passes**
+(`tests/e2e/extension-bg-dispatch.spec.ts` — drives the real SW: proves the
+`onMessage` `void async; return true` port contract + session-cache refresh +
+persisted-cache cost behavior at runtime); test:stable 75/75. MV3 checks: listener
+registration is synchronous at load (no top-level await), `onMessage`/`onMessageExternal`
+keep sync `return true`; cost-cut gating preserved (`onActivated`/`onUpdated` →
+`refreshPageStateAndSyncIfMissing`, sync-if-missing not forced).
+
+**Known pre-existing (NOT a regression):** `tests/e2e/extension-inline-chip.spec.ts`
+fails — stale UI (last updated commit #13, before this branch's inline-chip rewrite)
++ a racy in-test Plasmo `beforeAll` rebuild. Unrelated to the refactor (background
+is proven via the dispatch net). Either update its assertions to the current chip UX
+or `test.skip` it with a note — small follow-up, not a blocker.
+
+### Phase 1 — origin/main cost hotfixes merged into the branch ✅
+- The branch had forked *before* main's `cf6e278`/`aebf63b`/`bd79e1f` cost cuts and
+  never had them. Merged `origin/main` (merge commit `506e29a`); dirty tree preserved
+  as WIP `c4628b5` first.
+- Hand-resolved `session/route.ts`: now `listCachedProjectsForUser({includePersonal:true})`
+  + lightweight `entitlements`, **no per-GET `ensurePersonalProjectForUser`** (provisioning
+  stays on the 3 auth routes). Kept `features.multiProjectCapture`.
+- Verified all 7 cost protections survive the (mostly silent) auto-merge: unsupported
+  tabs → 0 remote (refreshPageStateAndSyncIfMissing gates on shouldSyncMissingRemoteState,
 
 ### Phase 1 — origin/main cost hotfixes merged into the branch ✅
 - The branch had forked *before* main's `cf6e278`/`aebf63b`/`bd79e1f` cost cuts and
