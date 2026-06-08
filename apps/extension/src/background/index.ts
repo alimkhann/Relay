@@ -104,6 +104,7 @@ import {
   createPendingOnboardingState,
   formatUpdatedLabel,
   isAuthFailureMessage,
+  readErrorResponse,
   REMOTE_RETRY_BACKOFF_MS,
   retryRemote,
   sendTabMessageWithTimeout,
@@ -780,31 +781,6 @@ function clearTabState(tabId: number) {
 
   // Clean up persisted signatures when tab closes
   void removeTabSignature(tabId);
-}
-
-async function readErrorResponse(response: Response, fallback: string) {
-  try {
-    const text = await response.text();
-
-    if (!text.trim()) {
-      return `${fallback} (HTTP ${response.status})`;
-    }
-
-    try {
-      const payload = JSON.parse(text) as {
-        error?: string;
-        message?: string;
-      };
-      return payload.error ?? payload.message ?? `${fallback} (HTTP ${response.status})`;
-    } catch {
-      const snippet = text.replace(/\s+/g, " ").trim().slice(0, 180);
-      return snippet
-        ? `${fallback} (HTTP ${response.status}): ${snippet}`
-        : `${fallback} (HTTP ${response.status})`;
-    }
-  } catch {
-    return `${fallback} (HTTP ${response.status})`;
-  }
 }
 
 async function loadSessionData(force = false) {

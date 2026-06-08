@@ -69,6 +69,31 @@ export function isAuthFailureMessage(message: string) {
   );
 }
 
+export async function readErrorResponse(response: Response, fallback: string) {
+  try {
+    const text = await response.text();
+
+    if (!text.trim()) {
+      return `${fallback} (HTTP ${response.status})`;
+    }
+
+    try {
+      const payload = JSON.parse(text) as {
+        error?: string;
+        message?: string;
+      };
+      return payload.error ?? payload.message ?? `${fallback} (HTTP ${response.status})`;
+    } catch {
+      const snippet = text.replace(/\s+/g, " ").trim().slice(0, 180);
+      return snippet
+        ? `${fallback} (HTTP ${response.status}): ${snippet}`
+        : `${fallback} (HTTP ${response.status})`;
+    }
+  } catch {
+    return `${fallback} (HTTP ${response.status})`;
+  }
+}
+
 export async function retryRemote<T>(
   task: () => Promise<T>,
   attempts = REMOTE_RETRY_MAX_ATTEMPTS,
