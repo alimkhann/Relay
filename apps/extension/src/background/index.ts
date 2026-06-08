@@ -1,3 +1,8 @@
-// Keep the Plasmo background entrypoint side-effect-only. Runtime composition
-// and Chrome listener registration live in background-runtime.ts.
-import "./background-runtime";
+import { createBackgroundRuntime } from "./background-runtime";
+import { registerBackgroundListeners } from "./background-listeners";
+import { initializeBackgroundTelemetry } from "./telemetry";
+
+initializeBackgroundTelemetry();
+
+const runtime = createBackgroundRuntime();
+registerBackgroundListeners(runtime);

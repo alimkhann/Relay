@@ -134,3 +134,5 @@ export async function captureTab(
     personalRouting: payload.personalRouting ?? null,
   };
 }
+
+export type CaptureTabResult = Awaited<ReturnType<typeof captureTab>>;

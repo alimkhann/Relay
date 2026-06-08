@@ -1,22 +1,19 @@
-import type { SupportedPlatform } from "@relay/shared";
 
 import type {
   RelayAssociationToastPayload,
   RelayMessage,
   RelayPageState,
 } from "../messaging/contracts";
-import { clearIgnoredChatKey, clearManualOverride, isIgnoredChatKey, readAssociationAdjudication, readApprovedAssociations, rememberAssociationAdjudication, rememberIgnoredChatKey, removeApprovedAssociationBySession } from "../storage/routing";
+import { clearManualOverride, isIgnoredChatKey, readAssociationAdjudication, readApprovedAssociations, rememberAssociationAdjudication, rememberIgnoredChatKey, removeApprovedAssociationBySession } from "../storage/routing";
 import { getRelaySession } from "../storage/session";
 import { relayFetch } from "../utils/api";
-import { buildAskToast, buildDoneToast, buildSavedAssociationFromMemory, buildSavingToast, resolveAssociationProjectName, resolveAssociationToastAction } from "./association-workflow";
-import { getRetargetableAssociationProject, reconcileManualOverride, resolveAssociationProjectOption, setEffectiveProjectTarget, setSessionProjectTarget, updateAssociationProjectState } from "./association";
+import { buildAskToast, buildSavedAssociationFromMemory, buildSavingToast, resolveAssociationToastAction } from "./association-workflow";
+import { resolveAssociationProjectOption, setSessionProjectTarget, updateAssociationProjectState } from "./association";
 import { buildActiveProjectState } from "./active-project";
 import { readErrorResponse } from "./bg-utils";
 import { invalidateProjectCache } from "./session-cache";
-import { tabStates } from "./state";
-import { createEmptyAssociationToast, createEmptyChatAssociation } from "./tab-state";
 import { clearAssociationToast, clearAssociationToastTimer, clearPendingAssociation, getOrCreateTabState } from "./tab-state-store";
-import { buildAssociationKey, evaluateProjectRouting, findApprovedAssociationMatch, hasPersonalProfileIntent, type RelayRoutingDecision } from "./routing";
+import { buildAssociationKey, evaluateProjectRouting, type RelayRoutingDecision } from "./routing";
 import { recordBackgroundTelemetry } from "./telemetry";
 import type { RelayTabState } from "./bg-types";
 
@@ -299,32 +296,6 @@ export function logRoutingDecision(
       score: candidate.score,
       reasons: candidate.reasons,
     })),
-  });
-}
-
-export function logAutoCaptureGate(
-  reason: string,
-  state: RelayTabState,
-  sessionProjectOptionsCount: number,
-) {
-  console.warn("[Relay BG] auto-capture blocked", {
-    reason,
-    associationStatus: state.chatAssociation.status,
-    associationSuppressed: state.associationSuppressed,
-    supported: state.page.supported,
-    promptReady: state.page.promptReady,
-    isFreshChat: state.page.isFreshChat,
-    isStable: state.page.isStable,
-    isStreaming: state.page.isStreaming,
-    turns: state.page.turns ?? 0,
-    captureSignature: state.page.captureSignature?.slice(0, 16) ?? null,
-    lastCapturedSignature: state.lastCapturedSignature?.slice(0, 16) ?? null,
-    lastRoutedSignature: state.lastRoutedSignature?.slice(0, 16) ?? null,
-    capturePending: state.capturePending,
-    capturePendingAt: state.capturePendingAt,
-    projectOptions: state.projectOptions.length,
-    sessionProjectOptions: sessionProjectOptionsCount,
-    remoteStatus: state.remoteStatus,
   });
 }
 

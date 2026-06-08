@@ -1,6 +1,6 @@
 import { getRelaySession } from "../storage/session";
 import { hydrateTabStateFromSession } from "./association";
-import { logAutoCaptureGate } from "./association-controller";
+import type { RelayTabState } from "./bg-types";
 import { AUTO_CAPTURE_GRACE_MS } from "./bg-utils";
 import { getOrCreateTabState, clearInsertStateTimer, clearPendingInsertedBrief, matchesPendingInsertedBrief } from "./tab-state-store";
 import { createEmptyInsertState, shouldScheduleAutoCapture, shouldScheduleAutoCaptureRouting, shouldScheduleIncrementalCapture } from "./tab-state";
@@ -23,6 +23,32 @@ export function scheduleInsertStateReset(tabId: number, delayMs = 1200) {
     latestState.insertState = createEmptyInsertState();
     void schedulerDeps.broadcastActiveProjectState(tabId);
   }, delayMs);
+}
+
+function logAutoCaptureGate(
+  reason: string,
+  state: RelayTabState,
+  sessionProjectOptionsCount: number,
+) {
+  console.warn("[Relay BG] auto-capture blocked", {
+    reason,
+    associationStatus: state.chatAssociation.status,
+    associationSuppressed: state.associationSuppressed,
+    supported: state.page.supported,
+    promptReady: state.page.promptReady,
+    isFreshChat: state.page.isFreshChat,
+    isStable: state.page.isStable,
+    isStreaming: state.page.isStreaming,
+    turns: state.page.turns ?? 0,
+    captureSignature: state.page.captureSignature?.slice(0, 16) ?? null,
+    lastCapturedSignature: state.lastCapturedSignature?.slice(0, 16) ?? null,
+    lastRoutedSignature: state.lastRoutedSignature?.slice(0, 16) ?? null,
+    capturePending: state.capturePending,
+    capturePendingAt: state.capturePendingAt,
+    projectOptions: state.projectOptions.length,
+    sessionProjectOptions: sessionProjectOptionsCount,
+    remoteStatus: state.remoteStatus,
+  });
 }
 
 export async function scheduleAutoCapture(

@@ -11,7 +11,8 @@ import {
   readManualOverride,
   rememberManualOverride,
 } from "../storage/routing";
-import { getRelaySession, setRelaySession } from "../storage/session";
+import type { getRelaySession } from "../storage/session";
+import { setRelaySession } from "../storage/session";
 import { resolveAssociationProjectName } from "./association-workflow";
 import type { ProjectDashboardPayload, RelayTabState } from "./bg-types";
 import { buildAssociationKey } from "./routing";
