@@ -91,6 +91,7 @@ export interface RelayTabState {
   lastRoutedSignature: string | null;
   lastReconciliation: { archivedCount: number; archivedItems: string[] } | null;
   lastBudgetStatus: { aiUsed: number; aiLimit: number; aiRemaining: number; plan: string } | null;
+  captureAbortController?: AbortController;
 }
 
 export interface PendingInsertedBriefState {

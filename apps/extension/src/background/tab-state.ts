@@ -396,6 +396,12 @@ export function shouldScheduleAutoCapture(input: AutoCaptureDecisionInput) {
   if (!input.page.captureSignature) return false
   if (input.capturePending) return false
 
+  // Skip trivial interactions: require a substantive user message and enough
+  // total conversation text to be worth capturing.
+  const recentUserText = (input.page.recentUserTurnText ?? "").trim();
+  const fullText = (input.page.fullVisibleRoutingText ?? input.page.recentUserTurnText ?? "").trim();
+  if (recentUserText.length < 20 || fullText.length < 60) return false;
+
   return input.page.captureSignature !== input.lastCapturedSignature
 }
 

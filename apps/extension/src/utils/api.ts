@@ -36,10 +36,14 @@ export async function relayFetch(path: string, init?: RequestInit, options?: Rel
   const controller = new AbortController()
   const timeoutMs = options?.timeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  // AbortSignal.any is Chrome 116+ but not yet in all TS lib versions — cast to use it.
+  const signal = init?.signal
+    ? (AbortSignal as any).any([controller.signal, init.signal]) as AbortSignal
+    : controller.signal
   try {
     return await fetch(`${session.apiBase}${path}`, {
       ...init,
-      signal: controller.signal,
+      signal,
       headers: {
         "content-type": "application/json",
         ...(session.token ? { authorization: `Bearer ${session.token}` } : {}),

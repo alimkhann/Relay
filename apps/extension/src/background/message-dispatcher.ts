@@ -91,6 +91,12 @@ chrome.runtime.onMessage.addListener(
           return;
         }
 
+        if (message.type === "RELAY_INVALIDATE_PROJECT_CACHE") {
+          invalidateProjectCache(message.payload?.projectId);
+          sendResponse({ ok: true });
+          return;
+        }
+
         if (message.type === "RELAY_SIGN_OUT") {
           try {
             await clearRelaySession();

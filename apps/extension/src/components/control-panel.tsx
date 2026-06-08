@@ -1960,6 +1960,13 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     try {
       await task();
       setStatus(successMessage);
+      const mutatedProjectId = activeState.projectId ?? session?.projectId;
+      if (mutatedProjectId) {
+        void chrome.runtime.sendMessage({
+          type: "RELAY_INVALIDATE_PROJECT_CACHE",
+          payload: { projectId: mutatedProjectId },
+        });
+      }
       await refreshLocalSession();
       await refreshActiveProjectState();
     } catch (cause) {

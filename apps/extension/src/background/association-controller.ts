@@ -218,6 +218,10 @@ export async function archiveChatAssociation(
 
 export async function dismissCaptureReview(tabId: number) {
   const state = getOrCreateTabState(tabId);
+  if (state.captureAbortController) {
+    state.captureAbortController.abort();
+    state.captureAbortController = undefined;
+  }
   const chatKey = buildAssociationKey(state.page);
   const previousStatus = state.chatAssociation.status;
   clearPendingAssociation(state, { clearChatAssociation: true });

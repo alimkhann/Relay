@@ -85,6 +85,8 @@ export async function captureTab(
   }
 
   let response: Response;
+  const captureController = new AbortController();
+  state.captureAbortController = captureController;
   try {
     response = await relayFetch(
       "/api/captures",
@@ -98,17 +100,24 @@ export async function captureTab(
             ? options.additionalProjectIds
             : undefined,
         }),
+        signal: captureController.signal,
       },
       { timeoutMs: CAPTURE_API_TIMEOUT_MS },
     );
   } catch (cause) {
     const reason =
       cause instanceof DOMException && cause.name === "AbortError"
-        ? `Capture request timed out after ${CAPTURE_API_TIMEOUT_MS}ms.`
+        ? (captureController.signal.aborted && !cause.message.includes("timed out")
+            ? "Capture cancelled."
+            : `Capture request timed out after ${CAPTURE_API_TIMEOUT_MS}ms.`)
         : cause instanceof Error
           ? cause.message
           : "Capture request failed.";
     return { ok: false, reason };
+  } finally {
+    if (state.captureAbortController === captureController) {
+      state.captureAbortController = undefined;
+    }
   }
 
   if (!response.ok) {
