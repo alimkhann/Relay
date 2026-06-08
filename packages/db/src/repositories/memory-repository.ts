@@ -665,13 +665,15 @@ export class MemoryRepository {
     return rows.map((record) => toMemoryRelationRow(record as Record<string, unknown>))
   }
 
-  async getRelationsForProject(projectId: string): Promise<MemoryRelationRow[]> {
+  async getRelationsForProject(projectId: string, options: { limit?: number } = {}): Promise<MemoryRelationRow[]> {
+    const limit = Math.min(Math.max(options.limit ?? 1000, 1), 5000)
     const rows = await this.provider.query(
       `select mr.* from memory_relations mr
        join memory_items mi on mi.id = mr.source_id
        where mi.project_id = $1
-       order by mr.created_at desc`,
-      [projectId]
+       order by mr.created_at desc
+       limit $2`,
+      [projectId, limit]
     )
 
     return rows.map((record) => toMemoryRelationRow(record as Record<string, unknown>))

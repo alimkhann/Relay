@@ -1,11 +1,11 @@
-# Next-session handoff — Phase 3 complete; next: graph → cutover tooling → rollout
+# Next-session handoff — Phase 4 complete; next: review → cutover tooling → rollout
 
 Branch `feat/memory-v2-architecture` (PR #35).
 
-## START HERE (next session): Phases 4–6
+## START HERE (next session): review, then Phases 5–6
 
 **Phase 1 (cost-cut merge), Phase 2 (extension bg decomposition), and Phase 3
-(cost-safe memory-v2 scheduling) are DONE.** Constraints still hold: do NOT deploy, touch
+(cost-safe memory-v2 scheduling), and Phase 4 (real evidence graph) are DONE.** Constraints still hold: do NOT deploy, touch
 prod Neon, flip prod flags, or delete branches without explicit approval. Keep
 `RELAY_PERSONAL_MEMORY_AUTOWRITE` / `RELAY_MULTI_PROJECT_CAPTURE` /
 `RELAY_MEMORY_PIPELINE_FULL` dark.
@@ -48,9 +48,41 @@ New safe defaults:
 RELAY_PERSONAL_MEMORY_ITEM_CAP=500
 RELAY_EMBED_CANONICAL_ENTITIES=false
 ```
-- **Phase 4 — rework memory graph** from persisted facts (entities/items/sources +
-  real relations); types/Folk categories → filters not nodes; remove synthetic hubs /
-  fake `extends` / `REAL_EDGE_MIN` / O(n²) all-pairs; one snapshot/API contract.
+
+### Phase 4 completed
+
+- Added cached `GET /api/projects/:id/graph?density=compact|full&includeEvidence=true|false`.
+- Graph snapshots are bounded and assembled from persisted memory items, canonical
+  entities, mentions, entity relations, project sources, source-memory links,
+  grouped conversations, memory relations, and optional observations.
+- Dashboard graph loading no longer calls the O(n²) `getSimilarityEdgesForProject`
+  query or separately fetches archived memory.
+- Removed synthetic root/type/Folk hubs, fake fallback `extends` links,
+  `REAL_EDGE_MIN`, and the fallback-links setting.
+- Sparse projects show real isolated nodes plus explanatory copy. Folk categories
+  and memory types are metadata filters, not graph nodes.
+- Fullscreen can opt into the evidence layer and filter by node kind, memory type,
+  Folk category, and edge kind. Compact/minimap graph keeps evidence off.
+- Canonical entity embeddings remain opt-in/off by default; canonical entity rows
+  still participate in graph structure.
+- No deploy, prod Neon change, flag flip, or branch deletion was performed.
+
+Phase 4 verification:
+
+- Focused graph/API/repository tests: passed.
+- Web, DB, and shared typechecks: passed.
+- Changed-file ESLint: passed.
+- `pnpm test:stable`: **75/75 passed**.
+- `pnpm --filter @relay/extension build:prod`: passed.
+- `tests/e2e/extension-bg-dispatch.spec.ts`: passed.
+- Local dashboard dev server is running at `http://localhost:3000`; browser smoke is
+  waiting at local sign-in because the in-app browser has no dashboard auth cookie.
+- Full web lint remains blocked by the existing unrelated missing
+  `@next/next/no-img-element` rule in `hero-section.tsx`.
+- Web production build remains blocked by the existing unrelated client-bundle
+  `node:crypto` import through `@relay/shared` / `utils/hashing.ts`.
+
+- **Next: `/review`** the Phase 1–4 branch before adding cutover tooling.
 - **Phase 5 — release/cutover tooling.** Prod at migration 0039; do NOT apply 0040–0052
   unchanged. Remove 0049's auto full-prod re-enqueue → explicit bounded operator backfill;
   fix stale verification SQL; reconcile roles vs RLS audit; RLS swap last. Run live gates.
@@ -59,14 +91,13 @@ RELAY_EMBED_CANONICAL_ENTITIES=false
 Full original 6-phase spec: the session's initial prompt + `docs/memory-v2/HANDOFF.md`
 (cutover runbook: env vars, migration runner, RLS swap).
 
-### Phase 4 prompt: graph rework
+### Review prompt
 
-Implement Phase 4: replace synthetic/fake graph structure with one bounded snapshot built
-from persisted memory items, observations, canonical entities, mentions, real relations,
-sessions, and sources. Treat types/Folk categories as filters, remove O(n²) all-pairs and
-synthetic hubs as the default, preserve Personal and normal-project quality, avoid hot-load
-graph computation, add graph tests and a Playwright smoke, commit, and update handoffs.
-Do not deploy, touch prod Neon, flip flags, or delete branches.
+Review the complete Phase 1–4 memory-v2 branch as production-sensitive code. Prioritize
+behavioral regressions, Neon cost regressions, unbounded queries, graph snapshot correctness,
+Personal capture/scheduling correctness, migration/cutover risks, missing tests, and extension
+background regressions. Run targeted verification where useful. Report findings first with
+file/line references. Do not deploy, touch prod Neon, flip flags, or delete branches.
 
 ### Phase 5 prompt: release/cutover tooling
 
@@ -82,6 +113,15 @@ bounded backfills, flags, monitoring, rollback, and branch cleanup. Prefer CWS a
 Personal-dependent behavior; keep Personal autowrite, multi-project capture, and full pipeline
 dark initially; include 48-hour Neon cost/autosuspend monitoring. Update docs and commit only;
 do not execute production steps.
+
+### Later prompt: pricing, limits, and analytics
+
+After Phase 5/6 planning is complete, separately audit actual PostHog usage and plan pricing,
+limits, upgrade conversion, and activation analytics. Do not mix this with the memory-v2
+cutover. Evaluate a higher Starter price, a simpler read/write quota model with monthly plus
+burst limits, clear settings/extension quota displays, reduced unnecessary MCP tool use, and
+separate dashboard/extension/MCP activation funnels. Require evidence from usage distributions
+before choosing limits or changing production pricing.
 
 ---
 

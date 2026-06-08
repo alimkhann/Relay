@@ -21,7 +21,7 @@ export function GraphPageContent({ project }: GraphPageContentProps) {
             Graph
           </h1>
           <p className="mt-1 text-[13px] text-[var(--relay-muted)]">
-            {project.name} memory, mapped by relations and semantic similarity.
+            {project.name} memory, mapped from persisted sources, entities, conversations, and relation evidence.
           </p>
         </div>
       </FadeIn>

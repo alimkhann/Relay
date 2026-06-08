@@ -35,7 +35,7 @@ export function MemoryGraphDetailPanel({
     return graphEndpointId(link.source) === node.id || graphEndpointId(link.target) === node.id;
   });
   const nodesById = new Map(allNodes.map((item) => [item.id, item]));
-  const sourceFile = node.kind === "source-file" ? node.source : undefined;
+  const sourceFile = node.kind === "source" ? node.source : undefined;
   const isSourceFile = Boolean(sourceFile);
   const personalCategory = personalCategoryFromMetadata(node.metadata);
   const typeLabel = personalCategory
@@ -51,7 +51,7 @@ export function MemoryGraphDetailPanel({
               className="h-2 w-2 rounded-full"
               style={{ backgroundColor: nodeColor(node) }}
             />
-            {isSourceFile ? "Source file" : typeLabel}
+            {isSourceFile ? "Source file" : node.kind === "entity" ? "Entity" : node.kind === "conversation" ? "Conversation" : node.kind === "observation" ? "Evidence" : typeLabel}
             {node.pinned && <Pin className="h-3 w-3 fill-current" />}
           </div>
           <h2 className="truncate text-sm font-semibold text-[var(--relay-ink)]">
@@ -162,7 +162,7 @@ export function MemoryGraphDetailPanel({
                       className="text-[11px] font-medium uppercase tracking-wide"
                       style={{ color: RELATION_COLORS[link.relationType] }}
                     >
-                      {link.relationType} · {Math.round(link.confidence * 100)}%
+                      {link.label} · {Math.round(link.confidence * 100)}%
                     </span>
                     <span className="mt-1 block truncate text-[12px] text-[var(--relay-ink)]">
                       {relatedNode.label}
@@ -173,7 +173,7 @@ export function MemoryGraphDetailPanel({
             </div>
           ) : (
             <p className="rounded-[var(--relay-radius-sm)] border border-dashed border-[var(--relay-line)] px-3 py-3 text-[12px] text-[var(--relay-muted)]">
-              No explicit relations yet. Relay will connect this item as more memory accumulates.
+              No persisted relation evidence yet. Relay will connect this node after more captures or source processing.
             </p>
           )}
         </div>

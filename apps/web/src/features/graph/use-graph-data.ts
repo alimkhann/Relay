@@ -1,49 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { MemoryItemDto } from "@relay/shared";
+import type { ProjectGraphDensity, ProjectGraphSnapshot } from "@relay/shared";
 
 import { relayClientFetch } from "@/lib/telemetry/fetch";
 import {
-  buildGraphLinks,
-  buildGraphNodes,
+  filterGraphData,
+  snapshotToGraphData,
   type GraphData,
-  type RelationsResponse,
+  type GraphFilters,
 } from "./memory-graph-utils";
-
-interface ArchivedItemResponse {
-  id: string;
-  type: MemoryItemDto["type"];
-  title: string | null;
-  content: string;
-  pinned: boolean;
-  isArchived: boolean;
-  updatedAt?: string;
-  provenance?: {
-    sourceSurface?: string | null;
-    sourceUrl?: string | null;
-    capturedAt?: string | null;
-  };
-  status?: {
-    lastReaffirmedAt?: string | null;
-  };
-}
-
-function toMemoryItemDto(item: ArchivedItemResponse): MemoryItemDto {
-  return {
-    id: item.id,
-    type: item.type,
-    title: item.title,
-    content: item.content,
-    pinned: item.pinned,
-    updatedAt: item.updatedAt ?? new Date().toISOString(),
-    sourceSurface: (item.provenance?.sourceSurface as MemoryItemDto["sourceSurface"]) ?? null,
-    sourceUrl: item.provenance?.sourceUrl ?? null,
-    capturedAt: item.provenance?.capturedAt ?? null,
-    decayScore: 0.1,
-    lastReaffirmedAt: item.status?.lastReaffirmedAt ?? null,
-  };
-}
 
 interface UseGraphDataResult {
   data: GraphData;
@@ -51,70 +17,47 @@ interface UseGraphDataResult {
   error: string | null;
 }
 
-export function useGraphData(projectId: string, memoryItems: MemoryItemDto[], projectName?: string): UseGraphDataResult {
-  const [relationsData, setRelationsData] = useState<RelationsResponse>({
-    relations: [],
-    similarityEdges: [],
-  });
-  const [archivedItems, setArchivedItems] = useState<MemoryItemDto[]>([]);
+export function useGraphData(
+  projectId: string,
+  options: { density: ProjectGraphDensity; includeEvidence: boolean; filters?: GraphFilters },
+): UseGraphDataResult {
+  const [snapshot, setSnapshot] = useState<ProjectGraphSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    const params = new URLSearchParams({
+      density: options.density,
+      includeEvidence: options.includeEvidence ? "true" : "false",
+    });
 
     setLoading(true);
     setError(null);
 
     void (async () => {
       try {
-        const [relationsRes, archivedRes] = await Promise.all([
-          relayClientFetch(`/api/projects/${projectId}/memory/relations`, {
-            telemetry: {
-              area: "graph",
-              event: "graph.relations.fetch",
-              context: { projectId },
-            },
-          }),
-          relayClientFetch(`/api/projects/${projectId}/memory?archived=true`, {
-            telemetry: {
-              area: "graph",
-              event: "graph.archived.fetch",
-              context: { projectId },
-            },
-          }),
-        ]);
+        const response = await relayClientFetch(`/api/projects/${projectId}/graph?${params.toString()}`, {
+          telemetry: {
+            area: "graph",
+            event: "graph.snapshot.fetch",
+            context: { projectId, density: options.density, includeEvidence: options.includeEvidence },
+          },
+        });
 
-        if (!relationsRes.ok) {
-          throw new Error("Unable to load graph relations.");
+        if (!response.ok) {
+          throw new Error("Unable to load memory graph.");
         }
 
-        const relationsPayload = (await relationsRes.json()) as RelationsResponse;
-        const archivedPayload = archivedRes.ok
-          ? ((await archivedRes.json()) as { memory: ArchivedItemResponse[] })
-          : { memory: [] as ArchivedItemResponse[] };
-
+        const payload = (await response.json()) as ProjectGraphSnapshot;
         if (!cancelled) {
-          setRelationsData({
-            relations: Array.isArray(relationsPayload.relations) ? relationsPayload.relations : [],
-            similarityEdges: Array.isArray(relationsPayload.similarityEdges) ? relationsPayload.similarityEdges : [],
-            sources: Array.isArray(relationsPayload.sources) ? relationsPayload.sources : [],
-            sourceMemoryLinks: Array.isArray(relationsPayload.sourceMemoryLinks) ? relationsPayload.sourceMemoryLinks : [],
-            entities: Array.isArray(relationsPayload.entities) ? relationsPayload.entities : [],
-            entityMemoryLinks: Array.isArray(relationsPayload.entityMemoryLinks) ? relationsPayload.entityMemoryLinks : [],
-          });
-          setArchivedItems(
-            Array.isArray(archivedPayload.memory)
-              ? archivedPayload.memory.filter((i) => i.isArchived).map(toMemoryItemDto)
-              : [],
-          );
+          setSnapshot(payload);
           setLoading(false);
         }
       } catch (cause) {
         if (!cancelled) {
-          setRelationsData({ relations: [], similarityEdges: [] });
-          setArchivedItems([]);
-          setError(cause instanceof Error ? cause.message : "Unable to load graph relations.");
+          setSnapshot(null);
+          setError(cause instanceof Error ? cause.message : "Unable to load memory graph.");
           setLoading(false);
         }
       }
@@ -123,25 +66,12 @@ export function useGraphData(projectId: string, memoryItems: MemoryItemDto[], pr
     return () => {
       cancelled = true;
     };
-  }, [projectId, memoryItems.length]);
+  }, [projectId, options.density, options.includeEvidence]);
 
   const data = useMemo(() => {
-    const activeIds = new Set(memoryItems.map((i) => i.id));
-    const deduped = archivedItems.filter((i) => !activeIds.has(i.id));
-    const archivedIds = new Set(deduped.map((i) => i.id));
-    const allItems = [...memoryItems, ...deduped];
-    const nodes = buildGraphNodes(allItems, archivedIds, projectName, relationsData.sources ?? [], relationsData.entities ?? []);
-    return {
-      nodes,
-      links: buildGraphLinks(
-        nodes,
-        relationsData.relations,
-        relationsData.similarityEdges,
-        relationsData.sourceMemoryLinks ?? [],
-        relationsData.entityMemoryLinks ?? [],
-      ),
-    };
-  }, [memoryItems, archivedItems, relationsData, projectName]);
+    const graphData = snapshot ? snapshotToGraphData(snapshot) : { nodes: [], links: [] };
+    return filterGraphData(graphData, options.filters ?? {});
+  }, [snapshot, options.filters]);
 
   return { data, loading, error };
 }

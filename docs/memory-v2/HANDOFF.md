@@ -169,13 +169,17 @@ Applied + verified on the dev branch. Verification snapshot:
 **Web endpoints**:
 
 - `POST/GET /api/spaces/[id]/memory` — new endpoint for personal-space (and any space-scoped) writes. Resolves space via `space_members`, sets `project_id=NULL` for personal spaces.
-- `GET /api/projects/[id]/memory/relations` — payload extended with `entityRelations` + `observationsSummary` (total + recent 25).
+- `GET /api/projects/[id]/memory/relations` — legacy-compatible relations payload.
+- `GET /api/projects/[id]/graph` — bounded cached dashboard graph snapshot. Supports
+  `density=compact|full` and opt-in `includeEvidence=true`.
 - `GET /api/cron/memory-pipeline` — Vercel cron entry. Authenticated via `CRON_SECRET`. Currently runs embed-only ticks + hygiene dry-run by default; flip `RELAY_MEMORY_PIPELINE_FULL=true` once the entity/observation extractors are wired, and `RELAY_HYGIENE_DRY_RUN=false` to apply transitions.
 
 **Dashboard**:
 
 - `(workspace)/personal/page.tsx` — personal-space list view. Lazy-creates the personal space on first visit via `ensurePersonalSpaceForUser`.
-- `memory-graph-utils.ts` — synthetic root→type-hub→item fallback is gated behind `realEdgeCount < 8`. Once a project has 8+ real edges (relations + similarity + source/entity links + entity_relations once worker runs), the synthetic hub stops dominating the render.
+- `memory-graph-utils.ts` — maps the bounded persisted-evidence snapshot. Synthetic
+  root/type/Folk hubs, fake fallback links, and default similarity edges are removed.
+  Sparse graphs retain real isolated nodes; types and Folk categories are filters.
 
 **Shared schemas & types**:
 
@@ -263,7 +267,9 @@ remains outside these.
    ```bash
    pnpm --filter @relay/web dev
    ```
-   Open `/dashboard` for a project space — graph view should still render. Synthetic hub fallback is now gated, so projects with ≥8 edges (real relations + similarity + source/entity links) won't show the root→type-hub→item pattern.
+   Open `/dashboard` for a project — graph should render only persisted nodes and
+   edges. Sparse projects should show isolated real nodes and explanatory copy, never
+   synthetic root/type hubs.
 5. **Open `/personal`.** First load auto-creates the personal space + member row. Empty state until something writes there.
 6. **Smoke the new MCP actions.** Use the Relay MCP client (Claude Code / Cursor) against the dev backend:
    - `save({ action: "add_memory", payload: { type: "note", content: "test", spaceId: "<personal-space-id>" } })` — should land in `memory_items` with `space_id` set and `project_id=NULL`.
@@ -456,7 +462,9 @@ with real user data before any prod deploy. New work landed:
 4. Verification SQL (re-use `docs/memory-v2/VERIFICATION.sql`).
 5. Local web pointed at fresh branch → smoke dashboard, MCP, personal page, embed-only cron, hygiene events.
 6. Flip `RELAY_MEMORY_PIPELINE_FULL=true` → write 5 fresh items → manual cron tick → confirm extractors populate observations + entity_relations + bump `enrichment_version` to 2.
-7. Apply 0049 backfill → run cron repeatedly → confirm `pending → 0` over time, observations + entity_relations climb, dashboard graph synthetic-hub fallback drops away for old projects.
+7. Apply the bounded operator backfill → run recovery drains → confirm `pending → 0`
+   over time, observations + entity_relations climb, and dashboard graph gains persisted
+   evidence without synthetic fallback or hot-load similarity scans.
 8. Sample 5 observations + 5 entity_relations — quality check Gemini output.
 9. Verify decay-in-ranking moves results (stale vs fresh same-cosine).
 10. Final `pnpm -r typecheck` + `pnpm test:stable` + all v2 suites + `pnpm build*`.
@@ -527,7 +535,8 @@ Schema is verified. The remaining Phase B steps (local web boot + extractor run 
    select count(*) from observations;
    select count(*) from entity_relations;
    ```
-5. Open `/dashboard` for an old project, confirm graph shows real edges (synthetic-hub fallback drops away once `realEdgeCount ≥ 8`).
+5. Open `/dashboard` for an old project, confirm graph shows only persisted real
+   nodes/edges and remains understandable when evidence is sparse.
 6. Open `/personal` — empty state, then write via MCP, then confirm row lands with `project_id=NULL`.
 7. Sample 5 observations + 5 entity_relations:
    ```sql

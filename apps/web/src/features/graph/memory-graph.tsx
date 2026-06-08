@@ -5,7 +5,6 @@ import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
 
 import {
   graphEndpointId,
-  isHubNode,
   labelOpacity,
   nodeColor,
   nodeOpacity,
@@ -246,9 +245,7 @@ export function MemoryGraph({
 
   const activeNodeId = selectedNodeId ?? hoveredNodeId;
 
-  const visibleLinks = useMemo(() => {
-    return settings.showFallbackLinks ? data.links : data.links.filter((link) => !link.fallback);
-  }, [data.links, settings.showFallbackLinks]);
+  const visibleLinks = data.links;
 
   const graphData = useMemo(() => ({
     nodes: data.nodes,
@@ -286,12 +283,12 @@ export function MemoryGraph({
 
     graph.d3Force?.("charge")?.strength?.(-settings.repelForce);
     graph.d3Force?.("link")?.distance?.((link: GraphLink) => {
-      if (link.hubLink === "root-to-hub") return settings.linkDistance * 1.8;
-      if (link.hubLink === "hub-to-item") return settings.linkDistance * 0.7;
+      if (link.relationType === "entity_relation") return settings.linkDistance * 1.15;
+      if (link.relationType === "supports") return settings.linkDistance * 0.75;
       return settings.linkDistance;
     });
     graph.d3Force?.("link")?.strength?.((link: GraphLink) => {
-      if (link.hubLink) return settings.linkForce * 1.2;
+      if (link.relationType === "supports") return settings.linkForce * 0.85;
       return settings.linkForce;
     });
     graph.d3Force?.("center")?.strength?.(settings.centerForce);
@@ -323,77 +320,17 @@ export function MemoryGraph({
   ) => {
     if (!hasPosition(node)) return;
 
-    const isHub = isHubNode(node);
-    const color = node.hub === "root" ? "#94a3b8" : nodeColor(node);
+    const color = nodeColor(node);
     const isActive = activeNodeId === node.id;
 
-    if (node.kind === "source-file") {
+    if (node.kind === "source") {
       drawSourceFileNode(ctx, node, globalScale, isActive || hoveredNodeId === node.id, settings.nodeScale);
       return;
     }
 
-    if (isHub) {
-      const hubRadius = node.hub === "root" ? 12 * settings.nodeScale : 8 * settings.nodeScale;
-      const radius = isActive || hoveredNodeId === node.id ? hubRadius + 2 : hubRadius;
-      // Full opacity so the hub's core fill reads as the true category color,
-      // matching the solid dots on the memory-tab category board (the glow/ring
-      // below are intentionally translucent auras).
-      const opacity = 1;
-
-      ctx.save();
-
-      // Glow
-      ctx.globalAlpha = 0.15;
-      const glow = ctx.createRadialGradient(node.x, node.y, radius * 0.3, node.x, node.y, radius * 3);
-      glow.addColorStop(0, color);
-      glow.addColorStop(0.2, color);
-      glow.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(node.x, node.y, radius * 2.5, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Fill
-      ctx.globalAlpha = opacity;
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(node.x, node.y, radius, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Ring
-      ctx.globalAlpha = 0.6;
-      ctx.strokeStyle = "rgba(255,255,255,0.5)";
-      ctx.lineWidth = 1.8 / globalScale;
-      ctx.stroke();
-
-      if (isActive) {
-        ctx.globalAlpha = 0.95;
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2.5 / globalScale;
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, radius + 5 / globalScale, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-
-      // Label inside hub
-      const scale = 1 / Math.max(globalScale, 0.01);
-      const fontSize = node.hub === "root"
-        ? compactNumber(11 * scale, 8 * scale, 13 * scale)
-        : compactNumber(9 * scale, 6.5 * scale, 10 * scale);
-      ctx.globalAlpha = 0.95;
-      ctx.font = `600 ${fontSize}px Outfit, sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillStyle = "#ffffff";
-      ctx.fillText(node.label, node.x, node.y, radius * 2.2);
-
-      ctx.restore();
-      return;
-    }
-
-    // Regular item nodes
     const baseRadius = nodeRadius(node.decayScore, settings.nodeScale);
-    const radius = isActive || hoveredNodeId === node.id ? baseRadius + 1.6 : baseRadius;
+    const structuralBoost = node.kind === "entity" ? 1.4 : node.kind === "conversation" ? 2.2 : node.kind === "observation" ? -0.3 : 0;
+    const radius = (isActive || hoveredNodeId === node.id ? baseRadius + 1.6 : baseRadius) + structuralBoost;
     const archiveFade = node.archived ? 0.4 : 1;
     const opacity = nodeOpacity(node.decayScore) * archiveFade;
     const ringColor = "rgba(245,245,245,0.7)";
@@ -454,15 +391,14 @@ export function MemoryGraph({
     if (!hasPosition(source) || !hasPosition(target)) return;
 
     const isHighlighted = connected.links.has(link);
-    const isHub = Boolean(link.hubLink);
     const color = isHighlighted ? RELATION_COLORS[link.relationType] : "rgba(107,114,128,0.9)";
-    const alpha = isHighlighted ? 0.84 : isHub ? 0.18 : link.relationType === "similar" ? 0.35 : 0.45;
+    const alpha = isHighlighted ? 0.84 : link.relationType === "supports" ? 0.3 : 0.45;
 
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.strokeStyle = color;
     ctx.lineWidth = ((isHighlighted ? 1.55 : 0.86) * settings.linkThickness) / globalScale;
-    if (link.relationType === "similar") {
+    if (link.relationType === "supports") {
       ctx.setLineDash([4 / globalScale, 5 / globalScale]);
     }
     ctx.beginPath();
@@ -471,7 +407,7 @@ export function MemoryGraph({
     ctx.stroke();
     ctx.setLineDash([]);
 
-    if (settings.showArrows && link.relationType !== "similar") {
+    if (settings.showArrows) {
       const midX = (source.x + target.x) / 2;
       const midY = (source.y + target.y) / 2;
       const angle = Math.atan2(target.y - source.y, target.x - source.x);
@@ -533,7 +469,7 @@ export function MemoryGraph({
       }}
       nodePointerAreaPaint={(node, color, ctx) => {
         if (!hasPosition(node)) return;
-        if (node.kind === "source-file") {
+        if (node.kind === "source") {
           const { width, height, radius } = sourceFileNodeSize(settings.nodeScale);
           ctx.fillStyle = color;
           ctx.beginPath();
