@@ -3008,37 +3008,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             </div>
           </section>
         </>
-      ) : activeState.viewState === "connected-loading" ? (
-        <section className={styles.panel}>
-          <div>
-            <h2 className={styles.projectName}>
-              {activeState.projectName ?? "Checking project"}
-            </h2>
-            <p className={styles.copy}>
-              Relay is keeping the last known project while this chat reloads.
-            </p>
-          </div>
-
-          <div className={styles.statusRow}>
-            <span className={`${styles.dot} ${styles.dotWaiting}`} />
-            <span className={styles.statusText}>Checking this chat…</span>
-          </div>
-
-          <div className={styles.trustLine}>
-            {activeState.trust.recentChatCount > 0 ||
-            activeState.trust.savedContextCount > 0 ? (
-              <span>
-                {activeState.trust.recentChatCount} chats ·{" "}
-                {activeState.trust.savedContextCount} saved items
-              </span>
-            ) : (
-              <span>{activeState.trustLine}</span>
-            )}
-            {activeState.freshnessText ? (
-              <span> · {activeState.freshnessText}</span>
-            ) : null}
-          </div>
-        </section>
       ) : (
         <>
           {/* ─── Project + Status ─── */}
@@ -4177,8 +4146,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         </>
       )}
 
-      {/* Feedback — only show when signed in and not in a transient loading state */}
-      {session?.connected && activeState.viewState !== "connected-loading" ? (
+      {/* Feedback — only show when signed in */}
+      {session?.connected ? (
         <div className={styles.feedbackRow}>
           <a
             href="https://relay.featurebase.app"

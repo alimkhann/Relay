@@ -19,7 +19,8 @@ import {
   Search,
   Sparkles,
   Square,
-  X
+  X,
+  Zap
 } from "lucide-react"
 
 import type { AssistantSurface } from "@relay/shared"
@@ -98,6 +99,9 @@ export function ChatView({
     editMessage,
     continueTurn,
     confirmAction,
+    declineAction,
+    autoApprove,
+    setAutoApprove,
     selectBranch,
     setFeedback,
     undo,
@@ -362,6 +366,7 @@ export function ChatView({
               key={m.id}
               message={m}
               onConfirm={confirmAction}
+              onDecline={declineAction}
               onUndo={undo}
               onCopy={copyMessage}
               onFeedback={setFeedback}
@@ -629,6 +634,33 @@ export function ChatView({
                         className={cn(
                           "block size-3 rounded-full bg-[var(--relay-bg)] transition-transform",
                           webSearch && "translate-x-3"
+                        )}
+                      />
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAutoApprove((v) => !v)}
+                    className={cn(
+                      "flex w-full items-center justify-between gap-3 rounded-[var(--relay-radius-sm)] px-2.5 py-2 text-left text-sm hover:bg-[var(--relay-soft)]",
+                      autoApprove ? "text-amber-500" : "text-[var(--relay-ink)]"
+                    )}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Zap className="size-4 text-current" />
+                      Allow all actions
+                    </span>
+                    <span
+                      className={cn(
+                        "h-4 w-7 rounded-full p-0.5 transition-colors",
+                        autoApprove ? "bg-amber-500" : "bg-[var(--relay-line-strong)]"
+                      )}
+                      aria-hidden
+                    >
+                      <span
+                        className={cn(
+                          "block size-3 rounded-full bg-[var(--relay-bg)] transition-transform",
+                          autoApprove && "translate-x-3"
                         )}
                       />
                     </span>

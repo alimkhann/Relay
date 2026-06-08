@@ -118,6 +118,8 @@ export interface AssistantMessageDto {
   attachments: AssistantAttachmentDto[]
   feedback: AssistantMessageFeedback | null
   createdAt: string
+  /** Populated for unconsumed pending_action messages so the UI can re-render confirm/decline buttons after reload. */
+  pending?: AssistantPendingAction | null
 }
 
 /** Server-Sent Events emitted by POST /api/assistant/chat. */

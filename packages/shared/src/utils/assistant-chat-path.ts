@@ -71,6 +71,7 @@ export function derivePath(
         payload.actionResults ?? (payload.actionResult ? [payload.actionResult] : []),
       attachments: chosen.attachments ?? [],
       feedback: chosen.feedback,
+      pending: chosen.pending ?? undefined,
       branch:
         siblings.length > 1
           ? {

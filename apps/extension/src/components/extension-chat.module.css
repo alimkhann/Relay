@@ -314,11 +314,24 @@
   padding: 8px 10px;
   font-size: 11px;
 }
-.confirmBtn {
+.pendingActions {
+  display: flex;
+  gap: 6px;
   margin-top: 6px;
+}
+.confirmBtn {
   border: 0;
   background: var(--ec-accent);
   color: var(--ec-accent-ink);
+  border-radius: 5px;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.declineBtn {
+  border: 1px solid color-mix(in srgb, var(--ec-ink) 20%, transparent);
+  background: transparent;
+  color: var(--ec-muted);
   border-radius: 5px;
   padding: 4px 10px;
   font-size: 11px;

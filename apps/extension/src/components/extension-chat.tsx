@@ -25,6 +25,7 @@ import {
   Trash2,
   Undo2,
   X,
+  Zap,
   type LucideIcon
 } from "lucide-react"
 
@@ -380,6 +381,7 @@ function MessageRow({
   m,
   onEdit,
   onConfirm,
+  onDecline,
   onSelectBranch,
   onCopy,
   onFeedback,
@@ -391,6 +393,7 @@ function MessageRow({
   m: UiMessage
   onEdit: (m: UiMessage, text: string) => void
   onConfirm: (a: NonNullable<UiMessage["pending"]>) => void
+  onDecline: (a: NonNullable<UiMessage["pending"]>) => void
   onSelectBranch: (parentId: string | null, siblingId: string) => void
   onCopy: (text: string) => void
   onFeedback: (id: string, value: "like" | "dislike" | null) => void
@@ -477,14 +480,21 @@ function MessageRow({
 
       {m.pending ? (
         <div className={styles.pending}>
-          Confirm to <strong>{m.pending.summary}</strong>?
-          <div>
+          Allow agent to <strong>{m.pending.summary}</strong>?
+          <div className={styles.pendingActions}>
             <button
               type="button"
               className={styles.confirmBtn}
               onClick={() => m.pending && onConfirm(m.pending)}
             >
-              Confirm
+              Allow
+            </button>
+            <button
+              type="button"
+              className={styles.declineBtn}
+              onClick={() => m.pending && onDecline(m.pending)}
+            >
+              Decline
             </button>
           </div>
         </div>
@@ -598,6 +608,11 @@ export function ExtensionChat() {
 
   const chat = useExtensionChat({
     onMutation: () => {
+      // Bust dashboard cache so the panel re-fetches fresh contextPreview.
+      void chrome.runtime.sendMessage({
+        type: "RELAY_INVALIDATE_PROJECT_CACHE",
+        payload: { projectId },
+      })
       try {
         const bc = new BroadcastChannel(MUTATION_CHANNEL)
         bc.postMessage({ type: "memory-mutated", at: Date.now() })
@@ -917,6 +932,7 @@ export function ExtensionChat() {
               streaming={chat.streaming}
               onEdit={chat.editMessage}
               onConfirm={chat.confirmAction}
+              onDecline={chat.declineAction}
               onSelectBranch={chat.selectBranch}
               onCopy={(t) => navigator.clipboard?.writeText(t).catch(() => {})}
               onFeedback={chat.setFeedback}
@@ -1033,6 +1049,17 @@ export function ExtensionChat() {
                 <Search size={13} />
                 <span>Web search</span>
                 <span className={`${styles.toggle} ${webSearch ? styles.toggleOn : ""}`} aria-hidden>
+                  <span />
+                </span>
+              </button>
+              <button
+                type="button"
+                className={`${styles.menuItem} ${chat.autoApprove ? styles.menuItemActive : ""}`}
+                onClick={() => chat.setAutoApprove((v) => !v)}
+              >
+                <Zap size={13} />
+                <span>Allow all actions</span>
+                <span className={`${styles.toggle} ${chat.autoApprove ? styles.toggleOn : ""}`} aria-hidden>
                   <span />
                 </span>
               </button>

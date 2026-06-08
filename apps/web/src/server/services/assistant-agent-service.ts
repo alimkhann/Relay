@@ -357,7 +357,21 @@ export async function* runAssistantTurn(
   // vanish once the stream ended because nothing stored them).
   const turnActionResults: AssistantActionResult[] = []
 
-  // 4. Confirmed destructive action: execute the stored pending action first.
+  // 4a. Declined destructive action: mark consumed without executing.
+  if (input.declineActionId) {
+    const pendingMessage = pathMessages
+      .filter((m) => m.toolName === "pending_action")
+      .find((m) => {
+        const payload = m.toolPayload as unknown as PendingActionPayload
+        return payload?.pendingAction?.id === input.declineActionId
+      })
+    if (pendingMessage) {
+      await repositories.assistantMessages.markToolPayloadConsumed(pendingMessage.id)
+    }
+    // Fall through — agent responds to the "Declined: ..." user message naturally.
+  }
+
+  // 4b. Confirmed destructive action: execute the stored pending action first.
   if (input.confirmActionId) {
     const pendingMessage = pathMessages
       .filter((m) => m.toolName === "pending_action")
@@ -575,7 +589,7 @@ export async function* runAssistantTurn(
       // the user already confirmed is executed before this loop (step 4); a
       // truthy confirmActionId must NOT blanket-approve further destructive
       // calls the model makes while continuing the turn.
-      const needsConfirm = DESTRUCTIVE_TOOLS.has(call.name)
+      const needsConfirm = DESTRUCTIVE_TOOLS.has(call.name) && !input.autoApproveDestructive
       if (needsConfirm) {
         const actionId = randomUUID()
         const summary = describeToolCall(call.name, call.args)

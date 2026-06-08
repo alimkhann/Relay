@@ -95,6 +95,7 @@ export function useExtensionChat(opts?: {
   const attachmentsRef = useRef<ExtAttachment[]>([])
   const chatIdRef = useRef<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const autoApproveRef = useRef(false)
 
   const updateAttachments = useCallback((updater: (prev: ExtAttachment[]) => ExtAttachment[]) => {
     setAttachments((prev) => {
@@ -198,7 +199,8 @@ export function useExtensionChat(opts?: {
             ...body,
             surface: "extension",
             chatId: chatIdRef.current,
-            pageContext
+            pageContext,
+            autoApproveDestructive: autoApproveRef.current || undefined
           })
         })
         if (!res.ok || !res.body) {
@@ -331,11 +333,32 @@ export function useExtensionChat(opts?: {
     [runStream, streaming, hasUploadingAttachments, readyAttachmentIds]
   )
 
+  const [autoApprove, setAutoApproveState] = useState(false)
+  const setAutoApprove = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
+    setAutoApproveState((prev) => {
+      const next = typeof v === "function" ? v(prev) : v
+      autoApproveRef.current = next
+      return next
+    })
+  }, [])
+
   const confirmAction = useCallback(
     (action: AssistantPendingAction) => {
       if (streaming) return
       void runStream(
         { message: `Confirmed: ${action.summary}`, confirmActionId: action.id, parentId: leafId },
+        null,
+        leafId
+      )
+    },
+    [runStream, streaming, leafId]
+  )
+
+  const declineAction = useCallback(
+    (action: AssistantPendingAction) => {
+      if (streaming) return
+      void runStream(
+        { message: `Declined: ${action.summary}`, declineActionId: action.id, parentId: leafId },
         null,
         leafId
       )
@@ -574,6 +597,9 @@ export function useExtensionChat(opts?: {
     stop,
     editMessage,
     confirmAction,
+    declineAction,
+    autoApprove,
+    setAutoApprove,
     selectBranch,
     addFiles,
     removeAttachment,

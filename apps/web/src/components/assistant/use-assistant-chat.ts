@@ -99,6 +99,7 @@ export function useAssistantChat(
   const attachmentsRef = useRef<UiAttachment[]>([])
   const chatIdRef = useRef<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const autoApproveRef = useRef(false)
 
   const updateAttachments = useCallback(
     (updater: (prev: UiAttachment[]) => UiAttachment[]) => {
@@ -196,7 +197,7 @@ export function useAssistantChat(
         const response = await fetch("/api/assistant/chat", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ ...body, surface, projectId, chatId: chatIdRef.current }),
+          body: JSON.stringify({ ...body, surface, projectId, chatId: chatIdRef.current, autoApproveDestructive: autoApproveRef.current || undefined }),
           signal: controller.signal
         })
 
@@ -619,11 +620,32 @@ export function useAssistantChat(
     [projectId, updateAttachments]
   )
 
+  const [autoApprove, setAutoApproveState] = useState(false)
+  const setAutoApprove = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
+    setAutoApproveState((prev) => {
+      const next = typeof v === "function" ? v(prev) : v
+      autoApproveRef.current = next
+      return next
+    })
+  }, [])
+
   const confirmAction = useCallback(
     (action: AssistantPendingAction) => {
       if (streaming) return
       void runStream(
         { message: `Confirmed: ${action.summary}`, confirmActionId: action.id, parentId: leafId },
+        null,
+        leafId
+      )
+    },
+    [runStream, streaming, leafId]
+  )
+
+  const declineAction = useCallback(
+    (action: AssistantPendingAction) => {
+      if (streaming) return
+      void runStream(
+        { message: `Declined: ${action.summary}`, declineActionId: action.id, parentId: leafId },
         null,
         leafId
       )
@@ -711,6 +733,9 @@ export function useAssistantChat(
     editMessage,
     continueTurn,
     confirmAction,
+    declineAction,
+    autoApprove,
+    setAutoApprove,
     selectBranch,
     setFeedback,
     undo,

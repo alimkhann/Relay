@@ -156,6 +156,7 @@ function AttachmentChips({
 export function ChatMessage({
   message,
   onConfirm,
+  onDecline,
   onUndo,
   onCopy,
   onFeedback,
@@ -167,6 +168,7 @@ export function ChatMessage({
 }: {
   message: UiMessage
   onConfirm: (action: AssistantPendingAction) => void
+  onDecline: (action: AssistantPendingAction) => void
   onUndo: (result: AssistantActionResult) => void
   onCopy: (text: string) => void
   onFeedback: (id: string, value: AssistantMessageFeedback) => void
@@ -288,7 +290,7 @@ export function ChatMessage({
         {message.pending ? (
           <div className="rounded-[var(--relay-radius-lg)] border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
             <p className="text-[var(--relay-ink)]">
-              Confirm to <span className="font-semibold">{message.pending.summary}</span>?
+              Allow agent to <span className="font-semibold">{message.pending.summary}</span>?
             </p>
             <div className="mt-2 flex gap-2">
               <button
@@ -296,11 +298,15 @@ export function ChatMessage({
                 onClick={() => message.pending && onConfirm(message.pending)}
                 className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-accent-blue)] px-3 py-1.5 text-xs font-semibold text-[var(--relay-accent-blue-ink)] hover:bg-[var(--relay-accent-blue-hover)]"
               >
-                Confirm
+                Allow
               </button>
-              <span className="self-center text-xs text-[var(--relay-muted)]">
-                This changes saved data.
-              </span>
+              <button
+                type="button"
+                onClick={() => message.pending && onDecline(message.pending)}
+                className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-3 py-1.5 text-xs text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
+              >
+                Decline
+              </button>
             </div>
           </div>
         ) : null}
