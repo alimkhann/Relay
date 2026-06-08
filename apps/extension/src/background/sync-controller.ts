@@ -261,9 +261,11 @@ export function createSyncController(deps: {
       state.trust = dashboard ? buildTrustMetadata(dashboard) : state.trust;
       state.stateStatus = nextStateStatus;
       state.contextPreview = buildDashboardContextPreview(dashboard);
-      if (nextChatAssociation.status !== "none") {
+      // Don't overwrite a user-intentional state (archived/ignored) with stale
+      // server data — the dashboard cache may not yet reflect the change.
+      if (nextChatAssociation.status !== "none" && !state.associationSuppressed) {
         state.chatAssociation = nextChatAssociation;
-      } else if (!["held", "ignored", "pending", "archived", "saved"].includes(state.chatAssociation.status)) {
+      } else if (!state.associationSuppressed && !["held", "ignored", "pending", "archived", "saved"].includes(state.chatAssociation.status)) {
         state.chatAssociation = createEmptyChatAssociation();
       }
       state.remoteStatus = connected ? "ready" : "unavailable";
