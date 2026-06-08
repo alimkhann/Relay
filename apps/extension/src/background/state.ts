@@ -1,6 +1,7 @@
 import type { RelayOnboardingState, UserEntitlementsDto } from "@relay/shared";
 
 import type { RelayProjectOption } from "../messaging/contracts";
+import type { TabCaptureSignature } from "../storage/capture-signatures";
 import type {
   ProjectDashboardPayload,
   RelayTabState,
@@ -37,3 +38,11 @@ export interface SessionCacheEntry {
 export const sessionCache: { current: SessionCacheEntry | null } = { current: null };
 
 export const authGrace = { until: 0 };
+
+// In-memory cache of persisted capture signatures, loaded from
+// chrome.storage.session on worker wake (the load-time IIFE lives in index.ts).
+// Consumed once per tab in getOrCreateTabState() to restore dedup state after
+// MV3 service-worker suspension.
+export const rehydratedSignatures: {
+  current: Record<number, TabCaptureSignature> | null;
+} = { current: null };
