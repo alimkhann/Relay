@@ -190,11 +190,17 @@ export function createSyncController(deps: {
     }
 
     const requestKey = `project-only|${projectId}`;
+    const reason = options.reason ?? "";
+    const projectChanged = Boolean(
+      state.lastSyncedProjectId && projectId !== state.lastSyncedProjectId,
+    );
     const forceRefresh =
       Boolean(options.force) ||
-      options.reason === "active_state_request" ||
-      options.reason === "project_dashboard_request" ||
-      options.reason === "project_switch";
+      reason === "active_state_request" ||
+      reason === "project_dashboard_request" ||
+      reason === "project_switch" ||
+      reason === "cache_invalidated" ||
+      projectChanged;
     const shouldSkip =
       !forceRefresh &&
       state.remoteStatus === "ready" &&
@@ -205,6 +211,9 @@ export function createSyncController(deps: {
 
     if (state.syncInFlight) {
       state.syncQueued = true;
+      if (reason === "project_switch" || reason === "cache_invalidated") {
+        state.pendingSyncReason = reason;
+      }
       return;
     }
 
@@ -222,6 +231,18 @@ export function createSyncController(deps: {
       const activeProject = remote.projects.find((project) => project.id === projectId) ?? null;
       const dashboard = await fetchProjectDashboard(projectId);
 
+      const currentSession = await getRelaySession();
+      const currentProjectId =
+        state.manualProjectId ??
+        currentSession.assumedProjectId ??
+        currentSession.projectId ??
+        null;
+      if (currentProjectId !== projectId) {
+        state.syncQueued = true;
+        state.pendingSyncReason = "project_switch";
+        return;
+      }
+
       state.projectOptions = remote.projects;
       state.projectId = activeProject?.id ?? projectId;
       state.projectName = activeProject?.name ?? session.assumedProjectName ?? state.projectName;
@@ -231,6 +252,7 @@ export function createSyncController(deps: {
       state.remoteStatus = remote.connected ? "ready" : "unavailable";
       state.lastSuccessfulSyncAt = new Date().toISOString();
       state.lastSyncedRequestKey = requestKey;
+      state.lastSyncedProjectId = projectId;
       state.lastError = null;
       state.retryDelayMs = 0;
       clearRetryTimer(state);
@@ -254,7 +276,9 @@ export function createSyncController(deps: {
       await deps.broadcastActiveProjectState(tabId);
       if (state.syncQueued) {
         state.syncQueued = false;
-        void syncProjectDashboardOnly(tabId, { reason: "queued_refresh" });
+        const queuedReason = state.pendingSyncReason ?? "queued_refresh";
+        state.pendingSyncReason = null;
+        void syncProjectDashboardOnly(tabId, { force: true, reason: queuedReason });
       }
     }
   }
@@ -270,6 +294,7 @@ export function createSyncController(deps: {
     }
     const session = await getRelaySession();
     hydrateTabStateFromSession(state, session);
+    const reason = options.reason ?? "";
     const requestKey = `${state.page.url ?? ""}|${state.page.captureSignature ?? ""}|${state.page.turns ?? 0}`;
     if (!session.token) {
       state.remoteStatus = "unavailable";
@@ -283,15 +308,25 @@ export function createSyncController(deps: {
     }
     if (state.syncInFlight) {
       state.syncQueued = true;
+      if (reason === "project_switch" || reason === "cache_invalidated") {
+        state.pendingSyncReason = reason;
+      }
       return;
     }
-    const reason = options.reason ?? "";
+    const selectedProjectId =
+      state.manualProjectId ?? session.assumedProjectId ?? session.projectId ?? null;
+    const projectChanged = Boolean(
+      selectedProjectId &&
+        state.lastSyncedProjectId &&
+        selectedProjectId !== state.lastSyncedProjectId,
+    );
     const forceBypassesFreshness =
-      Boolean(options.force) &&
-      reason !== "tab_complete" &&
-      reason !== "tab_focus" &&
-      reason !== "active_state_request" &&
-      reason !== "queued_refresh";
+      (Boolean(options.force) &&
+        reason !== "tab_complete" &&
+        reason !== "tab_focus") ||
+      reason === "project_switch" ||
+      reason === "cache_invalidated" ||
+      projectChanged;
     const shouldSkip =
       !forceBypassesFreshness &&
       state.remoteStatus === "ready" &&
@@ -320,6 +355,19 @@ export function createSyncController(deps: {
           rememberedProjectId: rememberedAssociation?.projectId ?? null,
         });
       const dashboard = activeProject ? await fetchProjectDashboard(activeProject.id) : null;
+
+      const expectedProjectId =
+        state.manualProjectId ?? session.assumedProjectId ?? session.projectId ?? null;
+      if (
+        expectedProjectId &&
+        activeProject?.id &&
+        expectedProjectId !== activeProject.id
+      ) {
+        state.syncQueued = true;
+        state.pendingSyncReason = "project_switch";
+        return;
+      }
+
       const nextStateStatus =
         dashboard?.stateStatus ?? state.stateStatus ?? session.stateStatus ?? null;
       const dashboardChatAssociation = buildSavedChatAssociation(
@@ -370,6 +418,7 @@ export function createSyncController(deps: {
       state.remoteStatus = connected ? "ready" : "unavailable";
       state.lastSuccessfulSyncAt = new Date().toISOString();
       state.lastSyncedRequestKey = requestKey;
+      state.lastSyncedProjectId = activeProject?.id ?? null;
       state.lastError = null;
       state.retryDelayMs = 0;
       clearRetryTimer(state);
@@ -394,7 +443,9 @@ export function createSyncController(deps: {
       await deps.broadcastActiveProjectState(tabId);
       if (state.syncQueued) {
         state.syncQueued = false;
-        void syncTabRemoteState(tabId, { reason: "queued_refresh" });
+        const queuedReason = state.pendingSyncReason ?? "queued_refresh";
+        state.pendingSyncReason = null;
+        void syncTabRemoteState(tabId, { force: true, reason: queuedReason });
       }
     }
   }

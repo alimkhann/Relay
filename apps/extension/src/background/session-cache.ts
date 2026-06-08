@@ -22,6 +22,7 @@ import { relayFetch } from "../utils/api";
 import type {
   ExtensionAuthSessionPayload,
   ProjectDashboardPayload,
+  RelayTabState,
   RemoteSettingsPayload,
   RemoteSettingsResponsePayload,
 } from "./bg-types";
@@ -31,6 +32,7 @@ import {
   readErrorResponse,
   retryRemote,
 } from "./bg-utils";
+import { buildDashboardContextPreview, buildTrustMetadata } from "./context-preview";
 import { DASHBOARD_CACHE_TTL_MS, SESSION_CACHE_TTL_MS } from "./remote-sync-policy";
 import { authGrace, dashboardCache, sessionCache } from "./state";
 import { createEmptyTrustMetadata } from "./tab-state";
@@ -302,6 +304,22 @@ export async function loadSessionData(force = false) {
 export function invalidateProjectCache(projectId: string | null | undefined) {
   if (!projectId) return;
   dashboardCache.delete(projectId);
+}
+
+/** Cache-first preview hydrate (stale-while-revalidate) for project switches. */
+export async function hydrateTabStateDashboardPreview(
+  state: RelayTabState,
+  projectId: string,
+): Promise<boolean> {
+  const dashboard = await fetchProjectDashboard(projectId);
+  if (!dashboard) return false;
+  state.contextPreview = buildDashboardContextPreview(dashboard);
+  state.trust = buildTrustMetadata(dashboard);
+  state.stateStatus = dashboard.stateStatus ?? state.stateStatus;
+  if (state.remoteStatus === "unavailable") {
+    state.remoteStatus = "stale";
+  }
+  return true;
 }
 
 export async function refreshProjectDashboard(

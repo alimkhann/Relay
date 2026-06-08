@@ -74,4 +74,32 @@ describe("background remote sync policy", () => {
     expect(DASHBOARD_CACHE_TTL_MS).toBe(5 * 60 * 1_000)
     expect(TAB_REMOTE_SYNC_FRESH_MS).toBe(5 * 60 * 1_000)
   })
+
+  it("syncs unsupported tabs when the selected project changed since last sync", () => {
+    expect(
+      shouldSyncProjectDashboardOnly({
+        pageSupported: false,
+        connected: true,
+        hasProjectId: true,
+        remoteStatus: "ready",
+        lastSuccessfulSyncAt: "2026-06-09T00:00:00.000Z",
+        projectId: "project-b",
+        lastSyncedProjectId: "project-a",
+      }),
+    ).toBe(true)
+  })
+
+  it("syncs unsupported tabs while remote status is loading after a project switch", () => {
+    expect(
+      shouldSyncProjectDashboardOnly({
+        pageSupported: false,
+        connected: true,
+        hasProjectId: true,
+        remoteStatus: "loading",
+        lastSuccessfulSyncAt: "2026-06-09T00:00:00.000Z",
+        projectId: "project-b",
+        lastSyncedProjectId: "project-b",
+      }),
+    ).toBe(true)
+  })
 })

@@ -21,11 +21,22 @@ export function shouldSyncProjectDashboardOnly(input: {
   hasProjectId: boolean
   remoteStatus: RelayRemoteStatus
   lastSuccessfulSyncAt: string | null
+  projectId?: string | null
+  lastSyncedProjectId?: string | null
 }) {
+  const projectChanged = Boolean(
+    input.projectId &&
+      input.lastSyncedProjectId &&
+      input.projectId !== input.lastSyncedProjectId,
+  )
+
   return (
     !input.pageSupported &&
     input.connected &&
     input.hasProjectId &&
-    (input.remoteStatus === "unavailable" || !input.lastSuccessfulSyncAt)
+    (input.remoteStatus === "unavailable" ||
+      input.remoteStatus === "loading" ||
+      !input.lastSuccessfulSyncAt ||
+      projectChanged)
   )
 }

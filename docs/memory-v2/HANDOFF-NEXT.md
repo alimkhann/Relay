@@ -64,6 +64,12 @@ listened.
 - Full `router.refresh` audit outside memory/governance (project picker, auth, billing) is intentional for SSR shell refresh.
 - User functional pass still required (see below).
 
+#### Hotfix — extension project switch blank panel (2026-06-09)
+
+- **Root causes:** (1) `applyActiveState` on non-AI tabs preserved empty optimistic preview over fresh server data when `projectId` matched; (2) `handleProjectChange` treated `RelayActiveProjectState` responses as `{ ok }` failures for `RELAY_SET_ACTIVE_PROJECT`; (3) queued syncs after rapid switches could skip re-fetch; (4) no cache-first hydrate on switch.
+- **Fix:** cache-first `hydrateTabStateDashboardPreview` on switch + `lastSyncedProjectId` tracking + force queued syncs + `applyActiveState` prefers server preview when it has content; manual CRUD `RELAY_INVALIDATE_PROJECT_CACHE` now triggers background re-sync.
+- **Reload `chrome-mv3-dev`** after pulling.
+
 #### User test checklist (before cutover)
 
 1. Web at `http://localhost:3000` (200); Plasmo dev → load **`chrome-mv3-dev`** (NOT prod build).

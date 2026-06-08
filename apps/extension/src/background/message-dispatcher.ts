@@ -11,7 +11,11 @@ import {
   shouldSyncMissingRemoteState,
   shouldSyncProjectDashboardOnly,
 } from "./remote-sync-policy";
-import { invalidateProjectCache, loadSessionData } from "./session-cache";
+import {
+  hydrateTabStateDashboardPreview,
+  invalidateProjectCache,
+  loadSessionData,
+} from "./session-cache";
 import { readErrorResponse } from "./bg-utils";
 import { recordBackgroundTelemetry } from "./telemetry";
 import { getOrCreateTabState, updateTabPageState, clearAssociationToast } from "./tab-state-store";
@@ -96,6 +100,13 @@ chrome.runtime.onMessage.addListener(
 
         if (message.type === "RELAY_INVALIDATE_PROJECT_CACHE") {
           invalidateProjectCache(message.payload?.projectId);
+          const invalidateTabId = sender.tab?.id;
+          if (invalidateTabId) {
+            void deps.syncTabRemoteState(invalidateTabId, {
+              force: true,
+              reason: "cache_invalidated",
+            });
+          }
           sendResponse({ ok: true });
           return;
         }
@@ -204,6 +215,9 @@ chrome.runtime.onMessage.addListener(
               ),
               remoteStatus: state.remoteStatus,
               lastSuccessfulSyncAt: state.lastSuccessfulSyncAt,
+              projectId:
+                state.manualProjectId ?? session.assumedProjectId ?? session.projectId ?? null,
+              lastSyncedProjectId: state.lastSyncedProjectId,
             })
           ) {
             void deps.syncTabRemoteState(tabId, {
@@ -260,9 +274,14 @@ chrome.runtime.onMessage.addListener(
               clearAssociationToast(state);
             }
           }
-          invalidateProjectCache(message.payload.projectId);
 
-          if (tabId !== null) {
+          if (tabId !== null && state) {
+            state.remoteStatus =
+              state.lastSuccessfulSyncAt || state.projectOptions.length > 0
+                ? "stale"
+                : "loading";
+            await hydrateTabStateDashboardPreview(state, message.payload.projectId);
+            await deps.broadcastActiveProjectState(tabId);
             await deps.syncTabRemoteState(tabId, {
               force: true,
               reason: "project_switch",
@@ -282,9 +301,10 @@ chrome.runtime.onMessage.addListener(
               },
             });
             sendResponse(await buildActiveProjectState(tabId));
-          } else {
-            sendResponse({ ok: true });
+            return;
           }
+
+          sendResponse({ ok: true });
           return;
         }
 

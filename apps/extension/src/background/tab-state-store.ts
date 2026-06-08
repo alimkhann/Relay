@@ -56,6 +56,8 @@ export function createTabState(tabId: number): RelayTabState {
     syncQueued: false,
     syncRequestKey: null,
     lastSyncedRequestKey: null,
+    lastSyncedProjectId: null,
+    pendingSyncReason: null,
     capturePending: false,
     capturePendingAt: null,
     captureTimer: null,

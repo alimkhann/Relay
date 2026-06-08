@@ -69,6 +69,8 @@ export interface RelayTabState {
   syncQueued: boolean;
   syncRequestKey: string | null;
   lastSyncedRequestKey: string | null;
+  lastSyncedProjectId: string | null;
+  pendingSyncReason: string | null;
   capturePending: boolean;
   capturePendingAt: number | null;
   captureTimer: ReturnType<typeof setTimeout> | null;

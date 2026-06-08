@@ -98,6 +98,7 @@ import {
 } from "@relay/shared/utils/usage-metrics";
 
 import type { RelayActiveProjectState, RelayProjectOption } from "../messaging/contracts";
+import { contextPreviewHasItems } from "../utils/context-preview";
 import { getActiveTab } from "../utils/browser";
 import { relayFetch } from "../utils/api";
 import {
@@ -724,11 +725,22 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   }, []);
 
   function applyActiveState(nextState: RelayActiveProjectState) {
-    setActiveState((current) =>
-      !nextState.page.supported && current.projectId === nextState.projectId
-        ? { ...nextState, contextPreview: current.contextPreview }
-        : nextState,
-    );
+    setActiveState((current) => {
+      if (nextState.page.supported || current.projectId !== nextState.projectId) {
+        return nextState;
+      }
+      // Non-AI same project: keep optimistic local preview when server is still empty.
+      const nextHasPreview = contextPreviewHasItems(nextState.contextPreview);
+      const currentHasPreview = contextPreviewHasItems(current.contextPreview);
+      return {
+        ...nextState,
+        contextPreview: nextHasPreview
+          ? nextState.contextPreview
+          : currentHasPreview
+            ? current.contextPreview
+            : nextState.contextPreview,
+      };
+    });
     setSession((current) =>
       current
         ? {
@@ -1873,11 +1885,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           ...current,
           projectId: nextProjectId,
           projectName: nextProject.name,
-          // Drop the previous project's preview immediately so the new project
-          // never shows the old project's memory (e.g. personal notes) while the
-          // fresh dashboard loads.
-          contextPreview: emptyActiveState.contextPreview,
-          remoteStatus: "loading",
+          remoteStatus: current.remoteStatus === "ready" ? "stale" : "loading",
           chatAssociation: {
             ...current.chatAssociation,
             projectId: nextProjectId,
@@ -1896,7 +1904,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         }));
       }
 
-      const result = (await chrome.runtime.sendMessage(
+      const result = await chrome.runtime.sendMessage(
         associationAware
           ? {
               type: "RELAY_SET_CHAT_ASSOCIATION_PROJECT",
@@ -1913,22 +1921,36 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 tabId: tab?.id,
               },
             },
-      )) as { ok?: boolean; reason?: string };
-      if (!result?.ok) {
-        throw new Error(result?.reason ?? "Project switch failed.");
+      );
+
+      if (associationAware) {
+        const associationResult = result as {
+          ok?: boolean;
+          reason?: string;
+          state?: RelayActiveProjectState;
+          projectId?: string;
+          projectName?: string;
+        };
+        if (!associationResult?.ok) {
+          throw new Error(associationResult?.reason ?? "Project switch failed.");
+        }
+        if (isRelayActiveProjectState(associationResult.state)) {
+          applyActiveState(associationResult.state);
+        }
+      } else if (isRelayActiveProjectState(result)) {
+        applyActiveState(result);
+      } else {
+        const errorResult = result as { ok?: boolean; reason?: string };
+        if (errorResult?.ok === false) {
+          throw new Error(errorResult.reason ?? "Project switch failed.");
+        }
       }
+
       await setRelaySession({
         projectId: nextProjectId,
       });
       if (nextProject) {
         setPersonalMode(nextProject.kind === "personal");
-        setActiveState((current) => ({
-          ...current,
-          projectId: nextProjectId,
-          projectName: nextProject.name,
-          contextPreview: emptyActiveState.contextPreview,
-          remoteStatus: "loading",
-        }));
       }
       setStatus(
         associationAware

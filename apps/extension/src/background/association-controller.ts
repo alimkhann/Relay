@@ -10,6 +10,7 @@ import { relayFetch } from "../utils/api";
 import { buildAskToast, buildSavedAssociationFromMemory, buildSavingToast, resolveAssociationToastAction } from "./association-workflow";
 import { resolveAssociationProjectOption, setSessionProjectTarget, updateAssociationProjectState } from "./association";
 import { buildActiveProjectState } from "./active-project";
+import { hydrateTabStateDashboardPreview } from "./session-cache";
 import { readErrorResponse } from "./bg-utils";
 import { invalidateProjectCache } from "./session-cache";
 import { clearAssociationToast, clearAssociationToastTimer, clearPendingAssociation, getOrCreateTabState } from "./tab-state-store";
@@ -602,6 +603,9 @@ export async function retargetAssociation(
       reason: `Moving this chat to ${project.projectName}…`,
       capturedAt: null,
     };
+    state.remoteStatus =
+      state.lastSuccessfulSyncAt || state.projectOptions.length > 0 ? "stale" : "loading";
+    await hydrateTabStateDashboardPreview(state, project.projectId);
     await associationDeps.broadcastActiveProjectState(tabId);
 
     const result = await associationDeps.captureObservedChange(tabId, project.projectId, {
@@ -663,7 +667,14 @@ export async function retargetAssociation(
 
   updateAssociationProjectState(state, project.projectId, project.projectName);
   state.lastError = null;
+  state.remoteStatus =
+    state.lastSuccessfulSyncAt || state.projectOptions.length > 0 ? "stale" : "loading";
+  await hydrateTabStateDashboardPreview(state, project.projectId);
   await associationDeps.broadcastActiveProjectState(tabId);
+  await associationDeps.syncTabRemoteState(tabId, {
+    force: true,
+    reason: "project_switch",
+  });
   recordBackgroundTelemetry({
     level: "info",
     surface: "extension-background",
