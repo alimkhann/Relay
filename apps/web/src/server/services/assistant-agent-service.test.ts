@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import type { AssistantStreamEvent, SendAssistantMessageInput } from "@relay/shared"
+import type { AssistantActionResult, AssistantStreamEvent, SendAssistantMessageInput } from "@relay/shared"
 
 import type { Viewer } from "@/server/policies/viewer"
 
@@ -42,7 +42,7 @@ vi.mock("./assistant-tools", async (importActual) => {
 })
 
 import { GeminiRequestError } from "./gemini-service"
-import { runAssistantTurn } from "./assistant-agent-service"
+import { classifyAssistantActionQuota, runAssistantTurn } from "./assistant-agent-service"
 
 const viewer = { userId: "u1" } as unknown as Viewer
 
@@ -141,6 +141,61 @@ describe("runAssistantTurn confirmation guard (A2 regression)", () => {
     expect(events.some((e) => e.type === "pending_action")).toBe(false)
     expect(mocks.executeAssistantTool).toHaveBeenCalledTimes(1)
     expect(events.some((e) => e.type === "done")).toBe(true)
+  })
+
+  it("persists and streams intermediate action results when confirm pauses the turn", async () => {
+    const repos = repoBundle()
+    mocks.createRepositoryBundle.mockReturnValue(repos)
+
+    const createResult: AssistantActionResult = {
+      tool: "add_memory",
+      action: "created",
+      entity: "memory item",
+      count: 1,
+      items: [{ id: "mem1", label: "test" }]
+    }
+
+    mocks.runGeminiAgentStep.mockResolvedValueOnce({
+      text: "",
+      functionCalls: [
+        { name: "add_memory", args: { projectId: "p1", type: "decision", content: "test" } },
+        { name: "manage_memory", args: { action: "update", memoryId: "m1", content: "test 2" } }
+      ],
+      groundingUris: [],
+      groundingChunks: [],
+      finishReason: null,
+      tokenUsage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 }
+    })
+    mocks.executeAssistantTool.mockResolvedValueOnce({
+      modelResponse: { result: "saved" },
+      actionResult: createResult
+    })
+
+    const events = await collect({
+      message: "create test and edit note",
+      surface: "extension",
+      parentId: null,
+      projectId: "p1"
+    } as unknown as SendAssistantMessageInput)
+
+    expect(events.filter((e) => e.type === "tool_result")).toHaveLength(1)
+    expect(events.find((e) => e.type === "tool_result")).toEqual({
+      type: "tool_result",
+      result: createResult
+    })
+    expect(events.some((e) => e.type === "pending_action")).toBe(true)
+
+    type CreateArg = {
+      toolName?: string
+      toolPayload?: { actionResults?: AssistantActionResult[] }
+    }
+    const pendingCreate = (
+      repos.assistantMessages.create.mock.calls as unknown as Array<[CreateArg]>
+    ).find((call) => call[0]?.toolName === "pending_action")
+    expect(pendingCreate).toBeTruthy()
+    const payload = pendingCreate![0].toolPayload
+    expect(payload?.actionResults).toEqual([createResult])
+    expect(mocks.executeAssistantTool).toHaveBeenCalledTimes(1)
   })
 
   it("exposes write tools for add/create memory requests", async () => {
@@ -385,6 +440,7 @@ describe("runAssistantTurn confirmation guard (A2 regression)", () => {
       type: "action_update",
       action: expect.objectContaining({ status: "succeeded", tool: "manage_memory" })
     })
+    expect(events.filter((event) => event.type === "tool_result")).toHaveLength(0)
     expect(updateToolPayload).toHaveBeenCalledWith(
       "action-1",
       expect.objectContaining({
@@ -610,8 +666,62 @@ describe("runAssistantTurn web search", () => {
     } as SendAssistantMessageInput)
 
     expect(mocks.runGeminiAgentStep).toHaveBeenCalledWith(
-      expect.objectContaining({ tools: [] })
+      expect.objectContaining({ model: "gemini-3.1-flash-lite", tools: [] })
     )
+  })
+
+  it("does not charge broad casual words as Relay reads", () => {
+    expect(classifyAssistantActionQuota("Help me plan a project task")).toBeNull()
+    expect(classifyAssistantActionQuota("What are my saved Relay tasks?")).toBe("read")
+    expect(classifyAssistantActionQuota("Save this decision to my project")).toBe("write")
+  })
+
+  it("persists a manual compact checkpoint without calling the model", async () => {
+    const repositories = repoBundle()
+    repositories.assistantMessages.listByChat.mockResolvedValue([
+      { id: "u1", parentId: null, role: "user", content: "Earlier context", toolPayload: null }
+    ] as never)
+    mocks.createRepositoryBundle.mockReturnValue(repositories)
+
+    const events = await collect({
+      message: "/compact",
+      surface: "dashboard",
+      parentId: "u1",
+      projectId: null
+    } as SendAssistantMessageInput)
+
+    expect(mocks.runGeminiAgentStep).not.toHaveBeenCalled()
+    expect(repositories.assistantMessages.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolName: "compaction_checkpoint",
+        toolPayload: expect.objectContaining({ compaction: expect.any(Object) })
+      })
+    )
+    expect(events.some((event) => event.type === "done")).toBe(true)
+  })
+
+  it("queues every destructive action from a multi-action model step", async () => {
+    mocks.runGeminiAgentStep.mockResolvedValueOnce({
+      text: "",
+      functionCalls: [
+        { name: "manage_memory", args: { action: "delete", memoryId: ["x1"] } },
+        { name: "manage_memory", args: { action: "delete", memoryId: ["x2"] } }
+      ],
+      groundingUris: [],
+      groundingChunks: [],
+      finishReason: null,
+      tokenUsage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 }
+    })
+
+    const events = await collect({
+      message: "Delete both saved Relay memories",
+      surface: "dashboard",
+      parentId: null,
+      projectId: null
+    } as SendAssistantMessageInput)
+
+    expect(events.filter((event) => event.type === "pending_action")).toHaveLength(2)
+    expect(mocks.executeAssistantTool).not.toHaveBeenCalled()
   })
 
   it("does not claim Done when Gemini returns an empty answer", async () => {

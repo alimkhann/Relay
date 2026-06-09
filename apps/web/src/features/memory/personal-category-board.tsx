@@ -8,7 +8,7 @@ import {
   personalCategories,
   personalCategoryFromMetadata,
   sortPersonalCategoriesByFill,
-} from "@relay/shared";
+} from "@relay/shared/constants/memory-taxonomy";
 
 import {
   MemoryColumnBoard,

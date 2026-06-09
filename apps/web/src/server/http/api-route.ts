@@ -163,7 +163,11 @@ export function withApiRoute<TArgs extends [Request, ...unknown[]]>(
                 error: error.message,
                 plan: error.plan,
                 upgradeUrl: error.upgradeUrl,
-                retryAfterSeconds: error.retryAfterSeconds
+                retryAfterSeconds: error.retryAfterSeconds,
+                quotaFamily: error.quotaFamily,
+                quotaWindow: error.quotaWindow,
+                resetAt: error.resetAt,
+                nextPlan: error.nextPlan,
               },
               { status: 429, headers: rateLimitHeaders }
             )

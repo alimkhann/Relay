@@ -3,7 +3,7 @@ import { NextResponse } from "next/server"
 import { createMemoryItemSchema } from "@relay/shared"
 import { withApiAuth } from "@/server/http/api-route"
 import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
-import { consumeMcpWriteQuota } from "@/server/services/entitlement-service"
+import { consumeActionQuota, consumeMcpWriteQuota } from "@/server/services/entitlement-service"
 import { createMemoryItemBatch } from "@/server/services/memory-service"
 
 export const POST = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
@@ -22,6 +22,8 @@ export const POST = withApiAuth(async (request: Request, { params }: { params: P
 
   if (viewer.mode === "mcp") {
     await consumeMcpWriteQuota(viewer.userId, body.items.length)
+  } else {
+    await consumeActionQuota(viewer.userId, "write", body.items.length)
   }
 
   const items = body.items.map((raw) => {

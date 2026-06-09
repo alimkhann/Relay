@@ -491,6 +491,10 @@ export interface UserSettingsRow {
       dismissedAt: string | null
       completedVia: "web" | "extension" | null
     }
+    /** @deprecated compatibility alias for dashboard visibility */
+    hideAskRelayPanel?: boolean
+    hideAskRelayDashboard?: boolean
+    hideAskRelayExtension?: boolean
   }
   createdAt: string
   updatedAt: string

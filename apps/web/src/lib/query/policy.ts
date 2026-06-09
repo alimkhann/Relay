@@ -13,5 +13,11 @@ import { queryKeys } from "@/lib/query/keys"
 export const AUTHENTICATED_READ_STALE_TIME_MS = 5 * 60_000
 
 export function invalidateDashboard(queryClient: QueryClient, projectId: string) {
-  return queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(projectId) })
+  // Mark stale without an immediate refetch — callers already applied
+  // setQueryData via optimistic envelopes; an eager refetch can briefly restore
+  // server-cached rows that were just deleted.
+  return queryClient.invalidateQueries({
+    queryKey: queryKeys.dashboard(projectId),
+    refetchType: "none",
+  })
 }

@@ -146,6 +146,39 @@
   color: var(--ec-ink);
 }
 
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  max-width: 280px;
+  margin-top: 4px;
+}
+
+.suggestionBtn {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--ec-line);
+  background: var(--ec-surface);
+  color: var(--ec-ink-secondary, var(--ec-muted));
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+.suggestionBtn:hover {
+  background: var(--ec-soft);
+  color: var(--ec-ink);
+}
+
+.usageBadge {
+  align-self: flex-end;
+  font-size: 10px;
+  color: var(--ec-muted);
+  padding: 2px 8px 4px;
+  opacity: 0.7;
+}
+
 .msgRow {
   display: flex;
   flex-direction: column;
@@ -344,6 +377,15 @@
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pendingPreviews {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 2px;
 }
 .pendingFailed {
   border-color: color-mix(in srgb, #ef4444 48%, transparent);
@@ -1018,6 +1060,29 @@
 /* ── Micro motion ──────────────────────────────────────────────────────── */
 .msgRow {
   animation: msgIn 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.activityChain {
+  margin-top: 8px;
+  border: 1px solid var(--ec-line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: var(--ec-muted);
+  font-size: 12px;
+}
+.activityChain summary {
+  cursor: pointer;
+  color: var(--ec-fg);
+}
+.activityChain ol {
+  display: grid;
+  gap: 5px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+.activityChain li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
 }
 @keyframes msgIn {
   from { opacity: 0; transform: translateY(4px); }

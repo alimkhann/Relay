@@ -2,6 +2,54 @@ import { flushBackgroundTelemetry, recordBackgroundTelemetry } from "./telemetry
 import { tabStates } from "./state";
 import type { SaveSelectionParams, SaveSelectionResult } from "./selection-save-controller";
 
+let sidePanelToolbarClickConfigured = false;
+
+async function openRelaySidePanel(tab: { id?: number; windowId?: number }) {
+  if (tab.id) {
+    await chrome.sidePanel.setOptions({
+      tabId: tab.id,
+      path: "sidepanel.html",
+      enabled: true,
+    });
+    await chrome.sidePanel.open({ tabId: tab.id });
+    return;
+  }
+  if (tab.windowId) {
+    await chrome.sidePanel.open({ windowId: tab.windowId });
+  }
+}
+
+export function configureSidePanelOnActionClick() {
+  if (sidePanelToolbarClickConfigured) return;
+  sidePanelToolbarClickConfigured = true;
+
+  // Always register action.onClicked first.
+  //
+  // Race: on the very first toolbar click after install (or after the MV3
+  // service worker wakes), Chrome dispatches onClicked BEFORE the async
+  // setPanelBehavior call below can resolve, so the native behavior isn't
+  // active yet. The onClicked listener covers that window by calling
+  // setOptions + sidePanel.open directly.
+  //
+  // Once setPanelBehavior resolves, Chrome takes over: it opens the panel
+  // natively and stops dispatching onClicked — so having both registered is
+  // safe (the listener simply never fires again).
+  chrome.action.onClicked.addListener((tab: { id?: number; windowId?: number }) => {
+    void openRelaySidePanel(tab).catch((cause: unknown) => {
+      console.warn("[relay] sidePanel.open failed", cause);
+    });
+  });
+
+  // setPanelBehavior makes subsequent clicks handled natively by Chrome
+  // (no SW round-trip needed). If the API rejects, the onClicked listener
+  // above is already registered and acts as a permanent fallback.
+  void chrome.sidePanel
+    .setPanelBehavior({ openPanelOnActionClick: true })
+    .catch((cause: unknown) => {
+      console.warn("[relay] sidePanel.setPanelBehavior failed; action.onClicked fallback active", cause);
+    });
+}
+
 export function registerBackgroundLifecycleListeners(deps: {
   clearTabState(tabId: number): void;
   handleSaveSelectionToRelay(params: SaveSelectionParams): Promise<SaveSelectionResult>;
@@ -61,9 +109,7 @@ chrome.runtime.onInstalled.addListener((details: { reason: string; previousVersi
     },
   });
 
-  chrome.sidePanel
-    .setPanelBehavior({ openPanelOnActionClick: true })
-    .catch(() => undefined);
+  configureSidePanelOnActionClick();
 
   chrome.runtime.setUninstallURL("https://onrelay.app/goodbye").catch(() => undefined);
 
@@ -107,11 +153,13 @@ chrome.runtime.onInstalled.addListener((details: { reason: string; previousVersi
 
 chrome.runtime.onStartup.addListener(() => {
   registerRelayContextMenu();
+  configureSidePanelOnActionClick();
 });
 
 // Also register at module load so that the service worker waking up
 // for a non-onStartup reason (e.g. external message) still has the menu.
 registerRelayContextMenu();
+configureSidePanelOnActionClick();
 
 chrome.contextMenus.onClicked.addListener(
   (

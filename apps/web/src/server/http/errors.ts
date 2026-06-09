@@ -32,6 +32,10 @@ export class TooManyRequestsError extends Error {
   readonly plan?: string
   readonly limit?: number
   readonly remaining?: number
+  readonly quotaFamily?: "read" | "write" | "assistant"
+  readonly quotaWindow?: "day" | "month"
+  readonly resetAt?: string
+  readonly nextPlan?: "starter" | "pro" | null
 
   constructor(message: string, meta?: {
     retryAfterSeconds?: number
@@ -39,6 +43,10 @@ export class TooManyRequestsError extends Error {
     plan?: string
     limit?: number
     remaining?: number
+    quotaFamily?: "read" | "write" | "assistant"
+    quotaWindow?: "day" | "month"
+    resetAt?: string
+    nextPlan?: "starter" | "pro" | null
   }) {
     super(message)
     this.name = "TooManyRequestsError"
@@ -48,6 +56,10 @@ export class TooManyRequestsError extends Error {
       this.plan = meta.plan
       this.limit = meta.limit
       this.remaining = meta.remaining
+      this.quotaFamily = meta.quotaFamily
+      this.quotaWindow = meta.quotaWindow
+      this.resetAt = meta.resetAt
+      this.nextPlan = meta.nextPlan
     }
   }
 }

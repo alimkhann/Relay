@@ -9,13 +9,18 @@ import { buildSavedAssociationFromMemory } from "./association-workflow";
 import { buildSavedChatAssociation, getRetargetableAssociationProject, hydrateTabStateFromSession, reconcileManualOverride } from "./association";
 import { REMOTE_RETRY_BACKOFF_MS, retryRemote } from "./bg-utils";
 import { buildDashboardContextPreview, buildTrustMetadata } from "./context-preview";
+import { preferContextPreviewOnSync } from "../utils/context-preview";
 import {
   shouldSyncMissingRemoteState,
   shouldSyncProjectDashboardOnly,
   TAB_REMOTE_SYNC_FRESH_MS,
 } from "./remote-sync-policy";
 import { pickPreferredProjectId, findApprovedAssociationMatch } from "./routing";
-import { fetchProjectDashboard, loadSessionData } from "./session-cache";
+import {
+  fetchProjectDashboard,
+  loadSessionData,
+  resolveDashboardForSync,
+} from "./session-cache";
 import { createEmptyChatAssociation } from "./tab-state";
 import { clearRetryTimer, getOrCreateTabState } from "./tab-state-store";
 
@@ -227,9 +232,11 @@ export function createSyncController(deps: {
     await deps.broadcastActiveProjectState(tabId);
 
     try {
+      const syncStartedAt = Date.now();
       const remote = await loadSessionData();
       const activeProject = remote.projects.find((project) => project.id === projectId) ?? null;
-      const dashboard = await fetchProjectDashboard(projectId);
+      const fetchedDashboard = await fetchProjectDashboard(projectId);
+      const dashboard = resolveDashboardForSync(projectId, fetchedDashboard, syncStartedAt);
 
       const currentSession = await getRelaySession();
       const currentProjectId =
@@ -248,7 +255,10 @@ export function createSyncController(deps: {
       state.projectName = activeProject?.name ?? session.assumedProjectName ?? state.projectName;
       state.trust = dashboard ? buildTrustMetadata(dashboard) : state.trust;
       state.stateStatus = dashboard?.stateStatus ?? state.stateStatus ?? session.stateStatus ?? null;
-      state.contextPreview = buildDashboardContextPreview(dashboard);
+      state.contextPreview = preferContextPreviewOnSync(
+        state.contextPreview,
+        buildDashboardContextPreview(dashboard),
+      );
       state.remoteStatus = remote.connected ? "ready" : "unavailable";
       state.lastSuccessfulSyncAt = new Date().toISOString();
       state.lastSyncedRequestKey = requestKey;
@@ -345,6 +355,7 @@ export function createSyncController(deps: {
         : "loading";
     await deps.broadcastActiveProjectState(tabId);
     try {
+      const syncStartedAt = Date.now();
       await reconcileManualOverride(state);
       const approvedAssociations = await readApprovedAssociations();
       const rememberedAssociation = findApprovedAssociationMatch(state.page, approvedAssociations);
@@ -354,7 +365,12 @@ export function createSyncController(deps: {
           associationProjectId: getRetargetableAssociationProject(state)?.projectId ?? null,
           rememberedProjectId: rememberedAssociation?.projectId ?? null,
         });
-      const dashboard = activeProject ? await fetchProjectDashboard(activeProject.id) : null;
+      const fetchedDashboard = activeProject
+        ? await fetchProjectDashboard(activeProject.id)
+        : null;
+      const dashboard = activeProject
+        ? resolveDashboardForSync(activeProject.id, fetchedDashboard, syncStartedAt)
+        : null;
 
       const expectedProjectId =
         state.manualProjectId ?? session.assumedProjectId ?? session.projectId ?? null;
@@ -407,7 +423,10 @@ export function createSyncController(deps: {
       });
       state.trust = dashboard ? buildTrustMetadata(dashboard) : state.trust;
       state.stateStatus = nextStateStatus;
-      state.contextPreview = buildDashboardContextPreview(dashboard);
+      state.contextPreview = preferContextPreviewOnSync(
+        state.contextPreview,
+        buildDashboardContextPreview(dashboard),
+      );
       // Don't overwrite a user-intentional state (archived/ignored) with stale
       // server data — the dashboard cache may not yet reflect the change.
       if (nextChatAssociation.status !== "none" && !state.associationSuppressed) {

@@ -25,6 +25,7 @@ vi.mock("@/server/http/api-route", () => ({
 }))
 
 vi.mock("@/server/services/entitlement-service", () => ({
+  consumeActionQuota: vi.fn(),
   consumeMcpReadQuota: consumeMcpReadQuotaMock,
 }))
 

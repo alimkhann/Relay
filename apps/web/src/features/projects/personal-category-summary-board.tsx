@@ -7,7 +7,7 @@ import {
   PERSONAL_CATEGORY_META,
   personalCategoryFromMetadata,
   sortPersonalCategoriesByFill,
-} from "@relay/shared";
+} from "@relay/shared/constants/memory-taxonomy";
 
 const PREVIEW_PER_COLUMN = 3;
 

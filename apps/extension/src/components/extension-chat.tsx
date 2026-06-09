@@ -31,6 +31,7 @@ import {
 } from "lucide-react"
 
 import type { AssistantActionItem, AssistantActionPreview, AssistantActionResult, AssistantAttachmentDto, UiMessage } from "@relay/shared"
+import { filterRenderablePendingActions, shouldRenderPendingAction } from "@relay/shared/utils/assistant-chat-path"
 
 import type { RelayActiveProjectState } from "../messaging/contracts"
 import { MiniMarkdown } from "../utils/mini-markdown"
@@ -154,6 +155,11 @@ function MemoryPreview({ preview }: { preview: AssistantActionPreview }) {
     </div>
   )
   if (preview.before && preview.after) {
+    const same =
+      (preview.before.content ?? preview.before.label) ===
+        (preview.after.content ?? preview.after.label) &&
+      (preview.before.title ?? "") === (preview.after.title ?? "")
+    if (same) return render(preview.after)
     return (
       <div className={styles.memoryPreviewStack}>
         {render(preview.before)}
@@ -439,6 +445,8 @@ function MessageRow({
   onEdit,
   onConfirm,
   onDecline,
+  onConfirmAll,
+  onDeclineAll,
   onSelectBranch,
   onCopy,
   onFeedback,
@@ -451,6 +459,8 @@ function MessageRow({
   onEdit: (m: UiMessage, text: string) => void
   onConfirm: (a: NonNullable<UiMessage["pending"]>) => void
   onDecline: (a: NonNullable<UiMessage["pending"]>) => void
+  onConfirmAll?: (msg: UiMessage) => void
+  onDeclineAll?: (msg: UiMessage) => void
   onSelectBranch: (parentId: string | null, siblingId: string) => void
   onCopy: (text: string) => void
   onFeedback: (id: string, value: "like" | "dislike" | null) => void
@@ -531,47 +541,97 @@ function MessageRow({
         )
       ) : null}
 
+      {m.toolSteps.length > 0 && !m.streaming ? (
+        <details className={styles.activityChain}>
+          <summary>Tool calls ({m.toolSteps.length})</summary>
+          <ol>
+            {m.toolSteps.map((step, index) => (
+              <li key={`${step.label}-${index}`}>
+                <span>{step.label}</span>
+                {step.durationMs !== undefined ? <small>{step.durationMs} ms</small> : null}
+              </li>
+            ))}
+          </ol>
+        </details>
+      ) : null}
+
       {m.actionResults.map((r, i) => (
         <ActionCard key={i} r={r} onUndo={onUndo} />
       ))}
 
-      {m.pending ? (
-        <div className={`${styles.pending} ${m.pending.status === "failed" ? styles.pendingFailed : ""}`}>
-          {m.pending.status === "declined"
-            ? "Declined "
-            : m.pending.status === "succeeded"
-              ? "Completed "
-              : m.pending.status === "failed"
-                ? "Failed "
-                : m.pending.status === "running"
-                  ? "Running "
-                  : "Allow agent to "}
-          <strong>{m.pending.summary}</strong>
-          {!m.pending.status || m.pending.status === "pending" ? "?" : ""}
-          {m.pending.error ? <div className={styles.pendingError}>{m.pending.error}</div> : null}
-          {m.pending.previews?.slice(0, 3).map((preview, index) => (
-            <MemoryPreview key={index} preview={preview} />
-          ))}
-          {!m.pending.status || m.pending.status === "pending" ? (
-            <div className={styles.pendingActions}>
-              <button
-                type="button"
-                className={styles.confirmBtn}
-                onClick={() => m.pending && onConfirm(m.pending)}
+      {(() => {
+        const renderable = filterRenderablePendingActions(m.pendingActions ?? [])
+        const legacySingle = renderable.length === 0 && shouldRenderPendingAction(m.pending, m.actionResults)
+          ? m.pending
+          : null
+        const allPending = renderable.length > 0 ? renderable : legacySingle ? [legacySingle] : []
+        if (allPending.length === 0) return null
+        const awaitingApproval = allPending.filter((a) => !a.status || a.status === "pending")
+        return (
+          <>
+            {allPending.map((action) => (
+              <div
+                key={action.id}
+                className={`${styles.pending} ${action.status === "failed" ? styles.pendingFailed : ""} ${action.status === "succeeded" ? styles.pendingSucceeded ?? "" : ""}`}
               >
-                Allow
-              </button>
-              <button
-                type="button"
-                className={styles.declineBtn}
-                onClick={() => m.pending && onDecline(m.pending)}
-              >
-                Decline
-              </button>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+                {action.status === "succeeded"
+                  ? "Completed "
+                  : action.status === "failed"
+                    ? "Failed "
+                    : action.status === "running"
+                      ? "Running "
+                      : "Allow agent to "}
+                <strong>{action.summary}</strong>
+                {!action.status || action.status === "pending" ? "?" : ""}
+                {action.error ? <div className={styles.pendingError}>{action.error}</div> : null}
+                {action.previews && action.previews.length > 0 ? (
+                  <div className={styles.pendingPreviews}>
+                    {action.previews.slice(0, 3).map((preview, index) => (
+                      <MemoryPreview key={index} preview={preview} />
+                    ))}
+                  </div>
+                ) : null}
+                {!action.status || action.status === "pending" ? (
+                  <div className={styles.pendingActions}>
+                    <button
+                      type="button"
+                      className={styles.confirmBtn}
+                      onClick={() => onConfirm(action)}
+                    >
+                      Allow
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.declineBtn}
+                      onClick={() => onDecline(action)}
+                    >
+                      Decline
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+            {awaitingApproval.length > 1 && onConfirmAll && onDeclineAll ? (
+              <div className={styles.pendingBulkActions ?? styles.pendingActions}>
+                <button
+                  type="button"
+                  className={styles.confirmBtn}
+                  onClick={() => onConfirmAll(m)}
+                >
+                  Allow all ({awaitingApproval.length})
+                </button>
+                <button
+                  type="button"
+                  className={styles.declineBtn}
+                  onClick={() => onDeclineAll(m)}
+                >
+                  Decline all
+                </button>
+              </div>
+            ) : null}
+          </>
+        )
+      })()}
 
       {!editing && !m.streaming ? (
         <div className={styles.msgTools}>
@@ -650,6 +710,7 @@ function MessageRow({
 }
 
 export function ExtensionChat() {
+  const [hidden, setHidden] = useState(() => localStorage.getItem("relay:hideAskRelayExtension") === "true")
   const [collapsed, setCollapsed] = useState(true)
   const [mode, setMode] = useState<SizeMode>("tall")
   const [height, setHeight] = useState(() =>
@@ -673,6 +734,14 @@ export function ExtensionChat() {
 
   const voice = useVoiceInput((text) => setDraft((d) => (d ? `${d} ${text}` : text)))
 
+  useEffect(() => {
+    const handler = (e: StorageEvent) => {
+      if (e.key === "relay:hideAskRelayExtension") setHidden(e.newValue === "true")
+    }
+    window.addEventListener("storage", handler)
+    return () => window.removeEventListener("storage", handler)
+  }, [])
+
   // Reset dismissal whenever the user tries again, so a fresh failure surfaces
   // the pill again instead of silently leaving the user stuck.
   useEffect(() => {
@@ -681,10 +750,13 @@ export function ExtensionChat() {
 
   const chat = useExtensionChat(projectId, {
     onMutation: (result) => {
-      void chrome.runtime.sendMessage({
-        type: "RELAY_APPLY_AGENT_MEMORY_MUTATION",
-        payload: { projectId, result },
-      })
+      void (async () => {
+        const tab = await getActiveTab()
+        void chrome.runtime.sendMessage({
+          type: "RELAY_APPLY_AGENT_MEMORY_MUTATION",
+          payload: { projectId, result, tabId: tab?.id ?? null },
+        })
+      })()
       try {
         const bc = new BroadcastChannel(MUTATION_CHANNEL)
         bc.postMessage({ type: "memory-mutated", result })
@@ -853,6 +925,8 @@ export function ExtensionChat() {
       </button>
     )
   }
+
+  if (hidden) return null
 
   return (
     <div
@@ -1033,6 +1107,27 @@ export function ExtensionChat() {
             </span>
             <span className={styles.emptyTitle}>Ask about your work</span>
             <span>Memory, sources, the open page, the web.</span>
+            <div className={styles.suggestions}>
+              {[
+                "What can you do?",
+                "What was I working on?",
+                "Summarize my project",
+                "Save a decision",
+                "What are my open tasks?",
+                "How do I use Relay?",
+              ].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className={styles.suggestionBtn}
+                  onClick={() => {
+                    chat.send(s, { webSearch })
+                  }}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           chat.messages.map((m) => (
@@ -1043,6 +1138,8 @@ export function ExtensionChat() {
               onEdit={chat.editMessage}
               onConfirm={chat.confirmAction}
               onDecline={chat.declineAction}
+              onConfirmAll={chat.confirmAllActions}
+              onDeclineAll={chat.declineAllActions}
               onSelectBranch={chat.selectBranch}
               onCopy={(t) => navigator.clipboard?.writeText(t).catch(() => {})}
               onFeedback={chat.setFeedback}
@@ -1053,8 +1150,36 @@ export function ExtensionChat() {
           ))
         )}
         {chat.streaming ? <ThinkingChip tool={chat.activeTool} /> : null}
-        {chat.error ? <div className={styles.error}>{chat.error}</div> : null}
+        {chat.error ? (
+          <div className={styles.error}>
+            {typeof chat.error === "string" ? chat.error : chat.error.message}
+            {typeof chat.error !== "string" && chat.error.upgradeUrl ? (
+              <button
+                type="button"
+                className={styles.confirmBtn}
+                onClick={() => {
+                  if (chat.error && typeof chat.error !== "string" && chat.error.upgradeUrl) {
+                    void chrome.tabs.create({ url: chat.error.upgradeUrl })
+                  }
+                }}
+              >
+                Upgrade to keep going
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
+
+      {(() => {
+        const lastUsage = [...chat.messages].reverse().find((m) => m.usage)?.usage
+        if (!lastUsage) return null
+        const k = lastUsage.totalTokens >= 1000
+          ? `${(lastUsage.totalTokens / 1000).toFixed(1)}k`
+          : String(lastUsage.totalTokens)
+        const max = lastUsage.maxContextTokens ?? 1_000_000
+        const maxLabel = max >= 1_000_000 ? `${(max / 1_000_000).toFixed(max % 1_000_000 === 0 ? 0 : 1)}M` : `${Math.round(max / 1000)}k`
+        return <div className={styles.usageBadge}>{k} / {maxLabel} tokens · {lastUsage.model ?? "Gemini Flash"}</div>
+      })()}
 
       {voice.status === "denied" && !voiceDeniedDismissed ? (
         <div className={styles.deniedBar} role="alert">

@@ -1,11 +1,10 @@
+import type { AssistantActionResult } from "@relay/shared/types/assistant"
+import type { MemoryItemDto, ProjectDashboardDto } from "@relay/shared/types/project"
 import {
   actionResultToMemoryMutations,
   applyMemoryMutationToDashboard,
-  type AssistantActionResult,
-  type MemoryItemDto,
   type MemoryMutationEnvelope,
-  type ProjectDashboardDto,
-} from "@relay/shared"
+} from "@relay/shared/utils/memory-mutations"
 
 import type {
   RelayContextPreview,

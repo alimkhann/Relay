@@ -256,10 +256,17 @@ export type RelayMessage =
       };
     }
   | { type: "RELAY_REFRESH_SESSION"; payload?: { force?: boolean } }
-  | { type: "RELAY_INVALIDATE_PROJECT_CACHE"; payload?: { projectId?: string } }
+  | {
+      type: "RELAY_INVALIDATE_PROJECT_CACHE";
+      payload?: { projectId?: string; sync?: boolean };
+    }
   | {
       type: "RELAY_APPLY_AGENT_MEMORY_MUTATION";
-      payload: { projectId?: string | null; result: AssistantActionResult };
+      payload: {
+        projectId?: string | null;
+        result: AssistantActionResult;
+        tabId?: number | null;
+      };
     }
   | { type: "RELAY_SIGN_OUT" }
   | { type: "RELAY_OPEN_SIDE_PANEL" }

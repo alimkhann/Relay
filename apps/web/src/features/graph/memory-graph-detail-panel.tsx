@@ -2,7 +2,7 @@
 
 import { ExternalLink, FileText, Pin, X } from "lucide-react";
 
-import { PERSONAL_CATEGORY_META, personalCategoryFromMetadata } from "@relay/shared";
+import { PERSONAL_CATEGORY_META, personalCategoryFromMetadata } from "@relay/shared/constants/memory-taxonomy";
 
 import {
   formatMemoryDate,

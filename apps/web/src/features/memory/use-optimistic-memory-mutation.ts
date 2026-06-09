@@ -2,11 +2,8 @@
 
 import { useCallback } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import {
-  applyMemoryMutationToDashboard,
-  type MemoryMutationEnvelope,
-  type ProjectDashboardDto,
-} from "@relay/shared"
+import { applyMemoryMutationToDashboard, type MemoryMutationEnvelope } from "@relay/shared/utils/memory-mutations"
+import type { ProjectDashboardDto } from "@relay/shared"
 
 import { queryKeys } from "@/lib/query/keys"
 
@@ -46,7 +43,9 @@ export function useOptimisticMemoryMutation(projectId: string) {
         for (const key of keys) queryClient.setQueryData(key, previous.get(JSON.stringify(key)))
         throw error
       } finally {
-        for (const key of keys) void queryClient.invalidateQueries({ queryKey: key })
+        for (const key of keys) {
+          void queryClient.invalidateQueries({ queryKey: key, refetchType: "none" })
+        }
       }
     },
     [projectId, queryClient],

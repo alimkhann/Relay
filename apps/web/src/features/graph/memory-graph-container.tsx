@@ -7,7 +7,7 @@ import {
   PERSONAL_CATEGORY_META,
   personalCategoryFromMetadata,
   type PersonalCategory,
-} from "@relay/shared";
+} from "@relay/shared/constants/memory-taxonomy";
 import { ChevronDown, Expand, Minimize2, Network, RotateCcw, Settings2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -412,16 +412,6 @@ export function MemoryGraphContainer({
         <div className="flex h-full items-center justify-center text-[12px] text-[var(--relay-muted)]">
           Loading graph…
         </div>
-      )}
-      {!isFullscreen && (
-        <button
-          type="button"
-          onClick={openGraphTab}
-          className="absolute right-2 top-2 z-10 inline-flex items-center gap-1.5 rounded-full border border-[var(--relay-line)] bg-[var(--relay-surface)]/90 p-1.5 font-medium text-[var(--relay-ink)] shadow-[var(--relay-shadow-sm)] backdrop-blur opacity-40 hover:opacity-100 transition-opacity"
-          aria-label="Open memory graph fullscreen"
-        >
-          <Expand className="h-3.5 w-3.5" />
-        </button>
       )}
       {settingsOpen && isFullscreen && (
         <GraphSettingsPanel

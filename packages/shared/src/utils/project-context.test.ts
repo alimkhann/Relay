@@ -160,6 +160,21 @@ describe("project context helpers", () => {
     ])
   })
 
+  it("prefers saved memory content over stale project-state text for manual matches", () => {
+    const dashboard = makeDashboard()
+    dashboard.memory = dashboard.memory.map((item) =>
+      item.id === "mem_1"
+        ? { ...item, content: "Updated stack decision." }
+        : item,
+    )
+
+    expect(buildProjectContextItems(dashboard, "decision")[0]).toMatchObject({
+      key: "manual:mem_1",
+      text: "Updated stack decision.",
+      memoryId: "mem_1",
+    })
+  })
+
   it("surfaces a newly created manual governed item before state reconciliation", () => {
     const dashboard = makeDashboard()
     dashboard.projectState = dashboard.projectState

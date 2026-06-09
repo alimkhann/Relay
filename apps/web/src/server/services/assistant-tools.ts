@@ -383,7 +383,8 @@ export async function executeAssistantTool(
       return { modelResponse: summarizeForModel(brief), actionResult: null }
     }
     case "add_memory": {
-      const created = (await client.addMemory(String(args.projectId), {
+      const projectId = String(args.projectId)
+      const created = (await client.addMemory(projectId, {
         type: String(args.type),
         content: String(args.content),
         title: args.title ? String(args.title) : undefined,
@@ -393,13 +394,14 @@ export async function executeAssistantTool(
         sourceSurface: "ask_relay"
       })) as { id?: string; title?: string | null; content?: string }
       const label = created.title || (created.content ?? String(args.content)).slice(0, 80)
+      const item = { ...actionItem(created, label), id: created.id, label, projectId }
       const actionResult: AssistantActionResult = {
         tool: "add_memory",
         action: "created",
         entity: "memory item",
         count: 1,
-        items: [{ ...actionItem(created, label), id: created.id, label }],
-        previews: [{ after: actionItem(created, label) }],
+        items: [item],
+        previews: [{ after: item }],
         undoRef: created.id
           ? { tool: "manage_memory", args: { action: "delete", memoryId: [created.id] } }
           : undefined
@@ -411,22 +413,22 @@ export async function executeAssistantTool(
       const ids = Array.isArray(args.memoryId)
         ? (args.memoryId as string[])
         : [String(args.memoryId)]
-      const before = await Promise.all(ids.slice(0, 5).map((id) => getMemorySnapshot(client, id)))
+      let previews: Awaited<ReturnType<typeof previewAssistantTool>> = []
+      try {
+        previews = await previewAssistantTool(client, name, args)
+      } catch {
+        // preview fetch failed — proceed without before/after diff
+      }
       await client.manageMemory(args)
-      const after =
-        action === "delete"
-          ? []
-          : await Promise.all(ids.slice(0, 5).map((id) => getMemorySnapshot(client, id)))
       const actionResult: AssistantActionResult = {
         tool: "manage_memory",
         action: action === "delete" ? "deleted" : "updated",
         entity: "memory item",
         count: ids.length,
-        items: ids.map((id, index) => actionItem(after[index] ?? before[index], id)),
-        previews: ids.slice(0, 5).map((id, index) => ({
-          before: actionItem(before[index], id),
-          after: after[index] ? actionItem(after[index], id) : undefined,
-        })),
+        items: previews.map((preview, index) =>
+          actionItem(preview.after ?? preview.before, ids[index] ?? `item-${index}`),
+        ),
+        previews,
         // delete is a hard remove with no exposed inverse; be honest about it.
         irreversible: action === "delete"
       }

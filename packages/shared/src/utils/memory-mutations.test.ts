@@ -110,6 +110,86 @@ describe("applyMemoryMutationToDashboard", () => {
     expect(withUpdate.memory.map((entry) => entry.content)).toEqual(["updated", "new"])
   })
 
+  it("replaces optimistic placeholders when a create settles", () => {
+    const optimistic = {
+      ...item("optimistic-1", "New note"),
+      id: "optimistic-abc",
+    }
+    const created = item("real-1", "New note")
+    const base = dashboard("p1", [optimistic])
+
+    const next = applyMemoryMutationToDashboard(base, {
+      operation: "create",
+      status: "succeeded",
+      sourceProjectId: "p1",
+      after: created,
+    })
+
+    expect(next.memory).toEqual([created])
+  })
+
+  it("syncs governed project state lines when a manual item is created", () => {
+    const created = {
+      ...item("d-new", "Ship optimistic memory"),
+      type: "decision" as const,
+    }
+    const base = {
+      project: { id: "p1" },
+      memory: [],
+      projectState: {
+        decisions: ["Existing decision"],
+        constraints: [],
+        openTasks: [],
+      },
+    } as unknown as ProjectDashboardDto
+
+    const next = applyMemoryMutationToDashboard(base, {
+      operation: "create",
+      status: "succeeded",
+      sourceProjectId: "p1",
+      after: created,
+    })
+
+    expect(next.memory[0]?.id).toBe("d-new")
+    expect(next.projectState?.decisions).toEqual([
+      "Ship optimistic memory",
+      "Existing decision",
+    ])
+  })
+
+  it("syncs governed project state lines when a manual item is updated", () => {
+    const before = {
+      ...item("d1", "Use Vitest"),
+      type: "decision" as const,
+    }
+    const after = {
+      ...before,
+      content: "Use focused tests",
+      updatedAt: "2026-06-09T01:00:00.000Z",
+    }
+    const base = {
+      project: { id: "p1" },
+      memory: [before],
+      projectState: {
+        decisions: ["Use Vitest"],
+        constraints: [],
+        openTasks: [],
+      },
+    } as unknown as ProjectDashboardDto
+
+    const updated: MemoryMutationEnvelope = {
+      operation: "update",
+      status: "optimistic",
+      sourceProjectId: "p1",
+      before,
+      after,
+    }
+
+    const next = applyMemoryMutationToDashboard(base, updated)
+    expect(next.memory[0]?.content).toBe("Use focused tests")
+    expect(next.projectState?.decisions).toEqual(["Use focused tests"])
+  })
+
   it("removes deleted and transferred items from the source project", () => {
     const moved: MemoryMutationEnvelope = {
       operation: "transfer",

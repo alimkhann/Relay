@@ -27,6 +27,8 @@ export const sendAssistantMessageSchema = z.object({
   actionDecision: z
     .object({
       actionId: z.string().min(1),
+      /** Bulk decisions keep actionId as a compatibility alias for older servers. */
+      actionIds: z.array(z.string().min(1)).min(1).max(20).optional(),
       decision: z.enum(["allow", "decline"])
     })
     .optional(),

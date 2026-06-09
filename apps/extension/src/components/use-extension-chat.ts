@@ -3,6 +3,7 @@ import { useCallback, useMemo, useRef, useState } from "react"
 // Deep import keeps the shared barrel (node:crypto via utils/hashing) out of
 // the extension bundle.
 import {
+  appendActionResult,
   derivePath,
   spliceOptimistic,
   type UiMessage
@@ -90,7 +91,7 @@ export function useExtensionChat(projectId: string | null, opts?: {
   const [chatId, setChatId] = useState<string | null>(null)
   const [streaming, setStreaming] = useState(false)
   const [activeTool, setActiveTool] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<{ message: string; upgradeUrl?: string } | string | null>(null)
   const [attachments, setAttachments] = useState<ExtAttachment[]>([])
   const attachmentsRef = useRef<ExtAttachment[]>([])
   const chatIdRef = useRef<string | null>(null)
@@ -144,16 +145,18 @@ export function useExtensionChat(projectId: string | null, opts?: {
     async (
       body: Record<string, unknown>,
       optimisticUser: string | null,
-      parentForOptimistic: string | null
+      parentForOptimistic: string | null,
+      opts?: { replaceMessage?: UiMessage }
     ) => {
       setError(null)
       setStreaming(true)
-      setBranchParentId(parentForOptimistic)
+      const replaceMessage = opts?.replaceMessage
+      setBranchParentId(replaceMessage?.parentId ?? parentForOptimistic)
       const controller = new AbortController()
       abortRef.current = controller
       let aborted = false
       const userTmp = tmp()
-      const asstTmp = tmp()
+      const asstTmp = replaceMessage?.id ?? tmp()
       const seed: UiMessage[] = []
       const optimisticAttachments =
         body.attachmentIds && Array.isArray(body.attachmentIds)
@@ -161,27 +164,35 @@ export function useExtensionChat(projectId: string | null, opts?: {
               .filter((a) => !a.uploading && (body.attachmentIds as unknown[]).includes(a.id))
               .map(toAttachmentDto)
           : []
-      if (optimisticUser) {
+      if (replaceMessage) {
+        seed.push({ ...replaceMessage, streaming: true })
+      } else {
+        if (optimisticUser) {
+          seed.push({
+            id: userTmp,
+            parentId: parentForOptimistic,
+            role: "user",
+            content: optimisticUser,
+            actionResults: [],
+            pendingActions: [],
+            toolSteps: [],
+            attachments: optimisticAttachments,
+            feedback: null
+          })
+        }
         seed.push({
-          id: userTmp,
-          parentId: parentForOptimistic,
-          role: "user",
-          content: optimisticUser,
+          id: asstTmp,
+          parentId: optimisticUser ? userTmp : parentForOptimistic,
+          role: "assistant",
+          content: "",
           actionResults: [],
-          attachments: optimisticAttachments,
-          feedback: null
+          pendingActions: [],
+          toolSteps: [],
+          attachments: [],
+          feedback: null,
+          streaming: true
         })
       }
-      seed.push({
-        id: asstTmp,
-        parentId: optimisticUser ? userTmp : parentForOptimistic,
-        role: "assistant",
-        content: "",
-        actionResults: [],
-        attachments: [],
-        feedback: null,
-        streaming: true
-      })
       setOptimistic(seed)
       const patch = (fn: (m: UiMessage) => UiMessage) =>
         setOptimistic((prev) => prev.map((m) => (m.id === asstTmp ? fn(m) : m)))
@@ -205,7 +216,19 @@ export function useExtensionChat(projectId: string | null, opts?: {
           })
         })
         if (!res.ok || !res.body) {
-          setError("Relay is unavailable right now.")
+          let payload: { error?: string; upgradeUrl?: string; resetAt?: string } = {}
+          try {
+            payload = await res.json()
+          } catch {
+            /* noop */
+          }
+          const resetCopy = payload.resetAt
+            ? ` Try again after ${new Date(payload.resetAt).toLocaleString()}.`
+            : ""
+          setError({
+            message: `${payload.error ?? "Relay is unavailable right now."}${resetCopy}`,
+            upgradeUrl: payload.upgradeUrl
+          })
           setOptimistic([])
           return
         }
@@ -236,27 +259,93 @@ export function useExtensionChat(projectId: string | null, opts?: {
               patch((m) => ({ ...m, content: m.content + delta }))
             } else if (ev.type === "tool_start") {
               setActiveTool(ev.tool)
+              patch((m) => ({
+                ...m,
+                toolSteps: [
+                  ...(m.toolSteps ?? []).map((s) =>
+                    s.status === "active" ? { ...s, status: "complete" as const } : s
+                  ),
+                  { label: ev.tool, status: "active" as const }
+                ]
+              }))
             } else if (ev.type === "tool_result") {
               const result = ev.result
-              patch((m) => ({ ...m, actionResults: [...m.actionResults, result] }))
+              patch((m) => ({
+                ...m,
+                actionResults: appendActionResult(m.actionResults, result),
+                pending: undefined,
+                toolSteps: (m.toolSteps ?? []).map((s, i, arr) =>
+                  i === arr.length - 1 && s.status === "active"
+                    ? { ...s, status: "complete" as const }
+                    : s
+                )
+              }))
               setActiveTool(null)
               if (result.action !== "read") onMutationRef.current?.(result)
             } else if (ev.type === "pending_action") {
               const action = ev.action
               patch((m) => ({
                 ...m,
-                pending: action,
+                pendingActions: [...(m.pendingActions ?? []), action],
                 content: m.content || `I can ${action.summary}. Confirm to proceed.`
               }))
             } else if (ev.type === "action_update") {
               const action = ev.action
-              patch((m) => ({
-                ...m,
-                pending: action,
-                content: action.status === "pending" ? m.content : ""
-              }))
+              patch((m) => {
+                const existingIdx = (m.pendingActions ?? []).findIndex((pa) => pa.id === action.id)
+                if (existingIdx === -1) {
+                  // Legacy fallback
+                  if ((action.status === "succeeded" || action.status === "failed") && action.result) {
+                    return {
+                      ...m,
+                      actionResults: appendActionResult(m.actionResults, action.result),
+                      pending: undefined,
+                      content: "",
+                      streaming: false
+                    }
+                  }
+                  return { ...m, pending: action, content: action.status === "pending" ? m.content : "" }
+                }
+                const pendingActions = (m.pendingActions ?? []).map((pa) =>
+                  pa.id === action.id ? { ...pa, ...action } : pa
+                )
+                if ((action.status === "succeeded" || action.status === "failed") && action.result) {
+                  return {
+                    ...m,
+                    pendingActions,
+                    actionResults: appendActionResult(m.actionResults, action.result)
+                  }
+                }
+                return { ...m, pendingActions }
+              })
+              if (action.status === "succeeded" && action.result && action.result.action !== "read") {
+                onMutationRef.current?.(action.result)
+              }
             } else if (ev.type === "error") {
               setError(ev.message)
+              patch((m) => {
+                const pendingActions = (m.pendingActions ?? []).map((pa) =>
+                  pa.status === "running" ? { ...pa, status: "pending" as const } : pa
+                )
+                if (m.pending?.status === "running") {
+                  return {
+                    ...m,
+                    pending: { ...m.pending, status: "pending" },
+                    pendingActions,
+                    streaming: false
+                  }
+                }
+                return { ...m, pendingActions, streaming: false }
+              })
+            } else if (ev.type === "usage") {
+              patch((m) => ({
+                ...m,
+                usage: {
+                  totalTokens: ev.totalTokens,
+                  maxContextTokens: ev.maxContextTokens,
+                  model: ev.model
+                }
+              }))
             } else if (ev.type === "done") {
               onChatChangedRef.current?.()
             }
@@ -353,6 +442,10 @@ export function useExtensionChat(projectId: string | null, opts?: {
   const confirmAction = useCallback(
     (action: AssistantPendingAction) => {
       if (streaming) return
+      const pendingMsg = path.find(
+        (m) => m.pending?.id === action.id || m.pendingActions.some((pa) => pa.id === action.id)
+      )
+      if (!pendingMsg) return
       void runStream(
         {
           message: `Allow: ${action.summary}`,
@@ -360,15 +453,29 @@ export function useExtensionChat(projectId: string | null, opts?: {
           parentId: leafId
         },
         null,
-        leafId
+        pendingMsg.parentId,
+        {
+          replaceMessage: {
+            ...pendingMsg,
+            pending: { ...action, status: "running" },
+            pendingActions: pendingMsg.pendingActions.map((pa) =>
+              pa.id === action.id ? { ...pa, status: "running" as const } : pa
+            ),
+            streaming: true
+          }
+        }
       )
     },
-    [runStream, streaming, leafId]
+    [runStream, streaming, leafId, path]
   )
 
   const declineAction = useCallback(
     (action: AssistantPendingAction) => {
       if (streaming) return
+      const pendingMsg = path.find(
+        (m) => m.pending?.id === action.id || m.pendingActions.some((pa) => pa.id === action.id)
+      )
+      if (!pendingMsg) return
       void runStream(
         {
           message: `Decline: ${action.summary}`,
@@ -376,10 +483,61 @@ export function useExtensionChat(projectId: string | null, opts?: {
           parentId: leafId
         },
         null,
-        leafId
+        pendingMsg.parentId,
+        {
+          replaceMessage: {
+            ...pendingMsg,
+            pendingActions: pendingMsg.pendingActions.filter((pa) => pa.id !== action.id),
+            streaming: true
+          }
+        }
       )
     },
-    [runStream, streaming, leafId]
+    [runStream, streaming, leafId, path]
+  )
+
+  const confirmAllActions = useCallback(
+    (msg: UiMessage) => {
+      const pending = msg.pendingActions.filter((pa) => pa.status === "pending")
+      if (streaming || pending.length === 0) return
+      void runStream(
+        {
+          message: `Allow ${pending.length} actions`,
+          actionDecision: { actionId: pending[0]!.id, actionIds: pending.map((action) => action.id), decision: "allow" },
+          parentId: leafId
+        },
+        null,
+        msg.parentId,
+        {
+          replaceMessage: {
+            ...msg,
+            pendingActions: msg.pendingActions.map((action) =>
+              action.status === "pending" ? { ...action, status: "running" as const } : action
+            ),
+            streaming: true
+          }
+        }
+      )
+    },
+    [leafId, runStream, streaming]
+  )
+
+  const declineAllActions = useCallback(
+    (msg: UiMessage) => {
+      const pending = msg.pendingActions.filter((pa) => pa.status === "pending")
+      if (streaming || pending.length === 0) return
+      void runStream(
+        {
+          message: `Decline ${pending.length} actions`,
+          actionDecision: { actionId: pending[0]!.id, actionIds: pending.map((action) => action.id), decision: "decline" },
+          parentId: leafId
+        },
+        null,
+        msg.parentId,
+        { replaceMessage: { ...msg, pendingActions: [], streaming: true } }
+      )
+    },
+    [leafId, runStream, streaming]
   )
 
   const selectBranch = useCallback((parentId: string | null, siblingId: string) => {
@@ -594,6 +752,18 @@ export function useExtensionChat(projectId: string | null, opts?: {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(result.undoRef),
       })
+      if (res.ok && result.action === "created") {
+        onMutationRef.current?.({
+          tool: result.tool,
+          action: "deleted",
+          entity: result.entity,
+          count: result.count,
+          items: result.items,
+          previews: result.previews?.map((preview) => ({
+            before: preview.after ?? preview.before,
+          })),
+        })
+      }
       return res.ok
     } catch {
       return false
@@ -614,6 +784,8 @@ export function useExtensionChat(projectId: string | null, opts?: {
     editMessage,
     confirmAction,
     declineAction,
+    confirmAllActions,
+    declineAllActions,
     autoApprove,
     setAutoApprove,
     selectBranch,

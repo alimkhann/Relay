@@ -70,7 +70,7 @@ test.describe("Relay background SW message dispatch", () => {
       })
 
       const popup = await context.newPage()
-      await popup.goto(`chrome-extension://${extensionId}/popup.html`)
+      await popup.goto(`chrome-extension://${extensionId}/sidepanel.html`)
 
       const send = (message: unknown) =>
         popup.evaluate(

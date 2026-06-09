@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { FileDown } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -15,6 +16,7 @@ export function DashboardBriefCard({
   projectId,
   packets,
 }: DashboardBriefCardProps) {
+  const router = useRouter();
   const briefUrl = `/brief?project=${projectId}`;
   const latest = packets[0];
 
@@ -38,12 +40,19 @@ export function DashboardBriefCard({
       <div className="relative min-h-0 flex-1">
         <div className="absolute inset-0 overflow-y-auto px-3.5 py-3">
         {latest?.content ? (
-          <Link href={briefUrl} className="group block cursor-pointer">
+          // Use div+onClick instead of Link to avoid <a> nesting when Markdown has external links.
+          <div
+            role="link"
+            tabIndex={0}
+            className="group cursor-pointer"
+            onClick={() => router.push(briefUrl)}
+            onKeyDown={(e) => { if (e.key === "Enter") router.push(briefUrl) }}
+          >
             <Markdown
               content={latest.content}
               className="text-[12px] leading-relaxed text-[var(--relay-ink-secondary)] transition-colors group-hover:text-[var(--relay-ink)]"
             />
-          </Link>
+          </div>
         ) : (
           <EmptyState
             icon={<FileDown className="h-5 w-5" />}

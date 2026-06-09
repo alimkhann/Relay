@@ -31,6 +31,10 @@ vi.mock("@/components/layout/sidebar-project-switcher", () => ({
   SidebarProjectSwitcher: () => <div>SidebarProjectSwitcher</div>,
 }))
 
+vi.mock("@/features/billing/use-billing-status", () => ({
+  useBillingStatus: () => ({ data: null }),
+}))
+
 import { Sidebar } from "./sidebar"
 
 describe("Sidebar", () => {
@@ -47,13 +51,13 @@ describe("Sidebar", () => {
 
     const referral = screen.getByText("Referrals")
     const feedback = screen.getByRole("link", { name: "Feedback" })
-    const captures = screen.getByText("Captures")
+    const writes = screen.getByText("Writes this month")
     const account = screen.getByText("Relay User")
     const upgrade = screen.getByRole("link", { name: "Upgrade" })
 
-    expect(referral.compareDocumentPosition(feedback) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(feedback.compareDocumentPosition(captures) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(captures.compareDocumentPosition(account) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(feedback.compareDocumentPosition(referral) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(referral.compareDocumentPosition(writes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(writes.compareDocumentPosition(account) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(upgrade).toBeTruthy()
   })
 

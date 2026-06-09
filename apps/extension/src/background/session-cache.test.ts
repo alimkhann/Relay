@@ -5,11 +5,15 @@ const {
   setRelaySessionMock,
   clearRelaySessionMock,
   relayFetchMock,
+  readPersistedDashboardMock,
+  clearPersistedDashboardMock,
 } = vi.hoisted(() => ({
   getRelaySessionMock: vi.fn(),
   setRelaySessionMock: vi.fn(),
   clearRelaySessionMock: vi.fn(),
   relayFetchMock: vi.fn(),
+  readPersistedDashboardMock: vi.fn().mockResolvedValue(null),
+  clearPersistedDashboardMock: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock("../storage/session", () => ({
@@ -22,9 +26,10 @@ vi.mock("../storage/session", () => ({
 vi.mock("../storage/background-cache", () => ({
   readPersistedSessionData: vi.fn().mockResolvedValue(null),
   persistSessionData: vi.fn(),
-  readPersistedDashboard: vi.fn().mockResolvedValue(null),
+  readPersistedDashboard: readPersistedDashboardMock,
   persistDashboard: vi.fn(),
   clearPersistedBackgroundCache: vi.fn(),
+  clearPersistedDashboard: clearPersistedDashboardMock,
 }))
 
 vi.mock("../utils/api", () => ({
@@ -37,8 +42,14 @@ vi.mock("./telemetry", () => ({
   identifyExtensionUser: vi.fn(),
 }))
 
-import { loadSessionData } from "./session-cache"
-import { sessionCache } from "./state"
+import {
+  fetchProjectDashboard,
+  invalidateProjectCache,
+  loadSessionData,
+  patchProjectDashboardCache,
+  resolveDashboardForSync,
+} from "./session-cache"
+import { dashboardCache, dashboardCacheBypass, sessionCache } from "./state"
 
 describe("loadSessionData", () => {
   beforeEach(() => {
@@ -95,5 +106,122 @@ describe("loadSessionData", () => {
     await loadSessionData(true)
 
     expect(relayFetchMock).toHaveBeenCalledWith("/api/extension/session")
+  })
+})
+
+describe("fetchProjectDashboard cache invalidation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    dashboardCache.clear()
+    dashboardCacheBypass.clear()
+    getRelaySessionMock.mockResolvedValue({ token: "tok", userId: "u1" })
+  })
+
+  it("bypasses persisted dashboard and fetches from the network after invalidation", async () => {
+    readPersistedDashboardMock.mockResolvedValue({
+      data: { memory: [{ id: "stale" }] },
+      fetchedAt: Date.now(),
+    })
+    relayFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ dashboard: { memory: [] } }),
+    })
+
+    invalidateProjectCache("p1")
+    const dashboard = await fetchProjectDashboard("p1")
+
+    expect(dashboard).toEqual({ memory: [] })
+    expect(relayFetchMock).toHaveBeenCalledWith("/api/projects/p1")
+    expect(readPersistedDashboardMock).not.toHaveBeenCalled()
+    expect(clearPersistedDashboardMock).toHaveBeenCalledWith("u1", "p1")
+  })
+})
+
+describe("patchProjectDashboardCache", () => {
+  beforeEach(() => {
+    dashboardCache.clear()
+  })
+
+  it("bootstraps an empty dashboard when cache is cold", () => {
+    const next = patchProjectDashboardCache(
+      "p1",
+      {
+        tool: "add_memory",
+        action: "created",
+        entity: "memory item",
+        count: 1,
+        items: [{ id: "m1", label: "New", content: "New", type: "note" }],
+        previews: [{ after: { id: "m1", label: "New", content: "New", type: "note" } }],
+      },
+      "p1",
+    )
+
+    expect(next?.memory[0]?.id).toBe("m1")
+    expect(dashboardCache.get("p1")?.dashboard?.memory[0]?.id).toBe("m1")
+  })
+})
+
+describe("resolveDashboardForSync", () => {
+  beforeEach(() => {
+    dashboardCache.clear()
+  })
+
+  it("falls back to a patched cache when the network fetch returns null", () => {
+    const syncStartedAt = Date.now()
+    dashboardCache.set("p1", {
+      dashboard: { project: { id: "p1" }, memory: [{ id: "m1" }] } as never,
+      fetchedAt: syncStartedAt + 1,
+    })
+
+    expect(resolveDashboardForSync("p1", null, syncStartedAt)?.memory[0]?.id).toBe("m1")
+  })
+
+  it("keeps cached deletes when the network payload is stale", () => {
+    const syncStartedAt = Date.now()
+    dashboardCache.set("p1", {
+      dashboard: { project: { id: "p1" }, memory: [{ id: "m1" }] } as never,
+      fetchedAt: syncStartedAt + 1,
+    })
+
+    const resolved = resolveDashboardForSync(
+      "p1",
+      { project: { id: "p1" }, memory: [{ id: "m1" }, { id: "m2" }] } as never,
+      syncStartedAt,
+    )
+
+    expect(resolved?.memory.map((item) => item.id)).toEqual(["m1"])
+  })
+
+  it("accepts new server rows from capture when cache was not patched during sync", () => {
+    dashboardCache.set("p1", {
+      dashboard: { project: { id: "p1" }, memory: [{ id: "m1" }] } as never,
+      fetchedAt: Date.now() - 60_000,
+    })
+
+    const resolved = resolveDashboardForSync(
+      "p1",
+      { project: { id: "p1" }, memory: [{ id: "m1" }, { id: "m2" }] } as never,
+      Date.now(),
+    )
+
+    expect(resolved?.memory.map((item) => item.id)).toEqual(["m1", "m2"])
+  })
+
+  it("unions cached creates missing from a stale network payload", () => {
+    dashboardCache.set("p1", {
+      dashboard: {
+        project: { id: "p1" },
+        memory: [{ id: "m-new", content: "fresh" }],
+      } as never,
+      fetchedAt: Date.now(),
+    })
+
+    const resolved = resolveDashboardForSync(
+      "p1",
+      { project: { id: "p1" }, memory: [{ id: "m-old", content: "old" }] } as never,
+      Date.now() - 1_000,
+    )
+
+    expect(resolved?.memory.map((item) => item.id)).toEqual(["m-new", "m-old"])
   })
 })

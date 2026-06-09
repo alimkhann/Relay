@@ -129,8 +129,20 @@ export default function PlansDocsPage() {
                 {
                   label: "Ask Relay AI assistant",
                   free: `${FREE_LIMITS.assistantMessagesMonthly} / month`,
-                  starter: "Daily allowance",
-                  pro: "Highest allowance",
+                  starter: `${STARTER_LIMITS.assistantMessagesMonthly} / month · ${STARTER_LIMITS.assistantMessagesDaily} / day`,
+                  pro: `${PRO_LIMITS.assistantMessagesMonthly} / month · ${PRO_LIMITS.assistantMessagesDaily} / day`,
+                },
+                {
+                  label: "Ask Relay token safety cap / month",
+                  free: FREE_LIMITS.assistantTokensMonthly.toLocaleString("en-US"),
+                  starter: STARTER_LIMITS.assistantTokensMonthly.toLocaleString("en-US"),
+                  pro: PRO_LIMITS.assistantTokensMonthly.toLocaleString("en-US"),
+                },
+                {
+                  label: "Ask Relay max steps / turn",
+                  free: FREE_LIMITS.assistantMaxSteps.toLocaleString("en-US"),
+                  starter: STARTER_LIMITS.assistantMaxSteps.toLocaleString("en-US"),
+                  pro: PRO_LIMITS.assistantMaxSteps.toLocaleString("en-US"),
                 },
                 { label: "Autonomous context", free: "—", starter: "Yes", pro: "Yes" },
                 { label: "High-quality model", free: "—", starter: "—", pro: "Yes" },
@@ -147,7 +159,7 @@ export default function PlansDocsPage() {
           </div>
         </div>
         <p className="text-[13px] text-[var(--relay-muted)]">
-          Capture limits are monthly account-level limits shared across all projects. AI analyses use one account-level daily cap.
+          Reads and writes are account-level action limits shared across Relay surfaces. Passive dashboard loading, cache refreshes, background sync, and internal Ask Relay tool calls do not consume them.
         </p>
       </section>
 

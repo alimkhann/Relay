@@ -11,7 +11,7 @@ import {
   PERSONAL_CATEGORY_META,
   personalCategoryFromMetadata,
   type PersonalCategory,
-} from "@relay/shared";
+} from "@relay/shared/constants/memory-taxonomy";
 
 export const MIN_GRAPH_ITEMS = 1;
 

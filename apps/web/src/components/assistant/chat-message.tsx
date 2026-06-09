@@ -27,6 +27,9 @@ import type {
 import { Markdown } from "@/components/markdown"
 import { cn } from "@/lib/cn"
 
+import { filterRenderablePendingActions, shouldRenderPendingAction } from "@relay/shared/utils/assistant-chat-path"
+
+import { ChainOfThought, ChainOfThoughtContent, ChainOfThoughtHeader, ChainOfThoughtStep } from "@/components/ai-elements/chain-of-thought"
 import { ActionResultCard, MemoryActionPreview } from "./action-result-card"
 import type { UiMessage } from "./use-assistant-chat"
 
@@ -157,6 +160,8 @@ export function ChatMessage({
   message,
   onConfirm,
   onDecline,
+  onConfirmAll,
+  onDeclineAll,
   onUndo,
   onCopy,
   onFeedback,
@@ -169,6 +174,8 @@ export function ChatMessage({
   message: UiMessage
   onConfirm: (action: AssistantPendingAction) => void
   onDecline: (action: AssistantPendingAction) => void
+  onConfirmAll?: (message: UiMessage) => void
+  onDeclineAll?: (message: UiMessage) => void
   onUndo: (result: AssistantActionResult) => void
   onCopy: (text: string) => void
   onFeedback: (id: string, value: AssistantMessageFeedback) => void
@@ -266,6 +273,22 @@ export function ChatMessage({
           )
         ) : null}
 
+        {message.toolSteps && message.toolSteps.length > 0 && !message.streaming ? (
+          <ChainOfThought defaultOpen={false}>
+            <ChainOfThoughtHeader>Tool calls ({message.toolSteps.length})</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              {message.toolSteps.map((step, i) => (
+                <ChainOfThoughtStep
+                  key={i}
+                  label={step.label}
+                  status={step.status}
+                  description={step.durationMs !== undefined ? `${step.durationMs} ms` : undefined}
+                />
+              ))}
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        ) : null}
+
         {message.actionResults.map((result, i) => (
           <ActionResultCard key={i} result={result} onUndo={onUndo} />
         ))}
@@ -287,57 +310,88 @@ export function ChatMessage({
           </div>
         ) : null}
 
-        {message.pending ? (
-          <div
-            className={cn(
-              "rounded-[var(--relay-radius-lg)] border border-[var(--relay-line)] bg-[var(--relay-soft)]/60 p-3 text-sm",
-              message.pending.status === "failed" &&
-                "border-[var(--relay-danger)]/50 bg-[var(--relay-danger)]/5"
-            )}
-          >
-            <p className="text-[var(--relay-ink)]">
-              {message.pending.status === "declined"
-                ? "Declined"
-                : message.pending.status === "succeeded"
-                  ? "Completed"
-                  : message.pending.status === "failed"
-                    ? "Failed"
-                    : message.pending.status === "running"
-                      ? "Running"
-                      : "Allow agent to"}{" "}
-              <span className="font-semibold">{message.pending.summary}</span>
-              {!message.pending.status || message.pending.status === "pending" ? "?" : ""}
-            </p>
-            {message.pending.error ? (
-              <p className="mt-1 text-xs text-[var(--relay-danger)]">{message.pending.error}</p>
-            ) : null}
-            {message.pending.previews && message.pending.previews.length > 0 ? (
-              <div className="mt-2 space-y-2">
-                {message.pending.previews.slice(0, 3).map((preview, index) => (
-                  <MemoryActionPreview key={index} preview={preview} />
-                ))}
-              </div>
-            ) : null}
-            {!message.pending.status || message.pending.status === "pending" ? (
-              <div className="mt-2 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => message.pending && onConfirm(message.pending)}
-                  className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-accent-blue)] px-3 py-1.5 text-xs font-semibold text-[var(--relay-accent-blue-ink)] hover:bg-[var(--relay-accent-blue-hover)]"
+        {(() => {
+          const renderable = filterRenderablePendingActions(message.pendingActions ?? [])
+          // Also render legacy single-pending if pendingActions is empty
+          const legacySingle = renderable.length === 0 && shouldRenderPendingAction(message.pending, message.actionResults)
+            ? message.pending
+            : null
+          const allPending = renderable.length > 0 ? renderable : legacySingle ? [legacySingle] : []
+          if (allPending.length === 0) return null
+          const awaitingApproval = allPending.filter((a) => !a.status || a.status === "pending")
+          return (
+            <div className="space-y-2">
+              {allPending.map((action) => (
+                <div
+                  key={action.id}
+                  className={cn(
+                    "rounded-[var(--relay-radius-lg)] border border-[var(--relay-line)] bg-[var(--relay-soft)]/60 p-3 text-sm",
+                    action.status === "failed" && "border-[var(--relay-danger)]/50 bg-[var(--relay-danger)]/5",
+                    action.status === "succeeded" && "border-emerald-500/30 bg-emerald-500/5"
+                  )}
                 >
-                  Allow
-                </button>
-                <button
-                  type="button"
-                  onClick={() => message.pending && onDecline(message.pending)}
-                  className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-3 py-1.5 text-xs text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
-                >
-                  Decline
-                </button>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+                  <p className="text-[var(--relay-ink)]">
+                    {action.status === "succeeded"
+                      ? "Completed"
+                      : action.status === "failed"
+                        ? "Failed"
+                        : action.status === "running"
+                          ? "Running"
+                          : "Allow agent to"}{" "}
+                    <span className="font-semibold">{action.summary}</span>
+                    {!action.status || action.status === "pending" ? "?" : ""}
+                  </p>
+                  {action.error ? (
+                    <p className="mt-1 text-xs text-[var(--relay-danger)]">{action.error}</p>
+                  ) : null}
+                  {action.previews && action.previews.length > 0 ? (
+                    <div className="mt-2 space-y-2">
+                      {action.previews.slice(0, 3).map((preview, index) => (
+                        <MemoryActionPreview key={index} preview={preview} />
+                      ))}
+                    </div>
+                  ) : null}
+                  {!action.status || action.status === "pending" ? (
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onConfirm(action)}
+                        className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-accent-blue)] px-3 py-1.5 text-xs font-semibold text-[var(--relay-accent-blue-ink)] hover:bg-[var(--relay-accent-blue-hover)]"
+                      >
+                        Allow
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDecline(action)}
+                        className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-3 py-1.5 text-xs text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+              {awaitingApproval.length > 1 && onConfirmAll && onDeclineAll ? (
+                <div className="flex gap-2 border-t border-[var(--relay-line)] pt-2">
+                  <button
+                    type="button"
+                    onClick={() => onConfirmAll(message)}
+                    className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-accent-blue)] px-3 py-1.5 text-xs font-semibold text-[var(--relay-accent-blue-ink)] hover:bg-[var(--relay-accent-blue-hover)]"
+                  >
+                    Allow all ({awaitingApproval.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDeclineAll(message)}
+                    className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-3 py-1.5 text-xs text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
+                  >
+                    Decline all
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          )
+        })()}
 
         {!editing && !message.streaming ? (
           <div

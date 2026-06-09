@@ -16,7 +16,7 @@ import {
 } from "lucide-react"
 
 import type { MemoryItemDto, MemoryItemType, SourceSurface } from "@relay/shared"
-import { PERSONAL_CATEGORY_META, personalCategoryFromMetadata } from "@relay/shared"
+import { PERSONAL_CATEGORY_META, personalCategoryFromMetadata } from "@relay/shared/constants/memory-taxonomy"
 
 import { cn } from "@/lib/cn"
 import { Markdown } from "@/components/markdown"

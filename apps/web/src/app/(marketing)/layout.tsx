@@ -44,7 +44,7 @@ const jsonLd = {
     {
       "@type": "Offer",
       name: "Starter",
-      price: "6",
+      price: "8",
       priceCurrency: "USD",
       billingIncrement: "month",
     },

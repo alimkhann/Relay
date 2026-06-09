@@ -97,10 +97,12 @@ import {
   type UsageMetric,
 } from "@relay/shared/utils/usage-metrics";
 
-import type { AssistantActionResult } from "@relay/shared";
+import type { AssistantActionItem, AssistantActionResult } from "@relay/shared/types/assistant";
+import type { MemoryItemType } from "@relay/shared/types/database";
 
 import type { RelayActiveProjectState, RelayProjectOption } from "../messaging/contracts";
-import { contextPreviewHasItems } from "../utils/context-preview";
+import { preferContextPreviewOnSync } from "../utils/context-preview";
+import { LOCAL_PREVIEW_MUTATION_GUARD_MS } from "../utils/preview-mutation-guard";
 import { applyActionResultToContextPreview } from "../utils/context-preview-mutations";
 import { getActiveTab } from "../utils/browser";
 import { relayFetch } from "../utils/api";
@@ -405,6 +407,9 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     useState<RelayResolvedTheme>("dark");
   const [panelMode, setPanelMode] = useState<"main" | "settings">("main");
   const [signOutBusy, setSignOutBusy] = useState(false);
+  const [askRelayHidden, setAskRelayHidden] = useState(() => {
+    try { return localStorage.getItem("relay:hideAskRelayExtension") === "true" } catch { return false }
+  });
   const [userSettings, setUserSettings] = useState<UserSettingsRow["settings"] | null>(null);
   const [billing, setBilling] = useState<BillingStatusDto | null>(null);
   const [userSettingsBusy, setUserSettingsBusy] = useState(false);
@@ -427,6 +432,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const walkthroughChecked = useRef(false);
   const activeStateRequestInFlight = useRef(false);
   const lastActiveStateRefreshAt = useRef(0);
+  const lastLocalPreviewMutationAt = useRef(0);
   const userSettingsLoadedAt = useRef(0);
   const billingLoadedAt = useRef(0);
 
@@ -745,9 +751,14 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     };
   }, []);
 
+  function markLocalPreviewMutation() {
+    lastLocalPreviewMutationAt.current = Date.now();
+  }
+
   function applyAgentMemoryMutation(result: AssistantActionResult) {
     const projectId = activeStateRef.current.projectId;
     if (!projectId) return;
+    markLocalPreviewMutation();
     setActiveState((current) => {
       if (!current.projectId || current.projectId !== projectId) return current;
       return {
@@ -766,16 +777,19 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       if (nextState.page.supported || current.projectId !== nextState.projectId) {
         return nextState;
       }
-      // Non-AI same project: keep optimistic local preview when server is still empty.
-      const nextHasPreview = contextPreviewHasItems(nextState.contextPreview);
-      const currentHasPreview = contextPreviewHasItems(current.contextPreview);
+      const recentLocalMutation =
+        Date.now() - lastLocalPreviewMutationAt.current < LOCAL_PREVIEW_MUTATION_GUARD_MS;
+      if (recentLocalMutation) {
+        return { ...nextState, contextPreview: current.contextPreview };
+      }
+      // Non-AI same project: prefer the richer local preview while optimistic CRUD
+      // is ahead of a stale background sync (create/delete/edit flash-back).
       return {
         ...nextState,
-        contextPreview: nextHasPreview
-          ? nextState.contextPreview
-          : currentHasPreview
-            ? current.contextPreview
-            : nextState.contextPreview,
+        contextPreview: preferContextPreviewOnSync(
+          current.contextPreview,
+          nextState.contextPreview,
+        ),
       };
     });
     setSession((current) =>
@@ -826,6 +840,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       if (!data.settings || typeof data.settings !== "object") return;
       if (userSettingsBusy) return;
       setUserSettings(data.settings);
+      // Sync the extension-only preference so ExtensionChat (a sibling component)
+      // can read it without prop-drilling through sidepanel.tsx.
+      const shouldHide = Boolean(data.settings.hideAskRelayExtension);
+      localStorage.setItem("relay:hideAskRelayExtension", String(shouldHide));
+      window.dispatchEvent(new StorageEvent("storage", { key: "relay:hideAskRelayExtension", newValue: String(shouldHide) }));
       userSettingsLoadedAt.current = Date.now();
       if (!walkthroughChecked.current) {
         walkthroughChecked.current = true;
@@ -1715,6 +1734,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       );
 
       if (result?.ok) {
+        markLocalPreviewMutation();
         await refreshLocalSession();
         await refreshActiveProjectState();
       }
@@ -1778,6 +1798,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       if (result?.ok) {
         setAlsoSaveToProjectIds(new Set());
         setAlsoSaveToOpen(false);
+        markLocalPreviewMutation();
         await refreshLocalSession();
         await refreshActiveProjectState();
       }
@@ -2012,26 +2033,67 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
   }
 
+  // Push a manual CRUD mutation directly to the background so the
+  // dashboardCache and state.contextPreview survive sidebar close/reopen
+  // and project switches without a server round-trip.
+  // Uses "add_memory" / "manage_memory" as tool names so actionResultToMemoryMutations
+  // processes them (those are the only tools in MEMORY_MUTATION_TOOLS).
+  async function sendManualMutation(
+    action: "created" | "updated" | "deleted",
+    projectId: string,
+    after?: { id: string; type: MemoryItemType; content: string },
+    before?: { id: string; type?: MemoryItemType; content?: string },
+  ) {
+    const tab = await getActiveTab();
+    const afterItem: AssistantActionItem | undefined = after
+      ? { id: after.id, label: after.content.slice(0, 80), content: after.content, type: after.type, projectId }
+      : undefined;
+    const beforeItem: AssistantActionItem | undefined = before
+      ? { id: before.id, label: (before.content ?? "").slice(0, 80), content: before.content, type: before.type, projectId }
+      : undefined;
+    const result: AssistantActionResult = {
+      tool: action === "created" ? "add_memory" : "manage_memory",
+      action,
+      entity: "memory item",
+      count: 1,
+      items: afterItem ? [afterItem] : beforeItem ? [beforeItem] : [],
+      previews: (afterItem || beforeItem) ? [{ before: beforeItem, after: afterItem }] : [],
+    };
+    void chrome.runtime.sendMessage({
+      type: "RELAY_APPLY_AGENT_MEMORY_MUTATION",
+      payload: { projectId, result, tabId: tab?.id ?? null },
+    });
+  }
+
   async function runBusyAction(
     pendingMessage: string,
     successMessage: string,
     task: () => Promise<void>,
+    options: { skipStateRefresh?: boolean } = {},
   ) {
     setBusy(true);
     setStatus(pendingMessage);
 
     try {
+      if (options.skipStateRefresh) {
+        markLocalPreviewMutation();
+      }
       await task();
       setStatus(successMessage);
       const mutatedProjectId = activeState.projectId ?? session?.projectId;
-      if (mutatedProjectId) {
+      // skipStateRefresh operations call sendManualMutation directly to patch
+      // background dashboardCache + contextPreview via RELAY_APPLY_AGENT_MEMORY_MUTATION.
+      // Non-skipStateRefresh operations still need invalidation + full sync.
+      if (mutatedProjectId && !options.skipStateRefresh) {
         void chrome.runtime.sendMessage({
           type: "RELAY_INVALIDATE_PROJECT_CACHE",
-          payload: { projectId: mutatedProjectId },
+          payload: { projectId: mutatedProjectId, sync: true },
         });
       }
       await refreshLocalSession();
-      await refreshActiveProjectState();
+      if (!options.skipStateRefresh) {
+        await refreshActiveProjectState();
+      }
     } catch (cause) {
       setStatus(cause instanceof Error ? cause.message : "Request failed.");
     } finally {
@@ -2106,8 +2168,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           text: content,
           source: "manual",
           memoryId: null,
-          sourceSurface: "manual",
-          capturedAt: new Date().toISOString(),
         };
         setActiveState((current) => ({
           ...current,
@@ -2122,7 +2182,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             type: memoryTypeBySection[section],
             title: null,
             content,
-            sourceSurface: "manual",
           }),
         });
 
@@ -2156,11 +2215,17 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             ],
           },
         }));
+        void sendManualMutation(
+          "created",
+          personalMode ? (personalProject?.id ?? "") : (activeState.projectId ?? session?.projectId ?? ""),
+          { id: item.id, type: memoryTypeBySection[section], content: item.content},
+        );
         setDrafts((current) => ({
           ...current,
           [section]: "",
         }));
       },
+      { skipStateRefresh: true },
     );
   }
 
@@ -2190,6 +2255,12 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             }));
             throw new Error(await readErrorMessage(response, "Manual context removal failed."));
           }
+          void sendManualMutation(
+            "deleted",
+            activeState.projectId ?? session?.projectId ?? "",
+            undefined,
+            { id: item.memoryId, type: memoryTypeBySection[section], content: item.text },
+          );
           return;
         }
 
@@ -2198,6 +2269,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           [hiddenFieldBySection[section]]: Array.from(new Set([...hiddenItems, item.text])),
         });
       },
+      { skipStateRefresh: true },
     );
   }
 
@@ -2228,7 +2300,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               memoryId: "",
               sourceUrl: null,
               hostname: null,
-              sourceSurface: "manual",
               capturedAt,
             },
             ...current.contextPreview.notes,
@@ -2242,7 +2313,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           title: null,
           content,
           pinned: true,
-          sourceSurface: "manual",
         }),
       });
       if (!response.ok) {
@@ -2276,8 +2346,13 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           ],
         },
       }));
+      void sendManualMutation(
+        "created",
+        personalMode ? (personalProject?.id ?? "") : projectId,
+        { id: item.id, type: "note", content: item.content},
+      );
       setNoteDraft("");
-    });
+    }, { skipStateRefresh: true });
   }
 
   // Add a note/requirement (regular project memory-item sections) from a
@@ -2295,7 +2370,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           title: null,
           content,
           pinned: type === "note" ? true : undefined,
-          sourceSurface: "manual",
         }),
       });
       if (!response.ok) {
@@ -2361,9 +2435,15 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         }
         throw new Error(await readErrorMessage(response, "Note update failed."));
       }
+      void sendManualMutation(
+        "updated",
+        activeState.projectId ?? session?.projectId ?? "",
+        { id: memoryId, type: "note", content: nextText},
+        { id: memoryId, type: "note", content: previous?.text ?? "" },
+      );
       setEditingKey(null);
       setEditingText("");
-    });
+    }, { skipStateRefresh: true });
   }
 
   async function removeNote(memoryId: string) {
@@ -2394,7 +2474,14 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           }
           throw new Error(await readErrorMessage(response, "Note removal failed."));
         }
+        void sendManualMutation(
+          "deleted",
+          activeState.projectId ?? session?.projectId ?? "",
+          undefined,
+          { id: memoryId, type: "note", content: previous?.text ?? "" },
+        );
       },
+      { skipStateRefresh: true },
     );
   }
 
@@ -2411,6 +2498,16 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       "Saving context change…",
       "Project context updated.",
       async () => {
+        const previousSection = activeState.contextPreview[section];
+        setActiveState((current) => ({
+          ...current,
+          contextPreview: {
+            ...current.contextPreview,
+            [section]: current.contextPreview[section].map((entry) =>
+              entry.key === item.key ? { ...entry, text: nextText } : entry,
+            ),
+          },
+        }));
         if (item.source === "manual" && item.memoryId) {
           const response = await relayFetch(`/api/memory/${item.memoryId}`, {
             method: "PATCH",
@@ -2420,8 +2517,21 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           });
 
           if (!response.ok) {
+            setActiveState((current) => ({
+              ...current,
+              contextPreview: {
+                ...current.contextPreview,
+                [section]: previousSection,
+              },
+            }));
             throw new Error(await readErrorMessage(response, "Manual context update failed."));
           }
+          void sendManualMutation(
+            "updated",
+            activeState.projectId ?? session?.projectId ?? "",
+            { id: item.memoryId, type: memoryTypeBySection[section], content: nextText},
+            { id: item.memoryId, type: memoryTypeBySection[section], content: item.text },
+          );
         } else {
           const projectId = activeState.projectId ?? session?.projectId ?? "";
           const personalProject =
@@ -2435,22 +2545,47 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               type: memoryTypeBySection[section],
               title: null,
               content: nextText,
-              sourceSurface: "manual",
             }),
           });
           if (!createResponse.ok) {
+            setActiveState((current) => ({
+              ...current,
+              contextPreview: {
+                ...current.contextPreview,
+                [section]: previousSection,
+              },
+            }));
             throw new Error(await readErrorMessage(createResponse, "Manual replacement failed."));
           }
-
+          const { item: createdItem } = (await createResponse.json()) as {
+            item: { id: string; content: string; sourceSurface?: string; capturedAt?: string | null; updatedAt: string };
+          };
+          void sendManualMutation(
+            "created",
+            personalMode && personalProject ? personalProject.id : projectId,
+            { id: createdItem.id, type: memoryTypeBySection[section], content: createdItem.content},
+          );
           const hiddenItems = await loadHiddenItems(section);
-          await patchProjectState({
-            [hiddenFieldBySection[section]]: Array.from(new Set([...hiddenItems, item.text])),
-          });
+          try {
+            await patchProjectState({
+              [hiddenFieldBySection[section]]: Array.from(new Set([...hiddenItems, item.text])),
+            });
+          } catch (cause) {
+            setActiveState((current) => ({
+              ...current,
+              contextPreview: {
+                ...current.contextPreview,
+                [section]: previousSection,
+              },
+            }));
+            throw cause;
+          }
         }
 
         setEditingKey(null);
         setEditingText("");
       },
+      { skipStateRefresh: true },
     );
   }
 
@@ -2675,6 +2810,35 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               </svg>
             </button>
           ) : null}
+          {session?.connected && panelMode === "main" ? (
+            <button
+              type="button"
+              className={styles.headerIconButton}
+              aria-label={askRelayHidden ? "Show Ask Relay" : "Hide Ask Relay"}
+              title={askRelayHidden ? "Show Ask Relay" : "Hide Ask Relay"}
+              onClick={() => {
+                const hide = !askRelayHidden;
+                setAskRelayHidden(hide);
+                if (userSettings) void patchUserSettings({ hideAskRelayExtension: hide });
+                localStorage.setItem("relay:hideAskRelayExtension", String(hide));
+                window.dispatchEvent(new StorageEvent("storage", { key: "relay:hideAskRelayExtension", newValue: String(hide) }));
+              }}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity={askRelayHidden ? 0.4 : 1}
+              >
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+            </button>
+          ) : null}
           {session?.connected ? (
             <button
               type="button"
@@ -2857,6 +3021,29 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               </div>
             );
           })()}
+
+          <div className={styles.settingsGroup}>
+            <span className={styles.settingsLabel}>Ask Relay</span>
+            <div className={styles.settingsToggleRow}>
+              <span className={styles.settingsToggleCopy}>
+                <span className={styles.settingsToggleTitle}>Show Ask Relay panel</span>
+                <span className={styles.settingsToggleHint}>The chat panel at the bottom of the sidebar</span>
+              </span>
+              <input
+                type="checkbox"
+                className={styles.settingsToggleInput}
+                checked={!(userSettings?.hideAskRelayExtension ?? false)}
+                disabled={userSettingsBusy || !userSettings}
+                aria-label="Show Ask Relay panel"
+                onChange={(e) => {
+                  const hide = !e.target.checked;
+                  void patchUserSettings({ hideAskRelayExtension: hide });
+                  localStorage.setItem("relay:hideAskRelayExtension", String(hide));
+                  window.dispatchEvent(new StorageEvent("storage", { key: "relay:hideAskRelayExtension", newValue: String(hide) }));
+                }}
+              />
+            </div>
+          </div>
 
           <div className={styles.settingsGroup}>
             <span className={styles.settingsLabel}>Usage</span>
@@ -4908,15 +5095,22 @@ function UsageTable({
   const u = usage ?? null;
   const n = (v: number | undefined) => v ?? 0;
   const l = limits;
-  const rows: Array<{ label: string; used: number; limit: number; period: string }> = [
-    { label: "Captures", used: n(u?.capturesThisMonth), limit: l.captureMonthly, period: "mo" },
-    { label: "MCP reads", used: n(u?.mcpReadsToday), limit: l.mcpReadDaily, period: "day" },
-    { label: "MCP writes", used: n(u?.mcpWritesToday), limit: l.mcpWriteDaily, period: "day" },
+  const rows: Array<{ label: string; used?: number; limit: number; period: string }> = [
+    { label: "Reads today", used: n(u?.readsToday), limit: l.readsDaily, period: "day" },
+    { label: "Reads this month", used: n(u?.readsThisMonth), limit: l.readsMonthly, period: "mo" },
+    { label: "Writes today", used: n(u?.writesToday), limit: l.writesDaily, period: "day" },
+    { label: "Writes this month", used: n(u?.writesThisMonth), limit: l.writesMonthly, period: "mo" },
+    { label: "Ask Relay", used: n(u?.assistantMessagesThisMonth), limit: l.assistantMessagesMonthly, period: "mo" },
     { label: "AI analyses", used: n(u?.aiAnalysesToday), limit: l.aiAnalysesPerUserDaily, period: "day" },
     { label: "Active projects", used: n(u?.activeProjects), limit: l.activeProjects, period: "" },
     { label: "External indexes", used: n(u?.externalSourceIndexesToday), limit: l.externalSourceIndexesDaily, period: "day" },
     { label: "External searches", used: n(u?.externalSourceSearchesToday), limit: l.externalSourceSearchesDaily, period: "day" },
     { label: "External refreshes", used: n(u?.externalSourceRefreshesToday), limit: l.externalSourceRefreshesDaily, period: "day" },
+    { label: "Memory / project", limit: l.memoryItemsPerProject, period: "" },
+    { label: "Uploaded sources / project", limit: l.sourcesPerProject, period: "" },
+    { label: "External sources / project", limit: l.externalSourcesPerProject, period: "" },
+    { label: "Ask Relay tokens", limit: l.assistantTokensMonthly, period: "mo" },
+    { label: "Ask Relay steps / turn", limit: l.assistantMaxSteps, period: "" },
   ];
   return (
     <div className={styles.usageTable}>
@@ -4925,9 +5119,9 @@ function UsageTable({
           <span className={styles.usageTableLabel}>{r.label}</span>
           <span
             className={styles.usageTableValue}
-            data-level={usageLevel(r.used, r.limit)}
+            data-level={r.used === undefined ? undefined : usageLevel(r.used, r.limit)}
           >
-            {r.used}/{r.limit}
+            {r.used === undefined ? r.limit : `${r.used}/${r.limit}`}
             {r.period ? <span> /{r.period}</span> : null}
           </span>
         </div>

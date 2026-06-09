@@ -9,7 +9,7 @@ import {
   personalCategories,
   personalCategoryFromMetadata,
   type PersonalCategory,
-} from "@relay/shared";
+} from "@relay/shared/constants/memory-taxonomy";
 import type { MemoryItemDto } from "@relay/shared";
 import { Pencil } from "lucide-react";
 

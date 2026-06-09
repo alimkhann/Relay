@@ -515,7 +515,7 @@ test.describe("Relay inline chip", () => {
       await expect(toast).toContainText("Approve save to Relay")
 
       const popup = await context.newPage()
-      await popup.goto(`chrome-extension://${extensionId}/popup.html`)
+      await popup.goto(`chrome-extension://${extensionId}/sidepanel.html`)
 
       const initialState = await popup.evaluate(async () => {
         const tabs = await chrome.tabs.query({})

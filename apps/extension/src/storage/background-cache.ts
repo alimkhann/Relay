@@ -110,6 +110,18 @@ export function persistDashboard<T = unknown>(
   })
 }
 
+export async function clearPersistedDashboard(
+  userId: string,
+  projectId: string,
+): Promise<void> {
+  if (!storage || !userId || !projectId) return
+  try {
+    await storage.remove(`${DASHBOARD_KEY_PREFIX}${userId}.${projectId}`)
+  } catch {
+    // Non-fatal; fetchProjectDashboard will revalidate from the network.
+  }
+}
+
 /** Drop one user's persisted caches (sign-out), or every user's if omitted. */
 export async function clearPersistedBackgroundCache(
   userId?: string,

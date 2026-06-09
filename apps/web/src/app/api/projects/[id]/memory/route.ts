@@ -5,6 +5,7 @@ import { withApiAuth } from "@/server/http/api-route"
 import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
 import {
   consumeExtensionMemoryWriteQuota,
+  consumeActionQuota,
   consumeMcpReadQuota,
   consumeMcpWriteQuota,
 } from "@/server/services/entitlement-service"
@@ -81,6 +82,8 @@ export const POST = withApiAuth(async (request: Request, { params }: { params: P
     await consumeMcpWriteQuota(viewer.userId)
   } else if (viewer.mode === "extension") {
     await consumeExtensionMemoryWriteQuota(viewer.userId)
+  } else {
+    await consumeActionQuota(viewer.userId, "write")
   }
   const body = await request.json()
 

@@ -84,6 +84,7 @@ function funnelQuery(steps, options = {}) {
         event: step.event,
         name: step.event,
         custom_name: step.name,
+        ...(step.properties ? { properties: step.properties } : {}),
       })),
       interval: "day",
       dateRange: {
@@ -493,6 +494,74 @@ const dashboardDefinitions = [
     ],
   },
   {
+    name: "📈 Limits, Agents & Conversion",
+    description:
+      "Tracks action quota pressure, limit-driven upgrades, Ask Relay cost/tool behavior, and MCP activation. Production events only.",
+    insights: [
+      {
+        name: "Limits · Free activation to paid conversion",
+        description: "Free-user journey from activation through a limit block to paid checkout.",
+        query: funnelQuery(
+          [
+            { event: "activation_completed", name: "Activated" },
+            { event: "quota_blocked", name: "Hit a limit" },
+            { event: "limit_upgrade_clicked", name: "Clicked upgrade" },
+            { event: "billing_checkout_completed", name: "Converted" },
+          ],
+          { properties: [eventProperty("plan", ["free"]), eventProperty("environment", ["production"])] }
+        ),
+      },
+      {
+        name: "Limits · Hit to checkout funnel",
+        description: "Conversion funnel after a quota block, broken down by upgrade target.",
+        query: funnelQuery(
+          [
+            { event: "quota_blocked", name: "Limit hit" },
+            { event: "limit_upgrade_clicked", name: "Upgrade clicked" },
+            { event: "billing_checkout_completed", name: "Checkout completed" },
+          ],
+          { breakdown: "next_plan", properties: [eventProperty("environment", ["production"])] }
+        ),
+      },
+      {
+        name: "Limits · Reads and writes consumed by plan",
+        description: "Action consumption volume by quota family and plan.",
+        query: trendsQuery(
+          [eventNode("quota_consumed", { customName: "Actions consumed", math: "sum", mathProperty: "amount" })],
+          { breakdown: "plan", properties: [eventProperty("environment", ["production"])] }
+        ),
+      },
+      {
+        name: "Agents · Ask Relay tokens by intent",
+        description: "Ask Relay token usage broken down by routed intent.",
+        query: trendsQuery(
+          [eventNode("assistant_turn_completed", { customName: "Ask Relay tokens", math: "sum", mathProperty: "totalTokens" })],
+          { breakdown: "intentRoute", properties: [eventProperty("environment", ["production"])] }
+        ),
+      },
+      {
+        name: "Agents · Tool-call frequency",
+        description: "Ask Relay tool-call frequency by tool.",
+        query: trendsQuery(
+          [eventNode("assistant_tool_used", { customName: "Tool calls" })],
+          { breakdown: "tool", display: "ActionsBar", properties: [eventProperty("environment", ["production"])] }
+        ),
+      },
+      {
+        name: "MCP · Connection to first read and write",
+        description: "MCP activation funnel from first connection to first read and write.",
+        query: funnelQuery(
+          [
+            { event: "mcp_connected_first_time", name: "Connected" },
+            { event: "mcp_tool_completed", name: "First read", properties: [eventProperty("read_or_write", ["read"])] },
+            { event: "mcp_tool_completed", name: "First write", properties: [eventProperty("read_or_write", ["write"])] },
+          ],
+          { properties: [eventProperty("environment", ["production"])] }
+        ),
+      },
+    ],
+  },
+  {
     name: "🐛 Errors & Health",
     description:
       "Operational error dashboard grounded in error_occurred and AI request telemetry, plus activation funnel health checks.",
@@ -659,7 +728,7 @@ function buildAuditMarkdown(dashboards) {
   lines.push("## Replacement Plan")
   lines.push("")
   lines.push("- Delete overlapping legacy dashboards.")
-  lines.push("- Recreate exactly 5 founder dashboards anchored on canonical snake_case events.")
+  lines.push("- Recreate founder dashboards anchored on canonical snake_case events.")
   lines.push("- Keep dashboards event/property-driven so they remain editable without query:read.")
   lines.push("")
 

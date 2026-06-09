@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Sparkles } from "lucide-react"
 import { usePathname } from "next/navigation"
 
@@ -13,14 +13,23 @@ import { AskRelayPanel } from "./ask-relay-panel"
 export function AskRelayLauncher({
   plan,
   surface = "dashboard",
-  projectId = null
+  projectId = null,
+  initialHidden = false,
 }: {
   plan: "free" | "starter" | "pro"
   surface?: AssistantSurface
   projectId?: string | null
+  initialHidden?: boolean
 }) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
+  const [hidden, setHidden] = useState(initialHidden)
+
+  useEffect(() => {
+    const handler = (e: Event) => setHidden((e as CustomEvent<boolean>).detail)
+    window.addEventListener("relay:ask-relay-panel-changed", handler)
+    return () => window.removeEventListener("relay:ask-relay-panel-changed", handler)
+  }, [])
 
   const openPanel = useCallback(() => {
     setOpen(true)
@@ -39,7 +48,7 @@ export function AskRelayLauncher({
   // in or out of /chat changed the hook count between renders, and React
   // bailed with error #300 ("Rendered fewer hooks than expected"), which
   // surfaced as the brief error flash on chat tab switches.
-  if (pathname === "/chat") return null
+  if (pathname === "/chat" || hidden) return null
 
   return (
     <>

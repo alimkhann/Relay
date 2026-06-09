@@ -3,7 +3,7 @@ import { NextResponse } from "next/server"
 import { getCachedProjectDashboardForUser } from "@/server/cache/read-model-cache"
 import { withApiAuth } from "@/server/http/api-route"
 import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
-import { consumeMcpReadQuota, consumeMcpWriteQuota } from "@/server/services/entitlement-service"
+import { consumeActionQuota, consumeMcpReadQuota, consumeMcpWriteQuota } from "@/server/services/entitlement-service"
 import { deleteProjectForUser, updateProjectForUser } from "@/server/services/project-service"
 
 export const GET = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
@@ -28,6 +28,8 @@ export const PATCH = withApiAuth(async (request: Request, { params }: { params: 
   requireViewerProject(viewer, id, "project:write")
   if (viewer.mode === "mcp") {
     await consumeMcpWriteQuota(viewer.userId)
+  } else {
+    await consumeActionQuota(viewer.userId, "write")
   }
   const project = await updateProjectForUser(viewer.userId, id, await request.json())
   return NextResponse.json({ project })
@@ -39,6 +41,8 @@ export const DELETE = withApiAuth(async (request: Request, { params }: { params:
   requireViewerProject(viewer, id, "project:write")
   if (viewer.mode === "mcp") {
     await consumeMcpWriteQuota(viewer.userId)
+  } else {
+    await consumeActionQuota(viewer.userId, "write")
   }
   await deleteProjectForUser(viewer.userId, id)
   return NextResponse.json({ deleted: true })

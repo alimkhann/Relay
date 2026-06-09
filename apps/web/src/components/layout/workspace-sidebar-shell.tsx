@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { Menu } from "lucide-react"
 
@@ -24,9 +25,11 @@ export function WorkspaceSidebarShell({
   plan,
 }: WorkspaceSidebarShellProps) {
   const searchParams = useSearchParams()
-  const cookieProjectId = typeof document !== "undefined"
-    ? document.cookie.match(/relay-last-project=([^;]+)/)?.[1]
-    : undefined
+  // Read cookie client-side only (after hydration) to avoid SSR mismatch.
+  const [cookieProjectId, setCookieProjectId] = useState<string | undefined>(undefined)
+  useEffect(() => {
+    setCookieProjectId(document.cookie.match(/relay-last-project=([^;]+)/)?.[1])
+  }, [])
   // Default to the first non-personal project — the personal project is
   // selectable in the switcher but is never the implicit current project.
   const currentProjectId =

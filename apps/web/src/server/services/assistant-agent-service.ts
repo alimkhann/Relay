@@ -32,7 +32,11 @@ import { routePersonalMemory } from "@/server/services/personal-memory-service"
 const AGENT_MODEL = process.env.GEMINI_MODEL_ASSISTANT ?? "gemini-3-flash-preview"
 const AGENT_FALLBACK_MODEL =
   process.env.GEMINI_MODEL_ASSISTANT_FALLBACK ?? GEMINI_MODELS.bootstrap.fallback
-const MAX_OUTPUT_TOKENS = 1_400
+const DIRECT_MODEL =
+  process.env.GEMINI_MODEL_ASSISTANT_DIRECT ?? GEMINI_MODELS.digest.primary
+const DIRECT_FALLBACK_MODEL =
+  process.env.GEMINI_MODEL_ASSISTANT_DIRECT_FALLBACK ?? GEMINI_MODELS.digest.fallback
+const MAX_OUTPUT_TOKENS = 1_600
 const MAX_ATTACHMENTS_PER_TURN = 8
 const MAX_TOTAL_ATTACHMENT_CHARS = 24_000
 const MAX_PER_ATTACHMENT_CHARS = 6_000
@@ -152,6 +156,9 @@ interface PendingActionPayload {
     // Echoed back when the confirmed action resumes the turn (Gemini 3).
     thoughtSignature?: string
   }
+  /** Earlier mutating tool results from the same step, persisted so cards
+   *  survive the confirm pause + refresh (e.g. add_memory before manage_memory). */
+  actionResults?: AssistantActionResult[]
   /** Set true once the pending action has been executed so a repeated
    *  confirmActionId (double-click, retry) does not re-run it. */
   consumed?: boolean
@@ -186,8 +193,10 @@ function wantsOnlyWebSearch(message: string): boolean {
 }
 
 function wantsRelayTools(message: string): boolean {
-  return /\b(memory|remember|save|delete|project|brief|source|sources|doc|docs|relay|mcp|chat history|past chat|what was i|what did we|where were we|continue that|task|tasks|decision|decisions|constraint|constraints|objective|status|summarize my project)\b/i.test(
-    message
+  return (
+    /\b(memory|remember|save|delete|brief|source|sources|mcp|chat history|past chat|what was i|what did we|where were we|continue that|summarize my project)\b/i.test(message) ||
+    /\b(my|our|saved|relay)\s+(project|projects|task|tasks|decision|decisions|constraint|constraints|objective|objectives|status|docs?|sources?)\b/i.test(message) ||
+    /\b(save|remember|delete|archive|update|change|set|rename|refresh|import|add|create|remove|transfer|move|edit)\b[\s\S]{0,80}\b(project|task|decision|constraint|objective|memory|source|brief)\b/i.test(message)
   )
 }
 
@@ -215,6 +224,16 @@ function wantsWriteTools(message: string): boolean {
   return /\b(save|remember|delete|archive|update|change|set|rename|refresh|import|add|create|remove|transfer|move|edit)\b/i.test(
     message
   )
+}
+
+export function classifyAssistantActionQuota(
+  message: string,
+  actionDecision?: { decision: "allow" | "decline" } | null,
+): "read" | "write" | null {
+  if (actionDecision?.decision === "decline") return null
+  if (actionDecision?.decision === "allow") return "write"
+  if (!wantsRelayTools(message)) return null
+  return wantsWriteTools(message) ? "write" : "read"
 }
 
 function selectAssistantTools(input: {
@@ -258,9 +277,12 @@ async function runAssistantGeminiStep(input: {
   maxOutputTokens: number
   webSearch?: boolean
 }) {
+  const direct = input.tools.length === 0 && !input.webSearch
+  const primaryModel = direct ? DIRECT_MODEL : AGENT_MODEL
+  const fallbackModel = direct ? DIRECT_FALLBACK_MODEL : AGENT_FALLBACK_MODEL
   try {
     return await runGeminiAgentStep({
-      model: AGENT_MODEL,
+      model: primaryModel,
       ...input
     })
   } catch (error) {
@@ -271,7 +293,7 @@ async function runAssistantGeminiStep(input: {
       event: "assistant.gemini_step_failed",
       message: "assistant Gemini step failed",
       context: {
-        model: AGENT_MODEL,
+        model: primaryModel,
         webSearch: Boolean(input.webSearch),
         status: error instanceof GeminiRequestError ? error.status : null,
         phase: error instanceof GeminiRequestError ? error.phase : null,
@@ -281,7 +303,7 @@ async function runAssistantGeminiStep(input: {
     if (
       !(error instanceof GeminiRequestError) ||
       !error.retryable ||
-      AGENT_FALLBACK_MODEL === AGENT_MODEL
+      fallbackModel === primaryModel
     ) {
       throw error
     }
@@ -289,7 +311,7 @@ async function runAssistantGeminiStep(input: {
 
   try {
     return await runGeminiAgentStep({
-      model: AGENT_FALLBACK_MODEL,
+      model: fallbackModel,
       ...input
     })
   } catch (error) {
@@ -300,7 +322,7 @@ async function runAssistantGeminiStep(input: {
       event: "assistant.gemini_fallback_failed",
       message: "assistant Gemini fallback step failed",
       context: {
-        model: AGENT_FALLBACK_MODEL,
+        model: fallbackModel,
         webSearch: Boolean(input.webSearch),
         status: error instanceof GeminiRequestError ? error.status : null,
         phase: error instanceof GeminiRequestError ? error.phase : null,
@@ -334,7 +356,9 @@ export async function* runAssistantTurn(
   yield { type: "chat", chatId: chat.id }
 
   const defaultProjectId = chat.projectId ?? input.projectId ?? null
-  const scopeContext = await assistantScopeContext(client, viewer.userId)
+  const scopeContext = wantsRelayTools(input.message)
+    ? await assistantScopeContext(client, viewer.userId)
+    : "No Relay workspace lookup was needed for this direct reply."
 
   // 2. Rebuild conversation along the active branch path only. Editing an
   //    earlier user message sends its parent as input.parentId, so the new
@@ -350,8 +374,56 @@ export async function* runAssistantTurn(
     guard += 1
   }
 
+  if (input.message.trim().toLowerCase() === "/compact") {
+    const compactedMessages = pathMessages.slice(-40)
+    const summary = compactedMessages
+      .map((message) => `${message.role}: ${message.content}`)
+      .join("\n")
+      .slice(-12_000)
+    const text = compactedMessages.length > 0
+      ? `Compacted ${compactedMessages.length} messages. Older messages remain visible, and future replies will use the saved checkpoint.`
+      : "There is no conversation context to compact yet."
+    for (const delta of chunkText(text)) yield { type: "text", delta }
+    const saved = await repositories.assistantMessages.create({
+      chatId: chat.id,
+      userId: viewer.userId,
+      parentId: input.parentId ?? null,
+      role: "assistant",
+      content: text,
+      toolName: "compaction_checkpoint",
+      toolPayload: {
+        compaction: {
+          summary,
+          compactedThroughMessageId: pathMessages.at(-1)?.id ?? null,
+          createdAt: new Date().toISOString()
+        }
+      }
+    })
+    await repositories.assistantChats.touch(chat.id)
+    yield { type: "usage", totalTokens: 0 }
+    yield { type: "done", messageId: saved.id }
+    return
+  }
+
   const contents: GeminiContent[] = []
-  for (const m of pathMessages) {
+  let latestCompactionIndex = -1
+  for (let index = pathMessages.length - 1; index >= 0; index -= 1) {
+    const payload = pathMessages[index]?.toolPayload as { compaction?: { summary?: string } } | null
+    if (payload?.compaction?.summary) {
+      latestCompactionIndex = index
+      break
+    }
+  }
+  if (latestCompactionIndex >= 0) {
+    const payload = pathMessages[latestCompactionIndex]!.toolPayload as {
+      compaction?: { summary?: string }
+    }
+    contents.push({
+      role: "user",
+      parts: [{ text: `[Saved conversation checkpoint]\n${payload.compaction?.summary ?? ""}` }]
+    })
+  }
+  for (const m of pathMessages.slice(latestCompactionIndex + 1)) {
     if (m.role === "user") contents.push({ role: "user", parts: [{ text: m.content }] })
     else if (m.role === "assistant" && m.content) contents.push({ role: "model", parts: [{ text: m.content }] })
   }
@@ -479,40 +551,48 @@ export async function* runAssistantTurn(
   const toolResultCache = new Map<string, Awaited<ReturnType<typeof executeAssistantTool>>>()
   const failedToolCalls = new Set<string>()
 
-  const declinedActionId =
-    actionDecision?.decision === "decline" ? actionDecision.actionId : input.declineActionId
-  const confirmedActionId =
-    actionDecision?.decision === "allow" ? actionDecision.actionId : input.confirmActionId
+  const declinedActionIds =
+    actionDecision?.decision === "decline"
+      ? actionDecision.actionIds ?? [actionDecision.actionId]
+      : input.declineActionId
+        ? [input.declineActionId]
+        : []
+  const confirmedActionIds =
+    actionDecision?.decision === "allow"
+      ? actionDecision.actionIds ?? [actionDecision.actionId]
+      : input.confirmActionId
+        ? [input.confirmActionId]
+        : []
 
   // 4a. Declined destructive action: resolve the existing card in place.
-  if (declinedActionId) {
-    const pendingMessage = pathMessages
-      .filter((m) => m.toolName === "pending_action")
-      .find((m) => {
-        const payload = m.toolPayload as unknown as PendingActionPayload
-        return payload?.pendingAction?.id === declinedActionId
-      })
-    if (pendingMessage) {
+  if (declinedActionIds.length > 0) {
+    let lastMessageId = input.parentId ?? ""
+    for (const declinedActionId of declinedActionIds) {
+      const pendingMessage = pathMessages
+        .filter((m) => m.toolName === "pending_action")
+        .find((m) => {
+          const payload = m.toolPayload as unknown as PendingActionPayload
+          return payload?.pendingAction?.id === declinedActionId
+        })
+      if (!pendingMessage) continue
       const payload = pendingMessage.toolPayload as unknown as PendingActionPayload
-      if (payload.pendingAction.status && payload.pendingAction.status !== "pending") {
-        yield { type: "error", message: "This action has already been resolved." }
-        return
-      }
+      if (payload.pendingAction.status && payload.pendingAction.status !== "pending") continue
       const resolved = { ...payload.pendingAction, status: "declined" as const }
       await repositories.assistantMessages.updateToolPayload(pendingMessage.id, {
         ...payload,
         pendingAction: resolved
       })
-      await repositories.assistantChats.touch(chat.id)
+      lastMessageId = pendingMessage.id
       yield { type: "action_update", action: resolved }
-      yield { type: "usage", totalTokens }
-      yield { type: "done", messageId: pendingMessage.id }
-      return
     }
+    await repositories.assistantChats.touch(chat.id)
+    yield { type: "usage", totalTokens }
+    yield { type: "done", messageId: lastMessageId }
+    return
   }
 
   // 4b. Confirmed destructive action: execute the stored pending action first.
-  if (confirmedActionId) {
+  for (const confirmedActionId of confirmedActionIds) {
     const pendingMessage = pathMessages
       .filter((m) => m.toolName === "pending_action")
       .find((m) => {
@@ -561,7 +641,6 @@ export async function* runAssistantTurn(
         yield { type: "action_update", action: succeeded }
         if (exec.actionResult) {
           turnActionResults.push(exec.actionResult)
-          yield { type: "tool_result", result: exec.actionResult }
         }
         contents.push({
           role: "model",
@@ -585,7 +664,7 @@ export async function* runAssistantTurn(
         })
         yield { type: "action_update", action: failed }
         yield { type: "error", message }
-        return
+        continue
       }
     }
   }
@@ -780,6 +859,46 @@ export async function* runAssistantTurn(
       return
     }
 
+    const queuedCalls =
+      input.autoApproveDestructive
+        ? []
+        : stepResult.functionCalls.filter((call) => DESTRUCTIVE_TOOLS.has(call.name))
+    if (queuedCalls.length > 1 && queuedCalls.length === stepResult.functionCalls.length) {
+      for (const call of queuedCalls) {
+        const resolvedArgs = withDefaultProject(call.name, call.args, defaultProjectId)
+        const actionId = randomUUID()
+        const summary = describeToolCall(call.name, resolvedArgs)
+        const previews = await previewAssistantTool(client, call.name, resolvedArgs)
+        const payload: PendingActionPayload = {
+          pendingAction: {
+            id: actionId,
+            tool: call.name,
+            summary,
+            args: resolvedArgs,
+            status: "pending",
+            previews,
+            thoughtSignature: call.thoughtSignature
+          },
+          actionResults: turnActionResults.length > 0 ? turnActionResults : undefined
+        }
+        const row = await repositories.assistantMessages.create({
+          chatId: chat.id,
+          userId: viewer.userId,
+          parentId: tailId,
+          role: "assistant",
+          content: `Awaiting confirmation to ${summary}.`,
+          toolName: "pending_action",
+          toolPayload: payload as unknown as Record<string, unknown>
+        })
+        tailId = row.id
+        yield { type: "pending_action", action: payload.pendingAction }
+      }
+      await repositories.assistantChats.touch(chat.id)
+      yield { type: "usage", totalTokens }
+      yield { type: "done", messageId: tailId }
+      return
+    }
+
     for (const call of stepResult.functionCalls) {
       const resolvedArgs = withDefaultProject(call.name, call.args, defaultProjectId)
       // Every destructive call needs its own confirmation. The single action
@@ -800,7 +919,8 @@ export async function* runAssistantTurn(
             status: "pending",
             previews,
             thoughtSignature: call.thoughtSignature
-          }
+          },
+          actionResults: turnActionResults.length > 0 ? turnActionResults : undefined
         }
         await repositories.assistantMessages.create({
           chatId: chat.id,
@@ -857,6 +977,7 @@ export async function* runAssistantTurn(
       }
 
       yield { type: "tool_start", tool: call.name }
+      const toolStartedAt = new Date()
       let exec
       const cacheKey = `${call.name}:${JSON.stringify(resolvedArgs)}`
       try {
@@ -915,7 +1036,11 @@ export async function* runAssistantTurn(
       })
       if (exec.actionResult) {
         turnActionResults.push(exec.actionResult)
-        yield { type: "tool_result", result: exec.actionResult }
+        // Auto-approved destructive writes surface via action_update; emitting
+        // tool_result too would duplicate the action card in the client.
+        if (!autoAction) {
+          yield { type: "tool_result", result: exec.actionResult }
+        }
       }
       const toolMsg = await repositories.assistantMessages.create({
         chatId: chat.id,
@@ -924,7 +1049,17 @@ export async function* runAssistantTurn(
         role: "tool",
         content: "",
         toolName: call.name,
-        toolPayload: { args: resolvedArgs, response: exec.modelResponse }
+        toolPayload: {
+          args: resolvedArgs,
+          response: exec.modelResponse,
+          activity: {
+            label: call.name,
+            status: "complete",
+            startedAt: toolStartedAt.toISOString(),
+            completedAt: new Date().toISOString(),
+            durationMs: Date.now() - toolStartedAt.getTime()
+          }
+        }
       })
       tailId = toolMsg.id
       contents.push({

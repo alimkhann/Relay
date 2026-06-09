@@ -142,6 +142,14 @@ export interface AssistantMessageDto {
   createdAt: string
   /** Populated for unconsumed pending_action messages so the UI can re-render confirm/decline buttons after reload. */
   pending?: AssistantPendingAction | null
+  pendingActions?: AssistantPendingAction[]
+  toolSteps?: Array<{
+    label: string
+    status: "active" | "complete" | "pending"
+    startedAt?: string
+    completedAt?: string
+    durationMs?: number
+  }>
 }
 
 /** Server-Sent Events emitted by POST /api/assistant/chat. */
@@ -156,6 +164,6 @@ export type AssistantStreamEvent =
    * resume without re-typing — sends a follow-up turn that branches off the
    * cap-hit assistant message. Server still emits the trailing text + done. */
   | { type: "pending_continuation"; reason: "step_limit"; assistantMessageId?: string }
-  | { type: "usage"; totalTokens: number }
+  | { type: "usage"; totalTokens: number; maxContextTokens?: number; model?: string }
   | { type: "done"; messageId: string }
   | { type: "error"; message: string; upgradeUrl?: string; plan?: string }

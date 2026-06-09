@@ -5,7 +5,7 @@ import { z } from "zod"
 
 import { isAuthRequiredError, resolveViewer, type Viewer } from "@/server/policies/viewer"
 import { assertIpRateLimit } from "@/server/services/rate-limit-service"
-import { consumeQuota, resolveViewerEntitlements } from "@/server/services/entitlement-service"
+import { consumeActionQuota, consumeQuota, resolveViewerEntitlements } from "@/server/services/entitlement-service"
 import { createRepositoryBundle } from "@relay/db"
 import { detectCrossSurfaceDrifts } from "@/server/services/drift-reconciler"
 import { sweepOpenWorkSessions } from "@/server/services/work-session-flush-service"
@@ -412,9 +412,7 @@ function registerHttpTools(
           : writeTools.has(name) ? "write" : "read"
 
       const entitlements = await resolveViewerEntitlements(viewer.userId)
-      const quotaKey = readOrWrite === "write" ? "mcp_write_daily" : "mcp_read_daily"
-      const quotaLimit = readOrWrite === "write" ? entitlements.limits.mcpWriteDaily : entitlements.limits.mcpReadDaily
-      await consumeQuota(viewer.userId, quotaKey, "day", quotaLimit, 1, entitlements.plan)
+      await consumeActionQuota(viewer.userId, readOrWrite)
       if (name === SOURCES_TOOL_NAME) {
         await consumeQuota(
           viewer.userId,

@@ -2,7 +2,7 @@ import {
   PERSONAL_CATEGORY_META,
   personalCategories,
   type PersonalCategory,
-} from "@relay/shared"
+} from "@relay/shared/constants/memory-taxonomy"
 
 interface PersonalCategoryLegendProps {
   /** Only show the categories actually present in the current list. Empty/undefined → show all. */

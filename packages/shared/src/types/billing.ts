@@ -5,6 +5,11 @@ export type BillingSubscriptionStatus = "inactive" | "trialing" | "active" | "pa
 export interface EntitlementLimitsDto {
   activeProjects: number
   historyRetentionDays: number
+  readsMonthly: number
+  readsDaily: number
+  writesMonthly: number
+  writesDaily: number
+  /** Legacy compatibility aliases for older extension/web clients. */
   captureMonthly: number
   mcpReadDaily: number
   mcpDeepReadDaily: number
@@ -70,6 +75,10 @@ export interface BillingStatusDto {
     capturesThisMonth: number
     mcpReadsToday: number
     mcpWritesToday: number
+    readsToday: number
+    readsThisMonth: number
+    writesToday: number
+    writesThisMonth: number
     handoffsThisMonth: number
     activeProjects: number
     aiAnalysesToday: number

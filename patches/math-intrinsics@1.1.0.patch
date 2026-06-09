@@ -1,0 +1,72 @@
+diff --git a/isFinite.js b/isFinite.js
+index b201a5a523ed18bde69edd3b3deff3b63c463120..a6f2af5bfca149aaa56745ed33f79622b3f104b5 100644
+--- a/isFinite.js
++++ b/isFinite.js
+@@ -1,6 +1,8 @@
+ 'use strict';
+ 
+-var $isNaN = require('./isNaN');
++var $isNaN = Number.isNaN || function isNaN(a) {
++	return a !== a;
++};
+ 
+ /** @type {import('./isFinite')} */
+ module.exports = function isFinite(x) {
+@@ -9,4 +11,3 @@ module.exports = function isFinite(x) {
+         && x !== Infinity
+         && x !== -Infinity;
+ };
+\ No newline at end of file
+-
+diff --git a/isInteger.js b/isInteger.js
+index 4b1b9a56d1bba183cc75a616ece707489901d4a8..d315daabf0e72e40bfe1ec79609c14dd204531d2 100644
+--- a/isInteger.js
++++ b/isInteger.js
+@@ -1,10 +1,16 @@
+ 'use strict';
+ 
+-var $abs = require('./abs');
+-var $floor = require('./floor');
+-
+-var $isNaN = require('./isNaN');
+-var $isFinite = require('./isFinite');
++var $abs = Math.abs;
++var $floor = Math.floor;
++var $isNaN = Number.isNaN || function isNaN(a) {
++	return a !== a;
++};
++var $isFinite = function isFinite(x) {
++	return (typeof x === 'number' || typeof x === 'bigint')
++        && !$isNaN(x)
++        && x !== Infinity
++        && x !== -Infinity;
++};
+ 
+ /** @type {import('./isInteger')} */
+ module.exports = function isInteger(argument) {
+diff --git a/mod.js b/mod.js
+index 4a98362baf165d9190ab6bc7b627daeaad6fac8c..5c3d0de44f16aed667e8d520b3ad57b64be010aa 100644
+--- a/mod.js
++++ b/mod.js
+@@ -1,6 +1,6 @@
+ 'use strict';
+ 
+-var $floor = require('./floor');
++var $floor = Math.floor;
+ 
+ /** @type {import('./mod')} */
+ module.exports = function mod(number, modulo) {
+diff --git a/sign.js b/sign.js
+index 9e5173c80da67de620a9b3a769936d77bf68ba73..56a998502ca206eb24e459f0da50fe0a7ea47e5f 100644
+--- a/sign.js
++++ b/sign.js
+@@ -1,6 +1,8 @@
+ 'use strict';
+ 
+-var $isNaN = require('./isNaN');
++var $isNaN = Number.isNaN || function isNaN(a) {
++	return a !== a;
++};
+ 
+ /** @type {import('./sign')} */
+ module.exports = function sign(number) {

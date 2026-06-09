@@ -5,10 +5,9 @@ import { useQueryClient } from "@tanstack/react-query"
 import {
   actionResultToMemoryMutations,
   applyMemoryMutationToDashboard,
-  type AssistantActionResult,
   type MemoryMutationEnvelope,
-  type ProjectDashboardDto,
-} from "@relay/shared"
+} from "@relay/shared/utils/memory-mutations"
+import type { AssistantActionResult, ProjectDashboardDto } from "@relay/shared"
 
 import { invalidateDashboard } from "@/lib/query/policy"
 import { queryKeys } from "@/lib/query/keys"

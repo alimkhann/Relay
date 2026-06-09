@@ -76,7 +76,7 @@ export function buildProjectContextItems(
         return {
           key: `manual:${manualMatch.id}`,
           section,
-          text,
+          text: manualMatch.content,
           source: "manual" as const,
           memoryId: manualMatch.id,
           sourceSurface: manualMatch.sourceSurface,

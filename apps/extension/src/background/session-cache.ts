@@ -7,6 +7,7 @@ import type {
 import type { RelayProjectOption } from "../messaging/contracts";
 import {
   clearPersistedBackgroundCache,
+  clearPersistedDashboard,
   persistDashboard,
   persistSessionData,
   readPersistedDashboard,
@@ -37,7 +38,7 @@ import type { AssistantActionResult } from "@relay/shared";
 import { buildDashboardContextPreview, buildTrustMetadata } from "./context-preview";
 import { applyActionResultToDashboardCache } from "../utils/context-preview-mutations";
 import { DASHBOARD_CACHE_TTL_MS, SESSION_CACHE_TTL_MS } from "./remote-sync-policy";
-import { authGrace, dashboardCache, sessionCache } from "./state";
+import { authGrace, dashboardCache, dashboardCacheBypass, sessionCache } from "./state";
 import { createEmptyTrustMetadata } from "./tab-state";
 import { identifyExtensionUser, recordBackgroundTelemetry } from "./telemetry";
 
@@ -306,7 +307,22 @@ export async function loadSessionData(force = false) {
 
 export function invalidateProjectCache(projectId: string | null | undefined) {
   if (!projectId) return;
-  dashboardCache.delete(projectId);
+  // Keep in-memory patches (agent/manual optimistic writes) so a forced refresh
+  // after capture/link can merge them instead of restoring stale server rows.
+  dashboardCacheBypass.add(projectId);
+  void getRelaySession().then((session) => {
+    if (session.userId) {
+      void clearPersistedDashboard(session.userId, projectId);
+    }
+  });
+}
+
+function emptyDashboard(projectId: string): ProjectDashboardPayload {
+  // Minimal shell used when an agent mutation arrives before the dashboard has
+  // been fetched. Only project.id and memory are accessed by
+  // applyActionResultToDashboardCache; all other fields remain undefined until
+  // the real fetch merges over this shell.
+  return { project: { id: projectId }, memory: [] } as unknown as ProjectDashboardPayload;
 }
 
 export function patchProjectDashboardCache(
@@ -315,14 +331,97 @@ export function patchProjectDashboardCache(
   fallbackProjectId?: string | null,
 ) {
   const cached = dashboardCache.get(projectId);
-  if (!cached?.dashboard) return null;
+  const base = cached?.dashboard ?? emptyDashboard(projectId);
   const nextDashboard = applyActionResultToDashboardCache(
-    cached.dashboard,
+    base,
     result,
     fallbackProjectId ?? projectId,
   );
   dashboardCache.set(projectId, { dashboard: nextDashboard, fetchedAt: Date.now() });
   return nextDashboard;
+}
+
+function memoryIds(dashboard: ProjectDashboardPayload | null | undefined) {
+  return new Set((dashboard?.memory ?? []).map((item) => item.id));
+}
+
+function countMemory(dashboard: ProjectDashboardPayload | null | undefined) {
+  return dashboard?.memory?.length ?? 0;
+}
+
+function mergeDashboardWithCachedPatches(
+  cached: ProjectDashboardPayload,
+  fetched: ProjectDashboardPayload,
+  patchedDuringSync: boolean,
+): ProjectDashboardPayload {
+  const cachedMemory = cached.memory ?? [];
+  const fetchedMemory = fetched.memory ?? [];
+  const cachedIds = memoryIds(cached);
+  const fetchedIds = memoryIds(fetched);
+  const allCachedInFetched = cachedMemory.every((item) => fetchedIds.has(item.id));
+  const hasFetchedOnly = fetchedMemory.some((item) => !cachedIds.has(item.id));
+  const deletesAheadOfServer =
+    patchedDuringSync &&
+    cachedMemory.length < fetchedMemory.length &&
+    allCachedInFetched &&
+    hasFetchedOnly;
+
+  if (deletesAheadOfServer) {
+    return {
+      ...fetched,
+      memory: cachedMemory,
+      projectState: cached.projectState ?? fetched.projectState,
+    };
+  }
+
+  const extras = cachedMemory.filter((item) => !fetchedIds.has(item.id));
+  if (extras.length === 0) {
+    return fetched;
+  }
+
+  return {
+    ...fetched,
+    memory: [...extras, ...fetchedMemory],
+  };
+}
+
+/** Prefer a dashboard patched during this sync over a stale network payload. */
+export function resolveDashboardForSync(
+  projectId: string,
+  fetched: ProjectDashboardPayload | null,
+  syncStartedAt: number,
+): ProjectDashboardPayload | null {
+  const cached = dashboardCache.get(projectId);
+  if (!fetched) {
+    if (cached?.dashboard && cached.fetchedAt >= syncStartedAt) {
+      return cached.dashboard;
+    }
+    return cached?.dashboard ?? null;
+  }
+  if (!cached?.dashboard) {
+    return fetched;
+  }
+
+  const patchedDuringSync = cached.fetchedAt >= syncStartedAt;
+  const cachedIds = memoryIds(cached.dashboard);
+  const fetchedIds = memoryIds(fetched);
+  const cachedHasExtras = (cached.dashboard.memory ?? []).some(
+    (item) => !fetchedIds.has(item.id),
+  );
+  const fetchedHasExtras = (fetched.memory ?? []).some((item) => !cachedIds.has(item.id));
+  if (
+    patchedDuringSync ||
+    countMemory(cached.dashboard) !== countMemory(fetched) ||
+    cachedHasExtras ||
+    fetchedHasExtras
+  ) {
+    return mergeDashboardWithCachedPatches(
+      cached.dashboard,
+      fetched,
+      patchedDuringSync,
+    );
+  }
+  return fetched;
 }
 
 /** Cache-first preview hydrate (stale-while-revalidate) for project switches. */
@@ -356,7 +455,14 @@ export async function refreshProjectDashboard(
     const payload = (await response.json()) as {
       dashboard?: ProjectDashboardPayload;
     };
-    const dashboard = payload.dashboard ?? null;
+    const fetched = payload.dashboard ?? null;
+    if (!fetched) {
+      return dashboardCache.get(projectId)?.dashboard ?? null;
+    }
+    const previous = dashboardCache.get(projectId);
+    const dashboard = previous?.dashboard
+      ? mergeDashboardWithCachedPatches(previous.dashboard, fetched, false)
+      : fetched;
     const fetchedAt = Date.now();
     dashboardCache.set(projectId, { dashboard, fetchedAt });
     if (userId) void persistDashboard(userId, projectId, dashboard, fetchedAt);
@@ -367,6 +473,12 @@ export async function refreshProjectDashboard(
 }
 
 export async function fetchProjectDashboard(projectId: string) {
+  if (dashboardCacheBypass.has(projectId)) {
+    dashboardCacheBypass.delete(projectId);
+    const { userId } = await getRelaySession();
+    return refreshProjectDashboard(projectId, userId);
+  }
+
   const cached = dashboardCache.get(projectId);
   if (cached && Date.now() - cached.fetchedAt < DASHBOARD_CACHE_TTL_MS) {
     return cached.dashboard;

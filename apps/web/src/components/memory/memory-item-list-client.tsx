@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 
 import type { MemoryItemDto, PersonalCategory } from "@relay/shared"
-import { personalCategoryFromMetadata } from "@relay/shared"
+import { personalCategoryFromMetadata } from "@relay/shared/constants/memory-taxonomy"
 
 import { MemoryItemList } from "@/components/memory/memory-item-card"
 import { PersonalCategoryLegend } from "@/components/memory/personal-category-legend"

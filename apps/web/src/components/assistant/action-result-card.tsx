@@ -75,8 +75,21 @@ function PreviewItem({
   )
 }
 
+function previewItemsEqual(
+  before: AssistantActionItem,
+  after: AssistantActionItem,
+): boolean {
+  return (
+    (before.content ?? before.label) === (after.content ?? after.label) &&
+    (before.title ?? "") === (after.title ?? "")
+  )
+}
+
 export function MemoryActionPreview({ preview }: { preview: AssistantActionPreview }) {
   if (preview.before && preview.after) {
+    if (previewItemsEqual(preview.before, preview.after)) {
+      return <PreviewItem item={preview.after} />
+    }
     return (
       <div className="space-y-1.5">
         <PreviewItem item={preview.before} />

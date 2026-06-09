@@ -23,7 +23,7 @@ const {
 vi.mock("@/server/http/api-route", () => ({ withApiAuth: withApiAuthMock }))
 vi.mock("@/server/http/after", () => ({ runAfterResponse: runAfterResponseMock }))
 vi.mock("@/server/policies/viewer", () => ({ resolveViewer: resolveViewerMock, requireViewerProject: requireViewerProjectMock }))
-vi.mock("@/server/services/entitlement-service", () => ({ consumeMcpReadQuota: consumeMcpReadQuotaMock }))
+vi.mock("@/server/services/entitlement-service", () => ({ consumeActionQuota: vi.fn(), consumeMcpReadQuota: consumeMcpReadQuotaMock }))
 vi.mock("@/server/cache/read-model-cache", () => ({
   listCachedProjectSources: listCachedProjectSourcesMock,
 }))

@@ -1,6 +1,7 @@
 import type { AssistantActionItem, AssistantActionResult } from "../types/assistant"
 import type { MemoryItemDto, ProjectDashboardDto } from "../types/project"
 import type { MemoryItemType } from "../types/database"
+import { normalizeText } from "./text"
 
 export type MemoryMutationOperation = "create" | "update" | "delete" | "transfer"
 export type MemoryMutationStatus = "optimistic" | "succeeded" | "failed"
@@ -126,12 +127,50 @@ export function actionResultToMemoryMutations(
   return mutations
 }
 
+function governedStateKey(
+  type: MemoryItemDto["type"],
+): "decisions" | "constraints" | "openTasks" | null {
+  if (type === "decision") return "decisions"
+  if (type === "constraint") return "constraints"
+  if (type === "task") return "openTasks"
+  return null
+}
+
+function replaceGovernedStateLine(
+  lines: string[] | undefined,
+  beforeText: string,
+  afterText: string,
+): string[] | undefined {
+  if (!lines) return lines
+  const beforeNorm = normalizeText(beforeText).toLowerCase()
+  let changed = false
+  const next = lines.map((line) => {
+    if (normalizeText(line).toLowerCase() === beforeNorm) {
+      changed = true
+      return afterText
+    }
+    return line
+  })
+  return changed ? next : lines
+}
+
+function removeGovernedStateLine(
+  lines: string[] | undefined,
+  text: string,
+): string[] | undefined {
+  if (!lines) return lines
+  const targetNorm = normalizeText(text).toLowerCase()
+  const next = lines.filter((line) => normalizeText(line).toLowerCase() !== targetNorm)
+  return next.length === lines.length ? lines : next
+}
+
 export function applyMemoryMutationToDashboard(
   dashboard: ProjectDashboardDto,
   mutation: MemoryMutationEnvelope,
 ): ProjectDashboardDto {
   const projectId = dashboard.project.id
   let memory = dashboard.memory
+  let projectState = dashboard.projectState
 
   if (
     mutation.operation === "delete" ||
@@ -139,6 +178,15 @@ export function applyMemoryMutationToDashboard(
   ) {
     const removedId = mutation.before?.id ?? mutation.after?.id
     if (removedId) memory = memory.filter((item) => item.id !== removedId)
+    if (mutation.before && projectState) {
+      const stateKey = governedStateKey(mutation.before.type)
+      if (stateKey) {
+        const nextLines = removeGovernedStateLine(projectState[stateKey], mutation.before.content)
+        if (nextLines !== projectState[stateKey]) {
+          projectState = { ...projectState, [stateKey]: nextLines }
+        }
+      }
+    }
   }
 
   const shouldInsert =
@@ -147,8 +195,48 @@ export function applyMemoryMutationToDashboard(
       (mutation.operation === "transfer" && projectId === mutation.targetProjectId))
 
   if (shouldInsert && mutation.after) {
-    memory = [mutation.after, ...memory.filter((item) => item.id !== mutation.after?.id)]
+    const after = mutation.after
+    const afterNorm = normalizeText(after.content).toLowerCase()
+    memory = [
+      after,
+      ...memory.filter((item) => {
+        if (item.id === after.id) return false
+        if (
+          mutation.operation === "create" &&
+          item.id.startsWith("optimistic-") &&
+          item.type === after.type &&
+          normalizeText(item.content).toLowerCase() === afterNorm
+        ) {
+          return false
+        }
+        return true
+      }),
+    ]
+    if (projectState) {
+      const stateKey = governedStateKey(after.type)
+      if (stateKey) {
+        if (mutation.operation === "update" && mutation.before) {
+          const nextLines = replaceGovernedStateLine(
+            projectState[stateKey],
+            mutation.before.content,
+            after.content,
+          )
+          if (nextLines !== projectState[stateKey]) {
+            projectState = { ...projectState, [stateKey]: nextLines }
+          }
+        } else if (mutation.operation === "create") {
+          const lines = projectState[stateKey] ?? []
+          const afterNorm = normalizeText(after.content).toLowerCase()
+          if (!lines.some((line) => normalizeText(line).toLowerCase() === afterNorm)) {
+            projectState = { ...projectState, [stateKey]: [after.content, ...lines] }
+          }
+        }
+      }
+    }
   }
 
-  return memory === dashboard.memory ? dashboard : { ...dashboard, memory }
+  if (memory === dashboard.memory && projectState === dashboard.projectState) {
+    return dashboard
+  }
+  return { ...dashboard, memory, projectState }
 }

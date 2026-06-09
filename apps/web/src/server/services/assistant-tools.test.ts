@@ -68,6 +68,28 @@ describe("assistant tool registry", () => {
     expect(arch.actionResult?.irreversible).toBeFalsy()
   })
 
+  it("shows requested content in update previews instead of a stale reread", async () => {
+    const client = {
+      manageMemory: async () => {},
+      getMemory: async () => ({
+        id: "m1",
+        content: "Second UI Update Test Item",
+        type: "note",
+        title: null,
+      }),
+    } as unknown as RelayHttpMcpClient
+
+    const result = await executeAssistantTool(
+      client,
+      "manage_memory",
+      { action: "update", memoryId: "m1", content: "test 2" },
+      { plan: "pro" },
+    )
+
+    expect(result.actionResult?.previews?.[0]?.before?.content).toBe("Second UI Update Test Item")
+    expect(result.actionResult?.previews?.[0]?.after?.content).toBe("test 2")
+  })
+
   it("passes atomic cross-project transfer details through manage_memory", async () => {
     const calls: Record<string, unknown>[] = []
     const client = {

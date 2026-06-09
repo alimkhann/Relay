@@ -411,6 +411,25 @@ export function SettingsPreferences({
           </SettingsSection>
           </FadeIn>
 
+          <FadeIn delay={0.2}>
+          <SettingsSection title="Ask Relay" description="Control visibility of the Ask Relay chat assistant.">
+            <div className="flex items-center justify-between gap-4 px-5 py-3.5">
+              <div>
+                <p className="text-[15px] font-medium text-[var(--relay-ink)]">Show Ask Relay button</p>
+                <p className="mt-0.5 text-sm text-[var(--relay-muted)]">Floating chat launcher on the dashboard.</p>
+              </div>
+              <Toggle
+                checked={!(settings.hideAskRelayDashboard ?? false)}
+                disabled={pending}
+                onChange={(on) => {
+                  update({ ...settings, hideAskRelayDashboard: !on }, `Ask Relay ${on ? "shown" : "hidden"}`)
+                  window.dispatchEvent(new CustomEvent<boolean>("relay:ask-relay-panel-changed", { detail: !on }))
+                }}
+              />
+            </div>
+          </SettingsSection>
+          </FadeIn>
+
         </>
       ) : null}
 

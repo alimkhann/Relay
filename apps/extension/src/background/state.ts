@@ -21,6 +21,9 @@ export const dashboardCache = new Map<
   { dashboard: ProjectDashboardPayload | null; fetchedAt: number }
 >();
 
+/** Next fetch for these projects must hit the network (skip persisted SWR). */
+export const dashboardCacheBypass = new Set<string>();
+
 export interface SessionCacheEntry {
   token: string;
   data: {

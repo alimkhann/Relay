@@ -46,6 +46,18 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
     }
     return null
   }
+  const toolStepsFor = (parentId: string | null) => {
+    const steps: NonNullable<AssistantMessageDto["toolSteps"]> = []
+    let cursor = parentId ? byId.get(parentId) : undefined
+    let guard = 0
+    while (cursor && guard < 100 && cursor.role === "tool") {
+      const payload = cursor.toolPayload as { activity?: NonNullable<AssistantMessageDto["toolSteps"]>[number] }
+      if (payload.activity) steps.unshift(payload.activity)
+      cursor = cursor.parentId ? byId.get(cursor.parentId) : undefined
+      guard += 1
+    }
+    return steps
+  }
 
   const messages: AssistantMessageDto[] = rows
     .filter((m) => kept(m.role, m.toolName))
@@ -56,8 +68,17 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
         attachmentIds?: string[]
         pendingAction?: AssistantPendingAction
       }
-      const actionResults =
-        payload?.actionResults ?? (payload?.actionResult ? [payload.actionResult] : [])
+      const pending = payload?.pendingAction ?? null
+      const actionResults = [
+        ...(payload?.actionResults ?? (payload?.actionResult ? [payload.actionResult] : [])),
+        ...(pending?.result ? [pending.result] : []),
+      ]
+      const effectivePending =
+        pending?.status === "succeeded" ||
+        pending?.status === "failed" ||
+        pending?.status === "declined"
+          ? null
+          : pending
       const messageAttachments: AssistantAttachmentDto[] = (payload?.attachmentIds ?? [])
         .map((id) => attachmentsById.get(id))
         .filter((a): a is (typeof attachments)[number] => Boolean(a))
@@ -84,9 +105,32 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
         attachments: messageAttachments,
         feedback: m.feedback,
         createdAt: m.createdAt,
-        pending: payload?.pendingAction ?? null,
+        pending: effectivePending,
+        toolSteps: toolStepsFor(m.parentId),
       }
     })
+
+  for (let index = 0; index < messages.length; index += 1) {
+    const group: AssistantPendingAction[] = []
+    let cursor = index
+    while (
+      cursor < messages.length &&
+      messages[cursor]?.toolName === "pending_action" &&
+      messages[cursor]?.pending
+    ) {
+      group.push(messages[cursor]!.pending!)
+      cursor += 1
+    }
+    if (group.length > 1) {
+      for (let groupIndex = index; groupIndex < cursor - 1; groupIndex += 1) {
+        messages[groupIndex]!.pending = null
+        messages[groupIndex]!.pendingActions = []
+        messages[groupIndex]!.content = ""
+      }
+      messages[cursor - 1]!.pendingActions = group
+      index = cursor - 1
+    }
+  }
 
   return NextResponse.json({
     chat: { id: chat.id, title: chat.title, surface: chat.surface, projectId: chat.projectId },

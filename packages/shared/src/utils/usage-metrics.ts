@@ -18,32 +18,32 @@ export function buildCoreUsageMetrics(billing: BillingStatusDto): UsageMetric[] 
   const limits = entitlements.limits
   return [
     {
-      key: "captures",
-      label: "Captures",
-      used: usage.capturesThisMonth,
-      limit: limits.captureMonthly,
+      key: "reads_daily",
+      label: "Reads today",
+      used: usage.readsToday,
+      limit: limits.readsDaily,
+      period: "day",
+    },
+    {
+      key: "reads_monthly",
+      label: "Reads this month",
+      used: usage.readsThisMonth,
+      limit: limits.readsMonthly,
       period: "mo",
     },
     {
-      key: "mcp_reads",
-      label: "MCP reads",
-      used: usage.mcpReadsToday,
-      limit: limits.mcpReadDaily,
+      key: "writes_daily",
+      label: "Writes today",
+      used: usage.writesToday,
+      limit: limits.writesDaily,
       period: "day",
     },
     {
-      key: "mcp_writes",
-      label: "MCP writes",
-      used: usage.mcpWritesToday,
-      limit: limits.mcpWriteDaily,
-      period: "day",
-    },
-    {
-      key: "external_indexes",
-      label: "External indexes",
-      used: usage.externalSourceIndexesToday,
-      limit: limits.externalSourceIndexesDaily,
-      period: "day",
+      key: "writes_monthly",
+      label: "Writes this month",
+      used: usage.writesThisMonth,
+      limit: limits.writesMonthly,
+      period: "mo",
     },
   ]
 }
