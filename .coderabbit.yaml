@@ -18,6 +18,20 @@ reviews:
     - "!tests/**"
     - "!docs/**"
     - "!apps/web/src/app/(marketing)/**"
+    - "!apps/web/src/app/(auth)/**"
+    - "!apps/web/src/app/docs/**"
+    - "!apps/web/src/app/privacy/**"
+    - "!apps/web/src/components/ai-elements/**"
+    - "!apps/web/src/components/settings/**"
+    - "!apps/web/src/components/ui/**"
+    - "!apps/web/src/features/brief/**"
+    - "!apps/web/src/app/(workspace)/sources/**"
+    - "!apps/web/src/app/(workspace)/chat/**"
+    - "!patches/**"
+    - "!packages/cli/**"
+    - "!apps/web/next-env.d.ts"
+    - "!CLAUDE.md"
+    - "!DEPLOYMENT.md"
   auto_review:
     enabled: true
     drafts: false
