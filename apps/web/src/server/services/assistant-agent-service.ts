@@ -232,8 +232,10 @@ export function classifyAssistantActionQuota(
 ): "read" | "write" | null {
   if (actionDecision?.decision === "decline") return null
   if (actionDecision?.decision === "allow") return "write"
+  // Explicit write intent counts even without a Relay noun (e.g. "rename it").
+  if (wantsWriteTools(message)) return "write"
   if (!wantsRelayTools(message)) return null
-  return wantsWriteTools(message) ? "write" : "read"
+  return "read"
 }
 
 function selectAssistantTools(input: {
@@ -241,11 +243,21 @@ function selectAssistantTools(input: {
   hasAttachments: boolean
   confirmActionId?: string
   allowingAction?: boolean
+  /** True when this chat already has assistant tool activity (a prior create/
+   * update/delete or tool result). Follow-up turns like "rename it to test2",
+   * "delete it", or "that one too" carry no Relay noun, so keyword gating would
+   * otherwise strip every tool and the model returns an empty turn. */
+  hasPriorToolActivity?: boolean
 }): GeminiFunctionDeclaration[] {
   if (input.confirmActionId || input.allowingAction) return ASSISTANT_TOOL_DECLARATIONS
   if (isSimpleAttachmentQuestion(input.message, input.hasAttachments)) return []
-  if (!wantsRelayTools(input.message)) return []
+  // Explicit write intent (rename/delete/update/…) wins even without a Relay
+  // noun — otherwise pronoun follow-ups get no tools and error out.
   if (wantsWriteTools(input.message)) return ASSISTANT_TOOL_DECLARATIONS
+  // Continuity: once a chat has touched Relay tools, keep them available so
+  // noun-less follow-ups can act on the item the user just referenced.
+  if (input.hasPriorToolActivity) return ASSISTANT_TOOL_DECLARATIONS
+  if (!wantsRelayTools(input.message)) return []
   return ASSISTANT_TOOL_DECLARATIONS.filter((tool) => READ_ONLY_TOOL_NAMES.has(tool.name))
 }
 
@@ -356,9 +368,6 @@ export async function* runAssistantTurn(
   yield { type: "chat", chatId: chat.id }
 
   const defaultProjectId = chat.projectId ?? input.projectId ?? null
-  const scopeContext = wantsRelayTools(input.message)
-    ? await assistantScopeContext(client, viewer.userId)
-    : "No Relay workspace lookup was needed for this direct reply."
 
   // 2. Rebuild conversation along the active branch path only. Editing an
   //    earlier user message sends its parent as input.parentId, so the new
@@ -678,12 +687,27 @@ export async function* runAssistantTurn(
   const userWantsWeb = wantsWebSearch(input.message)
   const onlyWebSearch = wantsOnlyWebSearch(input.message)
   const shouldRunWebSearch = webSearchEnabled && (explicitWebSearch || userWantsWeb)
+  const hasPriorToolActivity = pathMessages.some(
+    (m) =>
+      Boolean(m.toolName) ||
+      Boolean(
+        (m.toolPayload as { actionResults?: unknown[] } | null)?.actionResults?.length
+      )
+  )
   const selectedTools = selectAssistantTools({
     message: input.message,
     hasAttachments: Boolean(input.attachmentIds?.length),
     confirmActionId: input.confirmActionId,
-    allowingAction: input.actionDecision?.decision === "allow"
+    allowingAction: input.actionDecision?.decision === "allow",
+    hasPriorToolActivity
   })
+  // Fetch the workspace lookup whenever the turn may act on Relay (tools
+  // selected) or explicitly references it — so noun-less write follow-ups can
+  // resolve "it" to the right item. Pure direct/web-search turns skip it.
+  const scopeContext =
+    selectedTools.length > 0 || wantsRelayTools(input.message)
+      ? await assistantScopeContext(client, viewer.userId)
+      : "No Relay workspace lookup was needed for this direct reply."
   const shouldDirectWebSearch =
     shouldRunWebSearch &&
     !wantsRelayTools(input.message) &&

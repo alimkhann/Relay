@@ -11,6 +11,7 @@ export function registerBackgroundListeners(runtime: BackgroundRuntime) {
     requestPageStateFromTab: runtime.requestPageStateFromTab,
     scheduleAutoCapture: runtime.scheduleAutoCapture,
     showFailureToastInTab: runtime.showFailureToastInTab,
+    syncTabRemoteState: runtime.syncTabRemoteState,
   });
   registerInternalMessageListener({
     archiveChatAssociation: runtime.archiveChatAssociation,

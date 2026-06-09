@@ -407,9 +407,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     useState<RelayResolvedTheme>("dark");
   const [panelMode, setPanelMode] = useState<"main" | "settings">("main");
   const [signOutBusy, setSignOutBusy] = useState(false);
-  const [askRelayHidden, setAskRelayHidden] = useState(() => {
-    try { return localStorage.getItem("relay:hideAskRelayExtension") === "true" } catch { return false }
-  });
   const [userSettings, setUserSettings] = useState<UserSettingsRow["settings"] | null>(null);
   const [billing, setBilling] = useState<BillingStatusDto | null>(null);
   const [userSettingsBusy, setUserSettingsBusy] = useState(false);
@@ -2807,35 +2804,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 <circle cx="12" cy="12" r="10" />
                 <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
                 <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-            </button>
-          ) : null}
-          {session?.connected && panelMode === "main" ? (
-            <button
-              type="button"
-              className={styles.headerIconButton}
-              aria-label={askRelayHidden ? "Show Ask Relay" : "Hide Ask Relay"}
-              title={askRelayHidden ? "Show Ask Relay" : "Hide Ask Relay"}
-              onClick={() => {
-                const hide = !askRelayHidden;
-                setAskRelayHidden(hide);
-                if (userSettings) void patchUserSettings({ hideAskRelayExtension: hide });
-                localStorage.setItem("relay:hideAskRelayExtension", String(hide));
-                window.dispatchEvent(new StorageEvent("storage", { key: "relay:hideAskRelayExtension", newValue: String(hide) }));
-              }}
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                opacity={askRelayHidden ? 0.4 : 1}
-              >
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
               </svg>
             </button>
           ) : null}

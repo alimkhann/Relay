@@ -449,6 +449,59 @@ describe("runAssistantTurn confirmation guard (A2 regression)", () => {
     )
   })
 
+  it("gives tools to a noun-less write follow-up (rename it) instead of erroring", async () => {
+    // Regression: "rename it to test2" has no Relay noun, so keyword gating used
+    // to strip every tool — the model then returned empty text and the turn
+    // failed with "I couldn't produce a reliable response". Write intent must
+    // win regardless of nouns.
+    mocks.createRepositoryBundle.mockReset().mockReturnValue({
+      ...repoBundle(),
+      assistantMessages: {
+        listByChat: vi.fn(async () => []),
+        create: vi.fn(async () => ({ id: "action-1" })),
+        updateToolPayload: vi.fn(async () => {})
+      }
+    })
+    mocks.runGeminiAgentStep
+      .mockResolvedValueOnce({
+        text: "",
+        functionCalls: [
+          { name: "manage_memory", args: { action: "update", memoryId: ["m9"], content: "test2" } }
+        ],
+        groundingChunks: [],
+        tokenUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+      })
+      .mockResolvedValueOnce({
+        text: "Renamed it to test2.",
+        functionCalls: [],
+        groundingChunks: [],
+        tokenUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+      })
+    mocks.executeAssistantTool.mockResolvedValue({
+      modelResponse: { result: "updated" },
+      actionResult: { tool: "manage_memory", action: "updated", entity: "memory item", count: 1 }
+    })
+
+    const events = await collect({
+      message: "rename it to test2",
+      surface: "dashboard",
+      parentId: null,
+      projectId: "p1",
+      autoApproveDestructive: true
+    } as SendAssistantMessageInput)
+
+    // Tools were actually offered to the model on the first step.
+    expect(mocks.runGeminiAgentStep.mock.calls[0]?.[0]?.tools?.length ?? 0).toBeGreaterThan(0)
+    // The action executed and there is no empty-response error.
+    expect(events).toContainEqual({
+      type: "action_update",
+      action: expect.objectContaining({ status: "succeeded", tool: "manage_memory" })
+    })
+    expect(
+      events.some((e) => e.type === "error" && /reliable response/.test(e.message))
+    ).toBe(false)
+  })
+
   it("does not repeat an identical failing tool call within a turn", async () => {
     mocks.runGeminiAgentStep
       .mockResolvedValueOnce({

@@ -58,6 +58,7 @@ export function registerBackgroundLifecycleListeners(deps: {
   requestPageStateFromTab(tabId: number): Promise<unknown>;
   scheduleAutoCapture(tabId: number, options?: { immediate?: boolean }): Promise<void>;
   showFailureToastInTab(tabId: number | null, message: string): Promise<void>;
+  syncTabRemoteState(tabId: number, options?: { force?: boolean; reason?: string }): Promise<void>;
 }) {
 function registerRelayContextMenu() {
   if (!chrome.contextMenus) {
@@ -232,6 +233,33 @@ chrome.tabs.onActivated.addListener((activeInfo: { tabId: number }) => {
 
 chrome.tabs.onRemoved.addListener((tabId: number) => {
   deps.clearTabState(tabId);
+});
+
+// Recovery tick. The MV3 service worker suspends after ~30s idle, which drops
+// every pending `setTimeout` retry — and because the freshness check is keyed
+// on an absolute `lastSuccessfulSyncAt`, a tab that was "ready" before the SW
+// slept never re-syncs on wake even though its cache has long expired. The
+// result the user sees is empty/stale data until they reload the extension.
+// A periodic alarm survives suspension (Chrome wakes the SW to fire it) and
+// re-syncs the active tab. `syncTabRemoteState` does its own cache-age skip, so
+// this is a no-op (no network/DB call) whenever the cache is still fresh.
+const RESYNC_ALARM = "relay-resync-active-tab";
+try {
+  chrome.alarms?.create(RESYNC_ALARM, { periodInMinutes: 1 });
+} catch (cause) {
+  console.warn("[relay] alarms.create failed", cause);
+}
+
+chrome.alarms?.onAlarm.addListener((alarm: { name: string }) => {
+  if (alarm.name !== RESYNC_ALARM) return;
+  void (async () => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.id) await deps.syncTabRemoteState(tab.id, { reason: "alarm_resync" });
+    } catch (cause) {
+      console.warn("[relay] resync alarm failed", cause);
+    }
+  })();
 });
 
 chrome.commands?.onCommand.addListener((command: string) => {
