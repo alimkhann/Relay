@@ -1,9 +1,6 @@
 "use client";
 
 import { FadeIn } from "@/components/ui/fade-in";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useProjectDashboard } from "@/features/projects/use-project-dashboard";
 import { useMemoryCacheSync } from "@/lib/query/memory-cache-sync";
 import { MemoryGraphContainer } from "./memory-graph-container";
 
@@ -12,7 +9,6 @@ interface GraphPageContentProps {
 }
 
 export function GraphPageContent({ project }: GraphPageContentProps) {
-  const { data: dashboard, isPending } = useProjectDashboard(project.id);
   useMemoryCacheSync(project.id);
 
   return (
@@ -28,28 +24,16 @@ export function GraphPageContent({ project }: GraphPageContentProps) {
         </div>
       </FadeIn>
 
-      {!dashboard ? (
-        isPending ? (
-          <Skeleton className="min-h-[calc(100vh-9rem)] w-full rounded-[var(--relay-radius)]" />
-        ) : (
-          <EmptyState
-            title="No data yet"
-            description="The graph appears after your first chat capture."
-            className="py-12"
-          />
-        )
-      ) : (
-        <FadeIn delay={0.04}>
-          <MemoryGraphContainer
-            projectId={project.id}
-            projectName={project.name}
-            memoryItems={dashboard.memory}
-            mode="fullscreen"
-            title={`${project.name} Graph`}
-            className="min-h-[calc(100vh-9rem)]"
-          />
-        </FadeIn>
-      )}
+      <FadeIn delay={0.04}>
+        <MemoryGraphContainer
+          projectId={project.id}
+          projectName={project.name}
+          memoryItems={[]}
+          mode="fullscreen"
+          title={`${project.name} Graph`}
+          className="min-h-[calc(100vh-9rem)]"
+        />
+      </FadeIn>
     </div>
   );
 }

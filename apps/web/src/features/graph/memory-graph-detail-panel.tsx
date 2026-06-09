@@ -84,7 +84,11 @@ export function MemoryGraphDetailPanel({
           <div className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-soft)] px-3 py-2">
             <p className="text-[10px] uppercase tracking-wide text-[var(--relay-muted)]">{isSourceFile ? "Chunks" : "Captured"}</p>
             <p className="mt-1 font-medium text-[var(--relay-ink)]">
-              {isSourceFile ? sourceFile?.chunkCount.toLocaleString("en-US") : formatMemoryDate(node.capturedAt)}
+              {isSourceFile
+                ? sourceFile?.chunkCount != null
+                  ? sourceFile.chunkCount.toLocaleString("en-US")
+                  : "—"
+                : formatMemoryDate(node.capturedAt)}
             </p>
           </div>
         </div>
@@ -105,12 +109,16 @@ export function MemoryGraphDetailPanel({
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--relay-muted)]">
           {isSourceFile && (
             <>
-              <span className="rounded-full border border-[var(--relay-line)] px-2 py-1">
-                {(((sourceFile?.byteSize ?? 0) / 1024)).toFixed(1)} KB
-              </span>
-              <span className="rounded-full border border-[var(--relay-line)] px-2 py-1">
-                {(sourceFile?.tokenEstimate ?? 0).toLocaleString("en-US")} tokens
-              </span>
+              {sourceFile?.byteSize != null ? (
+                <span className="rounded-full border border-[var(--relay-line)] px-2 py-1">
+                  {(sourceFile.byteSize / 1024).toFixed(1)} KB
+                </span>
+              ) : null}
+              {sourceFile?.tokenEstimate != null ? (
+                <span className="rounded-full border border-[var(--relay-line)] px-2 py-1">
+                  {sourceFile.tokenEstimate.toLocaleString("en-US")} tokens
+                </span>
+              ) : null}
               {sourceFile?.mimeType && (
                 <span className="rounded-full border border-[var(--relay-line)] px-2 py-1">
                   {sourceFile.mimeType}

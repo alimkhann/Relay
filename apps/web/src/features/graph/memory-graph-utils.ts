@@ -86,9 +86,9 @@ export interface GraphNode {
     displayName: string;
     originalFileName: string | null;
     mimeType: string | null;
-    byteSize: number;
-    chunkCount: number;
-    tokenEstimate: number;
+    byteSize?: number;
+    chunkCount?: number;
+    tokenEstimate?: number;
     previewText: string;
   };
   entity?: {
@@ -198,11 +198,11 @@ export function snapshotToGraphData(snapshot: ProjectGraphSnapshot): GraphData {
             kind: node.source.kind,
             status: node.source.status,
             displayName: node.label,
-            originalFileName: null,
-            mimeType: null,
-            byteSize: 0,
-            chunkCount: 0,
-            tokenEstimate: 0,
+            originalFileName: node.source.originalFileName ?? null,
+            mimeType: node.source.mimeType ?? null,
+            byteSize: node.source.byteSize,
+            chunkCount: node.source.chunkCount,
+            tokenEstimate: node.source.tokenEstimate,
             previewText: node.content,
           }
         : undefined,
@@ -238,9 +238,9 @@ export function filterGraphData(data: GraphData, filters: GraphFilters): GraphDa
   const filteredNodes = data.nodes.filter((node) => {
     if (filters.nodeKinds?.size && !filters.nodeKinds.has(node.kind)) return false;
     if (node.kind === "memory" && filters.memoryTypes?.size && !filters.memoryTypes.has(node.type)) return false;
-    const personalCategory = personalCategoryFromMetadata(node.metadata);
-    if (filters.personalCategories?.size && personalCategory && !filters.personalCategories.has(personalCategory)) {
-      return false;
+    if (filters.personalCategories?.size && node.kind === "memory") {
+      const personalCategory = personalCategoryFromMetadata(node.metadata);
+      if (!personalCategory || !filters.personalCategories.has(personalCategory)) return false;
     }
     return true;
   });
@@ -271,6 +271,13 @@ export function labelOpacity(zoom: number, threshold = DEFAULT_GRAPH_SETTINGS.te
 
 export function graphEndpointId(endpoint: string | GraphNode) {
   return typeof endpoint === "string" ? endpoint : endpoint.id;
+}
+
+export function formatSourceIndexStats(source?: GraphNode["source"]) {
+  const parts: string[] = [];
+  if (source?.chunkCount != null) parts.push(`${source.chunkCount} chunks`);
+  if (source?.tokenEstimate != null) parts.push(`${source.tokenEstimate} tokens`);
+  return parts.length > 0 ? parts.join(" · ") : "Source";
 }
 
 export function formatMemoryDate(value: string | null) {

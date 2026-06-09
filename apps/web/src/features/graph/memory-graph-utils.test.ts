@@ -104,4 +104,33 @@ describe("real evidence graph adapter", () => {
       expect.objectContaining({ relationType: "mentions" }),
     ])
   })
+
+  it("excludes uncategorized memory nodes when personal category filters are active", () => {
+    const input = snapshot()
+    input.nodes.push({
+      id: "memory:memory-2",
+      kind: "memory",
+      label: "Untagged note",
+      content: "No category.",
+      updatedAt: "2026-06-02T00:00:00.000Z",
+      metadata: {},
+      memory: {
+        id: "memory-2",
+        type: "note",
+        title: null,
+        pinned: false,
+        sourceSurface: "manual",
+        sourceUrl: null,
+        capturedAt: "2026-06-02T00:00:00.000Z",
+        lastReaffirmedAt: null,
+      },
+    })
+
+    const filtered = filterGraphData(snapshotToGraphData(input), {
+      personalCategories: new Set(["concept"]),
+    })
+
+    expect(filtered.nodes.some((node) => node.id === "memory:memory-1")).toBe(true)
+    expect(filtered.nodes.some((node) => node.id === "memory:memory-2")).toBe(false)
+  })
 })

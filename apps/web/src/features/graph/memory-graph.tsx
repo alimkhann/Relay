@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
 
 import {
+  formatSourceIndexStats,
   graphEndpointId,
   labelOpacity,
   nodeColor,
@@ -163,7 +164,7 @@ function drawSourceFileNode(
   ctx.font = `500 ${1.55 * u}px Outfit, sans-serif`;
   ctx.fillStyle = muted;
   ctx.fillText(
-    `${node.source?.chunkCount ?? 0} chunks · ${node.source?.tokenEstimate ?? 0} tokens`,
+    formatSourceIndexStats(node.source),
     left + 2.7 * u,
     top + 8.4 * u,
     width - 5.4 * u,

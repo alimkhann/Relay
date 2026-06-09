@@ -66,6 +66,9 @@ export interface ProjectGraphRepositories {
   sources: {
     listByProject(projectId: string, options: { limit: number }): Promise<ProjectSourceRow[]>
     listMemoryLinksByProject(projectId: string, options: { limit: number }): Promise<GraphSourceLink[]>
+    getLatestVersionsBySourceIds?(
+      sourceIds: string[],
+    ): Promise<Map<string, { chunkCount: number; tokenEstimate: number }>>
   }
   entities: {
     listByProject(projectId: string): Promise<GraphEntity[]>
@@ -187,7 +190,13 @@ export async function buildProjectGraphSnapshot(
     })
   }
 
-  for (const source of sources.slice(0, budget.sources)) {
+  const sourceSlice = sources.slice(0, budget.sources)
+  const versionsBySourceId = repositories.sources.getLatestVersionsBySourceIds
+    ? await repositories.sources.getLatestVersionsBySourceIds(sourceSlice.map((source) => source.id))
+    : new Map<string, { chunkCount: number; tokenEstimate: number }>()
+
+  for (const source of sourceSlice) {
+    const latestVersion = versionsBySourceId.get(source.id)
     addNode({
       id: `source:${source.id}`,
       kind: "source",
@@ -200,6 +209,11 @@ export async function buildProjectGraphSnapshot(
         kind: source.kind,
         status: source.status,
         sourceUri: source.sourceUri,
+        originalFileName: source.originalFileName,
+        mimeType: source.mimeType,
+        byteSize: source.byteSize,
+        chunkCount: latestVersion?.chunkCount,
+        tokenEstimate: latestVersion?.tokenEstimate,
       },
     })
   }

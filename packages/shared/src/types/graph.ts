@@ -44,6 +44,11 @@ export interface ProjectGraphNode {
     kind: ProjectSourceKind
     status: ProjectSourceStatus
     sourceUri: string | null
+    originalFileName?: string | null
+    mimeType?: string | null
+    byteSize?: number
+    chunkCount?: number
+    tokenEstimate?: number
   }
   conversation?: {
     id: string

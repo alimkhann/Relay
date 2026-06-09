@@ -24,6 +24,13 @@ export function useGraphData(
   const [snapshot, setSnapshot] = useState<ProjectGraphSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState(0);
+
+  useEffect(() => {
+    const onMutated = () => setRefreshToken((value) => value + 1);
+    window.addEventListener("relay:memory-mutated", onMutated);
+    return () => window.removeEventListener("relay:memory-mutated", onMutated);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -34,6 +41,7 @@ export function useGraphData(
 
     setLoading(true);
     setError(null);
+    setSnapshot(null);
 
     void (async () => {
       try {
@@ -66,7 +74,7 @@ export function useGraphData(
     return () => {
       cancelled = true;
     };
-  }, [projectId, options.density, options.includeEvidence]);
+  }, [projectId, options.density, options.includeEvidence, refreshToken]);
 
   const data = useMemo(() => {
     const graphData = snapshot ? snapshotToGraphData(snapshot) : { nodes: [], links: [] };

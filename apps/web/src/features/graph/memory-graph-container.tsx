@@ -273,6 +273,7 @@ function FilterButton({
   return (
     <button
       type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={cn(
         "rounded-full border px-2 py-1 text-[11px] transition-colors",
