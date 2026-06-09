@@ -14,12 +14,28 @@ fi
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+TMP_CONFIG="$(mktemp -t coderabbit-scoped.XXXXXX.yaml)"
+trap 'rm -f "$TMP_CONFIG"' EXIT
+
+cat > "$TMP_CONFIG" <<'EOF'
+language: en-US
+reviews:
+  path_filters:
+    - "!**/*.png"
+    - "!**/*.jpg"
+    - "!**/*.jpeg"
+    - "!pnpm-lock.yaml"
+    - "!**/*.test.ts"
+    - "!**/*.test.tsx"
+    - "!tests/**"
+EOF
+
 OUT="${TMPDIR:-/tmp}/relay-coderabbit-cli-${PASS_NAME}-$(date +%Y%m%d-%H%M%S).log"
 
 run_dir_review() {
   local dir="$1"
   echo "=== CodeRabbit CLI pass: ${PASS_NAME} (${dir}) ===" | tee -a "$OUT"
-  coderabbit review --plain --base main --type committed --dir "$dir" -c .coderabbit.yaml AGENTS.md 2>&1 | tee -a "$OUT"
+  coderabbit review --plain --base main --type committed --dir "$dir" -c "$TMP_CONFIG" AGENTS.md 2>&1 | tee -a "$OUT"
 }
 
 for dir in "${DIRS[@]}"; do
