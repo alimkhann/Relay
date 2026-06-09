@@ -7,12 +7,9 @@ reviews:
   poem: false
   review_status: true
   path_filters:
-    - "apps/web/src/components/ui/**"
-    - "apps/web/src/components/ai-elements/**"
-    - "apps/web/src/app/docs/**"
-    - "apps/web/src/features/brief/**"
-    - "apps/web/src/app/(workspace)/chat/**"
-    - "apps/web/src/app/(workspace)/sources/**"
+    - "packages/shared/**"
+    - "packages/formatters/**"
+    - "packages/adapters/**"
     - "!**/*.png"
     - "!**/*.jpg"
     - "!**/*.jpeg"
