@@ -7,13 +7,8 @@ reviews:
   poem: false
   review_status: true
   path_filters:
-    - "apps/web/src/app/(auth)/**"
-    - "apps/web/src/components/settings/**"
-    - "apps/web/src/app/(marketing)/**"
-    - "apps/web/src/server/services/billing-service.ts"
-    - "apps/web/src/server/services/billing-config.ts"
-    - "apps/web/src/server/services/settings-service.ts"
-    - "apps/web/src/server/services/project-settings-service.ts"
+    - "packages/db/**"
+    - "packages/workers/**"
     - "!**/*.png"
     - "!**/*.jpg"
     - "!**/*.jpeg"
