@@ -1,5 +1,6 @@
 import {
   createRepositoryBundle,
+  createWorkerRepositoryBundle,
   createWorkerRepositoryProvider,
   type RepositoryBundle,
 } from "@relay/db"
@@ -106,7 +107,7 @@ export async function markProjectHygieneDue(
   at: Date | string = new Date(),
   repositories?: RepositoryBundle,
 ) {
-  const repos = repositories ?? createRepositoryBundle()
+  const repos = repositories ?? createWorkerRepositoryBundle()
   await repos.projects.markHygieneDue(projectId, at)
 }
 

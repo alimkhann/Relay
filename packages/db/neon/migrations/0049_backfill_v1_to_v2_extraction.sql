@@ -20,6 +20,14 @@
 --     RELAY_MEMORY_PIPELINE_FULL=true has been flipped + soaked on new
 --     writes for 24-48h to catch prompt-quality regressions before they
 --     fan out across the entire backlog.
+--   - RLS ORDERING GATE: if the app has been swapped to the non-owner
+--     relay_app role (F3 cutover), the pipeline worker must already have
+--     `bypassrls` (relay_worker, granted via the Neon console — see
+--     docs/memory-v2/roles.sql). Otherwise every observation/entity_relation
+--     INSERT the extractor makes is silently RLS-denied (0 rows, no error):
+--     this re-enqueue would flip 604+ rows to pending and burn Gemini spend
+--     while the graph stays empty. Sequence: relay_worker bypassrls -> soak
+--     -> THEN this backfill.
 
 update memory_items
 set enrichment_status = 'pending'

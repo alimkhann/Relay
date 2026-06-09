@@ -136,12 +136,52 @@ Do not bundle with the migration / Gemini extractor steps.
    offline.
 8. After clean 48h, remove `LEGACY_DATABASE_URL` from Vercel.
 
-## Doc shipped in this PR
+## Status — code wiring landed (provider + call sites)
 
-This file. Actual `relay_app` / `relay_service` role provisioning lives in
-`docs/memory-v2/roles.sql` (extend before cutover) and the swap happens at
-cutover step 11 of the deploy sequence in `docs/memory-v2/HANDOFF.md`.
+The code wiring is now DONE (was previously deferred to "the F3 PR proper"):
 
-No code change in this PR; the wiring of `createServiceRepositoryProvider`
-and the Group-E grep + fix lands as the F3 PR proper, executed during
-cutover step 11.
+- `packages/db/src/store/provider.ts`: **viewer GUC bug fixed** — bare `query()`
+  with a viewer now runs `set_config` + the query in one transaction (was two
+  autocommit statements, so the transaction-local GUC was lost and relay_app
+  would have returned 0 rows). Added `createServiceRepositoryProvider()` and
+  `createServiceRepositoryBundle()` / `createWorkerRepositoryBundle()` helpers.
+- `docs/memory-v2/roles.sql`: now provisions all three roles (`relay_app`,
+  `relay_worker`, `relay_service`) idempotently with grants + EXECUTE; console
+  bypassrls steps documented.
+- All 31 no-arg `createRepositoryBundle()` sites rewired:
+  - Cron/cross-tenant → `createWorkerRepositoryBundle()` (embedding-backfill,
+    internal jobs cron, cost-snapshot ×3, hygiene fallback, source sweep).
+  - Pre-auth / webhooks / deletion / IP-rate-limit → `createServiceRepositoryBundle()`
+    (auth-sync, local/google auth, mcp-token ×5, extension-connect, browser
+    handoff, cli/wizard auth, account deletion ×3, viewer token resolve, polar
+    webhook ×2, consumeIpRateLimit).
+  - Only `api/health/route.ts` (`SELECT 1`) keeps the plain no-arg form.
+- Verify after future edits: `rg -n "createRepositoryBundle\(\)" apps/web/src -g '!*.test.*'`
+  should return only `health/route.ts`.
+
+All three providers fall back to `DATABASE_URL` when their env var is unset, so
+this is a **no-op at runtime** until the operational cutover (step 11) sets
+`WORKER_DATABASE_URL` / `SERVICE_DATABASE_URL` and swaps `DATABASE_URL` to
+`relay_app`.
+
+## Follow-ups still owed at cutover (not code)
+
+- **Neon console**: enable Bypass RLS on `relay_worker` + `relay_service` only.
+- **No-RLS, user-scoped tables** rely on SQL `user_id` filters, not RLS — a
+  missed `where user_id = …` would leak under relay_app. Add RLS as
+  defense-in-depth or confirm callers always filter: `user_milestones`
+  (read in mcp/stream + user-milestones-service), `provider_counter_snapshots`,
+  `memory_pipeline_jobs`, `memory_half_lives` (worker-only — fine).
+- **RLS-enabled, no write policy** (`target_profiles`, `global_sources`): writes
+  today come from migrations/seed (owner) and the source pipeline (worker), not
+  user routes — safe, but add write policies if a relay_app path ever writes them.
+- **Migration numbering**: `0047` is intentionally skipped. The runner
+  (`scripts/db-admin.js`) sorts lexically + tracks applied filenames, so a gap is
+  harmless; no `0047_*.sql` is required.
+
+## Regression guard
+
+`packages/db/src/store/rls-enforcement.test.ts` (env-gated on
+`RLS_TEST_DATABASE_URL`) connects as a non-owner role and asserts cross-tenant
+isolation — run it against a branch where roles + bypassrls are provisioned to
+prove enforcement actually binds before flipping prod.

@@ -4,7 +4,7 @@ import { NextResponse } from "next/server"
 // Each call can take ~70s for the full 3-table sweep.
 export const maxDuration = 300
 
-import { createRepositoryBundle } from "@relay/db"
+import { createRepositoryBundle, createWorkerRepositoryBundle } from "@relay/db"
 
 import {
   EMBEDDING_MODEL,
@@ -237,7 +237,7 @@ async function handle(request: Request): Promise<Response> {
     500,
   )
 
-  const repositories = createRepositoryBundle()
+  const repositories = createWorkerRepositoryBundle()
 
   const includeCanonicalEntities = url.searchParams.get("includeCanonicalEntities") === "true"
   const tables: TableKey[] = tableParam === "all"

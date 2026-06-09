@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 
-import { createRepositoryBundle } from "@relay/db"
+import { createServiceRepositoryBundle } from "@relay/db"
 import { cliAuthConfirmSchema } from "@relay/shared"
 
 import { withApiAuth } from "@/server/http/api-route"
@@ -10,7 +10,7 @@ export const POST = withApiAuth(async (request: Request) => {
   const viewer = await requireSessionViewer()
   const body = cliAuthConfirmSchema.parse(await request.json())
 
-  const repositories = createRepositoryBundle()
+  const repositories = createServiceRepositoryBundle()
   const session = await repositories.cliAuthSessions.getByCode(body.sessionCode)
 
   if (!session) {

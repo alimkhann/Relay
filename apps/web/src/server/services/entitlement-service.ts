@@ -1,4 +1,4 @@
-import { createRepositoryBundle } from "@relay/db"
+import { createRepositoryBundle, createServiceRepositoryBundle } from "@relay/db"
 import type { BillingStatusDto, SubscriptionRow, UserEntitlementsDto } from "@relay/shared"
 
 import { captureServerEvent } from "@/lib/telemetry/posthog-server"
@@ -417,7 +417,9 @@ export async function consumeAssistantTokenQuota(userId: string, totalTokens: nu
 }
 
 export async function consumeIpRateLimit(scopeKey: string, featureKey: string, perMinuteLimit: number) {
-  const repositories = createRepositoryBundle()
+  // IP-scoped pre-auth rate limit — no viewer, writes usage_counters by IP
+  // scope. Runs under the service role.
+  const repositories = createServiceRepositoryBundle()
   const { start, end } = getWindowBounds("minute")
   const counter = await repositories.usageCounters.incrementWithinLimit(scopeKey, featureKey, "minute", start, end, perMinuteLimit, 1)
   if (!counter) {

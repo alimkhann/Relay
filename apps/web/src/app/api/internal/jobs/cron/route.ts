@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto"
 
 import { NextResponse } from "next/server"
 
-import { createRepositoryBundle } from "@relay/db"
+import { createWorkerRepositoryBundle } from "@relay/db"
 
 import { runContinuityMaintenanceForUser } from "@/server/services/continuity-maintenance-service"
 import { emitDailyCostSnapshots } from "@/server/services/cost-snapshot-service"
@@ -31,8 +31,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
   }
 
-  // Query without RLS to find all users with pending/timed_out jobs
-  const repositories = createRepositoryBundle()
+  // Cross-tenant scan to find all users with pending jobs — runs under the
+  // worker role (bypassrls).
+  const repositories = createWorkerRepositoryBundle()
   const rows = await repositories.provider.query(
     `select distinct created_by
      from ai_job_runs

@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomInt } from "node:crypto"
 
-import { createRepositoryBundle } from "@relay/db"
+import { createRepositoryBundle, createServiceRepositoryBundle } from "@relay/db"
 import type { McpTokenScope } from "@relay/shared"
 import { hashContent } from "@relay/shared"
 
@@ -33,7 +33,7 @@ export async function startMcpAuthorization(input: {
   codeChallenge: string
   scopes: McpTokenScope[]
 }) {
-  const repositories = createRepositoryBundle()
+  const repositories = createServiceRepositoryBundle()
   const sessionCode = generateSessionCode()
   const sessionSecret = `relay_mcp_auth_${randomBytes(16).toString("hex")}`
   const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
@@ -59,7 +59,7 @@ export async function startMcpAuthorization(input: {
 }
 
 export async function approveMcpAuthorization(sessionCode: string, userId: string) {
-  const repositories = createRepositoryBundle()
+  const repositories = createServiceRepositoryBundle()
   const session = await repositories.mcpAuthSessions.getByCode(sessionCode)
   if (!session) {
     throw new Error("Invalid or expired MCP authorization session.")
@@ -76,7 +76,7 @@ export async function approveMcpAuthorization(sessionCode: string, userId: strin
 }
 
 export async function pollMcpAuthorization(sessionSecret: string, codeVerifier?: string) {
-  const repositories = createRepositoryBundle()
+  const repositories = createServiceRepositoryBundle()
   const session = await repositories.mcpAuthSessions.getByHash(hashContent(sessionSecret))
   if (!session) {
     return { status: "invalid" as const }
@@ -140,7 +140,7 @@ export async function pollMcpAuthorization(sessionSecret: string, codeVerifier?:
 }
 
 export async function refreshMcpAccessToken(refreshToken: string) {
-  const repositories = createRepositoryBundle()
+  const repositories = createServiceRepositoryBundle()
   const existing = await repositories.mcpTokens.getValidRefreshTokenByHash(hashContent(refreshToken))
   if (!existing) {
     throw new UnauthorizedError("Refresh token is invalid or expired.")
@@ -181,7 +181,7 @@ export async function refreshMcpAccessToken(refreshToken: string) {
 }
 
 export async function revokeMcpToken(accessToken: string) {
-  const repositories = createRepositoryBundle()
+  const repositories = createServiceRepositoryBundle()
   const existing = await repositories.mcpTokens.getValidAccessTokenByHash(hashContent(accessToken))
   if (existing) {
     await repositories.mcpTokens.revoke(existing.id)

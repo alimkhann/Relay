@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto"
 
 import { NextResponse } from "next/server"
 
-import { createRepositoryBundle } from "@relay/db"
+import { createRepositoryBundle, createServiceRepositoryBundle } from "@relay/db"
 import { hashContent } from "@relay/shared"
 
 import { withApiRoute } from "@/server/http/api-route"
@@ -41,7 +41,7 @@ export const GET = withApiRoute(async (request: Request) => {
     return NextResponse.json({ status: "invalid" }, { status: 400 })
   }
 
-  const repositories = createRepositoryBundle()
+  const repositories = createServiceRepositoryBundle()
 
   // Step 1: Check CLI auth session
   const cliSession = await repositories.cliAuthSessions.getByHash(hashContent(secret))

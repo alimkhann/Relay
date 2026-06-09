@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 
-import { createRepositoryBundle } from "@relay/db"
+import { createServiceRepositoryBundle } from "@relay/db"
 import { hashContent } from "@relay/shared"
 
 import { withApiRoute } from "@/server/http/api-route"
@@ -18,7 +18,7 @@ export const GET = withApiRoute(async (request: Request) => {
     return NextResponse.json({ status: "invalid" }, { status: 400 })
   }
 
-  const repositories = createRepositoryBundle()
+  const repositories = createServiceRepositoryBundle()
   const session = await repositories.cliAuthSessions.getByHash(hashContent(secret))
 
   if (!session) {

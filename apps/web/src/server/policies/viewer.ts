@@ -1,4 +1,4 @@
-import { createRepositoryBundle } from "@relay/db"
+import { createRepositoryBundle, createServiceRepositoryBundle } from "@relay/db"
 import type { McpTokenScope } from "@relay/shared"
 import { hashContent } from "@relay/shared"
 import { redirect } from "next/navigation"
@@ -96,7 +96,7 @@ export async function resolveViewer(authorizationHeader?: string | null): Promis
   const token = authorizationHeader?.replace(/^Bearer\s+/i, "").trim()
 
   if (token) {
-    const repositories = createRepositoryBundle()
+    const repositories = createServiceRepositoryBundle()
     const tokenHash = hashContent(token)
     const shouldCheckMcp = token.startsWith("relay_mcp_") || !token.startsWith("relay_")
     const shouldCheckExtension = !token.startsWith("relay_mcp_")

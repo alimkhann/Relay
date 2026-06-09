@@ -49,7 +49,12 @@ import { UsageCounterRepository } from "../repositories/usage-counter-repository
 import { WorkSessionCheckpointRepository } from "../repositories/work-session-checkpoint-repository"
 import { WorkSessionEventRepository } from "../repositories/work-session-event-repository"
 import { WorkSessionRepository } from "../repositories/work-session-repository"
-import { createRepositoryProvider, type DatabaseProvider } from "../store/provider"
+import {
+  createRepositoryProvider,
+  createServiceRepositoryProvider,
+  createWorkerRepositoryProvider,
+  type DatabaseProvider,
+} from "../store/provider"
 
 export interface RepositoryBundle {
   provider: DatabaseProvider
@@ -166,4 +171,22 @@ export function createRepositoryBundle(
     assistantMessages: new AssistantMessageRepository(provider),
     assistantAttachments: new AssistantAttachmentRepository(provider),
   }
+}
+
+/**
+ * Bundle for cron / background jobs. Runs under the worker role
+ * (WORKER_DATABASE_URL → relay_worker, bypassrls) so table-spanning sweeps
+ * write across every tenant. Falls back to DATABASE_URL when unset.
+ */
+export function createWorkerRepositoryBundle(): RepositoryBundle {
+  return createRepositoryBundle(undefined, createWorkerRepositoryProvider())
+}
+
+/**
+ * Bundle for service/admin flows with no user viewer: pre-auth, webhooks,
+ * account deletion. Runs under the service role (SERVICE_DATABASE_URL →
+ * relay_service, bypassrls). Falls back to DATABASE_URL when unset.
+ */
+export function createServiceRepositoryBundle(): RepositoryBundle {
+  return createRepositoryBundle(undefined, createServiceRepositoryProvider())
 }
