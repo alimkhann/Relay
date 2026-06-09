@@ -194,13 +194,14 @@ async function backfillMemoryItems(
   repositories: ReturnType<typeof createRepositoryBundle>,
   limit: number,
 ): Promise<TableResult> {
-  // backfillMissingEmbeddings / backfillStaleEmbeddings return the count of
-  // successfully embedded rows. Per-row failures aren't propagated up — they
-  // log inside the embedding-service. Compute `failed` from the gap between
-  // the rows we attempted (capped by limit) and the rows we embedded.
-  const missing = await backfillMissingEmbeddings(repositories, limit)
-  const remainingLimit = Math.max(0, limit - missing)
-  const stale = remainingLimit > 0 ? await backfillStaleEmbeddings(repositories, remainingLimit) : 0
+  const missingItems = await repositories.memory.getItemsWithoutEmbeddings(limit)
+  const missing = missingItems.length > 0 ? await backfillMissingEmbeddings(repositories, limit) : 0
+  const remainingLimit = Math.max(0, limit - missingItems.length)
+  const staleItems = remainingLimit > 0
+    ? await repositories.memory.getItemsWithStaleEmbeddingModel(EMBEDDING_MODEL, remainingLimit)
+    : []
+  const stale = staleItems.length > 0 ? await backfillStaleEmbeddings(repositories, remainingLimit) : 0
+  const attempted = missingItems.length + staleItems.length
 
   const remainingRows = (await repositories.provider.query(
     `SELECT COUNT(*)::int AS remaining FROM memory_items
@@ -208,9 +209,10 @@ async function backfillMemoryItems(
     [EMBEDDING_MODEL],
   )) as Array<{ remaining: number }>
 
+  const embedded = missing + stale
   return {
-    embedded: missing + stale,
-    failed: 0,
+    embedded,
+    failed: Math.max(0, attempted - embedded),
     remaining: remainingRows[0]?.remaining ?? 0,
   }
 }

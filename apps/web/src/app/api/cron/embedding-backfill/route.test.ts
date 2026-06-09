@@ -8,9 +8,17 @@ const generateEmbeddingMock = vi.fn()
 vi.mock("@relay/db", () => ({
   createRepositoryBundle: () => ({
     provider: { query: providerQueryMock },
+    memory: {
+      getItemsWithoutEmbeddings: vi.fn().mockResolvedValue([]),
+      getItemsWithStaleEmbeddingModel: vi.fn().mockResolvedValue([]),
+    },
   }),
   createWorkerRepositoryBundle: () => ({
     provider: { query: providerQueryMock },
+    memory: {
+      getItemsWithoutEmbeddings: vi.fn().mockResolvedValue([]),
+      getItemsWithStaleEmbeddingModel: vi.fn().mockResolvedValue([]),
+    },
   }),
 }))
 

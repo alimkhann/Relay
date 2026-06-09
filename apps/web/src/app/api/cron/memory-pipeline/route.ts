@@ -4,10 +4,66 @@ import { NextResponse } from "next/server"
 // (HANDOFF §7 drain stats). Default Vercel timeout is too tight.
 export const maxDuration = 300
 
+import { createWorkerRepositoryBundle } from "@relay/db"
+
 import {
   drainDueProjectHygiene,
   drainMemoryPipelineJobs,
 } from "@/server/services/memory-pipeline-scheduler"
+
+const REENQUEUE_DEFAULT_LIMIT = 100
+const REENQUEUE_MAX_LIMIT = 500
+
+/**
+ * Bounded, operator-driven re-enqueue of legacy v1 memory items for v2
+ * extraction (replaces the auto full-prod UPDATE that used to live in migration
+ * 0049). Flips at most `limit` done/version<2 rows to 'pending' per call so the
+ * worker re-extracts them, and returns { flipped, remaining } so an operator can
+ * loop until remaining=0 — pacing against RELAY_PIPELINE_DAILY_USD_CAP.
+ *
+ * Refuses unless RELAY_MEMORY_PIPELINE_FULL=true: flipping rows the embed-only
+ * worker can't extract would strand them in 'pending' forever.
+ */
+async function reenqueue(limitParam: string | null): Promise<Response> {
+  if (process.env.RELAY_MEMORY_PIPELINE_FULL !== "true") {
+    return NextResponse.json(
+      {
+        error:
+          "Refusing to re-enqueue while RELAY_MEMORY_PIPELINE_FULL is not 'true' — flipped rows would never be extracted.",
+      },
+      { status: 409 },
+    )
+  }
+  const parsed = Number.parseInt(limitParam ?? "", 10)
+  const limit = Math.min(
+    Math.max(Number.isFinite(parsed) && parsed > 0 ? parsed : REENQUEUE_DEFAULT_LIMIT, 1),
+    REENQUEUE_MAX_LIMIT,
+  )
+  const repositories = createWorkerRepositoryBundle()
+  const flippedRows = await repositories.provider.query<{ flipped: number }>(
+    `with picked as (
+       select id from memory_items
+       where enrichment_status = 'done' and enrichment_version < 2
+       order by created_at asc
+       limit $1
+     )
+     update memory_items m set enrichment_status = 'pending'
+     from picked where m.id = picked.id
+     returning 1 as flipped`,
+    [limit],
+  )
+  const remainingRows = await repositories.provider.query<{ remaining: number }>(
+    `select count(*)::int as remaining from memory_items
+     where enrichment_status = 'done' and enrichment_version < 2`,
+  )
+  return NextResponse.json({
+    reenqueue: {
+      flipped: flippedRows.length,
+      remaining: remainingRows[0]?.remaining ?? 0,
+      limit,
+    },
+  })
+}
 
 /**
  * Cron entry for the memory-pipeline worker.
@@ -42,6 +98,11 @@ function authorize(request: Request): boolean {
 async function handle(request: Request): Promise<Response> {
   if (!authorize(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const url = new URL(request.url)
+  if (url.searchParams.get("reenqueue") === "1") {
+    return reenqueue(url.searchParams.get("limit"))
   }
 
   const dryRunHygiene = process.env.RELAY_HYGIENE_DRY_RUN !== "false"
