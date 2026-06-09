@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+reviews:
+  profile: chill
+  poem: false
+  review_status: true
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - ".*"
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        Follow AGENTS.md at the repo root. Keep changes small and reviewable.
+        This is a pnpm monorepo (apps/web, apps/extension, packages/*).
+chat:
+  auto_reply: true
