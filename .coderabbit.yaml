@@ -1,9 +1,17 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 language: en-US
+enable_free_tier: false
 reviews:
   profile: chill
   poem: false
   review_status: true
+  path_filters:
+    - "!**/*.png"
+    - "!**/*.jpg"
+    - "!**/*.jpeg"
+    - "!**/*.log"
+    - "!**/.superpowers/**"
+    - "!pnpm-lock.yaml"
   auto_review:
     enabled: true
     drafts: false
