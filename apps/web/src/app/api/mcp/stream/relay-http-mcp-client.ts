@@ -442,6 +442,8 @@ export class RelayHttpMcpClient {
           personalCategory: args.personalCategory,
         }, this.viewer.mode === "mcp" ? this.viewer.projectId : null)
       }
+    } else {
+      throw new Error(`Unsupported manage_memory action: ${action}`)
     }
   }
 

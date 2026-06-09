@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 
+import { createRepositoryBundle } from "@relay/db"
+
 import { listCachedMemoryForExplainability, type CachedMemoryListOptions } from "@/server/cache/read-model-cache"
 import { withApiAuth } from "@/server/http/api-route"
 import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
@@ -78,23 +80,36 @@ export const POST = withApiAuth(async (request: Request, { params }: { params: P
   const viewer = await resolveViewer(request.headers.get("authorization"))
   const { id } = await params
   requireViewerProject(viewer, id, "memory:write")
-  if (viewer.mode === "mcp") {
-    await consumeMcpWriteQuota(viewer.userId)
-  } else if (viewer.mode === "extension") {
-    await consumeExtensionMemoryWriteQuota(viewer.userId)
-  } else {
-    await consumeActionQuota(viewer.userId, "write")
-  }
   const body = await request.json()
 
   // harvestOnly: skip primary item creation — only extract personal facts.
   // Used by the extension ignore-mode path where the chat isn't relevant to
   // the active project but personal facts should still land in Personal.
   if (body?.harvestOnly === true && body?.routingHint === "auto" && typeof body?.content === "string") {
-    void routePersonalMemory(viewer.userId, id, body.content, {
+    if (viewer.mode === "mcp") {
+      await consumeMcpWriteQuota(viewer.userId)
+    } else if (viewer.mode === "extension") {
+      await consumeExtensionMemoryWriteQuota(viewer.userId)
+    } else {
+      await consumeActionQuota(viewer.userId, "write")
+    }
+    const result = await routePersonalMemory(viewer.userId, id, body.content, {
       sourceSurface: body.sourceSurface ?? null,
     })
-    return NextResponse.json({ harvested: true })
+    return NextResponse.json({
+      harvested: result.written > 0,
+      written: result.written,
+      unsure: result.unsure,
+      duplicate: result.duplicate,
+    })
+  }
+
+  if (viewer.mode === "mcp") {
+    await consumeMcpWriteQuota(viewer.userId)
+  } else if (viewer.mode === "extension") {
+    await consumeExtensionMemoryWriteQuota(viewer.userId)
+  } else {
+    await consumeActionQuota(viewer.userId, "write")
   }
 
   const item = await createMemoryItem(viewer.userId, { ...body, projectId: id })
@@ -111,7 +126,10 @@ export const POST = withApiAuth(async (request: Request, { params }: { params: P
   // A manual add into a personal Folk category (note + metadata.personalCategory)
   // refreshes the derived "About you" state. Self-guards to the personal project.
   if (typeof body?.metadata?.personalCategory === "string") {
-    void enqueuePersonalStateRegeneration(viewer.userId, id).catch(() => {})
+    const personal = await createRepositoryBundle(viewer.userId).projects.getPersonalProject(viewer.userId)
+    if (personal && personal.id === id) {
+      void enqueuePersonalStateRegeneration(viewer.userId, personal.id).catch(() => {})
+    }
   }
 
   return NextResponse.json({ item }, { status: 201 })

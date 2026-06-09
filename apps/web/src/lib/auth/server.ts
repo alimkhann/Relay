@@ -6,8 +6,7 @@ let authInstance: ReturnType<typeof createNeonAuth> | null | undefined
 
 export function getAuthServer(options: { allowInLocal?: boolean } = {}) {
   if (!options.allowInLocal && getAuthProvider() !== "neon") {
-    authInstance = null
-    return authInstance
+    return null
   }
 
   if (authInstance !== undefined) {

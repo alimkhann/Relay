@@ -14,6 +14,12 @@ import {
 
 export const dynamic = "force-dynamic"
 
+// Rough blended $/1M tokens for ANALYTICS cost attribution only (not billing).
+const ASSISTANT_USD_PER_MTOK: Record<string, number> = {
+  "Gemini Flash": 0.3,
+  "Gemini Flash-Lite": 0.1
+}
+
 export const POST = withApiAuth(async (request: Request) => {
   const viewer = await resolveViewer(request.headers.get("authorization"))
   rejectMcpViewer(viewer, "Ask Relay is not available to scoped MCP tokens.")
@@ -35,7 +41,11 @@ export const POST = withApiAuth(async (request: Request) => {
     await consumeAssistantMessageQuota(viewer.userId)
   }
   const actionQuota = classifyAssistantActionQuota(input.message, input.actionDecision)
-  if (actionQuota) await consumeActionQuota(viewer.userId, actionQuota)
+  const shouldChargeActionQuota =
+    !input.confirmActionId && input.actionDecision?.decision !== "allow"
+  if (actionQuota && shouldChargeActionQuota) {
+    await consumeActionQuota(viewer.userId, actionQuota)
+  }
 
   captureServerEvent({
     event: "assistant_message_sent",
