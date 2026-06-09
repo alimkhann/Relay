@@ -22,6 +22,8 @@ const {
 
 vi.mock("@relay/db", () => ({
   createRepositoryBundle: createRepositoryBundleMock,
+  // Token resolution (pre-viewer) now uses the service bundle; same mock.
+  createServiceRepositoryBundle: createRepositoryBundleMock,
 }));
 
 vi.mock("@/lib/auth/server", () => ({

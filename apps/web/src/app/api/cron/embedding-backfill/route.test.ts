@@ -9,6 +9,9 @@ vi.mock("@relay/db", () => ({
   createRepositoryBundle: () => ({
     provider: { query: providerQueryMock },
   }),
+  createWorkerRepositoryBundle: () => ({
+    provider: { query: providerQueryMock },
+  }),
 }))
 
 vi.mock("@/server/services/embedding-service", () => ({
