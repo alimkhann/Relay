@@ -12,6 +12,12 @@ reviews:
     - "!**/*.log"
     - "!**/.superpowers/**"
     - "!pnpm-lock.yaml"
+    - "!apps/extension/**"
+    - "!**/*.test.ts"
+    - "!**/*.test.tsx"
+    - "!tests/**"
+    - "!docs/**"
+    - "!apps/web/src/app/(marketing)/**"
   auto_review:
     enabled: true
     drafts: false
