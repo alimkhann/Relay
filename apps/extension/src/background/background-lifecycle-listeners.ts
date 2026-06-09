@@ -243,9 +243,11 @@ chrome.tabs.onRemoved.addListener((tabId: number) => {
 // A periodic alarm survives suspension (Chrome wakes the SW to fire it) and
 // re-syncs the active tab. `syncTabRemoteState` does its own cache-age skip, so
 // this is a no-op (no network/DB call) whenever the cache is still fresh.
+// 2 min keeps SW wake cost low; cache TTL is 5–10 min so finer granularity
+// would only burn wake-ups without surfacing data any sooner.
 const RESYNC_ALARM = "relay-resync-active-tab";
 try {
-  chrome.alarms?.create(RESYNC_ALARM, { periodInMinutes: 1 });
+  chrome.alarms?.create(RESYNC_ALARM, { periodInMinutes: 2 });
 } catch (cause) {
   console.warn("[relay] alarms.create failed", cause);
 }

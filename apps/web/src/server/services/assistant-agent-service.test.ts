@@ -502,6 +502,66 @@ describe("runAssistantTurn confirmation guard (A2 regression)", () => {
     ).toBe(false)
   })
 
+  it("keeps tools available for a pronoun follow-up via prior tool activity", async () => {
+    // A continuation with no write verb AND no Relay noun ("and the other one
+    // too") must still get tools when the chat already has tool activity — the
+    // hasPriorToolActivity branch. Without it the turn would be tool-stripped.
+    const priorAssistant = {
+      id: "a1",
+      chatId: "c1",
+      userId: "u1",
+      role: "assistant" as const,
+      parentId: null,
+      content: "Created the decision.",
+      toolName: null,
+      toolPayload: {
+        actionResults: [{ tool: "add_memory", action: "created", entity: "memory item", count: 1 }]
+      },
+      createdAt: "2026-06-09T00:00:00Z"
+    }
+    mocks.createRepositoryBundle.mockReset().mockReturnValue({
+      assistantChats: {
+        getById: vi.fn(async () => ({ id: "c1", userId: "u1", projectId: "p1", surface: "dashboard", title: "t" })),
+        create: vi.fn(),
+        touch: vi.fn(async () => {})
+      },
+      assistantMessages: {
+        listByChat: vi.fn(async () => [priorAssistant]),
+        create: vi.fn(async () => ({ id: "action-1" })),
+        updateToolPayload: vi.fn(async () => {})
+      },
+      assistantAttachments: { listByIds: vi.fn(async () => []) }
+    })
+    mocks.runGeminiAgentStep
+      .mockResolvedValueOnce({
+        text: "",
+        functionCalls: [{ name: "add_memory", args: { type: "decision", content: "other" } }],
+        groundingChunks: [],
+        tokenUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+      })
+      .mockResolvedValueOnce({
+        text: "Added the other one too.",
+        functionCalls: [],
+        groundingChunks: [],
+        tokenUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+      })
+    mocks.executeAssistantTool.mockResolvedValue({
+      modelResponse: { result: "saved" },
+      actionResult: { tool: "add_memory", action: "created", entity: "memory item", count: 1 }
+    })
+
+    await collect({
+      message: "and the other one too",
+      surface: "dashboard",
+      chatId: "c1",
+      parentId: "a1",
+      projectId: "p1"
+    } as SendAssistantMessageInput)
+
+    // The continuation got the full tool set despite no write verb / Relay noun.
+    expect(mocks.runGeminiAgentStep.mock.calls[0]?.[0]?.tools?.length ?? 0).toBeGreaterThan(0)
+  })
+
   it("does not repeat an identical failing tool call within a turn", async () => {
     mocks.runGeminiAgentStep
       .mockResolvedValueOnce({
@@ -727,6 +787,14 @@ describe("runAssistantTurn web search", () => {
     expect(classifyAssistantActionQuota("Help me plan a project task")).toBeNull()
     expect(classifyAssistantActionQuota("What are my saved Relay tasks?")).toBe("read")
     expect(classifyAssistantActionQuota("Save this decision to my project")).toBe("write")
+  })
+
+  it("charges pronoun write follow-ups but not bare write-verb chatter", () => {
+    // Pronoun referencing a prior item → real write.
+    expect(classifyAssistantActionQuota("rename it to test2")).toBe("write")
+    expect(classifyAssistantActionQuota("delete it")).toBe("write")
+    // Write verb with no Relay target → not charged.
+    expect(classifyAssistantActionQuota("add some detail to your answer")).toBeNull()
   })
 
   it("persists a manual compact checkpoint without calling the model", async () => {

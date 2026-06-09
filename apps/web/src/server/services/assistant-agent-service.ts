@@ -226,14 +226,26 @@ function wantsWriteTools(message: string): boolean {
   )
 }
 
+/** A pronoun pointing at something already in the conversation ("rename it",
+ * "delete that", "archive this one"). Lets a noun-less write follow-up count as
+ * a real write for quota without over-charging casual write-verb chatter like
+ * "add some detail to your answer". */
+function referencesExistingItem(message: string): boolean {
+  return /\b(it|that|this|them|those|these|one|here)\b/i.test(message)
+}
+
 export function classifyAssistantActionQuota(
   message: string,
   actionDecision?: { decision: "allow" | "decline" } | null,
 ): "read" | "write" | null {
   if (actionDecision?.decision === "decline") return null
   if (actionDecision?.decision === "allow") return "write"
-  // Explicit write intent counts even without a Relay noun (e.g. "rename it").
-  if (wantsWriteTools(message)) return "write"
+  // Write intent counts when it targets Relay — either by noun ("add a
+  // decision") or a pronoun referencing a prior item ("rename it"). Bare
+  // write verbs with no Relay target ("add some detail") are not charged.
+  if (wantsWriteTools(message) && (wantsRelayTools(message) || referencesExistingItem(message))) {
+    return "write"
+  }
   if (!wantsRelayTools(message)) return null
   return "read"
 }
@@ -701,11 +713,13 @@ export async function* runAssistantTurn(
     allowingAction: input.actionDecision?.decision === "allow",
     hasPriorToolActivity
   })
-  // Fetch the workspace lookup whenever the turn may act on Relay (tools
-  // selected) or explicitly references it — so noun-less write follow-ups can
-  // resolve "it" to the right item. Pure direct/web-search turns skip it.
+  // Fetch the workspace lookup only when tools are actually offered (so a
+  // noun-less write follow-up can resolve "it" to the right item). A
+  // wantsRelayTools turn always selects at least the read-only tools, so this
+  // covers it without a second eval. Pure direct/web-search turns skip the MCP
+  // round-trip entirely.
   const scopeContext =
-    selectedTools.length > 0 || wantsRelayTools(input.message)
+    selectedTools.length > 0
       ? await assistantScopeContext(client, viewer.userId)
       : "No Relay workspace lookup was needed for this direct reply."
   const shouldDirectWebSearch =
