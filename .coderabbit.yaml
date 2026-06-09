@@ -1,4 +1,5 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Scoped pass — restored by scripts/coderabbit-restore-config.sh
 language: en-US
 enable_free_tier: true
 reviews:
@@ -6,32 +7,16 @@ reviews:
   poem: false
   review_status: true
   path_filters:
+    - "apps/extension/**"
     - "!**/*.png"
     - "!**/*.jpg"
     - "!**/*.jpeg"
     - "!**/*.log"
     - "!**/.superpowers/**"
     - "!pnpm-lock.yaml"
-    - "!apps/extension/**"
     - "!**/*.test.ts"
     - "!**/*.test.tsx"
     - "!tests/**"
-    - "!docs/**"
-    - "!apps/web/src/app/(marketing)/**"
-    - "!apps/web/src/app/(auth)/**"
-    - "!apps/web/src/app/docs/**"
-    - "!apps/web/src/app/privacy/**"
-    - "!apps/web/src/components/ai-elements/**"
-    - "!apps/web/src/components/settings/**"
-    - "!apps/web/src/components/ui/**"
-    - "!apps/web/src/features/brief/**"
-    - "!apps/web/src/app/(workspace)/sources/**"
-    - "!apps/web/src/app/(workspace)/chat/**"
-    - "!patches/**"
-    - "!packages/cli/**"
-    - "!apps/web/next-env.d.ts"
-    - "!CLAUDE.md"
-    - "!DEPLOYMENT.md"
   auto_review:
     enabled: true
     drafts: false
