@@ -259,7 +259,7 @@ export function MemoryColumnBoard({
                         setDrafts((d) => ({ ...d, [column.key]: e.target.value }))
                       }
                       onKeyDown={(e) => {
-                        if (e.key === "Enter" && draft.trim()) {
+                        if (e.key === "Enter" && !pending && draft.trim()) {
                           column.onAdd?.(draft.trim());
                           setDrafts((d) => ({ ...d, [column.key]: "" }));
                         }

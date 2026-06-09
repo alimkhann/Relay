@@ -52,6 +52,8 @@ function PreviewItem({
   item: AssistantActionItem
   deleted?: boolean
 }) {
+  const lifecycle = item.lifecycle ? LIFECYCLE_PILL[item.lifecycle] : null
+
   return (
     <div
       className={cn(
@@ -62,6 +64,11 @@ function PreviewItem({
       <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-[var(--relay-muted)]">
         {item.type ? <span>{item.type}</span> : null}
         {item.personalCategory ? <span>· {item.personalCategory}</span> : null}
+        {lifecycle ? (
+          <span className={cn("rounded-full px-1.5 py-0.5 font-medium normal-case tracking-normal", lifecycle.classes)}>
+            {lifecycle.label}
+          </span>
+        ) : null}
       </div>
       <p
         className={cn(
@@ -81,7 +88,10 @@ function previewItemsEqual(
 ): boolean {
   return (
     (before.content ?? before.label) === (after.content ?? after.label) &&
-    (before.title ?? "") === (after.title ?? "")
+    (before.title ?? "") === (after.title ?? "") &&
+    (before.lifecycle ?? null) === (after.lifecycle ?? null) &&
+    (before.type ?? null) === (after.type ?? null) &&
+    (before.personalCategory ?? null) === (after.personalCategory ?? null)
   )
 }
 

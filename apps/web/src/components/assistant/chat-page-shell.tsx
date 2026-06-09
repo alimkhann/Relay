@@ -156,7 +156,7 @@ export function ChatPageShell({
                             setDraftTitle(c.title)
                           }}
                           aria-label="Rename"
-                          className="rounded-[var(--relay-radius-sm)] p-1 text-[var(--relay-muted)] opacity-100 transition-opacity hover:bg-[var(--relay-soft-hover)] hover:text-[var(--relay-ink)] sm:opacity-0 sm:group-hover:opacity-100"
+                          className="rounded-[var(--relay-radius-sm)] p-1 text-[var(--relay-muted)] opacity-100 transition-opacity hover:bg-[var(--relay-soft-hover)] hover:text-[var(--relay-ink)] focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
                         >
                           <Pencil className="size-3" />
                         </button>
@@ -164,7 +164,7 @@ export function ChatPageShell({
                           type="button"
                           onClick={() => void remove(c.id, c.title)}
                           aria-label="Delete"
-                          className="rounded-[var(--relay-radius-sm)] p-1 text-[var(--relay-muted)] opacity-100 transition-opacity hover:bg-[var(--relay-soft-hover)] hover:text-[var(--relay-danger)] sm:opacity-0 sm:group-hover:opacity-100"
+                          className="rounded-[var(--relay-radius-sm)] p-1 text-[var(--relay-muted)] opacity-100 transition-opacity hover:bg-[var(--relay-soft-hover)] hover:text-[var(--relay-danger)] focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
                         >
                           <Trash2 className="size-3" />
                         </button>

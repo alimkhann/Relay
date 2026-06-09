@@ -423,6 +423,8 @@ export function useAssistantChat(
   // LLM context window.
   const runHygieneCommand = useCallback(
     async (cmd: ParsedAssistantCommand, rawText: string) => {
+      if (streaming) return
+      setStreaming(true)
       setError(null)
       const userTmp = tmp()
       const asstTmp = tmp()
@@ -523,9 +525,11 @@ export function useAssistantChat(
         setOptimistic((prev) =>
           prev.map((m) => (m.id === asstTmp ? { ...m, streaming: false, content: msg } : m)),
         )
+      } finally {
+        setStreaming(false)
       }
     },
-    [leafId],
+    [leafId, streaming],
   )
 
   const send = useCallback(
@@ -772,6 +776,7 @@ export function useAssistantChat(
         {
           replaceMessage: {
             ...pendingMsg,
+            pending: pendingMsg.pending?.id === action.id ? undefined : pendingMsg.pending,
             pendingActions: pendingMsg.pendingActions.filter((pa) => pa.id !== action.id),
             streaming: true
           }

@@ -366,6 +366,8 @@ export function ChatView({
                   suggestion={s}
                   onClick={(text) => {
                     send(text, capturePageContext(), { webSearch })
+                    setWebSearch(false)
+                    setComposerMenuOpen(false)
                   }}
                 />
               ))}

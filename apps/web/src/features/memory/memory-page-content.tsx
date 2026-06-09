@@ -78,6 +78,10 @@ export function MemoryPageContent({
     setLocalTab(urlTab);
   }, [urlTab]);
 
+  useEffect(() => {
+    setPersonalTab(personalUrlTab);
+  }, [personalUrlTab]);
+
   const activeTab = localTab;
 
   const tabCounts = useMemo(() => {

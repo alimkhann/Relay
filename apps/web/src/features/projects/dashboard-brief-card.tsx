@@ -45,8 +45,14 @@ export function DashboardBriefCard({
             role="link"
             tabIndex={0}
             className="group cursor-pointer"
-            onClick={() => router.push(briefUrl)}
-            onKeyDown={(e) => { if (e.key === "Enter") router.push(briefUrl) }}
+            onClick={(event) => {
+              const target = event.target as HTMLElement
+              if (target.closest("a")) return
+              router.push(briefUrl)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !(e.target as HTMLElement).closest("a")) router.push(briefUrl)
+            }}
           >
             <Markdown
               content={latest.content}
