@@ -19,6 +19,7 @@ import type { MemoryItemDto, MemoryItemType, SourceSurface } from "@relay/shared
 import { PERSONAL_CATEGORY_META, personalCategoryFromMetadata } from "@relay/shared/constants/memory-taxonomy"
 
 import { cn } from "@/lib/cn"
+import { safeHttpUrl } from "@/lib/safe-http-url"
 import { Markdown } from "@/components/markdown"
 import { formatRelativeTime } from "@/features/activity/activity-feed"
 
@@ -134,6 +135,7 @@ export function MemoryItemCard({
   // (the item type stays 'note'). When present it drives the accent + label.
   const personalCategory = personalCategoryFromMetadata(item.metadata)
   const personalMeta = personalCategory ? PERSONAL_CATEGORY_META[personalCategory] : null
+  const sourceHref = safeHttpUrl(item.sourceUrl)
   const accent = accentClass ?? TYPE_ACCENT[item.type] ?? "bg-zinc-400"
   const created = item.capturedAt ?? item.updatedAt
   const wasEdited =
@@ -211,11 +213,11 @@ export function MemoryItemCard({
               <span className="text-amber-500">Fading</span>
             </>
           )}
-          {item.sourceUrl && (
+          {sourceHref && (
             <>
               <span>·</span>
               <a
-                href={item.sourceUrl}
+                href={sourceHref}
                 target="_blank"
                 rel="noreferrer"
                 className="text-[var(--relay-accent-blue)] hover:underline"

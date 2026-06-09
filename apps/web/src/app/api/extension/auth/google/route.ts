@@ -11,6 +11,7 @@ import { getResolvedOnboardingStateForUser } from "@/server/services/onboarding-
 import { ensurePersonalProjectForUser, listProjectsForUser } from "@/server/services/project-service"
 import { getUserSettings } from "@/server/services/settings-service"
 import { createExtensionTokenForUser } from "@/server/services/extension-token-service"
+import { resolveExtensionSelectedProjectId } from "@/server/services/extension-project-selection"
 
 function withRequestId(response: NextResponse) {
   const requestId = getRequestContext()?.requestId ?? createFlowId("req")
@@ -116,11 +117,7 @@ export async function POST(request: Request) {
       ])
 
       const appUrl = process.env.NEXT_PUBLIC_RELAY_APP_URL ?? "http://localhost:3000"
-      const firstSelectable = projects.find((project) => project.kind !== "personal")
-      const selectedProjectId =
-        onboarding.status === "completed"
-          ? onboarding.completedProjectId ?? firstSelectable?.id ?? ""
-          : ""
+      const selectedProjectId = resolveExtensionSelectedProjectId(projects, onboarding)
 
       await logServerEvent({
         level: "info",

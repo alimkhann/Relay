@@ -10,13 +10,13 @@ export const POST = withApiAuth(async (request: Request, { params }: { params: P
   const viewer = await resolveViewer(request.headers.get("authorization"))
   const { id } = await params
   requireViewerProject(viewer, id, "memory:write")
+  const parsed = createExternalSourceSchema.parse(await request.json())
   if (viewer.mode === "mcp") {
     await consumeMcpWriteQuota(viewer.userId)
     await consumeExternalSourceMcpActionQuota(viewer.userId)
   } else {
     await consumeActionQuota(viewer.userId, "write")
   }
-  const parsed = createExternalSourceSchema.parse(await request.json())
   const detail = await createExternalSource(viewer.userId, {
     ...parsed,
     projectId: id,

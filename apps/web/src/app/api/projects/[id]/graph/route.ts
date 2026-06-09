@@ -4,6 +4,7 @@ import type { ProjectGraphDensity } from "@relay/shared"
 import { withApiAuth } from "@/server/http/api-route"
 import { getCachedProjectGraphForUser } from "@/server/cache/read-model-cache"
 import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
+import { consumeMcpReadQuota } from "@/server/services/entitlement-service"
 
 function graphDensity(value: string | null): ProjectGraphDensity {
   return value === "full" ? "full" : "compact"
@@ -17,6 +18,9 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
   const viewer = await resolveViewer(request.headers.get("authorization"))
   const { id } = await params
   requireViewerProject(viewer, id, "memory:read")
+  if (viewer.mode === "mcp") {
+    await consumeMcpReadQuota(viewer.userId)
+  }
 
   const url = new URL(request.url)
   const snapshot = await getCachedProjectGraphForUser(viewer.userId, id, {

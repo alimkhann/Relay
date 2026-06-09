@@ -16,6 +16,7 @@ import { getResolvedOnboardingStateForUser } from "@/server/services/onboarding-
 import { ensurePersonalProjectForUser, listProjectsForUser } from "@/server/services/project-service"
 import { getUserSettings } from "@/server/services/settings-service"
 import { createExtensionTokenForUser } from "@/server/services/extension-token-service"
+import { resolveExtensionSelectedProjectId } from "@/server/services/extension-project-selection"
 import { sendEmailVerificationOtp } from "@/server/services/email-service"
 
 const EMAIL_OTP_TTL_SQL = "5 minutes"
@@ -304,11 +305,7 @@ export async function POST(request: Request) {
         getResolvedOnboardingStateForUser(authUser.id),
       ])
 
-      const firstSelectable = projects.find((project) => project.kind !== "personal")
-      const selectedProjectId =
-        onboarding.status === "completed"
-          ? onboarding.completedProjectId ?? firstSelectable?.id ?? ""
-          : ""
+      const selectedProjectId = resolveExtensionSelectedProjectId(projects, onboarding)
 
       await logServerEvent({
         level: "info",

@@ -32,10 +32,13 @@ export function WorkspaceSidebarShell({
   }, [])
   // Default to the first non-personal project — the personal project is
   // selectable in the switcher but is never the implicit current project.
+  const requestedProjectId = searchParams.get("project") ?? cookieProjectId
   const currentProjectId =
-    searchParams.get("project") ??
-    cookieProjectId ??
-    projects.find((p) => p.kind !== "personal")?.id
+    (requestedProjectId && projects.some((p) => p.id === requestedProjectId)
+      ? requestedProjectId
+      : undefined) ??
+    projects.find((p) => p.kind !== "personal")?.id ??
+    projects[0]?.id
   const { setMobileOpen } = useSidebar()
 
   return (

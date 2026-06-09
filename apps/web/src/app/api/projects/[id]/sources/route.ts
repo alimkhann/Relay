@@ -5,7 +5,7 @@ import { withApiAuth } from "@/server/http/api-route"
 import { runAfterResponse } from "@/server/http/after"
 import { BadRequestError } from "@/server/http/errors"
 import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
-import { consumeActionQuota, consumeMcpReadQuota } from "@/server/services/entitlement-service"
+import { consumeActionQuota, consumeMcpReadQuota, consumeMcpWriteQuota } from "@/server/services/entitlement-service"
 import { createSourceFromUpload, processUploadedSource } from "@/server/services/source-service"
 
 export const GET = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
@@ -21,11 +21,15 @@ export const POST = withApiAuth(async (request: Request, { params }: { params: P
   const viewer = await resolveViewer(request.headers.get("authorization"))
   const { id } = await params
   requireViewerProject(viewer, id, "memory:write")
-  await consumeActionQuota(viewer.userId, "write")
   const formData = await request.formData()
   const file = formData.get("file")
   if (!file || typeof file !== "object" || !("arrayBuffer" in file)) {
     throw new BadRequestError("A source file is required.")
+  }
+  if (viewer.mode === "mcp") {
+    await consumeMcpWriteQuota(viewer.userId)
+  } else {
+    await consumeActionQuota(viewer.userId, "write")
   }
   const upload = file as File
   const { detail, processing } = await createSourceFromUpload(viewer.userId, {
