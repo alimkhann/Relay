@@ -21,7 +21,7 @@ export default function PrivacyPage() {
           Privacy Policy
         </h1>
         <p className="mt-2 text-sm text-gray-400">
-          Last updated: June 7, 2026
+          Last updated: June 10, 2026
         </p>
 
         <div className="mt-10 space-y-8 text-[15px] leading-relaxed text-gray-600">
@@ -103,7 +103,7 @@ export default function PrivacyPage() {
               </p>
               <p>
                 <strong className="text-gray-900">Extension Data:</strong>{" "}
-                Relay Chrome extension 0.5.1 collects and stores only the
+                Relay Chrome extension 0.6.0 collects and stores only the
                 extension data needed to connect your browser to your Relay
                 account: device tokens, connection status, capture state, and
                 extension preferences. This data is stored locally in your
@@ -195,6 +195,18 @@ export default function PrivacyPage() {
                   <strong className="text-gray-900">scripting:</strong> injects
                   the content script that extracts chat turns on supported AI
                   chat sites.
+                </li>
+                <li>
+                  <strong className="text-gray-900">alarms:</strong> schedules
+                  one low-frequency background timer (every 2 minutes) so Relay
+                  can refresh your project context in the side panel after
+                  Chrome suspends the extension service worker. When the alarm
+                  fires, Relay may fetch updated project state for the active
+                  supported AI tab from your Relay account over HTTPS. If the
+                  local cache is still fresh, no network request is made. The
+                  alarm does not read new page content, track browsing history,
+                  or collect data beyond what is already described for tabs and
+                  activeTab when capture is enabled.
                 </li>
                 <li>
                   <strong className="text-gray-900">contextMenus:</strong>{" "}

@@ -432,6 +432,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const lastActiveStateRefreshAt = useRef(0);
   const lastLocalPreviewMutationAt = useRef(0);
   const userSettingsLoadedAt = useRef(0);
+  const settingsMutationGeneration = useRef(0);
   const billingLoadedAt = useRef(0);
 
   useEffect(() => {
@@ -828,8 +829,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     ) {
       return;
     }
+    const mutationGen = settingsMutationGeneration.current;
     try {
       const response = await relayFetch("/api/settings");
+      if (mutationGen !== settingsMutationGeneration.current) return;
       if (!response.ok) return;
       const data = (await response.json()) as {
         settings?: UserSettingsRow["settings"]
@@ -874,6 +877,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   async function patchUserSettings(patch: Partial<UserSettingsRow["settings"]>) {
     if (userSettingsBusy) return;
     const previous = userSettings;
+    const opId = ++settingsMutationGeneration.current;
     setUserSettings((current) => (current ? { ...current, ...patch } : current));
     setUserSettingsBusy(true);
     try {
@@ -882,13 +886,23 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(patch),
       });
+      if (opId !== settingsMutationGeneration.current) return;
       if (!response.ok) {
         setUserSettings(previous);
+        if (patch.hideAskRelayExtension !== undefined) {
+          syncHideAskRelayExtension(Boolean(previous?.hideAskRelayExtension));
+        }
         setStatus(await readErrorMessage(response, "Could not save settings."));
         return;
       }
       const data = (await response.json()) as { settings?: UserSettingsRow["settings"] };
-      if (data.settings) setUserSettings(data.settings);
+      if (data.settings) {
+        setUserSettings(data.settings);
+        userSettingsLoadedAt.current = Date.now();
+        if (patch.hideAskRelayExtension !== undefined) {
+          syncHideAskRelayExtension(Boolean(data.settings.hideAskRelayExtension));
+        }
+      }
       if (patch.autoCapture !== undefined) {
         logExtensionEvent({
           level: "info",
@@ -905,10 +919,16 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         await refreshLocalSession();
       }
     } catch (cause) {
+      if (opId !== settingsMutationGeneration.current) return;
       setUserSettings(previous);
+      if (patch.hideAskRelayExtension !== undefined) {
+        syncHideAskRelayExtension(Boolean(previous?.hideAskRelayExtension));
+      }
       setStatus(cause instanceof Error ? cause.message : "Could not save settings.");
     } finally {
-      setUserSettingsBusy(false);
+      if (opId === settingsMutationGeneration.current) {
+        setUserSettingsBusy(false);
+      }
     }
   }
 
