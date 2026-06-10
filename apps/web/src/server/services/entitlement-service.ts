@@ -350,6 +350,11 @@ export async function consumeExtensionMemoryWriteQuota(userId: string, amount = 
   return consumeActionQuota(userId, "write", amount)
 }
 
+// Extension brief insert/fetch uses the same canonical read quota as MCP reads.
+export async function consumeExtensionReadQuota(userId: string, mode: "basic" | "deep" = "basic") {
+  return consumeMcpReadQuota(userId, mode)
+}
+
 // Ask Relay. Free plan is a small monthly taste then a hard paywall; paid
 // plans get a generous daily allowance. Token spend is additionally capped
 // monthly so AI cost stays bounded even for paid plans.

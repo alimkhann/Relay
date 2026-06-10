@@ -4,6 +4,7 @@ const {
   withApiAuthMock,
   resolveViewerMock,
   requireViewerProjectMock,
+  consumeExtensionReadQuotaMock,
   consumeMcpReadQuotaMock,
   consumeMcpWriteQuotaMock,
   generateBootstrapForProjectMock,
@@ -15,6 +16,7 @@ const {
   withApiAuthMock: vi.fn((handler: (request: Request, context: { params: Promise<{ id: string }> }) => Promise<Response>) => handler),
   resolveViewerMock: vi.fn(),
   requireViewerProjectMock: vi.fn(),
+  consumeExtensionReadQuotaMock: vi.fn(),
   consumeMcpReadQuotaMock: vi.fn(),
   consumeMcpWriteQuotaMock: vi.fn(),
   generateBootstrapForProjectMock: vi.fn(),
@@ -26,7 +28,11 @@ const {
 
 vi.mock("@/server/http/api-route", () => ({ withApiAuth: withApiAuthMock }))
 vi.mock("@/server/policies/viewer", () => ({ resolveViewer: resolveViewerMock, requireViewerProject: requireViewerProjectMock }))
-vi.mock("@/server/services/entitlement-service", () => ({ consumeMcpReadQuota: consumeMcpReadQuotaMock, consumeMcpWriteQuota: consumeMcpWriteQuotaMock }))
+vi.mock("@/server/services/entitlement-service", () => ({
+  consumeExtensionReadQuota: consumeExtensionReadQuotaMock,
+  consumeMcpReadQuota: consumeMcpReadQuotaMock,
+  consumeMcpWriteQuota: consumeMcpWriteQuotaMock,
+}))
 vi.mock("@/server/services/bootstrap-service", () => ({ generateBootstrapForProject: generateBootstrapForProjectMock }))
 vi.mock("@/server/services/sync-mark-service", () => ({ recordSyncMarkForUser: recordSyncMarkForUserMock }))
 vi.mock("@/server/services/project-governance-service", () => ({
@@ -40,6 +46,7 @@ import { DELETE, PATCH, POST } from "./route"
 beforeEach(() => {
   resolveViewerMock.mockReset()
   requireViewerProjectMock.mockReset()
+  consumeExtensionReadQuotaMock.mockReset()
   consumeMcpReadQuotaMock.mockReset()
   consumeMcpWriteQuotaMock.mockReset()
   generateBootstrapForProjectMock.mockReset()
@@ -64,6 +71,32 @@ describe("POST /api/projects/[id]/bootstrap", () => {
     )
 
     expect(consumeMcpReadQuotaMock).toHaveBeenCalledWith("user-1", "deep")
+  })
+
+  it("charges extension read quota for brief insert", async () => {
+    resolveViewerMock.mockResolvedValue({ userId: "user-1", mode: "extension" })
+    generateBootstrapForProjectMock.mockResolvedValue({
+      status: "ready",
+      packet: { id: "pkt-1", content: "Brief body" },
+      reason: null,
+      resolvedTargetProfileKey: "chatgpt_planning",
+      stateStatus: {},
+    })
+
+    await POST(
+      new Request("http://relay.test/api/projects/proj-1/bootstrap", {
+        method: "POST",
+        body: JSON.stringify({
+          targetProfileKey: "chatgpt_planning",
+          kind: "fresh_chat_bootstrap",
+          packetMode: "chat_smart_delta",
+        }),
+      }),
+      { params: Promise.resolve({ id: "proj-1" }) },
+    )
+
+    expect(consumeExtensionReadQuotaMock).toHaveBeenCalledWith("user-1", "basic")
+    expect(consumeMcpReadQuotaMock).not.toHaveBeenCalled()
   })
 
   it("charges a basic MCP read for quick continuity packets", async () => {

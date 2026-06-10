@@ -6,7 +6,11 @@ import { withApiAuth } from "@/server/http/api-route"
 import { invalidateProjectCache } from "@/server/cache/invalidation"
 import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
 import { generateBootstrapForProject, listBootstrapPacketsForProject } from "@/server/services/bootstrap-service"
-import { consumeMcpReadQuota, consumeMcpWriteQuota } from "@/server/services/entitlement-service"
+import {
+  consumeExtensionReadQuota,
+  consumeMcpReadQuota,
+  consumeMcpWriteQuota,
+} from "@/server/services/entitlement-service"
 import { clearProjectBriefs, deleteProjectBrief, editProjectBrief } from "@/server/services/project-governance-service"
 import { recordSyncMarkForUser } from "@/server/services/sync-mark-service"
 
@@ -27,6 +31,8 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
   requireViewerProject(viewer, id, "brief:read")
   if (viewer.mode === "mcp") {
     await consumeMcpReadQuota(viewer.userId)
+  } else if (viewer.mode === "extension") {
+    await consumeExtensionReadQuota(viewer.userId)
   }
 
   const { searchParams } = new URL(request.url)
@@ -46,9 +52,11 @@ export const POST = withApiAuth(async (request: Request, { params }: { params: P
   requireViewerProject(viewer, id, "brief:read")
   const input = await request.json()
   const parsed = bootstrapRequestSchema.parse(input)
+  const readMode = parsed.deep || parsed.packetMode === "agent_full_bootstrap" ? "deep" : "basic"
   if (viewer.mode === "mcp") {
-    const readMode = parsed.deep || parsed.packetMode === "agent_full_bootstrap" ? "deep" : "basic"
     await consumeMcpReadQuota(viewer.userId, readMode)
+  } else if (viewer.mode === "extension") {
+    await consumeExtensionReadQuota(viewer.userId, readMode)
   }
   const result = await generateBootstrapForProject(viewer.userId, id, input)
   if (result.status === "ready" && input && typeof input === "object" && "syncSurface" in input && typeof input.syncSurface === "string") {
