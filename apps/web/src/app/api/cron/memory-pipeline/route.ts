@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
 
-// A FULL tick with Gemini extractors runs ~3 min over a 25-item batch
-// (HANDOFF §7 drain stats). Default Vercel timeout is too tight.
-export const maxDuration = 300
+// Drain ticks are bounded by the scheduler (2 jobs / 2.5s). Vercel Hobby
+// caps serverless maxDuration at 60s — enough for re-enqueue + one drain pass.
+export const maxDuration = 60
 
 import { createWorkerRepositoryBundle } from "@relay/db"
 

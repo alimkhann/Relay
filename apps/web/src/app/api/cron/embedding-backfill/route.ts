@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
 
-// Operator runs this in a tight loop (50 rows × N calls) during cutover.
-// Each call can take ~70s for the full 3-table sweep.
-export const maxDuration = 300
+// Operator runs this in a tight loop (15 rows × N calls) during cutover.
+// Vercel Hobby caps serverless maxDuration at 60s; keep each sweep under that.
+export const maxDuration = 60
 
 import { createRepositoryBundle, createWorkerRepositoryBundle } from "@relay/db"
 
@@ -29,7 +29,7 @@ import {
  *
  * Query params:
  *   ?table = memory_items | observations | canonical_entities | source_chunks (default: all)
- *   ?limit = max rows per table per call (default 50, max 500)
+ *   ?limit = max rows per table per call (default 15, max 500)
  *   ?includeCanonicalEntities=true opt-in when table=all
  *   ?cursor is accepted for operator loops and echoed back; table-specific
  *    keyset pagination is used where direct route queries own the selection.
@@ -235,7 +235,7 @@ async function handle(request: Request): Promise<Response> {
   }
   const tableParam = (rawTable ?? "all") as TableKey | "all"
   const limit = Math.min(
-    Math.max(Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 1),
+    Math.max(Number.parseInt(url.searchParams.get("limit") ?? "15", 10) || 15, 1),
     500,
   )
 
