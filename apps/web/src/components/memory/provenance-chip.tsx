@@ -59,6 +59,10 @@ const surfaceMap: Record<SourceSurface, SurfaceMeta> = {
     label: "Extension",
     classes: "bg-teal-500/10 text-teal-600",
   },
+  manual: {
+    label: "Manual",
+    classes: "bg-zinc-500/10 text-zinc-600",
+  },
 };
 
 /* ─── Relative time helper ─── */
@@ -85,6 +89,8 @@ interface ProvenanceChipProps {
   className?: string;
   /** Compact mode hides the timestamp */
   compact?: boolean;
+  /** AI-derived from project state (no capture surface) → labelled "Derived". */
+  derived?: boolean;
 }
 
 export function ProvenanceChip({
@@ -93,11 +99,15 @@ export function ProvenanceChip({
   capturedAt,
   className,
   compact = false,
+  derived = false,
 }: ProvenanceChipProps) {
-  if (!sourceSurface) return null;
-
-  const meta = surfaceMap[sourceSurface];
-  if (!meta) return null;
+  // Derived items aggregate from session digests. When we know the project's
+  // predominant capture platform, show that (it's where the context came from);
+  // only fall back to a bare "Derived" when no surface is recoverable.
+  const meta =
+    derived && !sourceSurface
+      ? { label: "Derived", classes: surfaceMap.manual.classes }
+      : (sourceSurface ? surfaceMap[sourceSurface] : null) ?? surfaceMap.manual;
 
   const chip = (
     <span

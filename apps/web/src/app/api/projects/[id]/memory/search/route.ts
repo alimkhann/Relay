@@ -3,9 +3,18 @@ import { NextResponse } from "next/server"
 import { withApiAuth } from "@/server/http/api-route"
 import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
 import { consumeMcpReadQuota } from "@/server/services/entitlement-service"
-import { searchMemoryItems } from "@/server/services/memory-service"
+import { getProjectContext, searchMemoryItems } from "@/server/services/memory-service"
 
 export const maxDuration = 60
+
+function parseLifecycleStates(value: string | null): string[] | undefined {
+  if (!value) return undefined
+  const states = value
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => ["active", "cooling", "archived"].includes(s))
+  return states.length > 0 ? states : undefined
+}
 
 export const GET = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   const viewer = await resolveViewer(request.headers.get("authorization"))
@@ -25,7 +34,42 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
   const tagsParam = url.searchParams.get("tags")
   const types = typesParam ? typesParam.split(",").filter(Boolean) : undefined
   const tags = tagsParam ? tagsParam.split(",").filter(Boolean) : undefined
+  const lifecycleStates = parseLifecycleStates(url.searchParams.get("lifecycle"))
+  const includeArchived = url.searchParams.get("includeArchived") === "true"
+  const wantObservations = url.searchParams.get("observations") === "true"
+  const wantEntities = url.searchParams.get("entities") === "true"
 
-  const { memoryResults, canonResults, queryAnalysis, evidenceTable, currentPreviousHint, temporalHint } = await searchMemoryItems(viewer.userId, id, query, { types, tags })
-  return NextResponse.json({ results: memoryResults, canon: canonResults, queryAnalysis, evidenceTable, currentPreviousHint, temporalHint })
+  const { memoryResults, canonResults, queryAnalysis, evidenceTable, currentPreviousHint, temporalHint } =
+    await searchMemoryItems(viewer.userId, id, query, { types, tags, lifecycleStates, includeArchived })
+
+  // Memory v2 channels: attach observations + entity-graph snapshot when
+  // requested. Non-fatal if v2 tables are absent.
+  let observations: unknown[] = []
+  let entities: unknown = null
+  if (wantObservations || wantEntities) {
+    try {
+      const aux = await getProjectContext(viewer.userId, id, {
+        query,
+        includeObservations: wantObservations,
+        includeEntities: wantEntities,
+        lifecycleStates,
+        includeArchived,
+      })
+      observations = aux.observations
+      entities = aux.entities
+    } catch {
+      // v2 tables not present in this env yet.
+    }
+  }
+
+  return NextResponse.json({
+    results: memoryResults,
+    canon: canonResults,
+    queryAnalysis,
+    evidenceTable,
+    currentPreviousHint,
+    temporalHint,
+    observations,
+    entities,
+  })
 })

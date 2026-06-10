@@ -3,15 +3,22 @@ import { sendAssistantMessageSchema, type AssistantStreamEvent } from "@relay/sh
 import { captureServerEvent } from "@/lib/telemetry/posthog-server"
 import { withApiAuth } from "@/server/http/api-route"
 import { rejectMcpViewer, resolveViewer } from "@/server/policies/viewer"
-import { runAssistantTurn } from "@/server/services/assistant-agent-service"
+import { classifyAssistantActionQuota, runAssistantTurn } from "@/server/services/assistant-agent-service"
 import {
   assertAssistantTokenBudget,
+  consumeActionQuota,
   consumeAssistantMessageQuota,
   consumeAssistantTokenQuota,
   resolveViewerEntitlements
 } from "@/server/services/entitlement-service"
 
 export const dynamic = "force-dynamic"
+
+// Rough blended $/1M tokens for ANALYTICS cost attribution only (not billing).
+const ASSISTANT_USD_PER_MTOK: Record<string, number> = {
+  "Gemini Flash": 0.3,
+  "Gemini Flash-Lite": 0.1
+}
 
 export const POST = withApiAuth(async (request: Request) => {
   const viewer = await resolveViewer(request.headers.get("authorization"))
@@ -25,15 +32,35 @@ export const POST = withApiAuth(async (request: Request) => {
   // (a confirmation resumes the turn and spends more tokens) before any work.
   await assertAssistantTokenBudget(viewer.userId)
 
-  // A confirmation continues an existing turn and is not a new billable message.
-  if (!input.confirmActionId) {
+  // Confirmations and declines resume an existing turn — not a new billable message.
+  const isTurnContinuation =
+    input.actionDecision?.decision === "allow" || input.actionDecision?.decision === "decline"
+  if (
+    input.message.trim().toLowerCase() !== "/compact" &&
+    !input.confirmActionId &&
+    !isTurnContinuation
+  ) {
     await consumeAssistantMessageQuota(viewer.userId)
+  }
+  const actionQuota = classifyAssistantActionQuota(input.message, input.actionDecision)
+  const shouldChargeActionQuota =
+    !input.confirmActionId && input.actionDecision?.decision !== "allow"
+  const actionCount =
+    input.actionDecision?.actionIds?.length ?? (input.actionDecision ? 1 : 0)
+  if (actionQuota && shouldChargeActionQuota && actionCount > 0) {
+    await consumeActionQuota(viewer.userId, actionQuota, actionCount)
   }
 
   captureServerEvent({
     event: "assistant_message_sent",
     distinctId: viewer.userId,
-    properties: { surface: input.surface, plan, webSearch: input.webSearch === true }
+    properties: {
+      surface: input.surface,
+      plan,
+      webSearch: input.webSearch === true,
+      intentRoute: actionQuota ?? (input.webSearch ? "web" : "direct"),
+      actionCount: input.actionDecision?.actionIds?.length ?? (input.actionDecision ? 1 : 0)
+    }
   })
 
   const encoder = new TextEncoder()
@@ -42,7 +69,15 @@ export const POST = withApiAuth(async (request: Request) => {
       let totalTokens = 0
       const send = (event: AssistantStreamEvent) => {
         if (event.type === "usage") totalTokens = event.totalTokens
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+        const outgoing =
+          event.type === "usage"
+            ? {
+                ...event,
+                maxContextTokens: 1_000_000,
+                model: actionQuota || input.webSearch ? "Gemini Flash" : "Gemini Flash-Lite"
+              }
+            : event
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(outgoing)}\n\n`))
       }
       try {
         for await (const event of runAssistantTurn(viewer, input, {
@@ -63,6 +98,16 @@ export const POST = withApiAuth(async (request: Request) => {
           // if the cap is exceeded.
           await consumeAssistantTokenQuota(viewer.userId, totalTokens).catch(() => {})
         }
+        captureServerEvent({
+          event: "assistant_turn_completed",
+          distinctId: viewer.userId,
+          properties: {
+            surface: input.surface,
+            plan,
+            totalTokens,
+            intentRoute: actionQuota ?? (input.webSearch ? "web" : "direct")
+          }
+        })
         controller.close()
       }
     }

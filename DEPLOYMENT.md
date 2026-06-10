@@ -74,3 +74,33 @@ Recommended options:
 - Vercel Cron calling a small internal route wrapper
 - GitHub Actions scheduled workflow with a protected secret
 - External scheduler hitting the endpoint over HTTPS
+
+## Memory v2 — cost-safe async pipeline
+
+Memory writes enqueue durable `memory_pipeline_jobs` and opportunistically drain a
+tiny bounded batch. The existing daily `/api/internal/jobs/cron` is the recovery
+backstop and processes only queued jobs plus projects marked due for hygiene.
+
+`/api/cron/memory-pipeline` is manual/operator-only. Do not schedule it at a fixed
+cadence: frequent wakeups prevent Neon scale-to-zero.
+
+Required env / secrets:
+
+| Where | Name | Notes |
+|---|---|---|
+| Vercel env | `CRON_SECRET` | Required in production. Cron returns 401 without `Authorization: Bearer <secret>`. |
+| Vercel env | `WORKER_DATABASE_URL` | Optional. Connection string used by the cron route only. Falls back to `DATABASE_URL` when unset. Point at `relay_worker` once that role is provisioned. |
+| Vercel env | `RELAY_MEMORY_PIPELINE_FULL` | `true` → Gemini extractors run. Default `false` (embed-only). Flip after a quality soak. |
+| Vercel env | `RELAY_HYGIENE_DRY_RUN` | `true` (default) logs proposed transitions; `false` writes. |
+| Vercel env | `RELAY_PIPELINE_DAILY_USD_CAP` | Default `5`. In-process circuit-breaker on extractor spend per UTC day. |
+| Vercel env | `RELAY_EMBED_CANONICAL_ENTITIES` | Default `false`. Opt-in vectors for newly created canonical entities only. |
+| Vercel env | `RELAY_PERSONAL_MEMORY_ITEM_CAP` | Default `500`. Archives oldest non-pinned personal overflow. |
+
+### Worker role provisioning (optional, future hardening)
+
+`docs/memory-v2/roles.sql` contains the idempotent SQL block that creates
+`relay_worker` + grants. Apply per Neon branch via the Neon SQL editor or
+`mcp__Neon__run_sql`, then point `WORKER_DATABASE_URL` at the new role.
+Today the app still connects as `neondb_owner` (RLS is decorative for the
+app conn — see Memory v2 HANDOFF "Risks"); moving the app to a non-owner
+role is a separate hardening PR.

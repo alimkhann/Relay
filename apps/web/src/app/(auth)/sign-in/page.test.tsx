@@ -1,11 +1,18 @@
 import { render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const { redirectMock, resolveOptionalViewerMock } = vi.hoisted(() => ({
+const { cookiesMock, redirectMock, resolveOptionalViewerMock } = vi.hoisted(() => ({
+  cookiesMock: vi.fn(async () => ({
+    get: vi.fn(() => undefined)
+  })),
   redirectMock: vi.fn((href: string) => {
     throw new Error(`REDIRECT:${href}`)
   }),
   resolveOptionalViewerMock: vi.fn(async () => null)
+}))
+
+vi.mock("next/headers", () => ({
+  cookies: cookiesMock
 }))
 
 vi.mock("next/navigation", () => ({
@@ -50,6 +57,7 @@ import SignInPage from "./page"
 
 describe("SignInPage", () => {
   beforeEach(() => {
+    vi.unstubAllEnvs()
     vi.stubEnv("NEON_AUTH_BASE_URL", "https://auth.example.com")
     vi.stubEnv("NEON_AUTH_COOKIE_SECRET", "secret")
     redirectMock.mockClear()
@@ -84,6 +92,21 @@ describe("SignInPage", () => {
     expect(screen.getByText("Create your Relay account")).toBeTruthy()
     expect(screen.getByTestId("google-sign-in-button").getAttribute("data-intent")).toBe("sign-up")
     expect(screen.getByTestId("google-sign-in-button").getAttribute("data-next-path")).toBe("/dashboard")
+  })
+
+  it("keeps Google available next to local auth in local mode", async () => {
+    vi.stubEnv("AUTH_PROVIDER", "local")
+
+    render(
+      await SignInPage({
+        searchParams: Promise.resolve({
+          next: "/dashboard",
+        })
+      })
+    )
+
+    expect(screen.getByTestId("google-sign-in-button")).toBeTruthy()
+    expect(screen.getByText("Or continue locally")).toBeTruthy()
   })
 
   it("redirects authenticated visitors to the next path", async () => {

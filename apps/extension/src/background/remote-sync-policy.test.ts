@@ -4,6 +4,7 @@ import {
   DASHBOARD_CACHE_TTL_MS,
   SESSION_CACHE_TTL_MS,
   shouldSyncMissingRemoteState,
+  shouldSyncProjectDashboardOnly,
   TAB_REMOTE_SYNC_FRESH_MS,
 } from "./remote-sync-policy"
 
@@ -46,9 +47,59 @@ describe("background remote sync policy", () => {
     ).toBe(true)
   })
 
-  it("keeps session and dashboard data fresh for thirty minutes", () => {
-    expect(SESSION_CACHE_TTL_MS).toBe(30 * 60 * 1_000)
-    expect(DASHBOARD_CACHE_TTL_MS).toBe(30 * 60 * 1_000)
-    expect(TAB_REMOTE_SYNC_FRESH_MS).toBe(30 * 60 * 1_000)
+  it("syncs unsupported tabs when a selected project exists but dashboard state is missing", () => {
+    expect(
+      shouldSyncProjectDashboardOnly({
+        pageSupported: false,
+        connected: true,
+        hasProjectId: true,
+        remoteStatus: "unavailable",
+        lastSuccessfulSyncAt: null,
+      }),
+    ).toBe(true)
+
+    expect(
+      shouldSyncProjectDashboardOnly({
+        pageSupported: false,
+        connected: true,
+        hasProjectId: false,
+        remoteStatus: "unavailable",
+        lastSuccessfulSyncAt: null,
+      }),
+    ).toBe(false)
+  })
+
+  it("aligns extension TTLs with web stale-while-revalidate policy", () => {
+    expect(SESSION_CACHE_TTL_MS).toBe(10 * 60 * 1_000)
+    expect(DASHBOARD_CACHE_TTL_MS).toBe(5 * 60 * 1_000)
+    expect(TAB_REMOTE_SYNC_FRESH_MS).toBe(5 * 60 * 1_000)
+  })
+
+  it("syncs unsupported tabs when the selected project changed since last sync", () => {
+    expect(
+      shouldSyncProjectDashboardOnly({
+        pageSupported: false,
+        connected: true,
+        hasProjectId: true,
+        remoteStatus: "ready",
+        lastSuccessfulSyncAt: "2026-06-09T00:00:00.000Z",
+        projectId: "project-b",
+        lastSyncedProjectId: "project-a",
+      }),
+    ).toBe(true)
+  })
+
+  it("does not re-sync unsupported tabs while remote status is already loading", () => {
+    expect(
+      shouldSyncProjectDashboardOnly({
+        pageSupported: false,
+        connected: true,
+        hasProjectId: true,
+        remoteStatus: "loading",
+        lastSuccessfulSyncAt: "2026-06-09T00:00:00.000Z",
+        projectId: "project-b",
+        lastSyncedProjectId: "project-b",
+      }),
+    ).toBe(false)
   })
 })

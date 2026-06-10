@@ -17,6 +17,7 @@ const {
 vi.mock("@/server/http/api-route", () => ({ withApiAuth: withApiAuthMock }))
 vi.mock("@/server/policies/viewer", () => ({ resolveViewer: resolveViewerMock, requireViewerProject: requireViewerProjectMock }))
 vi.mock("@/server/services/entitlement-service", () => ({
+  consumeActionQuota: vi.fn(),
   consumeExternalSourceMcpActionQuota: consumeExternalSourceMcpActionQuotaMock,
   consumeMcpWriteQuota: vi.fn(),
 }))

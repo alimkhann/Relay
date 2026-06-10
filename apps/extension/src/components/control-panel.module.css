@@ -516,6 +516,114 @@
   cursor: default;
 }
 
+/* ── Link & save + "also save to" multi-project picker ── */
+.linkSaveWrap {
+  position: relative;
+  margin-top: 14px;
+}
+
+.linkSaveRow {
+  display: flex;
+  align-items: stretch;
+}
+
+/* Mirrors .primaryButton but joined to the chevron on its right edge. */
+.linkSaveMain {
+  flex: 1;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  background: var(--ink);
+  color: var(--bg);
+  padding: 8px 16px;
+  transition: opacity 120ms;
+}
+
+.linkSaveMain:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.linkSaveChevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  flex: 0 0 auto;
+  cursor: pointer;
+  border: none;
+  border-left: 1px solid color-mix(in srgb, var(--bg) 25%, transparent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--ink);
+  color: var(--bg);
+  transition: opacity 120ms;
+}
+
+.linkSaveChevron:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.linkSaveMain:disabled,
+.linkSaveChevron:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.alsoSaveMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  padding: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.alsoSaveItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.alsoSaveItem:hover {
+  background: var(--surface-muted, rgba(127, 127, 127, 0.1));
+}
+
+.alsoSaveName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alsoSaveItem input[type="checkbox"] {
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.alsoSaveEmpty {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 /* ── Trust line ── */
 
 .trustLine {
@@ -571,8 +679,10 @@
 }
 
 .associationHeader {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .metaText {
@@ -597,10 +707,16 @@
   padding: 2px;
   border-radius: var(--radius-sm);
   background: var(--surface-soft);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.contextTabs::-webkit-scrollbar {
+  display: none;
 }
 
 .contextTab {
-  flex: 1;
+  flex: 1 0 auto;
   border: none;
   background: transparent;
   color: var(--muted);
@@ -665,11 +781,52 @@
   border-radius: var(--radius-sm);
   background: var(--bg);
   border: 1px solid var(--line);
+  /* Left-edge color stripe via a custom property so the color can come from a
+   * fixed type class OR an inline style (personal Folk categories). */
+  border-left: 2px solid var(--stripe, transparent);
   transition: border-color 120ms;
+}
+
+/* Per-type stripe color (single-tab items) — set the custom property only, so
+ * the base + hover rules handle the actual border. */
+.contextItemUnifiedDecisions {
+  --stripe: #60a5fa;
+}
+
+.contextItemUnifiedConstraints {
+  --stripe: #fbbf24;
+}
+
+.contextItemUnifiedTasks {
+  --stripe: #34d399;
+}
+
+.contextItemUnifiedNotes {
+  --stripe: #a1a1aa;
+}
+
+.contextItemUnifiedRequirements {
+  --stripe: #ef4444;
+}
+
+.contextItemListScroll {
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+/* W6: in the expanded side panel the shell is the sole scroller, so the inner
+   list grows instead of nesting a second scrollbar (no wheel-trap). The compact
+   popup keeps the capped inner scroll. */
+.expanded .contextItemListScroll {
+  max-height: none;
+  overflow-y: visible;
 }
 
 .contextItemUnified:hover {
   border-color: var(--muted);
+  /* Brighten the stripe on hover. */
+  border-left-color: color-mix(in srgb, var(--stripe, transparent), #ffffff 35%);
 }
 
 .contextItemUnified:hover .contextActions {
@@ -765,15 +922,42 @@
   color: var(--ink-secondary);
 }
 
+.contextItemMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.contextItemBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+}
+
+.contextItemTime {
+  font-variant-numeric: tabular-nums;
+}
+
 .contextActions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 10px;
   opacity: 0;
   transition: opacity 120ms ease;
 }
 
-.contextItem:hover .contextActions {
+.contextItem:hover .contextActions,
+.contextItemUnified:hover .contextActions,
+.noteItem:hover .contextActions {
   opacity: 1;
 }
 
@@ -784,7 +968,8 @@
   margin-top: 10px;
   padding: 8px;
   border-radius: var(--radius-sm);
-  background: var(--surface-soft);
+  background: var(--bg);
+  border: 1px solid var(--line);
 }
 
 .contextComposer .secondaryButton {
@@ -1090,6 +1275,14 @@
   color: var(--ink-secondary);
 }
 
+@media (hover: none), (max-width: 420px) {
+  .contextActions,
+  .projectChevron,
+  .projectOptionDots {
+    opacity: 1;
+  }
+}
+
 .projectOptionNew {
   display: flex;
   align-items: center;
@@ -1337,7 +1530,12 @@
 }
 
 .contextSectionNotes {
-  border-left: 2px solid #f59e0b;
+  border-left: 2px solid #a1a1aa;
+  margin-top: 12px;
+}
+
+.contextSectionRequirements {
+  border-left: 2px solid #ef4444;
   margin-top: 12px;
 }
 
@@ -1404,8 +1602,26 @@
   font-variant-numeric: tabular-nums;
 }
 
-.noteDelete {
+.noteEdit {
   margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--faint);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0;
+}
+
+.noteEdit:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.noteEdit:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.noteDelete {
   background: transparent;
   border: none;
   color: var(--faint);
@@ -1425,12 +1641,15 @@
 
 /* ── Shiny text (inserting animation) ── */
 
+/* Travels one background-width (200 percentage-points, matching the smooth
+   ec-shimmer reference). The previous 200%→-200% form moved two widths per
+   cycle, so the loop restart snapped visibly ("jerk at the end"). */
 @keyframes shimmer {
-  0% {
+  from {
     background-position: 200% center;
   }
-  100% {
-    background-position: -200% center;
+  to {
+    background-position: 0% center;
   }
 }
 
@@ -1656,6 +1875,105 @@
 .settingsToggleInput:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Mixed (tri-state): knob centered, dimmed accent. */
+.settingsToggleInput:indeterminate {
+  background: var(--accent);
+  opacity: 0.55;
+}
+
+.settingsToggleInput:indeterminate::after {
+  transform: translateX(6px);
+}
+
+/* ── Capture/inline-chip matrix tree ── */
+
+.captureTreeHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.captureTreeChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.captureTreeChevron:hover {
+  color: var(--ink);
+}
+
+.captureTreeBody {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 2px 0 4px 8px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+
+.captureTreeProject {
+  display: flex;
+  flex-direction: column;
+}
+
+.captureTreeRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.captureTreeProjectName {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.captureTreePersonalTag {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--muted);
+}
+
+.captureTreePlatforms {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 1px 0 4px 18px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+
+.captureTreePlatformRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
 }
 
 .platformList {
@@ -1925,4 +2243,72 @@
 
 .usageTableValue[data-level="danger"] {
   color: #dc2626;
+}
+
+/* ── Per-target auto-capture toggle ── */
+
+.autoCaptureRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.autoCaptureLabel {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 0;
+}
+
+.autoCaptureControls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.autoCaptureToggle {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+
+.autoCaptureToggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.autoCaptureToggleOn {
+  background: var(--ink);
+  color: var(--surface);
+  border-color: var(--ink);
+}
+
+.autoCaptureReset {
+  font-size: 13px;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 120ms, border-color 120ms;
+}
+
+.autoCaptureReset:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--ink-secondary);
+}
+
+.autoCaptureReset:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }

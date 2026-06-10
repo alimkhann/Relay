@@ -145,7 +145,7 @@ export function AskRelayHistory({
                       setDraftTitle(c.title)
                     }}
                     aria-label="Rename chat"
-                    className="p-1 text-[var(--relay-muted)] opacity-0 transition-opacity hover:text-[var(--relay-ink)] group-hover:opacity-100"
+                    className="p-1 text-[var(--relay-muted)] opacity-100 transition-opacity hover:text-[var(--relay-ink)] focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
                   >
                     <Pencil className="size-3.5" />
                   </button>
@@ -153,7 +153,7 @@ export function AskRelayHistory({
                     type="button"
                     onClick={() => void remove(c.id, c.title)}
                     aria-label="Delete chat"
-                    className="p-1 text-[var(--relay-muted)] opacity-0 transition-opacity hover:text-[var(--relay-danger)] group-hover:opacity-100"
+                    className="p-1 text-[var(--relay-muted)] opacity-100 transition-opacity hover:text-[var(--relay-danger)] focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
                   >
                     <Trash2 className="size-3.5" />
                   </button>

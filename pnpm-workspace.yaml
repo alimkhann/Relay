@@ -1,4 +1,8 @@
 packages:
-  - "apps/*"
-  - "packages/*"
-  - "benchmarks/*"
+  - apps/*
+  - packages/*
+  - packages/workers/*
+  - benchmarks/*
+
+patchedDependencies:
+  math-intrinsics@1.1.0: patches/math-intrinsics@1.1.0.patch

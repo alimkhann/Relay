@@ -11,19 +11,27 @@ import { traceContextSources } from "./trace-context-sources.js"
 import { searchContext } from "./search-context.js"
 
 export const recallSchema = z.object({
-  projectId: z.string().optional().describe("Project ID. Auto-detected if not provided."),
-  query: z.string().optional().describe("Search query — triggers hybrid search across memory items and canon entries."),
+  projectId: z.string().optional().describe("Project ID. Auto-detected if not provided. Personal memory is a kind='personal' project — pass its id to recall from it."),
+  query: z.string().optional().describe("Search query — triggers hybrid search across memory items, observations, and canon entries."),
   memoryId: z.string().optional().describe("Get a specific memory item by ID."),
   include: z
-    .array(z.enum(["state", "sessions", "activity", "briefs", "trace"]))
+    .array(z.enum(["state", "sessions", "activity", "briefs", "trace", "observations", "entities"]))
     .optional()
     .describe("Additional data to include in the response."),
+  includeArchived: z
+    .boolean()
+    .optional()
+    .describe("When true, archived items are included in search results (presented as visually distinct). Forgotten items are always excluded."),
   filters: z
     .object({
       types: z.array(z.string()).optional(),
       tags: z.array(z.string()).optional(),
       pinned: z.boolean().optional(),
       archived: z.boolean().optional(),
+      lifecycleStates: z
+        .array(z.enum(["active", "cooling", "archived"]))
+        .optional()
+        .describe("Filter by lifecycle state. Defaults to ['active'] when omitted."),
     })
     .optional()
     .describe("Filters for memory listing/search."),
@@ -36,6 +44,11 @@ export async function recall(
   projectId: string,
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
   const sections: string[] = []
+  const include = args.include ?? []
+  const wantObservations = include.includes("observations")
+  const wantEntities = include.includes("entities")
+  const lifecycleStates = args.filters?.lifecycleStates
+  const includeArchived = args.includeArchived
 
   if (args.memoryId) {
     const result = await getMemory(client, { memoryId: args.memoryId })
@@ -43,11 +56,26 @@ export async function recall(
   }
 
   if (args.query) {
-    const result = await recallContext(client, { query: args.query, projectId }, projectId)
+    const result = await recallContext(
+      client,
+      {
+        query: args.query,
+        projectId,
+        lifecycleStates,
+        includeArchived,
+        includeObservations: wantObservations,
+        includeEntities: wantEntities,
+      },
+      projectId,
+    )
     sections.push(extractText(result))
-  } else if (!args.memoryId && !args.include?.length && !args.tracePhrase) {
+  } else if (!args.memoryId && !include.length && !args.tracePhrase) {
+    // No query: return the project-state snapshot.
     const result = await getProjectState(client, projectId)
     sections.push(extractText(result))
+  } else if (!args.query && (wantObservations || wantEntities)) {
+    // observations/entities are search-scoped channels — they need a query.
+    sections.push("Provide a `query` to retrieve observations/entities.")
   }
 
   if (args.filters && !args.query) {
@@ -69,13 +97,18 @@ export async function recall(
   if (args.query && args.filters) {
     const result = await searchContext(
       client,
-      { query: args.query, projectId, types: args.filters.types as ("note" | "decision" | "constraint" | "requirement" | "task" | "artifact")[], tags: args.filters.tags },
+      {
+        query: args.query,
+        projectId,
+        types: args.filters.types as ("note" | "decision" | "constraint" | "requirement" | "task" | "artifact")[],
+        tags: args.filters.tags,
+        lifecycleStates,
+        includeArchived,
+      },
       projectId,
     )
     sections.push(extractText(result))
   }
-
-  const include = args.include ?? []
 
   // Skip when args.query is set — recallContext already emits a project-state block
   if (include.includes("state") && !args.query) {

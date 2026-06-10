@@ -4,10 +4,9 @@ import { getAuthProvider } from "./provider"
 
 let authInstance: ReturnType<typeof createNeonAuth> | null | undefined
 
-export function getAuthServer() {
-  if (getAuthProvider() !== "neon") {
-    authInstance = null
-    return authInstance
+export function getAuthServer(options: { allowInLocal?: boolean } = {}) {
+  if (!options.allowInLocal && getAuthProvider() !== "neon") {
+    return null
   }
 
   if (authInstance !== undefined) {
@@ -33,8 +32,8 @@ export function getAuthServer() {
   return authInstance
 }
 
-export function requireAuthServer() {
-  const auth = getAuthServer()
+export function requireAuthServer(options: { allowInLocal?: boolean } = {}) {
+  const auth = getAuthServer(options)
 
   if (!auth) {
     throw new Error("NEON_AUTH_BASE_URL and NEON_AUTH_COOKIE_SECRET are required.")

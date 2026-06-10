@@ -1,14 +1,61 @@
 import { createRepositoryBundle, type RepositoryBundle } from "@relay/db"
 import type { CreateMemoryItemInput, MemoryEventType, MemoryItemRow } from "@relay/shared"
-import { computeDecayScore, createMemoryItemSchema, DECAY_VISIBILITY_THRESHOLD, hasReplacementSignal, isSameTopic, updateMemoryItemSchema } from "@relay/shared"
+import {
+  computeDecayMultiplier,
+  computeDecayScore,
+  createMemoryItemSchema,
+  DECAY_VISIBILITY_THRESHOLD,
+  LIFECYCLE_HALF_LIFE_DAYS,
+  updateMemoryItemSchema,
+  transferMemoryItemSchema,
+} from "@relay/shared"
 
-import { embedMemoryItem, embedMemoryItems, generateEmbedding } from "./embedding-service"
-import { invalidateProjectCache } from "@/server/cache/invalidation"
+import { embedMemoryItems, generateEmbedding } from "./embedding-service"
+import { invalidateProjectMemoryCache } from "@/server/cache/invalidation"
 import { extractAndLinkEntities } from "./entity-extraction-service"
+import {
+  drainTinyMemoryPipelineBatch,
+  enqueueMemoryPipelineJob,
+  markProjectHygieneDue,
+} from "./memory-pipeline-scheduler"
 import { decomposeQuery } from "./query-decomposition-service"
 import { buildCurrentPreviousHint, buildReasoningEvidenceTable, buildTemporalResolutionHint } from "./reasoning-assembly-service"
 import { conditionalRerank } from "./reranker-service"
 import { detectRelations } from "./relation-service"
+
+/**
+ * Module-scoped 60s cache for the memory_half_lives lookup table. Read once
+ * per request hot path so recall ranking honors live values from the DB
+ * without per-query overhead. Falls back to the shared defaults on error.
+ */
+let halfLivesCache: { value: Record<string, number>; expiresAt: number } | null = null
+const HALF_LIVES_TTL_MS = 60_000
+
+async function loadHalfLives(repositories: RepositoryBundle): Promise<Record<string, number>> {
+  if (halfLivesCache && halfLivesCache.expiresAt > Date.now()) {
+    return halfLivesCache.value
+  }
+  try {
+    const rows = await repositories.provider.query<{ item_type: string; half_life_days: number }>(
+      `select item_type, half_life_days from memory_half_lives`,
+    )
+    if (rows.length === 0) {
+      return LIFECYCLE_HALF_LIFE_DAYS
+    }
+    const value: Record<string, number> = Object.fromEntries(
+      rows.map((r) => [r.item_type, Number(r.half_life_days)]),
+    )
+    halfLivesCache = { value, expiresAt: Date.now() + HALF_LIVES_TTL_MS }
+    return value
+  } catch {
+    return LIFECYCLE_HALF_LIFE_DAYS
+  }
+}
+
+/** Test-only — clear the half-life cache between cases. */
+export function _resetHalfLivesCacheForTests() {
+  halfLivesCache = null
+}
 
 /**
  * Fire-and-forget memory event emit. Failures never propagate — events are
@@ -18,7 +65,7 @@ import { detectRelations } from "./relation-service"
 export async function emitMemoryEvent(
   repos: RepositoryBundle,
   input: {
-    projectId: string
+    projectId: string | null
     eventType: MemoryEventType
     memoryItemId?: string | null
     sourceSurface?: string | null
@@ -40,17 +87,6 @@ export async function emitMemoryEvent(
   }
 }
 
-/** Fire-and-forget: generate embedding + detect relations for a new item */
-async function postCreateHook(item: MemoryItemRow, repos: ReturnType<typeof createRepositoryBundle>) {
-  try {
-    await embedMemoryItem(item, repos)
-    await detectRelations(item, repos)
-    await extractAndLinkEntities(repos, item.projectId, item.id, item.content, item.title)
-  } catch (error) {
-    console.error("[memory-service] post-create hook failed:", error instanceof Error ? error.message : error)
-  }
-}
-
 /** Generate embeddings, detect relations, and extract entities for a batch of items (fire-and-forget safe) */
 export async function embedAndRelateItems(items: MemoryItemRow[], repos: RepositoryBundle): Promise<void> {
   if (items.length === 0) return
@@ -59,7 +95,9 @@ export async function embedAndRelateItems(items: MemoryItemRow[], repos: Reposit
     for (const item of items) {
       try {
         await detectRelations(item, repos)
-        await extractAndLinkEntities(repos, item.projectId, item.id, item.content, item.title)
+        if (item.projectId) {
+          await extractAndLinkEntities(repos, item.projectId, item.id, item.content, item.title)
+        }
       } catch (error) {
         console.error("[memory-service] post-batch enrichment failed:", error instanceof Error ? error.message : error)
       }
@@ -78,40 +116,50 @@ export async function createMemoryItem(userId: string, input: unknown) {
   const repositories = createRepositoryBundle(userId)
   const parsed = createMemoryItemSchema.parse(input)
 
-  // Dedup: check for existing items with same topic
-  const existing = await repositories.memory.listByProject(parsed.projectId)
-  const match = existing
-    .filter((m) => m.type === parsed.type && !m.isArchived)
-    .find((m) => isSameTopic(m.content, parsed.content))
-  if (match) {
-    if (match.content.trim().toLowerCase() === parsed.content.trim().toLowerCase()) {
-      return match
-    }
-    if (hasReplacementSignal(parsed.content)) {
-      await repositories.memory.update(match.id, {
-        isArchived: true,
-        metadata: { ...(match.metadata ?? {}), archivedBy: "replaced" },
-      })
-    } else {
-      parsed.metadata = { ...(parsed.metadata ?? {}), potentialDuplicate: match.id }
-    }
-  }
+  // Memory v2: dedup is async. The synchronous in-memory dedup scan (which
+  // pulled every active item via listByProject and walked them with
+  // isSameTopic) lived here previously. It made capture latency O(project
+  // size) and blocked the extension + MCP write path. The memory-pipeline
+  // worker now handles dedup via resolveMemoryConflict + bi-temporal
+  // supersession (closes loser's valid_until, moves it to 'cooling') after
+  // the row lands.
+  //
+  // The web write path remains fast and stateless: insert row, emit event,
+  // enqueue worker enrichment, return. A tiny opportunistic drain may run in
+  // this user-triggered request; fixed background wakeups are intentionally gone.
 
   const item = await repositories.memory.create(userId, parsed)
-  await repositories.projectState.markDirty(parsed.projectId)
+  if (parsed.projectId) {
+    await repositories.projectState.markDirty(parsed.projectId)
+  }
 
-  void emitMemoryEvent(repositories, {
-    projectId: item.projectId,
-    memoryItemId: item.id,
-    eventType: "created",
-    sourceSurface: item.sourceSurface,
-    userId,
-    payload: { type: item.type },
-  })
+  if (item.projectId) {
+    void emitMemoryEvent(repositories, {
+      projectId: item.projectId,
+      memoryItemId: item.id,
+      eventType: "created",
+      sourceSurface: item.sourceSurface,
+      userId,
+      payload: { type: item.type },
+    })
+  }
 
-  // Async: generate embedding + detect relations (don't block response)
-  void postCreateHook(item, repositories)
-  invalidateProjectCache(userId, item.projectId)
+  try {
+    await Promise.all([
+      enqueueMemoryPipelineJob({
+        jobType: "enrich_memory_item",
+        userId,
+        projectId: item.projectId,
+        memoryItemId: item.id,
+        repositories,
+      }),
+      ...(item.projectId ? [markProjectHygieneDue(item.projectId, undefined, repositories)] : []),
+    ])
+    void drainTinyMemoryPipelineBatch()
+  } catch (error) {
+    console.warn("[memory-service] enqueue enrichment failed:", error instanceof Error ? error.message : error)
+  }
+  if (item.projectId) invalidateProjectMemoryCache(userId, item.projectId)
 
   return item
 }
@@ -131,30 +179,54 @@ export async function createMemoryItemBatch(userId: string, projectId: string, i
     })
   }
 
-  // Async: generate embeddings, detect relations, extract entities for all new items
-  void embedMemoryItems(created, repositories).then(async () => {
-    for (const item of created) {
-      try {
-        await detectRelations(item, repositories)
-        await extractAndLinkEntities(repositories, item.projectId, item.id, item.content, item.title)
-      } catch (error) {
-        console.error("[memory-service] post-batch enrichment failed:", error instanceof Error ? error.message : error)
-      }
-    }
-  }).catch((error) => {
-    console.error("[memory-service] batch embedding failed:", error instanceof Error ? error.message : error)
-  })
+  try {
+    await Promise.all(created.map((item) => enqueueMemoryPipelineJob({
+      jobType: "enrich_memory_item",
+      userId,
+      projectId: item.projectId,
+      memoryItemId: item.id,
+      repositories,
+    })))
+    void drainTinyMemoryPipelineBatch()
+  } catch (error) {
+    console.warn("[memory-service] enqueue batch enrichment failed:", error instanceof Error ? error.message : error)
+  }
 
-  if (created[0]?.projectId) {
-    invalidateProjectCache(userId, created[0].projectId)
+  // Invalidate the cache for every distinct project touched by this batch.
+  const projectIds = new Set<string>()
+  for (const item of created) {
+    projectIds.add(item.projectId)
+  }
+  for (const projectId of projectIds) {
+    await markProjectHygieneDue(projectId, undefined, repositories).catch(() => {})
+    invalidateProjectMemoryCache(userId, projectId)
   }
 
   return created
 }
 
-export async function searchMemoryItems(userId: string, projectId: string, query: string, options?: { types?: string[]; tags?: string[] }) {
+export async function searchMemoryItems(
+  userId: string,
+  projectId: string,
+  query: string,
+  options?: {
+    types?: string[]
+    tags?: string[]
+    /** Memory v2: explicit lifecycle filter. Defaults to active+cooling; 'forgotten' never returned. */
+    lifecycleStates?: string[]
+    /** Memory v2: include archived items in results (presented as distinct). */
+    includeArchived?: boolean
+  },
+) {
   const repositories = createRepositoryBundle(userId)
   const decomposition = decomposeQuery(query)
+  const scope = {
+    lifecycleStates: options?.lifecycleStates,
+    includeArchived: options?.includeArchived,
+  }
+  // When the caller broadens the lifecycle set (archived/explicit states), don't
+  // also crush archived rows with the decay-visibility floor — they were asked for.
+  const lifecycleBroadened = Boolean(options?.includeArchived || options?.lifecycleStates?.length)
 
   let results: MemoryItemRow[]
   let hasSimilarityScores = false
@@ -165,21 +237,25 @@ export async function searchMemoryItems(userId: string, projectId: string, query
     if (queryEmbedding) {
       results = await repositories.memory.hybridSearch(projectId, decomposition.normalizedQuery, queryEmbedding, {
         ...options,
+        ...scope,
         dateRange: decomposition.sourceDateRange,
         includeSuperseded: decomposition.stateIntent === "historical",
       })
       hasSimilarityScores = true
     } else {
-      results = await repositories.memory.search(projectId, query, options)
+      results = await repositories.memory.search(projectId, query, { ...options, ...scope })
     }
   } catch {
-    results = await repositories.memory.search(projectId, query, options)
+    results = await repositories.memory.search(projectId, query, { ...options, ...scope })
   }
 
-  // Filter out fully decayed items
-  let memoryResults = results.filter((item) =>
-    computeDecayScore(item.type, item.updatedAt, item.lastReaffirmedAt, item.pinned) >= DECAY_VISIBILITY_THRESHOLD
-  )
+  // Filter out fully decayed items (skipped when the caller explicitly broadened
+  // the lifecycle set so archived items stay visible).
+  let memoryResults = lifecycleBroadened
+    ? results
+    : results.filter((item) =>
+        computeDecayScore(item.type, item.updatedAt, item.lastReaffirmedAt, item.pinned) >= DECAY_VISIBILITY_THRESHOLD
+      )
 
   // Conditional cross-encoder rerank when top results are ambiguous.
   // Built BEFORE entity boost so candidates[0] is the highest-similarity hit.
@@ -187,7 +263,7 @@ export async function searchMemoryItems(userId: string, projectId: string, query
   if (hasSimilarityScores && memoryResults.length >= 2) {
     const candidates = memoryResults.map((item) => ({
       item,
-      originalScore: (item as unknown as { similarity?: number }).similarity ?? null,
+      originalScore: item.similarity ?? null,
     }))
     const ac = new AbortController()
     const timer = setTimeout(() => ac.abort(), 1500)
@@ -199,7 +275,14 @@ export async function searchMemoryItems(userId: string, projectId: string, query
     }
   }
 
-  // Boost results containing extracted entities to the top (after rerank)
+  // Boost results containing extracted entities to the top (after rerank),
+  // tie-broken by similarity × decay multiplier so stale items rank below
+  // fresh items at equal entity-match strength.
+  const halfLifeMap = await loadHalfLives(repositories)
+  const decayScore = (item: MemoryItemRow) => {
+    const sim = item.similarity ?? 0
+    return sim * computeDecayMultiplier(item, halfLifeMap)
+  }
   if (decomposition.extractedEntities.length > 0) {
     const entityPatterns = decomposition.extractedEntities.map((e) => e.toLowerCase())
     memoryResults.sort((a, b) => {
@@ -207,8 +290,12 @@ export async function searchMemoryItems(userId: string, projectId: string, query
       const bContent = (b.content + " " + (b.title ?? "")).toLowerCase()
       const aHits = entityPatterns.filter((p) => aContent.includes(p)).length
       const bHits = entityPatterns.filter((p) => bContent.includes(p)).length
-      return bHits - aHits
+      if (aHits !== bHits) return bHits - aHits
+      return decayScore(b) - decayScore(a)
     })
+  } else if (hasSimilarityScores) {
+    // No entity boost: still apply decay so fresh items beat stale at equal cosine.
+    memoryResults.sort((a, b) => decayScore(b) - decayScore(a))
   }
 
   const canonResults = await repositories.canonEntries.searchByProject(projectId, decomposition.normalizedQuery, {
@@ -236,6 +323,58 @@ export async function searchMemoryItems(userId: string, projectId: string, query
   }
 }
 
+/**
+ * Memory v2: project-scoped auxiliary context — observations + entity graph
+ * snapshot. Powers `recall include:[observations,entities]`. Reuses the
+ * observation hybrid search + graph snapshot already built in the db package.
+ */
+export async function getProjectContext(
+  userId: string,
+  projectId: string,
+  options: {
+    query?: string
+    includeObservations?: boolean
+    includeEntities?: boolean
+    lifecycleStates?: string[]
+    includeArchived?: boolean
+    limit?: number
+  },
+) {
+  const repositories = createRepositoryBundle(userId)
+  const limit = options.limit ?? 20
+  const lifecycleStates = (
+    options.lifecycleStates?.length
+      ? options.lifecycleStates
+      : options.includeArchived
+        ? ["active", "cooling", "archived"]
+        : ["active", "cooling"]
+  ).filter((s) => s !== "forgotten") as Array<"active" | "cooling" | "archived">
+
+  let observations: unknown[] = []
+  if (options.includeObservations) {
+    if (options.query) {
+      let embedding: number[] | null = null
+      try {
+        embedding = await generateEmbedding(options.query, "RETRIEVAL_QUERY")
+      } catch {
+        embedding = null
+      }
+      observations = await repositories.observations.hybridSearch(projectId, embedding, options.query, {
+        limit,
+        lifecycleStates,
+      })
+    } else {
+      observations = await repositories.observations.listByProject(projectId, { lifecycleStates, limit })
+    }
+  }
+
+  const entities = options.includeEntities
+    ? await repositories.graph.getProjectGraphSnapshot(projectId, limit)
+    : null
+
+  return { observations, entities }
+}
+
 export async function updateMemoryItem(userId: string, memoryId: string, input: unknown, projectId?: string) {
   const repositories = createRepositoryBundle(userId)
   const parsed = updateMemoryItemSchema.parse(input)
@@ -243,23 +382,93 @@ export async function updateMemoryItem(userId: string, memoryId: string, input: 
   if (projectId && existing?.projectId && existing.projectId !== projectId) {
     throw new Error("This MCP token cannot update memory from another project.")
   }
-  const item = await repositories.memory.update(memoryId, parsed)
-  await repositories.projectState.markDirty(existing?.projectId ?? item.projectId)
 
-  const becameArchived = !existing?.isArchived && item.isArchived
-  void emitMemoryEvent(repositories, {
-    projectId: item.projectId,
-    memoryItemId: item.id,
-    eventType: becameArchived ? "archived" : "updated",
-    sourceSurface: item.sourceSurface,
-    userId,
-    payload: {
-      type: item.type,
-      fieldsChanged: Object.keys(parsed),
-    },
+  const lifecycleState = parsed.lifecycleState ?? null
+  const isForgetting = lifecycleState === "forgotten"
+  if (isForgetting && !parsed.confirm) {
+    throw new Error("Forgetting a memory requires confirm:true.")
+  }
+
+  // One atomic UPDATE. The repo handles every column (legacy + v2 lifecycle)
+  // in a single statement, so a partial patch can't leave content and the
+  // event log disagreeing. The trigger from migration 0041 keeps is_archived
+  // in sync with lifecycle_state. `confirm` is control-only — not persisted.
+  const { confirm: _confirm, ...patch } = parsed
+  const item = await repositories.memory.update(memoryId, {
+    ...patch,
+    nullContent: isForgetting,
   })
 
-  invalidateProjectCache(userId, item.projectId)
+  if (parsed.content !== undefined || parsed.title !== undefined || parsed.type !== undefined || parsed.metadata !== undefined) {
+    await repositories.memory.markPendingEnrichment(item.id)
+    try {
+      await enqueueMemoryPipelineJob({
+        jobType: "enrich_memory_item",
+        userId,
+        projectId: item.projectId,
+        memoryItemId: item.id,
+        repositories,
+      })
+      void drainTinyMemoryPipelineBatch()
+    } catch (error) {
+      console.warn("[memory-service] enqueue update enrichment failed:", error instanceof Error ? error.message : error)
+    }
+  }
+
+  const dirtyProjectId = existing?.projectId ?? item.projectId
+  if (dirtyProjectId) {
+    await repositories.projectState.markDirty(dirtyProjectId)
+  }
+
+  // Emit one event for the lifecycle transition (if any) AND a separate
+  // `reaffirmed` event when the decay clock was reset — the two signals are
+  // independent and a single-pick ladder would silently drop one.
+  let lifecycleEvent: MemoryEventType | null = null
+  const becameArchived = !existing?.isArchived && item.isArchived
+  if (lifecycleState === "archived") lifecycleEvent = "archived"
+  else if (lifecycleState === "active" && existing?.isArchived) lifecycleEvent = "restored"
+  else if (lifecycleState === "forgotten") lifecycleEvent = "forgotten"
+  else if (lifecycleState === "cooling") lifecycleEvent = "cooled"
+  else if (becameArchived) lifecycleEvent = "archived"
+
+  const reaffirmed = parsed.lastReaffirmedAt !== undefined
+  const fieldsChanged = Object.keys(parsed)
+
+  if (lifecycleEvent) {
+    void emitMemoryEvent(repositories, {
+      projectId: item.projectId,
+      memoryItemId: item.id,
+      eventType: lifecycleEvent,
+      sourceSurface: item.sourceSurface,
+      userId,
+      payload: { type: item.type, fieldsChanged, lifecycleState: lifecycleState ?? null },
+    })
+  }
+  if (reaffirmed) {
+    void emitMemoryEvent(repositories, {
+      projectId: item.projectId,
+      memoryItemId: item.id,
+      eventType: "reaffirmed",
+      sourceSurface: item.sourceSurface,
+      userId,
+      payload: { type: item.type, fieldsChanged },
+    })
+  }
+  if (!lifecycleEvent && !reaffirmed) {
+    void emitMemoryEvent(repositories, {
+      projectId: item.projectId,
+      memoryItemId: item.id,
+      eventType: "updated",
+      sourceSurface: item.sourceSurface,
+      userId,
+      payload: { type: item.type, fieldsChanged },
+    })
+  }
+
+  if (item.projectId) {
+    await markProjectHygieneDue(item.projectId, undefined, repositories).catch(() => {})
+    invalidateProjectMemoryCache(userId, item.projectId)
+  }
 
   return item
 }
@@ -281,6 +490,57 @@ export async function deleteMemoryItem(userId: string, memoryId: string, project
       userId,
       payload: { type: existing.type, reason: "deleted" },
     })
-    invalidateProjectCache(userId, existing.projectId)
+    await markProjectHygieneDue(existing.projectId, undefined, repositories).catch(() => {})
+    invalidateProjectMemoryCache(userId, existing.projectId)
   }
+}
+
+export async function transferMemoryItem(
+  userId: string,
+  memoryId: string,
+  input: unknown,
+  sourceProjectId?: string | null,
+) {
+  const repositories = createRepositoryBundle(userId)
+  const parsed = transferMemoryItemSchema.parse(input)
+  const existing = await repositories.memory.getById(memoryId)
+  if (!existing?.projectId) throw new Error("Memory item not found.")
+  if (sourceProjectId && existing.projectId !== sourceProjectId) {
+    throw new Error("This MCP token cannot transfer memory from another project.")
+  }
+  const target = await repositories.projects.getById(parsed.targetProjectId)
+  if (!target) throw new Error("Target project not found.")
+
+  const metadata: Record<string, unknown> = {
+    ...(existing.metadata ?? {}),
+    ...(parsed.personalCategory === undefined
+      ? {}
+      : parsed.personalCategory === null
+        ? { personalCategory: undefined }
+        : { personalCategory: parsed.personalCategory }),
+  }
+  if (parsed.personalCategory === null) delete metadata.personalCategory
+  if (target.kind !== "personal" && parsed.personalCategory === undefined) {
+    delete metadata.personalCategory
+  }
+
+  const item = await repositories.memory.transfer(memoryId, parsed.targetProjectId, {
+    type: parsed.type,
+    metadata,
+  })
+  await Promise.all([
+    repositories.projectState.markDirty(existing.projectId),
+    repositories.projectState.markDirty(parsed.targetProjectId),
+    enqueueMemoryPipelineJob({
+      jobType: "enrich_memory_item",
+      userId,
+      projectId: item.projectId,
+      memoryItemId: item.id,
+      repositories,
+    }),
+  ])
+  void drainTinyMemoryPipelineBatch()
+  invalidateProjectMemoryCache(userId, existing.projectId)
+  invalidateProjectMemoryCache(userId, parsed.targetProjectId)
+  return { before: existing, item }
 }

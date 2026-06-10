@@ -13,17 +13,19 @@ export default async function MemoryPage({
   searchParams: Promise<{ project?: string }>
 }) {
   const viewer = await requirePageViewer("/memory")
-  const projects = await listProjectsForUser(viewer.userId)
+  const projects = await listProjectsForUser(viewer.userId, { includePersonal: true })
 
   if (projects.length === 0) {
     redirect("/dashboard")
   }
 
   const { project: selectedProjectId } = await searchParams
+  // Personal is selectable by explicit ?project=, but never the implicit default.
+  const defaultProject = projects.find((p) => p.kind !== "personal") ?? projects[0]!
   const currentProject =
     (selectedProjectId
       ? projects.find((p) => p.id === selectedProjectId)
-      : projects[0]) ?? projects[0]!
+      : defaultProject) ?? defaultProject
 
   return (
     <>
@@ -40,6 +42,7 @@ export default async function MemoryPage({
           id: currentProject.id,
           name: currentProject.name,
           description: currentProject.description,
+          kind: currentProject.kind,
         }}
       />
     </>

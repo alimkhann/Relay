@@ -85,6 +85,34 @@ test.describe("Relay inline chip", () => {
         })
       })
 
+      await context.route("http://localhost:3000/api/extension/session", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            userId: "user-1",
+            projects: [
+              { id: "project-1", name: "Project Alpha", kind: "project" },
+              { id: "project-2", name: "Project Beta", kind: "project" }
+            ],
+            settings: {
+              settings: {
+                autoCapture: true,
+                defaultTargetProfileKey: "chatgpt_planning",
+                showSidepanelOnSupportedSites: true
+              }
+            },
+            onboarding: {
+              status: "completed",
+              completedProjectId: "project-1",
+              completedVia: "web",
+              completedAt: "2026-03-12T00:00:00.000Z"
+            },
+            entitlements: { plan: "free", status: "active" }
+          })
+        })
+      })
+
       await context.route(/http:\/\/localhost:3000\/api\/extension\/bindings(\?.*)?/, async (route) => {
         if (route.request().method() === "POST") {
           const payload = JSON.parse(route.request().postData() ?? "{}") as { projectId?: string }
@@ -353,6 +381,51 @@ test.describe("Relay inline chip", () => {
         })
       })
 
+      await context.route("http://localhost:3000/api/extension/session", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            userId: "user-1",
+            projects: [
+              {
+                id: "project-sunnad",
+                name: "Sunnad",
+                description: "Group-first Islamic habit tracking stripped of all visual noise.",
+                memoryCount: 0,
+                sessionCount: 0,
+                routingContext: { hasMeaningfulContext: false, keywords: [] },
+                kind: "project"
+              },
+              {
+                id: "project-relay",
+                name: "Relay",
+                description:
+                  "Relay is a browser-first cross-AI memory sidecar extension that keeps project context synchronized between ChatGPT, Claude, Perplexity, and other AIs autonomously.",
+                memoryCount: 0,
+                sessionCount: 0,
+                routingContext: { hasMeaningfulContext: false, keywords: [] },
+                kind: "project"
+              }
+            ],
+            settings: {
+              settings: {
+                autoCapture: true,
+                defaultTargetProfileKey: "chatgpt_planning",
+                showSidepanelOnSupportedSites: true
+              }
+            },
+            onboarding: {
+              status: "completed",
+              completedProjectId: "project-sunnad",
+              completedVia: "web",
+              completedAt: "2026-03-15T00:00:00.000Z"
+            },
+            entitlements: { plan: "free", status: "active" }
+          })
+        })
+      })
+
       await context.route(/http:\/\/localhost:3000\/api\/extension\/bindings(\?.*)?/, async (route) => {
         if (route.request().method() === "POST") {
           const payload = JSON.parse(route.request().postData() ?? "{}") as { projectId?: string }
@@ -439,10 +512,10 @@ test.describe("Relay inline chip", () => {
 
       const toast = page.locator("#relay-association-toast")
       await expect(toast).toBeVisible({ timeout: 6000 })
-      await expect(toast).toContainText("Saving to Relay")
+      await expect(toast).toContainText("Approve save to Relay")
 
       const popup = await context.newPage()
-      await popup.goto(`chrome-extension://${extensionId}/popup.html`)
+      await popup.goto(`chrome-extension://${extensionId}/sidepanel.html`)
 
       const initialState = await popup.evaluate(async () => {
         const tabs = await chrome.tabs.query({})
@@ -458,7 +531,7 @@ test.describe("Relay inline chip", () => {
         })
       })
 
-      expect(initialState.chatAssociation.status).toBe("pending")
+      expect(initialState.chatAssociation.status).toBe("held")
       expect(initialState.chatAssociation.projectName).toBe("Relay")
       expect(initialState.projectName).toBe("Relay")
 

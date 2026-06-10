@@ -129,6 +129,9 @@ describe("project context helpers", () => {
       decisions: 2,
       constraints: 1,
       tasks: 1,
+      notes: 0,
+      requirements: 0,
+      artifacts: 0,
     })
   })
 
@@ -154,6 +157,52 @@ describe("project context helpers", () => {
         sourceSurface: "chatgpt",
         capturedAt: "2026-03-25T00:00:00.000Z",
       },
+    ])
+  })
+
+  it("prefers saved memory content over stale project-state text for manual matches", () => {
+    const dashboard = makeDashboard()
+    dashboard.memory = dashboard.memory.map((item) =>
+      item.id === "mem_1"
+        ? { ...item, content: "Updated stack decision." }
+        : item,
+    )
+
+    expect(buildProjectContextItems(dashboard, "decision")[0]).toMatchObject({
+      key: "manual:mem_1",
+      text: "Updated stack decision.",
+      memoryId: "mem_1",
+    })
+  })
+
+  it("surfaces a newly created manual governed item before state reconciliation", () => {
+    const dashboard = makeDashboard()
+    dashboard.projectState = dashboard.projectState
+      ? { ...dashboard.projectState, decisions: [], constraints: [], openTasks: [] }
+      : null
+    dashboard.memory = [
+        {
+          id: "mem-new",
+          type: "decision",
+          title: null,
+          content: "Use targeted optimistic updates.",
+          pinned: false,
+          metadata: {},
+          sourceSurface: "manual",
+          sourceUrl: null,
+          capturedAt: "2026-06-09T00:00:00.000Z",
+          decayScore: 1,
+          lastReaffirmedAt: null,
+          updatedAt: "2026-06-09T00:00:00.000Z"
+        }
+      ] as ProjectDashboardDto["memory"]
+
+    expect(buildProjectContextItems(dashboard, "decision")).toEqual([
+      expect.objectContaining({
+        key: "manual:mem-new",
+        memoryId: "mem-new",
+        text: "Use targeted optimistic updates."
+      })
     ])
   })
 })

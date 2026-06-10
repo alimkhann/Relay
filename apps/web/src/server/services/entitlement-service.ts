@@ -1,11 +1,13 @@
-import { createRepositoryBundle } from "@relay/db"
+import { createRepositoryBundle, createServiceRepositoryBundle } from "@relay/db"
 import type { BillingStatusDto, SubscriptionRow, UserEntitlementsDto } from "@relay/shared"
 
+import { captureServerEvent } from "@/lib/telemetry/posthog-server"
 import { ForbiddenError, TooManyRequestsError } from "@/server/http/errors"
 import { logServerEvent } from "@/server/logging/logger"
 import { FREE_LIMITS, getDefaultEntitlements, getPlanLimits } from "./billing-config"
 
 type WindowKey = "minute" | "day" | "month"
+export type ActionQuotaFamily = "read" | "write"
 
 function coerceRawTimestamp(value: unknown): string | null {
   if (typeof value === "string" && value.length > 0) return value
@@ -56,6 +58,40 @@ function getWindowBounds(windowKey: WindowKey, now = new Date()) {
   return { start: start.toISOString(), end: end.toISOString() }
 }
 
+function nextPlanFor(plan: UserEntitlementsDto["plan"]) {
+  return plan === "free" ? "starter" as const : plan === "starter" ? "pro" as const : null
+}
+
+function quotaUpgradeUrl(plan: UserEntitlementsDto["plan"]) {
+  return plan === "pro" ? undefined : "https://www.onrelay.app/settings?section=billing"
+}
+
+function quotaLimitError(input: {
+  family: "read" | "write" | "assistant"
+  plan: UserEntitlementsDto["plan"]
+  limits: Array<{ window: "day" | "month"; limit: number; end: string }>
+}) {
+  const now = Date.now()
+  const blocked = input.limits
+    .map((entry) => ({ ...entry, retryAfterSeconds: Math.max(1, Math.ceil((new Date(entry.end).getTime() - now) / 1000)) }))
+    .sort((a, b) => a.retryAfterSeconds - b.retryAfterSeconds)[0]!
+  const label = input.family === "assistant" ? "Ask Relay" : `${input.family}s`
+  const message = input.plan === "pro"
+    ? `You have reached your ${blocked.window} ${label} limit. It resets at ${new Date(blocked.end).toLocaleString()}.`
+    : `You have reached your ${blocked.window} ${label} limit. Upgrade for higher limits or wait until it resets.`
+  return new TooManyRequestsError(message, {
+    retryAfterSeconds: blocked.retryAfterSeconds,
+    limit: blocked.limit,
+    remaining: 0,
+    plan: input.plan,
+    upgradeUrl: quotaUpgradeUrl(input.plan),
+    quotaFamily: input.family,
+    quotaWindow: blocked.window,
+    resetAt: blocked.end,
+    nextPlan: nextPlanFor(input.plan),
+  })
+}
+
 export async function resolveViewerEntitlements(userId: string): Promise<UserEntitlementsDto> {
   const repositories = createRepositoryBundle(userId)
   const entitlement = await repositories.entitlements.getByUserId(userId)
@@ -97,10 +133,11 @@ export async function getBillingStatusForUser(userId: string): Promise<BillingSt
   ])
   const activeSubscription = pickBillingSubscription(subscriptions)
 
-  const [capturesThisMonth, mcpReadsToday, mcpWritesToday, handoffsThisMonth, aiAnalysesToday] = await Promise.all([
-    getUsageCount(userId, "capture_monthly", "month"),
-    getUsageCount(userId, "mcp_read_daily", "day"),
-    getUsageCount(userId, "mcp_write_daily", "day"),
+  const [readsToday, readsThisMonth, writesToday, writesThisMonth, handoffsThisMonth, aiAnalysesToday] = await Promise.all([
+    getUsageCount(userId, "read_daily", "day"),
+    getUsageCount(userId, "read_monthly", "month"),
+    getUsageCount(userId, "write_daily", "day"),
+    getUsageCount(userId, "write_monthly", "month"),
     getUsageCount(userId, "handoff_monthly", "month"),
     repositories.aiJobs.countRecentAiDigestRunsByUser(userId, 24),
   ])
@@ -137,9 +174,13 @@ export async function getBillingStatusForUser(userId: string): Promise<BillingSt
       name: customer?.name ?? null,
     },
     usage: {
-      capturesThisMonth,
-      mcpReadsToday,
-      mcpWritesToday,
+      capturesThisMonth: writesThisMonth,
+      mcpReadsToday: readsToday,
+      mcpWritesToday: writesToday,
+      readsToday,
+      readsThisMonth,
+      writesToday,
+      writesThisMonth,
       handoffsThisMonth,
       activeProjects: activeProjects.filter((project) => !project.isArchived).length,
       aiAnalysesToday,
@@ -199,6 +240,58 @@ export async function consumeQuota(userId: string, featureKey: string, windowKey
   return { ...counter, limit, remaining: limit - counter.count }
 }
 
+export async function consumeActionQuota(userId: string, family: ActionQuotaFamily, amount = 1) {
+  const entitlements = await resolveViewerEntitlements(userId)
+  const dailyLimit = family === "read" ? entitlements.limits.readsDaily : entitlements.limits.writesDaily
+  const monthlyLimit = family === "read" ? entitlements.limits.readsMonthly : entitlements.limits.writesMonthly
+  const daily = getWindowBounds("day")
+  const monthly = getWindowBounds("month")
+  const repositories = createRepositoryBundle(userId)
+  const rows = await repositories.usageCounters.incrementWithinLimits(
+    `user:${userId}`,
+    [
+      { featureKey: `${family}_daily`, windowKey: "day", windowStart: daily.start, windowEnd: daily.end, limit: dailyLimit },
+      { featureKey: `${family}_monthly`, windowKey: "month", windowStart: monthly.start, windowEnd: monthly.end, limit: monthlyLimit },
+    ],
+    amount,
+  )
+  if (!rows) {
+    captureServerEvent({
+      event: "quota_blocked",
+      distinctId: userId,
+      properties: { family, plan: entitlements.plan, next_plan: nextPlanFor(entitlements.plan) },
+    })
+    throw quotaLimitError({
+      family,
+      plan: entitlements.plan,
+      limits: [
+        { window: "day", limit: dailyLimit, end: daily.end },
+        { window: "month", limit: monthlyLimit, end: monthly.end },
+      ],
+    })
+  }
+  const dailyRow = rows.find((row) => row.windowKey === "day")!
+  const monthlyRow = rows.find((row) => row.windowKey === "month")!
+  captureServerEvent({
+    event: "quota_consumed",
+    distinctId: userId,
+    properties: {
+      family,
+      plan: entitlements.plan,
+      amount,
+      daily_used: dailyRow.count,
+      daily_limit: dailyLimit,
+      monthly_used: monthlyRow.count,
+      monthly_limit: monthlyLimit,
+    },
+  })
+  return {
+    family,
+    daily: { used: dailyRow.count, limit: dailyLimit, remaining: dailyLimit - dailyRow.count },
+    monthly: { used: monthlyRow.count, limit: monthlyLimit, remaining: monthlyLimit - monthlyRow.count },
+  }
+}
+
 export async function assertProjectCreationAllowed(userId: string) {
   const repositories = createRepositoryBundle(userId)
   const [entitlements, projects] = await Promise.all([
@@ -220,18 +313,15 @@ export async function assertHandoffEnabled(userId: string) {
 }
 
 export async function consumeCaptureQuota(userId: string) {
-  const entitlements = await resolveViewerEntitlements(userId)
-  return consumeQuota(userId, "capture_monthly", "month", entitlements.limits.captureMonthly, 1, entitlements.plan)
+  return consumeActionQuota(userId, "write")
 }
 
 export async function consumeMcpBasicReadQuota(userId: string) {
-  const entitlements = await resolveViewerEntitlements(userId)
-  return consumeQuota(userId, "mcp_read_daily", "day", entitlements.limits.mcpReadDaily, 1, entitlements.plan)
+  return consumeActionQuota(userId, "read")
 }
 
 export async function consumeMcpDeepReadQuota(userId: string) {
-  const entitlements = await resolveViewerEntitlements(userId)
-  return consumeQuota(userId, "mcp_deep_read_daily", "day", entitlements.limits.mcpDeepReadDaily, 1, entitlements.plan)
+  return consumeActionQuota(userId, "read")
 }
 
 export async function consumeMcpReadQuota(userId: string, mode: "basic" | "deep" = "basic") {
@@ -239,8 +329,7 @@ export async function consumeMcpReadQuota(userId: string, mode: "basic" | "deep"
 }
 
 export async function consumeMcpWriteQuota(userId: string, amount = 1) {
-  const entitlements = await resolveViewerEntitlements(userId)
-  return consumeQuota(userId, "mcp_write_daily", "day", entitlements.limits.mcpWriteDaily, amount, entitlements.plan)
+  return consumeActionQuota(userId, "write", amount)
 }
 
 export async function consumeExternalSourceMcpActionQuota(userId: string) {
@@ -255,21 +344,10 @@ export async function consumeExternalSourceMcpActionQuota(userId: string) {
   )
 }
 
-// Rate limit for explicit user-triggered memory writes from the extension
-// (sidepanel "Save to project" button + right-click "Save to Relay" context
-// menu). Kept in its own bucket so it doesn't compete with MCP write budget.
-// Free is intentionally tight so users can see value without camping on the
-// free tier indefinitely.
-const EXTENSION_MEMORY_WRITE_LIMITS = {
-  free: 2,
-  starter: 25,
-  pro: 100,
-} as const
-
+// Compatibility entry point for explicit extension writes. These now consume
+// the same canonical write action quota as dashboard, Ask Relay, and MCP writes.
 export async function consumeExtensionMemoryWriteQuota(userId: string, amount = 1) {
-  const entitlements = await resolveViewerEntitlements(userId)
-  const limit = EXTENSION_MEMORY_WRITE_LIMITS[entitlements.plan]
-  return consumeQuota(userId, "extension_memory_write_daily", "day", limit, amount, entitlements.plan)
+  return consumeActionQuota(userId, "write", amount)
 }
 
 // Ask Relay. Free plan is a small monthly taste then a hard paywall; paid
@@ -277,24 +355,24 @@ export async function consumeExtensionMemoryWriteQuota(userId: string, amount = 
 // monthly so AI cost stays bounded even for paid plans.
 export async function consumeAssistantMessageQuota(userId: string) {
   const entitlements = await resolveViewerEntitlements(userId)
-  if (entitlements.plan === "free") {
-    return consumeQuota(
-      userId,
-      "assistant_messages_monthly",
-      "month",
-      entitlements.limits.assistantMessagesMonthly,
-      1,
-      entitlements.plan,
-    )
+  const day = getWindowBounds("day")
+  const month = getWindowBounds("month")
+  const repositories = createRepositoryBundle(userId)
+  const rows = await repositories.usageCounters.incrementWithinLimits(`user:${userId}`, [
+    { featureKey: "assistant_messages_daily", windowKey: "day", windowStart: day.start, windowEnd: day.end, limit: entitlements.limits.assistantMessagesDaily },
+    { featureKey: "assistant_messages_monthly", windowKey: "month", windowStart: month.start, windowEnd: month.end, limit: entitlements.limits.assistantMessagesMonthly },
+  ])
+  if (!rows) {
+    throw quotaLimitError({
+      family: "assistant",
+      plan: entitlements.plan,
+      limits: [
+        { window: "day", limit: entitlements.limits.assistantMessagesDaily, end: day.end },
+        { window: "month", limit: entitlements.limits.assistantMessagesMonthly, end: month.end },
+      ],
+    })
   }
-  return consumeQuota(
-    userId,
-    "assistant_messages_daily",
-    "day",
-    entitlements.limits.assistantMessagesDaily,
-    1,
-    entitlements.plan,
-  )
+  return rows
 }
 
 // Hard pre-turn gate: the monthly token bucket is recorded after each turn
@@ -316,7 +394,11 @@ export async function assertAssistantTokenBudget(userId: string) {
         limit,
         remaining: 0,
         plan: entitlements.plan,
-        upgradeUrl: "https://www.onrelay.app/settings?section=billing",
+        upgradeUrl: quotaUpgradeUrl(entitlements.plan),
+        quotaFamily: "assistant",
+        quotaWindow: "month",
+        resetAt: end,
+        nextPlan: nextPlanFor(entitlements.plan),
       },
     )
   }
@@ -335,7 +417,9 @@ export async function consumeAssistantTokenQuota(userId: string, totalTokens: nu
 }
 
 export async function consumeIpRateLimit(scopeKey: string, featureKey: string, perMinuteLimit: number) {
-  const repositories = createRepositoryBundle()
+  // IP-scoped pre-auth rate limit — no viewer, writes usage_counters by IP
+  // scope. Runs under the service role.
+  const repositories = createServiceRepositoryBundle()
   const { start, end } = getWindowBounds("minute")
   const counter = await repositories.usageCounters.incrementWithinLimit(scopeKey, featureKey, "minute", start, end, perMinuteLimit, 1)
   if (!counter) {

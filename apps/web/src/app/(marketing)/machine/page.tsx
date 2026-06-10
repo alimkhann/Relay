@@ -200,19 +200,17 @@ export default function MachinePage() {
       </h2>
       <p style={{ fontSize: "0.85rem" }}>
         <strong style={{ color: "#ccc" }}>Free — $0/forever:</strong> Up to 2
-        active projects, 2 AI analyses per day, 5 MCP reads + 1 write per day,
-        40 captures per month, 14-day source retention, browser capture across
+        active projects, 60 reads + 20 writes per month,
+        14-day source retention, browser capture across
         supported AI tools.
       </p>
       <p style={{ fontSize: "0.85rem" }}>
-        <strong style={{ color: "#ccc" }}>Starter — $6/month ($60/year):</strong>{" "}
-        Up to 5 active projects, 25 AI analyses per day, 120 MCP reads + 20
-        writes per day, 500 captures per month across all projects.
+        <strong style={{ color: "#ccc" }}>Starter — $8/month ($80/year):</strong>{" "}
+        Up to 5 active projects, 1,000 reads + 500 writes per month.
       </p>
       <p style={{ fontSize: "0.85rem" }}>
         <strong style={{ color: "#ccc" }}>Pro — $12/month ($120/year):</strong>{" "}
-        Up to 15 active projects, 60 AI analyses per day, 300 MCP reads + 60
-        writes per day, 1,000 captures per month across all projects, high-quality
+        Up to 15 active projects, 3,000 reads + 1,500 writes per month, high-quality
         model access, priority support.
       </p>
 
@@ -249,7 +247,7 @@ export default function MachinePage() {
           ],
           [
             "Is Relay free?",
-            "Yes. Free plan supports 2 projects. Pro is $9/month for unlimited.",
+            "Yes. Free supports 2 projects (60 reads + 20 writes/month). Starter is $8/month for 5 projects. Pro is $12/month for 15 projects with higher limits.",
           ],
           [
             "Do I need to change how I work?",

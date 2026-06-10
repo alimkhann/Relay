@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/markdown";
 import { useProjectDashboard } from "@/features/projects/use-project-dashboard";
+import { useMemoryCacheSync } from "@/lib/query/memory-cache-sync";
 import { queryKeys } from "@/lib/query/keys";
 import { createClientFlowId } from "@/lib/telemetry/client";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
@@ -70,6 +71,7 @@ export function BriefPageContent({
 }: BriefPageContentProps) {
   const queryClient = useQueryClient();
   const { data: dashboard, isPending } = useProjectDashboard(project.id);
+  useMemoryCacheSync(project.id);
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
   const [editingPacketId, setEditingPacketId] = useState<string | null>(null);

@@ -9,6 +9,8 @@ import {
   resolveProjectSourcesSchema,
   resolveDefaultTargetProfileKey,
   searchProjectSourcesSchema,
+  createMemoryItemSchema,
+  transferMemoryItemSchema,
   type MemoryItemRow,
   type WorkSessionStructuredState,
 } from "@relay/shared"
@@ -44,6 +46,7 @@ import {
 import { resolveProjectSources } from "@/server/services/source-resolver-service"
 import { getSyncMarkForUser, recordSyncMarkForUser } from "@/server/services/sync-mark-service"
 import { flushWorkSession } from "@/server/services/work-session-flush-service"
+import { transferMemoryItem } from "@/server/services/memory-service"
 
 /**
  * Server-side MCP client that calls repositories and services directly
@@ -57,7 +60,9 @@ export class RelayHttpMcpClient {
   }
 
   async listProjects() {
-    const projects = await listProjectsForUser(this.viewer.userId)
+    // Include the personal project so the assistant can route durable
+    // user-centric facts there (it's a normal project with kind='personal').
+    const projects = await listProjectsForUser(this.viewer.userId, { includePersonal: true })
     return projects.map((p: ProjectSummaryDto) => ({
       id: p.id,
       name: p.name,
@@ -67,6 +72,7 @@ export class RelayHttpMcpClient {
       sessionCount: p.sessionCount,
       keywords: p.routingContext?.keywords ?? [],
       updatedAt: p.updatedAt,
+      kind: p.kind ?? "project",
     }))
   }
 
@@ -401,8 +407,20 @@ export class RelayHttpMcpClient {
 
   async manageMemory(args: Record<string, unknown>) {
     const repositories = createRepositoryBundle(this.viewer.userId)
-    const memoryIds = Array.isArray(args.memoryId) ? args.memoryId as string[] : [args.memoryId as string]
-    const action = args.action as string
+    const rawIds = args.memoryId
+    const memoryIds = (Array.isArray(rawIds) ? rawIds : [rawIds]).filter(
+      (id): id is string => typeof id === "string" && id.length > 0,
+    )
+    if (memoryIds.length === 0) {
+      throw new Error("memoryId is required")
+    }
+    const action = typeof args.action === "string" ? args.action : ""
+    const sourceProjectId =
+      typeof args.projectId === "string" && args.projectId.length > 0
+        ? args.projectId
+        : this.viewer.mode === "mcp"
+          ? this.viewer.projectId
+          : null
 
     if (action === "delete") {
       for (const memoryId of memoryIds) {
@@ -414,12 +432,42 @@ export class RelayHttpMcpClient {
       }
     } else if (action === "update") {
       for (const memoryId of memoryIds) {
+        const existing = await repositories.memory.getById(memoryId)
+        const metadata =
+          args.personalCategory === undefined
+            ? undefined
+            : {
+                ...(existing?.metadata ?? {}),
+                personalCategory: String(args.personalCategory),
+              }
+        const type =
+          args.type === undefined
+            ? undefined
+            : createMemoryItemSchema.shape.type.parse(args.type)
         await repositories.memory.update(memoryId, {
           content: args.content as string | undefined,
           title: args.title as string | undefined,
           tags: args.tags as string[] | undefined,
+          type,
+          metadata,
         })
       }
+    } else if (action === "transfer") {
+      const transferInput = transferMemoryItemSchema.parse({
+        targetProjectId: args.targetProjectId,
+        type: args.type,
+        personalCategory: args.personalCategory,
+      })
+      for (const memoryId of memoryIds) {
+        await transferMemoryItem(
+          this.viewer.userId,
+          memoryId,
+          transferInput,
+          sourceProjectId,
+        )
+      }
+    } else {
+      throw new Error(`Unsupported manage_memory action: ${action}`)
     }
   }
 

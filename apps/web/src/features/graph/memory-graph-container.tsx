@@ -2,9 +2,14 @@
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import type { MemoryItemDto } from "@relay/shared";
+import type { MemoryItemDto, MemoryItemType, ProjectGraphEdgeKind, ProjectGraphNodeKind } from "@relay/shared";
+import {
+  PERSONAL_CATEGORY_META,
+  personalCategoryFromMetadata,
+  type PersonalCategory,
+} from "@relay/shared/constants/memory-taxonomy";
 import { ChevronDown, Expand, Minimize2, Network, RotateCcw, Settings2, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
@@ -12,8 +17,10 @@ import { relayClientFetch } from "@/lib/telemetry/fetch";
 import { MemoryGraphDetailPanel } from "./memory-graph-detail-panel";
 import {
   DEFAULT_GRAPH_SETTINGS,
+  NODE_KIND_LABELS,
   TYPE_COLORS,
   TYPE_LABELS,
+  type GraphFilters,
   type MemoryGraphSettings,
   type GraphNode,
 } from "./memory-graph-utils";
@@ -72,13 +79,41 @@ function useElementSize<T extends HTMLElement>() {
   return { ref, size };
 }
 
-function GraphLegend({ nodeCount, linkCount }: { nodeCount: number; linkCount: number }) {
+function GraphLegend({
+  nodeCount,
+  linkCount,
+  personalCategoriesPresent,
+  nodeKinds,
+}: {
+  nodeCount: number;
+  linkCount: number;
+  personalCategoriesPresent?: PersonalCategory[];
+  nodeKinds?: ProjectGraphNodeKind[];
+}) {
+  const isPersonal = Boolean(personalCategoriesPresent && personalCategoriesPresent.length > 0);
+  const kinds = nodeKinds ?? [];
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[var(--relay-muted)]">
-      {(Object.keys(TYPE_COLORS) as Array<keyof typeof TYPE_COLORS>).map((type) => (
-        <span key={type} className="inline-flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: TYPE_COLORS[type] }} />
-          {TYPE_LABELS[type]}
+      {isPersonal
+        ? personalCategoriesPresent!.map((category) => (
+            <span key={category} className="inline-flex items-center gap-1.5">
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: PERSONAL_CATEGORY_META[category].color }}
+              />
+              {PERSONAL_CATEGORY_META[category].label}
+            </span>
+          ))
+        : (Object.keys(TYPE_COLORS) as Array<keyof typeof TYPE_COLORS>).map((type) => (
+            <span key={type} className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: TYPE_COLORS[type] }} />
+              {TYPE_LABELS[type]}
+            </span>
+          ))}
+      {kinds.filter((kind) => kind !== "memory").map((kind) => (
+        <span key={kind} className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: kind === "entity" ? "#14b8a6" : kind === "source" ? "#6366f1" : kind === "conversation" ? "#f97316" : "#a3e635" }} />
+          {NODE_KIND_LABELS[kind]}
         </span>
       ))}
       <span className="text-[var(--relay-line)]">·</span>
@@ -146,11 +181,15 @@ function SliderRow({
 
 function GraphSettingsPanel({
   settings,
+  includeEvidence,
+  onIncludeEvidenceChange,
   onChange,
   onReset,
   onClose,
 }: {
   settings: MemoryGraphSettings;
+  includeEvidence: boolean;
+  onIncludeEvidenceChange: (checked: boolean) => void;
   onChange: (settings: MemoryGraphSettings) => void;
   onReset: () => void;
   onClose: () => void;
@@ -191,7 +230,7 @@ function GraphSettingsPanel({
           <p className="border-b border-[var(--relay-line)] pb-1 text-[11px] font-medium uppercase tracking-wide text-[var(--relay-muted)]">Display</p>
           <ToggleRow label="Arrows" checked={settings.showArrows} onChange={(showArrows) => patch({ showArrows })} />
           <ToggleRow label="Labels" checked={settings.showLabels} onChange={(showLabels) => patch({ showLabels })} />
-          <ToggleRow label="Fallback links" checked={settings.showFallbackLinks} onChange={(showFallbackLinks) => patch({ showFallbackLinks })} />
+          <ToggleRow label="Evidence layer" checked={includeEvidence} onChange={onIncludeEvidenceChange} />
           <SliderRow label="Text fade threshold" min={0.75} max={2.2} step={0.05} value={settings.textFadeThreshold} onChange={(textFadeThreshold) => patch({ textFadeThreshold })} />
           <SliderRow label="Node size" min={0.45} max={1.7} step={0.05} value={settings.nodeScale} onChange={(nodeScale) => patch({ nodeScale })} />
           <SliderRow label="Link thickness" min={0.35} max={2.2} step={0.05} value={settings.linkThickness} onChange={(linkThickness) => patch({ linkThickness })} />
@@ -215,10 +254,43 @@ interface ProjectListItem {
   name: string;
 }
 
+function toggleSetValue<T>(set: Set<T>, value: T) {
+  const next = new Set(set);
+  if (next.has(value)) next.delete(value);
+  else next.add(value);
+  return next;
+}
+
+function FilterButton({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        "rounded-full border px-2 py-1 text-[11px] transition-colors",
+        active
+          ? "border-[var(--relay-ink)] bg-[var(--relay-ink)] text-[var(--relay-bg)]"
+          : "border-[var(--relay-line)] bg-[var(--relay-surface)]/80 text-[var(--relay-muted)] hover:text-[var(--relay-ink)]",
+      )}
+    >
+      {label}
+    </button>
+  );
+}
+
 export function MemoryGraphContainer({
   projectId,
   projectName,
-  memoryItems,
+  memoryItems: _memoryItems,
   mode = "compact",
   variant = "default",
   title = "Memory Graph",
@@ -230,7 +302,11 @@ export function MemoryGraphContainer({
   const [settings, setSettings] = useState<MemoryGraphSettings>(DEFAULT_GRAPH_SETTINGS);
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [activeProjectId, setActiveProjectId] = useState(projectId);
-  const [switchedItems, setSwitchedItems] = useState<MemoryItemDto[] | null>(null);
+  const [includeEvidence, setIncludeEvidence] = useState(false);
+  const [nodeKindFilters, setNodeKindFilters] = useState<Set<ProjectGraphNodeKind>>(new Set());
+  const [memoryTypeFilters, setMemoryTypeFilters] = useState<Set<MemoryItemType>>(new Set());
+  const [categoryFilters, setCategoryFilters] = useState<Set<PersonalCategory>>(new Set());
+  const [edgeKindFilters, setEdgeKindFilters] = useState<Set<ProjectGraphEdgeKind>>(new Set());
   const compactSize = useElementSize<HTMLDivElement>();
   const fullscreenSize = useElementSize<HTMLDivElement>();
   const router = useRouter();
@@ -242,11 +318,36 @@ export function MemoryGraphContainer({
     router.push(`/graph?project=${projectId}`);
   }
 
-  const effectiveItems = activeProjectId === projectId ? memoryItems : (switchedItems ?? []);
-  const activeProjectName = activeProjectId === projectId
-    ? projectName
-    : projects.find((p) => p.id === activeProjectId)?.name;
-  const { data, loading, error } = useGraphData(activeProjectId, effectiveItems, activeProjectName);
+  const filters = useMemo<GraphFilters>(() => ({
+    nodeKinds: nodeKindFilters,
+    memoryTypes: memoryTypeFilters,
+    personalCategories: categoryFilters,
+    edgeKinds: edgeKindFilters,
+  }), [categoryFilters, edgeKindFilters, memoryTypeFilters, nodeKindFilters]);
+  const { data, loading, error } = useGraphData(activeProjectId, {
+    density: expanded ? "full" : "compact",
+    includeEvidence: expanded && includeEvidence,
+    filters,
+  });
+
+  // Personal graph: the legend lists the present Folk categories instead of the
+  // project memory types.
+  const personalCategoriesPresent = Array.from(new Set(
+    data.nodes
+      .map((node) => personalCategoryFromMetadata(node.metadata))
+      .filter((category): category is PersonalCategory => category !== null),
+  ));
+  const nodeKindsPresent = Array.from(new Set(data.nodes.map((node) => node.kind)));
+  const availableNodes = data.snapshot?.nodes ?? [];
+  const availableEdges = data.snapshot?.edges ?? [];
+  const availableNodeKinds = Array.from(new Set(availableNodes.map((node) => node.kind)));
+  const availableMemoryTypes = Array.from(new Set(availableNodes.flatMap((node) => node.memory ? [node.memory.type] : [])));
+  const availableCategories = Array.from(new Set(
+    availableNodes
+      .map((node) => personalCategoryFromMetadata(node.metadata))
+      .filter((category): category is PersonalCategory => category !== null),
+  ));
+  const availableEdgeKinds = Array.from(new Set(availableEdges.map((edge) => edge.kind)));
 
   useEffect(() => {
     if (!expanded) return;
@@ -260,39 +361,6 @@ export function MemoryGraphContainer({
       } catch {}
     })();
   }, [expanded]);
-
-  useEffect(() => {
-    if (activeProjectId === projectId) {
-      setSwitchedItems(null);
-      return;
-    }
-    void (async () => {
-      try {
-        const res = await relayClientFetch(`/api/projects/${activeProjectId}/memory`);
-        if (res.ok) {
-          const payload = (await res.json()) as { memory: Array<{
-            id: string; type: MemoryItemDto["type"]; title: string | null;
-            content: string; pinned: boolean; updatedAt?: string;
-            provenance?: { sourceSurface?: string | null; sourceUrl?: string | null; capturedAt?: string | null };
-            status?: { lastReaffirmedAt?: string | null };
-          }> };
-          setSwitchedItems(payload.memory.map((i) => ({
-            id: i.id,
-            type: i.type,
-            title: i.title,
-            content: i.content,
-            pinned: i.pinned,
-            updatedAt: i.updatedAt ?? new Date().toISOString(),
-            sourceSurface: (i.provenance?.sourceSurface as MemoryItemDto["sourceSurface"]) ?? null,
-            sourceUrl: i.provenance?.sourceUrl ?? null,
-            capturedAt: i.provenance?.capturedAt ?? null,
-            decayScore: 0.5,
-            lastReaffirmedAt: i.status?.lastReaffirmedAt ?? null,
-          })));
-        }
-      } catch {}
-    })();
-  }, [activeProjectId, projectId]);
 
   function selectNode(node: GraphNode | null) {
     setSelectedNode(node);
@@ -324,6 +392,14 @@ export function MemoryGraphContainer({
           Loading graph...
         </div>
       )}
+      {!loading && data.nodes.length === 0 && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 px-6 text-center">
+          <Network className="h-8 w-8 text-[var(--relay-line)]" />
+          <p className="text-[12px] leading-relaxed text-[var(--relay-muted)]">
+            No graph data yet. Capture a conversation or add memories to see connections appear here.
+          </p>
+        </div>
+      )}
       {size.width > 1 && size.height > 1 ? (
         <MemoryGraph
           data={data}
@@ -338,19 +414,11 @@ export function MemoryGraphContainer({
           Loading graph…
         </div>
       )}
-      {!isFullscreen && (
-        <button
-          type="button"
-          onClick={openGraphTab}
-          className="absolute right-2 top-2 z-10 inline-flex items-center gap-1.5 rounded-full border border-[var(--relay-line)] bg-[var(--relay-surface)]/90 p-1.5 font-medium text-[var(--relay-ink)] shadow-[var(--relay-shadow-sm)] backdrop-blur opacity-0 hover:opacity-100 transition-opacity"
-          aria-label="Open memory graph fullscreen"
-        >
-          <Expand className="h-3.5 w-3.5" />
-        </button>
-      )}
       {settingsOpen && isFullscreen && (
         <GraphSettingsPanel
           settings={settings}
+          includeEvidence={includeEvidence}
+          onIncludeEvidenceChange={setIncludeEvidence}
           onChange={setSettings}
           onReset={() => setSettings(DEFAULT_GRAPH_SETTINGS)}
           onClose={() => setSettingsOpen(false)}
@@ -383,7 +451,7 @@ export function MemoryGraphContainer({
                   {title}
                 </div>
                 <div className="mt-1">
-                  <GraphLegend nodeCount={data.nodes.length} linkCount={data.links.length} />
+                  <GraphLegend nodeCount={data.nodes.length} linkCount={data.links.length} personalCategoriesPresent={personalCategoriesPresent} nodeKinds={nodeKindsPresent} />
                 </div>
               </div>
               <Button
@@ -427,8 +495,8 @@ export function MemoryGraphContainer({
                 <select
                   value={activeProjectId}
                   onChange={(e) => {
-                    setActiveProjectId(e.target.value);
-                    setSelectedNode(null);
+                setActiveProjectId(e.target.value);
+                setSelectedNode(null);
                   }}
                   className="appearance-none rounded-full border border-[var(--relay-line)] bg-[var(--relay-surface)]/80 pl-3 pr-7 py-1.5 text-[12px] font-medium text-[var(--relay-ink)] backdrop-blur outline-none cursor-pointer"
                 >
@@ -453,7 +521,21 @@ export function MemoryGraphContainer({
             <Settings2 className="h-4 w-4" />
           </button>
           <div className="absolute bottom-4 left-4 z-20 max-w-[calc(100%-32px)] rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]/88 px-3 py-2 backdrop-blur">
-            <GraphLegend nodeCount={data.nodes.length} linkCount={data.links.length} />
+            <GraphLegend nodeCount={data.nodes.length} linkCount={data.links.length} personalCategoriesPresent={personalCategoriesPresent} nodeKinds={nodeKindsPresent} />
+            <div className="mt-2 flex max-w-[760px] flex-wrap gap-1.5">
+              {availableNodeKinds.map((kind) => (
+                <FilterButton key={kind} label={NODE_KIND_LABELS[kind]} active={nodeKindFilters.has(kind)} onClick={() => setNodeKindFilters((value) => toggleSetValue(value, kind))} />
+              ))}
+              {availableMemoryTypes.map((type) => (
+                <FilterButton key={type} label={TYPE_LABELS[type]} active={memoryTypeFilters.has(type)} onClick={() => setMemoryTypeFilters((value) => toggleSetValue(value, type))} />
+              ))}
+              {availableCategories.map((category) => (
+                <FilterButton key={category} label={PERSONAL_CATEGORY_META[category].label} active={categoryFilters.has(category)} onClick={() => setCategoryFilters((value) => toggleSetValue(value, category))} />
+              ))}
+              {availableEdgeKinds.map((kind) => (
+                <FilterButton key={kind} label={kind.replace(/_/g, " ")} active={edgeKindFilters.has(kind)} onClick={() => setEdgeKindFilters((value) => toggleSetValue(value, kind))} />
+              ))}
+            </div>
           </div>
           <div className="h-full">
             {renderGraphBody("fullscreen")}

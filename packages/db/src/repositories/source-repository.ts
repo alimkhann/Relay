@@ -285,14 +285,16 @@ export class SourceRepository {
     return toSourceVersionRow(rows[0] as Record<string, unknown>)
   }
 
-  async listByProject(projectId: string, options: { includeArchived?: boolean } = {}): Promise<ProjectSourceRow[]> {
+  async listByProject(projectId: string, options: { includeArchived?: boolean; limit?: number } = {}): Promise<ProjectSourceRow[]> {
+    const limit = Math.min(Math.max(options.limit ?? 500, 1), 1000)
     const rows = await this.provider.query(
       `select ${SOURCE_COLS}
        from project_sources
        where project_id = $1
          and ($2::boolean or status <> 'archived')
-       order by updated_at desc`,
-      [projectId, options.includeArchived ?? false],
+       order by updated_at desc
+       limit $3`,
+      [projectId, options.includeArchived ?? false, limit],
     )
     return rows.map((row) => toProjectSourceRow(row as Record<string, unknown>))
   }
@@ -895,15 +897,17 @@ export class SourceRepository {
     )
   }
 
-  async listMemoryLinksByProject(projectId: string): Promise<SourceMemoryLinkRow[]> {
+  async listMemoryLinksByProject(projectId: string, options: { limit?: number } = {}): Promise<SourceMemoryLinkRow[]> {
+    const limit = Math.min(Math.max(options.limit ?? 1000, 1), 5000)
     const rows = await this.provider.query(
       `select l.source_id, l.version_id, l.chunk_id, l.memory_item_id, l.confidence
        from source_memory_links l
        join project_sources s on s.id = l.source_id
        where s.project_id = $1
          and s.status <> 'archived'
-       order by l.created_at asc`,
-      [projectId],
+       order by l.created_at asc
+       limit $2`,
+      [projectId, limit],
     )
     return rows.map((row) => ({
       sourceId: String((row as Record<string, unknown>).source_id),

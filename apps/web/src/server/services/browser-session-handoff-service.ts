@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto"
 
-import { createRepositoryBundle } from "@relay/db"
+import { createRepositoryBundle, createServiceRepositoryBundle } from "@relay/db"
 import { browserSessionHandoffStartSchema, hashContent } from "@relay/shared"
 
 import { resolveSafeNextPath } from "@/server/policies/viewer"
@@ -51,7 +51,7 @@ export async function startBrowserSessionHandoff(
 }
 
 export async function consumeBrowserSessionHandoff(token: string) {
-  const repositories = createRepositoryBundle()
+  const repositories = createServiceRepositoryBundle()
   const record = await repositories.browserSessionHandoffs.consumeValidByHash(hashContent(token))
 
   if (!record) {

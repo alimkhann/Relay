@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 
-import { createRepositoryBundle } from "@relay/db"
+import { createServiceRepositoryBundle } from "@relay/db"
 
 import { clearLocalSessionCookieFromResponse } from "@/lib/auth/local-session"
 import { getAuthProvider } from "@/lib/auth/provider"
@@ -42,7 +42,7 @@ export const POST = withApiAuth(async (request: Request) => {
 
   void deletionFeedback // acknowledged; log via telemetry in future
 
-  const repositories = createRepositoryBundle()
+  const repositories = createServiceRepositoryBundle()
   const profile = await repositories.profiles.getById(viewer.userId)
   const email = profile?.email ?? viewer.email
   const name = profile?.displayName ?? viewer.name ?? null

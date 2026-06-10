@@ -11,21 +11,107 @@ import type {
  * chat so branch/optimistic behaviour (incl. the edit-no-flicker fix) cannot
  * diverge between surfaces.
  */
+export interface UiToolStep {
+  label: string
+  status: "active" | "complete" | "pending"
+  startedAt?: string
+  completedAt?: string
+  durationMs?: number
+}
+
+export interface UiUsage {
+  totalTokens: number
+  maxContextTokens?: number
+  model?: string
+}
+
 export interface UiMessage {
   id: string
   parentId: string | null
   role: "user" | "assistant"
   content: string
+  toolName?: string | null
   actionResults: AssistantActionResult[]
   attachments: AssistantAttachmentDto[]
   feedback: AssistantMessageFeedback | null
+  /** @deprecated use pendingActions */
   pending?: AssistantPendingAction
+  pendingActions: AssistantPendingAction[]
+  /** Set when the agent hit its step budget. UI renders a Continue button so
+   * the user resumes without re-typing. */
+  pendingContinuation?: { reason: "step_limit" }
   streaming?: boolean
   /** 1-based position + total among sibling branches at this point. */
   branch?: { index: number; total: number; siblingIds: string[] }
+  toolSteps: UiToolStep[]
+  usage?: UiUsage
 }
 
 export const chatKeyOf = (parentId: string | null) => parentId ?? "root"
+
+function actionResultKey(result: AssistantActionResult): string {
+  const itemIds = result.items.map((item) => item.id ?? item.label).join("|")
+  return `${result.tool}:${result.action}:${result.count}:${itemIds}`
+}
+
+/** Skip duplicate cards when action_update and tool_result stream the same write. */
+export function appendActionResult(
+  existing: AssistantActionResult[],
+  next: AssistantActionResult,
+): AssistantActionResult[] {
+  const key = actionResultKey(next)
+  if (existing.some((result) => actionResultKey(result) === key)) return existing
+  return [...existing, next]
+}
+
+/** Filter pending actions that should still be rendered in the UI.
+ * Declined actions are hidden immediately. Succeeded/failed stay visible
+ * during their dwell window (until moved to actionResults by the stream handler). */
+export function filterRenderablePendingActions(
+  pendingActions: AssistantPendingAction[],
+): AssistantPendingAction[] {
+  return pendingActions.filter((pending) => pending.status !== "declined")
+}
+
+/** Hide completed pending-action chrome once the structured tool result card exists.
+ * @deprecated use filterRenderablePendingActions */
+export function shouldRenderPendingAction(
+  pending: AssistantPendingAction | undefined,
+  _actionResults: AssistantActionResult[] = [],
+): pending is AssistantPendingAction {
+  if (!pending) return false
+  if (
+    pending.status === "succeeded" ||
+    pending.status === "failed" ||
+    pending.status === "declined"
+  ) {
+    return false
+  }
+  if (pending.result) return false
+  return !pending.status || pending.status === "pending" || pending.status === "running"
+}
+
+/** Drop duplicate cards on ancestor pending_action rows when a later assistant
+ * message already carries the aggregated turn results. */
+export function suppressActionResultsOnPendingRows(nodes: UiMessage[]): UiMessage[] {
+  let downstreamHasAggregated = false
+  return [...nodes]
+    .reverse()
+    .map((node) => {
+      if (downstreamHasAggregated && node.toolName === "pending_action") {
+        return { ...node, actionResults: [] }
+      }
+      if (
+        node.role === "assistant" &&
+        node.toolName !== "pending_action" &&
+        node.actionResults.length > 0
+      ) {
+        downstreamHasAggregated = true
+      }
+      return node
+    })
+    .reverse()
+}
 
 export function derivePath(
   nodes: AssistantMessageDto[],
@@ -59,15 +145,20 @@ export function derivePath(
       actionResult?: AssistantActionResult | null
       actionResults?: AssistantActionResult[]
     }
+    const chosenPending = chosen.pending ?? undefined
     out.push({
       id: chosen.id,
       parentId: chosen.parentId,
       role: chosen.role === "user" ? "user" : "assistant",
       content: chosen.content,
+      toolName: chosen.toolName,
       actionResults:
         payload.actionResults ?? (payload.actionResult ? [payload.actionResult] : []),
       attachments: chosen.attachments ?? [],
       feedback: chosen.feedback,
+      pending: chosenPending,
+      pendingActions: chosen.pendingActions ?? (chosenPending ? [chosenPending] : []),
+      toolSteps: chosen.toolSteps ?? [],
       branch:
         siblings.length > 1
           ? {
@@ -80,7 +171,7 @@ export function derivePath(
     leafId = chosen.id
     parentKey = chosen.id
   }
-  return { nodes: out, leafId }
+  return { nodes: suppressActionResultsOnPendingRows(out), leafId }
 }
 
 /**

@@ -35,6 +35,12 @@ function summarizeMemory(item: MemoryItemRow, relations: MemoryRelationRow[] = [
     tags,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
+    // Minimal metadata passthrough so personal-memory category coloring works on
+    // surfaces that read this endpoint (graph project-switch refetch, etc.).
+    metadata: {
+      personalCategory:
+        typeof metadata.personalCategory === "string" ? metadata.personalCategory : null,
+    },
     provenance: {
       sourceSurface: item.sourceSurface ?? null,
       sourceConversationId: item.sourceConversationId ?? null,
@@ -209,6 +215,7 @@ export async function listMemoryForExplainability(
     types?: MemoryItemRow["type"][]
     limit?: number
     sort?: "updated_desc" | "created_desc"
+    cursor?: { pinned: boolean; at: string; id: string } | null
   } = {},
 ) {
   const repositories = createRepositoryBundle(userId)
@@ -219,6 +226,7 @@ export async function listMemoryForExplainability(
     types: input.types,
     limit: input.limit,
     sort: input.sort,
+    cursor: input.cursor,
   })
   const summaries: ReturnType<typeof summarizeMemory>[] = []
   for (const item of items) {

@@ -31,16 +31,41 @@ function buildDerivedKey(section: ProjectContextSection, text: string) {
   return `derived:${section}:${normalized}`
 }
 
+/**
+ * Derived governed lines are aggregated from session digests and carry no single
+ * source row. Rather than label them a bare "Derived", surface the project's
+ * predominant capture platform (mode of the memory items' real source surfaces)
+ * so the user sees where the project's context comes from.
+ */
+function predominantSourceSurface(dashboard: ProjectDashboardDto): SourceSurface | null {
+  const counts = new Map<SourceSurface, number>()
+  for (const item of dashboard.memory) {
+    const surface = item.sourceSurface
+    if (!surface || surface === "manual") continue
+    counts.set(surface, (counts.get(surface) ?? 0) + 1)
+  }
+  let best: SourceSurface | null = null
+  let bestCount = 0
+  for (const [surface, count] of counts) {
+    if (count > bestCount) {
+      best = surface
+      bestCount = count
+    }
+  }
+  return best
+}
+
 export function buildProjectContextItems(
   dashboard: ProjectDashboardDto,
   section: ProjectContextSection,
 ): ProjectContextItem[] {
+  const derivedSurface = predominantSourceSurface(dashboard)
   const effectiveItems = dashboard.projectState?.[projectStateKeyBySection[section]] ?? []
   const manualItems = dashboard.memory.filter(
     (item) => item.type === memoryTypeBySection[section],
   )
 
-  return effectiveItems
+  const effective = effectiveItems
     .map((text) => {
       const normalizedText = normalizeText(text).toLowerCase()
       const manualMatch = manualItems.find(
@@ -51,7 +76,7 @@ export function buildProjectContextItems(
         return {
           key: `manual:${manualMatch.id}`,
           section,
-          text,
+          text: manualMatch.content,
           source: "manual" as const,
           memoryId: manualMatch.id,
           sourceSurface: manualMatch.sourceSurface,
@@ -65,8 +90,12 @@ export function buildProjectContextItems(
         text,
         source: "derived" as const,
         memoryId: null,
-        sourceSurface: null,
-        capturedAt: null,
+        // Surface the project's predominant capture platform instead of a bare
+        // "Derived" (null → the UI falls back to "Derived").
+        sourceSurface: derivedSurface,
+        // Derived items have no capture event — stamp the time the project
+        // state was last rederived so the UI can show a relative time.
+        capturedAt: dashboard.projectState?.updatedAt ?? null,
       }
     })
     .filter(
@@ -75,6 +104,24 @@ export function buildProjectContextItems(
           (candidate) => normalizeText(candidate.text).toLowerCase() === normalizeText(item.text).toLowerCase(),
         ) === index,
     )
+
+  const effectiveText = new Set(
+    effective.map((item) => normalizeText(item.text).toLowerCase()),
+  )
+  const unreconciledManual = manualItems
+    .filter((item) => !effectiveText.has(normalizeText(item.content).toLowerCase()))
+    .sort((a, b) => (b.capturedAt ?? b.updatedAt).localeCompare(a.capturedAt ?? a.updatedAt))
+    .map((item) => ({
+      key: `manual:${item.id}`,
+      section,
+      text: item.content,
+      source: "manual" as const,
+      memoryId: item.id,
+      sourceSurface: item.sourceSurface,
+      capturedAt: item.capturedAt ?? item.updatedAt,
+    }))
+
+  return [...unreconciledManual, ...effective]
 }
 
 export function buildProjectContextPreview(dashboard: ProjectDashboardDto) {

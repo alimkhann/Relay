@@ -1,4 +1,4 @@
-import { normalizeText, type ProjectSummaryDto } from "@relay/shared"
+import { normalizeText, type ProjectSettingsRow, type ProjectSummaryDto } from "@relay/shared"
 
 import type { RepositoryBundle } from "./repository-bundle"
 
@@ -59,17 +59,27 @@ function extractRoutingKeywords(values: Array<string | null | undefined>) {
   return keywords
 }
 
-export async function getProjectSummaries(repositories: RepositoryBundle, ownerId: string): Promise<ProjectSummaryDto[]> {
-  const projects = await repositories.projects.listByOwner(ownerId)
+export async function getProjectSummaries(
+  repositories: RepositoryBundle,
+  ownerId: string,
+  options: { includePersonal?: boolean } = {},
+): Promise<ProjectSummaryDto[]> {
+  const projects = await repositories.projects.listByOwner(ownerId, {
+    includePersonal: options.includePersonal,
+  })
 
   return Promise.all(
     projects.map(async (project) => {
-      const [memoryCount, memorySamples, projectState, conversationCount] = await Promise.all([
+      const [memoryCount, memorySamples, projectState, conversationCount, projectSettings] = await Promise.all([
         repositories.memory.countByProject(project.id),
         repositories.memory.listRoutingSamplesByProject(project.id, 3),
         repositories.projectState.getByProject(project.id),
-        repositories.sessions.countDistinctConversations(project.id, { includeArchived: false })
+        repositories.sessions.countDistinctConversations(project.id, { includeArchived: false }),
+        repositories.projectSettings.getByProject(project.id)
       ])
+      const settings = projectSettings?.settings as
+        | ProjectSettingsRow["settings"]
+        | undefined
       const routingKeywords = extractRoutingKeywords([
         project.name,
         project.slug,
@@ -97,7 +107,12 @@ export async function getProjectSummaries(repositories: RepositoryBundle, ownerI
           hasMeaningfulContext: memoryCount > 0 || conversationCount > 0,
           keywords: routingKeywords
         },
-        updatedAt: project.updatedAt
+        updatedAt: project.updatedAt,
+        kind: project.kind,
+        autoCapture: settings?.autoCapture,
+        autoCapturePlatforms: settings?.autoCapturePlatforms,
+        inlineChip: settings?.inlineChip,
+        inlineChipPlatforms: settings?.inlineChipPlatforms
       }
     })
   )

@@ -3,7 +3,69 @@ import { describe, expect, it } from "vitest"
 import {
   evaluateProjectRouting,
   findApprovedAssociationMatch,
+  pickPreferredProjectId,
 } from "./routing"
+
+describe("pickPreferredProjectId", () => {
+  const projectIds = ["project_relay", "project_other", "personal_x"]
+
+  it("lets a manual override win over an active association", () => {
+    expect(
+      pickPreferredProjectId({
+        manualProjectId: "personal_x",
+        associationProjectId: "project_relay",
+        rememberedProjectId: "project_relay",
+        projectIds,
+      }),
+    ).toBe("personal_x")
+  })
+
+  it("resolves the personal project when it is the manual override and in options", () => {
+    expect(
+      pickPreferredProjectId({
+        manualProjectId: "personal_x",
+        associationProjectId: null,
+        rememberedProjectId: null,
+        projectIds,
+      }),
+    ).toBe("personal_x")
+  })
+
+  it("falls through to the association when there is no override", () => {
+    expect(
+      pickPreferredProjectId({
+        manualProjectId: null,
+        associationProjectId: "project_relay",
+        rememberedProjectId: "project_other",
+        projectIds,
+      }),
+    ).toBe("project_relay")
+  })
+
+  it("falls through to the association when the override project is gone from options", () => {
+    // Locks in the silent-revert failure mode: an override id not present in the
+    // current options must NOT null the selection — the association wins instead.
+    expect(
+      pickPreferredProjectId({
+        manualProjectId: "project_deleted",
+        associationProjectId: "project_relay",
+        rememberedProjectId: null,
+        projectIds,
+      }),
+    ).toBe("project_relay")
+  })
+
+  it("returns null when no candidate is available in options", () => {
+    expect(
+      pickPreferredProjectId({
+        manualProjectId: "project_deleted",
+        associationProjectId: null,
+        rememberedProjectId: null,
+        projectIds,
+      }),
+    ).toBeNull()
+  })
+})
 
 describe("evaluateProjectRouting", () => {
   it("does not match approved associations across platforms by shared fingerprint", () => {
@@ -625,4 +687,67 @@ describe("evaluateProjectRouting", () => {
     expect(result.confidence).toBe("low")
     expect(result.candidateProjectId).toBeNull()
   })
+
+  it("does not route personal-profile summaries to projects that are only mentioned incidentally", () => {
+    const result = evaluateProjectRouting({
+      page: {
+        supported: true,
+        platform: "perplexity",
+        pathname: "/search/318f9162-c42e-47b0-b068-a903ef3a1279",
+        title: "Everything you know about me",
+        recentRoutingText:
+          "user: Summarize everything you know about me. Mention Relay because I work on it, but this request is mostly personal.",
+        recentUserTurnText:
+          "Summarize everything you know about me. Mention Relay because I work on it, but this request is mostly personal.",
+      },
+      projects: [
+        {
+          id: "project_relay",
+          name: "Relay",
+          slug: "relay",
+          memoryCount: 123,
+          sessionCount: 20,
+          description:
+            "Relay is an AI memory and context sync extension for projects, personal facts, and chat capture.",
+          routingContext: {
+            hasMeaningfulContext: true,
+            keywords: [
+              "ai",
+              "memory",
+              "context",
+              "extension",
+              "project",
+              "personal",
+              "capture",
+            ],
+          },
+        },
+        {
+          id: "project_personal",
+          name: "Personal",
+          slug: "personal",
+          kind: "personal",
+          memoryCount: 0,
+          sessionCount: 0,
+          routingContext: { hasMeaningfulContext: false, keywords: [] },
+        },
+      ],
+      selectedProjectId: "project_relay",
+      lastTabProjectId: "project_relay",
+      boundProject: { projectId: "project_relay", bindingKind: "tab" },
+      approvedAssociations: [],
+    })
+
+    // Personal-profile intent routes visibly to Personal (commit 08343d6) when no
+    // other project clearly wins — NOT to the incidentally-mentioned Relay project.
+    expect(result.mode).toBe("auto-save")
+    expect(result.confidence).toBe("high")
+    expect(result.candidateProjectId).toBe("project_personal")
+    // The incidental project must never be the capture target.
+    expect(result.candidateProjectId).not.toBe("project_relay")
+    expect(
+      result.topCandidates.some((candidate) => candidate.projectId === "project_relay"),
+    ).toBe(false)
+  })
+
 })

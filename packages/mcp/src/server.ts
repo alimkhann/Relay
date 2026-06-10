@@ -4,6 +4,7 @@ import type { RelayClient } from "./client.js"
 import type { RelayConfig } from "./config.js"
 import { detectProjectSelection } from "./utils/project-detection.js"
 import { registerTools } from "./tools/register.js"
+import { resolvePersonalProjectId } from "./tools/resolve-personal.js"
 import { readProjectBrief } from "./resources/project-brief.js"
 import { SESSION_GUIDELINES } from "./prompts/session-guidelines.js"
 
@@ -12,6 +13,7 @@ interface ProjectSummary {
   name: string
   slug?: string | null
   routingContext: { keywords: string[] } | null
+  kind?: "project" | "personal"
 }
 
 interface ListProjectsResponse {
@@ -38,8 +40,12 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
       name: p.name,
       slug: p.slug ?? null,
       keywords: p.routingContext?.keywords ?? [],
+      kind: p.kind ?? "project",
     }))
   }
+
+  // Resolve the literal "personal" alias to the user's kind='personal' project.
+  // See resolvePersonalProjectId (extracted + exported for testing).
 
   async function resolveProjectSelection(explicitId?: string): Promise<RelayProjectResolutionResult> {
     if (explicitId) {
@@ -95,6 +101,10 @@ export function createServer(client: RelayClient, config: RelayConfig): McpServe
   }
 
   async function resolveProjectId(explicitId?: string): Promise<string> {
+    // "personal" alias → the user's kind='personal' project id.
+    if (explicitId === "personal") {
+      return resolvePersonalProjectId(client)
+    }
     const result = await resolveProjectSelection(explicitId)
     if (result.status === "resolved") return result.projectId
     throw new Error(

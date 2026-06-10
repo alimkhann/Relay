@@ -38,14 +38,14 @@ export function SidebarPlanWidget({
 }: SidebarPlanWidgetProps) {
   const { data: billing } = useBillingStatus()
 
-  // Fallback to the SSR-threaded captures number until billing loads, so the
+  // Fallback to the SSR-threaded monthly write number until billing loads, so the
   // widget never flashes empty.
   const metrics: UsageMetric[] = useMemo(() => {
     if (billing) return buildCoreUsageMetrics(billing)
     return [
       {
-        key: "captures",
-        label: "Captures",
+        key: "writes_monthly",
+        label: "Writes this month",
         used: capturesUsed,
         limit: capturesLimit,
         period: "mo",

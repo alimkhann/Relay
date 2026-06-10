@@ -1,5 +1,8 @@
 import type {
+  AssistantActionResult,
   RelayOnboardingState,
+  SourceSurface,
+  SupportedPlatform,
   TelemetryEventInput,
   UserEntitlementsDto,
 } from "@relay/shared";
@@ -16,6 +19,16 @@ export interface RelayProjectOption {
     hasMeaningfulContext: boolean;
     keywords: string[];
   } | null;
+  /** 'personal' backs the user's personal memory; absent → normal project. */
+  kind?: "project" | "personal";
+  /** Per-project auto-capture override; undefined = inherit the global setting. */
+  autoCapture?: boolean;
+  /** Per-(platform) auto-capture override; wins over `autoCapture`. */
+  autoCapturePlatforms?: Partial<Record<SupportedPlatform, boolean>>;
+  /** Per-project inline-chip override; undefined = inherit the global setting. */
+  inlineChip?: boolean;
+  /** Per-(platform) inline-chip override; wins over `inlineChip`. */
+  inlineChipPlatforms?: Partial<Record<SupportedPlatform, boolean>>;
 }
 
 export type RelayRemoteStatus = "loading" | "ready" | "stale" | "unavailable";
@@ -51,6 +64,9 @@ export interface RelayContextPreviewItem {
   text: string;
   source: "manual" | "derived";
   memoryId?: string | null;
+  /** Capturing surface for manual items; null/undefined for derived. */
+  sourceSurface?: SourceSurface | null;
+  capturedAt?: string | null;
 }
 
 export interface RelayContextNoteItem {
@@ -59,7 +75,11 @@ export interface RelayContextNoteItem {
   text: string;
   sourceUrl: string | null;
   hostname: string | null;
+  /** Real capture surface (perplexity/chatgpt/…) so the badge shows the source. */
+  sourceSurface?: SourceSurface | null;
   capturedAt: string;
+  /** Folk personal category (metadata.personalCategory) for personal-memory notes. */
+  personalCategory?: string | null;
 }
 
 export interface RelayContextPreview {
@@ -67,6 +87,7 @@ export interface RelayContextPreview {
   constraints: RelayContextPreviewItem[];
   tasks: RelayContextPreviewItem[];
   notes: RelayContextNoteItem[];
+  requirements: RelayContextNoteItem[];
 }
 
 export interface RelayChatAssociation {
@@ -87,6 +108,10 @@ export interface RelayAssociationToastPayload {
   expiresAt: number;
   digestStatus?: "analyzed" | "queued" | null;
   reason?: string | null;
+  /** Durable user facts routed into the personal project by this capture. */
+  personalSaved?: number | null;
+  /** Borderline personal facts found but not auto-written (soak / low confidence). */
+  personalUnsure?: number | null;
 }
 
 export interface RelayRoutingReview {
@@ -107,6 +132,8 @@ export interface RelayAssociationToastState {
   expiresAt: number | null;
   digestStatus?: "analyzed" | "queued" | null;
   reason?: string | null;
+  personalSaved?: number | null;
+  personalUnsure?: number | null;
 }
 
 export interface RelayInsertState {
@@ -172,7 +199,7 @@ export type RelayMessage =
   | { type: "RELAY_INSERT_CONTEXT"; payload: { content: string } }
   | {
       type: "RELAY_CAPTURE_VISIBLE";
-      payload: { projectId: string; tabId?: number };
+      payload: { projectId: string; tabId?: number; additionalProjectIds?: string[] };
     }
   | { type: "RELAY_DISMISS_CAPTURE_REVIEW"; payload?: { tabId?: number } }
   | { type: "RELAY_TRIGGER_AUTO_CAPTURE"; payload: { tabId?: number } }
@@ -228,7 +255,19 @@ export type RelayMessage =
         source?: "toast" | "inline_chip" | "sidebar";
       };
     }
-  | { type: "RELAY_REFRESH_SESSION" }
+  | { type: "RELAY_REFRESH_SESSION"; payload?: { force?: boolean } }
+  | {
+      type: "RELAY_INVALIDATE_PROJECT_CACHE";
+      payload?: { projectId?: string; sync?: boolean };
+    }
+  | {
+      type: "RELAY_APPLY_AGENT_MEMORY_MUTATION";
+      payload: {
+        projectId?: string | null;
+        result: AssistantActionResult;
+        tabId?: number | null;
+      };
+    }
   | { type: "RELAY_SIGN_OUT" }
   | { type: "RELAY_OPEN_SIDE_PANEL" }
   | { type: "RELAY_OPEN_DASHBOARD"; payload?: { nextPath?: string; flowId?: string } }

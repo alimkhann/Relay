@@ -101,6 +101,8 @@ export function buildDoneToast(input: {
   projectId: string;
   projectName: string;
   digestStatus?: "analyzed" | "queued" | null;
+  personalSaved?: number | null;
+  personalUnsure?: number | null;
   now?: number;
 }) {
   const now = input.now ?? Date.now();
@@ -112,6 +114,8 @@ export function buildDoneToast(input: {
     sessionId: null,
     expiresAt: now + DONE_TOAST_DURATION_MS,
     digestStatus: input.digestStatus ?? null,
+    personalSaved: input.personalSaved ?? null,
+    personalUnsure: input.personalUnsure ?? null,
   };
 
   return { toast };

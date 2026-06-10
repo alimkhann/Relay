@@ -11,6 +11,7 @@ export function toProjectRow(record: Record<string, unknown>): ProjectRow {
     description: record.description ? String(record.description) : null,
     projectUrl: record.project_url ? String(record.project_url) : null,
     isArchived: Boolean(record.is_archived),
+    kind: record.kind === "personal" ? "personal" : "project",
     createdAt: toTimestamp(record.created_at),
     updatedAt: toTimestamp(record.updated_at)
   }

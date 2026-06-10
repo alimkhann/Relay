@@ -9,4 +9,18 @@ describe("project settings service", () => {
       autonomyMode: "aggressive",
     })
   })
+
+  it("preserves an explicit autoCapture override", () => {
+    expect(normalizeProjectSettings({ autoCapture: false })).toEqual({
+      ...defaultProjectSettings,
+      autoCapture: false,
+    })
+  })
+
+  it("leaves autoCapture absent when unset (inherit the global setting)", () => {
+    // No default for autoCapture → absence means inherit; clearing the override
+    // in updateProjectSettings deletes the key, landing back in this shape.
+    expect(normalizeProjectSettings({}).autoCapture).toBeUndefined()
+    expect("autoCapture" in normalizeProjectSettings({})).toBe(false)
+  })
 })

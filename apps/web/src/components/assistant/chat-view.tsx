@@ -1,7 +1,7 @@
 "use client"
 
 import { type ClipboardEvent, type DragEvent, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useQueryClient } from "@tanstack/react-query"
 import { AnimatePresence, motion } from "motion/react"
 import {
   ArrowUp,
@@ -19,17 +19,21 @@ import {
   Search,
   Sparkles,
   Square,
-  X
+  X,
+  Zap
 } from "lucide-react"
 
 import type { AssistantSurface } from "@relay/shared"
 
 import { cn } from "@/lib/cn"
+import { syncDashboardFromActionResult } from "@/lib/query/memory-cache-sync"
 import { useVoiceInput } from "@/hooks/use-voice-input"
 
+import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning"
+import { Context, ContextContent, ContextContentBody, ContextContentFooter, ContextContentHeader, ContextTrigger } from "@/components/ai-elements/context"
+import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion"
 import { AskRelayHistory } from "./ask-relay-history"
 import { ChatMessage } from "./chat-message"
-import { ThinkingIndicator } from "./thinking-indicator"
 import { toolLabel } from "./tool-icons"
 import { useAssistantChat } from "./use-assistant-chat"
 import { VoiceRing } from "./voice-ring"
@@ -85,9 +89,7 @@ export function ChatView({
   initialChatId?: string | null
   onChatListChanged?: () => void
 }) {
-  const router = useRouter()
-  const lastRefreshRef = useRef(0)
-  const trailingRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const queryClient = useQueryClient()
   const {
     messages,
     streaming,
@@ -96,7 +98,13 @@ export function ChatView({
     send,
     stop,
     editMessage,
+    continueTurn,
     confirmAction,
+    declineAction,
+    confirmAllActions,
+    declineAllActions,
+    autoApprove,
+    setAutoApprove,
     selectBranch,
     setFeedback,
     undo,
@@ -112,23 +120,9 @@ export function ChatView({
     reset
   } = useAssistantChat(surface, projectId, {
     onMutation: (result) => {
-      // Let any same-tab client widget (memory list, brief) react instantly.
+      syncDashboardFromActionResult(queryClient, result, projectId)
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("relay:memory-mutated", { detail: result }))
-      }
-      // Re-fetch server components for this surface. Leading-edge (first
-      // change reflects immediately) + a trailing refresh so the last of a
-      // burst is never dropped.
-      const now = Date.now()
-      if (now - lastRefreshRef.current >= 1500) {
-        lastRefreshRef.current = now
-        router.refresh()
-      } else if (!trailingRefreshRef.current) {
-        trailingRefreshRef.current = setTimeout(() => {
-          trailingRefreshRef.current = null
-          lastRefreshRef.current = Date.now()
-          router.refresh()
-        }, 1500)
       }
     },
     onChatChanged: () => {
@@ -154,13 +148,6 @@ export function ChatView({
   }, [voice.status])
 
   const isVoiceActive = voice.listening || voice.status === "requesting"
-
-  useEffect(
-    () => () => {
-      if (trailingRefreshRef.current) clearTimeout(trailingRefreshRef.current)
-    },
-    []
-  )
 
   useEffect(() => {
     // Load a deep-linked chat (e.g. /chat?chatId=…). loadChat is stable.
@@ -211,6 +198,7 @@ export function ChatView({
   }
 
   const empty = messages.length === 0
+  const lastUsage = [...messages].reverse().find((m) => m.usage)?.usage
   // Constrain the message rail + composer when the panel is wider than ~500px
   // (page variant or expanded panel) so users don't have to look ear to ear.
   const constrain = variant === "page" || expanded
@@ -287,6 +275,19 @@ export function ChatView({
         <div className="flex items-center gap-2 text-sm font-semibold text-[var(--relay-ink)]">
           <Sparkles className="size-4 text-[var(--relay-accent-blue)]" />
           Relay
+          {lastUsage ? (
+            <Context
+              usedTokens={lastUsage.totalTokens}
+              maxTokens={lastUsage.maxContextTokens ?? 1_000_000}
+              modelId={lastUsage.model ?? "Gemini Flash"}
+            >
+              <ContextTrigger />
+              <ContextContent>
+                <ContextContentHeader />
+                <ContextContentFooter />
+              </ContextContent>
+            </Context>
+          ) : null}
         </div>
         <div className="flex items-center gap-0.5">
           {/* New + History live in the /chat page's left sidebar already.
@@ -343,15 +344,35 @@ export function ChatView({
         )}
       >
         {empty ? (
-          <div className="max-w-[300px] text-center text-sm text-[var(--relay-muted)]">
-            <span className="mx-auto mb-3 grid size-11 place-items-center rounded-full bg-[var(--relay-accent-blue-soft)]">
+          <div className="flex w-full max-w-sm flex-col items-center gap-4 text-center text-sm text-[var(--relay-muted)]">
+            <span className="grid size-11 place-items-center rounded-full bg-[var(--relay-accent-blue-soft)]">
               <Sparkles className="size-5 text-[var(--relay-accent-blue)]" />
             </span>
-            <p className="text-base font-semibold text-[var(--relay-ink)]">Ask about your work</p>
-            <p className="mt-1.5 leading-relaxed">
-              &ldquo;What was I working on?&rdquo; · &ldquo;Save this decision&rdquo; ·
-              &ldquo;Summarize my project&rdquo;
-            </p>
+            <div>
+              <p className="text-base font-semibold text-[var(--relay-ink)]">Ask about your work</p>
+              <p className="mt-1 leading-relaxed text-xs">Memory, sources, the open page, the web.</p>
+            </div>
+            <Suggestions className="justify-center flex-wrap">
+              {[
+                "What can you do?",
+                "How do I use Relay?",
+                "What was I working on?",
+                "Summarize my project",
+                "Save a decision",
+                "What are my open tasks?",
+              ].map((s) => (
+                <Suggestion
+                  key={s}
+                  suggestion={s}
+                  onClick={(text) => {
+                    send(text, capturePageContext(), { webSearch })
+                    setDraft("")
+                    setWebSearch(false)
+                    setComposerMenuOpen(false)
+                  }}
+                />
+              ))}
+            </Suggestions>
           </div>
         ) : null}
 
@@ -361,6 +382,9 @@ export function ChatView({
               key={m.id}
               message={m}
               onConfirm={confirmAction}
+              onDecline={declineAction}
+              onConfirmAll={confirmAllActions}
+              onDeclineAll={declineAllActions}
               onUndo={undo}
               onCopy={copyMessage}
               onFeedback={setFeedback}
@@ -368,16 +392,18 @@ export function ChatView({
               onSelectBranch={selectBranch}
               onSaveAttachment={saveAttachmentToSources}
               canSaveAttachments={canSaveToSources}
+              onContinue={continueTurn}
             />
           ))}
 
           <AnimatePresence>
-            {activeTool ? (
+            {streaming ? (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <ThinkingIndicator label={`${toolLabel(activeTool)}…`} tool={activeTool} />
+                <Reasoning isStreaming={streaming} defaultOpen={false}>
+                  <ReasoningTrigger />
+                  <ReasoningContent>{activeTool ? `${toolLabel(activeTool)}…` : "Thinking…"}</ReasoningContent>
+                </Reasoning>
               </motion.div>
-            ) : streaming ? (
-              <ThinkingIndicator />
             ) : null}
           </AnimatePresence>
 
@@ -562,19 +588,34 @@ export function ChatView({
               ))}
             </div>
           ) : null}
-          {webSearch ? (
-            <div className="mb-2 flex">
-              <button
-                type="button"
-                onClick={() => setWebSearch(false)}
-                className="inline-flex items-center gap-1.5 rounded-full bg-[var(--relay-accent-blue-soft)] px-2 py-1 text-xs font-medium text-[var(--relay-accent-blue)]"
-                aria-label="Disable web search"
-                title="Disable web search"
-              >
-                <Search className="size-3.5" />
-                Search
-                <X className="size-3" />
-              </button>
+          {(webSearch || autoApprove) ? (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {webSearch ? (
+                <button
+                  type="button"
+                  onClick={() => setWebSearch(false)}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[var(--relay-accent-blue-soft)] px-2 py-1 text-xs font-medium text-[var(--relay-accent-blue)]"
+                  aria-label="Disable web search"
+                  title="Disable web search"
+                >
+                  <Search className="size-3.5" />
+                  Search
+                  <X className="size-3" />
+                </button>
+              ) : null}
+              {autoApprove ? (
+                <button
+                  type="button"
+                  onClick={() => setAutoApprove(false)}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2 py-1 text-xs font-medium text-amber-600 dark:text-amber-400"
+                  aria-label="Disable auto-approve"
+                  title="All actions will be approved automatically"
+                >
+                  <Zap className="size-3.5" />
+                  Auto-approve
+                  <X className="size-3" />
+                </button>
+              ) : null}
             </div>
           ) : null}
           <div className="flex items-center gap-2">
@@ -627,6 +668,33 @@ export function ChatView({
                         className={cn(
                           "block size-3 rounded-full bg-[var(--relay-bg)] transition-transform",
                           webSearch && "translate-x-3"
+                        )}
+                      />
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAutoApprove((v) => !v)}
+                    className={cn(
+                      "flex w-full items-center justify-between gap-3 rounded-[var(--relay-radius-sm)] px-2.5 py-2 text-left text-sm hover:bg-[var(--relay-soft)]",
+                      autoApprove ? "text-amber-500" : "text-[var(--relay-ink)]"
+                    )}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Zap className="size-4 text-current" />
+                      Allow all actions
+                    </span>
+                    <span
+                      className={cn(
+                        "h-4 w-7 rounded-full p-0.5 transition-colors",
+                        autoApprove ? "bg-amber-500" : "bg-[var(--relay-line-strong)]"
+                      )}
+                      aria-hidden
+                    >
+                      <span
+                        className={cn(
+                          "block size-3 rounded-full bg-[var(--relay-bg)] transition-transform",
+                          autoApprove && "translate-x-3"
                         )}
                       />
                     </span>

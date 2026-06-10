@@ -14,12 +14,14 @@ import type { WebAuthIntent } from "@/server/policies/viewer"
 
 export function SignInAuthPanel({
   authConfigured,
+  googleAuthConfigured,
   authProvider,
   intent,
   nextPath,
   referralCode,
 }: {
   authConfigured: boolean
+  googleAuthConfigured: boolean
   authProvider: AuthProvider
   intent: WebAuthIntent
   nextPath: string
@@ -77,7 +79,19 @@ export function SignInAuthPanel({
       <SignInAnimatedItem delay={emailOtpActive ? 0 : 0.25} className={emailOtpActive ? "" : "mt-8"}>
         {authConfigured ? (
           authProvider === "local" ? (
-            <LocalSignInForm nextPath={nextPath} intent={intent} />
+            <div className="space-y-4">
+              {googleAuthConfigured ? (
+                <>
+                  <GoogleSignInButton nextPath={nextPath} intent={intent} />
+                  <div className="flex items-center gap-4 py-1">
+                    <div className="h-px flex-1 bg-[var(--relay-line)]" />
+                    <span className="text-sm text-[var(--relay-muted)]">Or continue locally</span>
+                    <div className="h-px flex-1 bg-[var(--relay-line)]" />
+                  </div>
+                </>
+              ) : null}
+              <LocalSignInForm nextPath={nextPath} intent={intent} />
+            </div>
           ) : (
             <div className="space-y-4">
               {emailOtpActive ? null : (

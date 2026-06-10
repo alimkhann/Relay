@@ -2,7 +2,7 @@ import { z } from "zod"
 import type { RelayClient } from "../client.js"
 
 export const searchContextSchema = z.object({
-  projectId: z.string().optional().describe("Project ID. Auto-detected if not provided."),
+  projectId: z.string().optional().describe("Project ID. Auto-detected if not provided. Personal memory is a kind='personal' project — pass its id to scope the search there."),
   query: z.string().describe("Search query to match against memory items. Supports stemming (e.g., 'auth' matches 'authentication')."),
   types: z
     .array(z.enum(["note", "decision", "constraint", "requirement", "task", "artifact"]))
@@ -11,7 +11,9 @@ export const searchContextSchema = z.object({
   tags: z
     .array(z.string())
     .optional()
-    .describe("Filter by tags")
+    .describe("Filter by tags"),
+  lifecycleStates: z.array(z.enum(["active", "cooling", "archived"])).optional(),
+  includeArchived: z.boolean().optional(),
 })
 
 interface MemoryItem {
@@ -69,10 +71,11 @@ export async function searchContext(
     const params = new URLSearchParams({ q: args.query })
     if (args.types?.length) params.set("types", args.types.join(","))
     if (args.tags?.length) params.set("tags", args.tags.join(","))
+    if (args.lifecycleStates?.length) params.set("lifecycle", args.lifecycleStates.join(","))
+    if (args.includeArchived) params.set("includeArchived", "true")
 
-    const data = await client.get<SearchResponse>(
-      `/api/projects/${resolvedProjectId}/memory/search?${params.toString()}`
-    )
+    const endpoint = `/api/projects/${resolvedProjectId}/memory/search?${params.toString()}`
+    const data = await client.get<SearchResponse>(endpoint)
 
     return {
       content: [

@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto"
 
-import { createRepositoryBundle } from "@relay/db"
+import { createRepositoryBundle, createServiceRepositoryBundle } from "@relay/db"
 import { extensionConnectCompleteSchema, extensionConnectStartSchema, extensionTokenInputSchema, hashContent } from "@relay/shared"
 
 import { createExtensionTokenForUser } from "./extension-token-service"
@@ -36,7 +36,7 @@ export async function startExtensionConnect(userId: string, input: unknown) {
 
 export async function completeExtensionConnect(input: unknown) {
   const parsed = extensionConnectCompleteSchema.parse(input)
-  const repositories = createRepositoryBundle()
+  const repositories = createServiceRepositoryBundle()
   const grant = await repositories.extensionConnectGrants.getValidByHash(hashContent(parsed.grantToken))
 
   if (!grant) {

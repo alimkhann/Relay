@@ -243,6 +243,62 @@ export function deduplicateMemoryItems<T extends MemoryItemForConflictResolution
   return result
 }
 
+/**
+ * Observation conflict resolution.
+ *
+ * Two shapes:
+ *   - SVO branch: both observations have the same subject+predicate. Object
+ *     difference => the older one's validity window must close.
+ *   - Free-form branch: fall back to the existing topic-overlap path.
+ *
+ * Returns the winner (the observation that should remain "current"). The
+ * caller is responsible for closing the loser's valid_until + cooling it.
+ */
+export interface ObservationForConflictResolution extends MemoryItemForConflictResolution {
+  subjectEntityId?: string | null
+  predicate?: string | null
+  objectEntityId?: string | null
+  objectLiteral?: string | null
+}
+
+export function isSvoConflict(
+  existing: ObservationForConflictResolution,
+  incoming: ObservationForConflictResolution
+): boolean {
+  if (!existing.subjectEntityId || !incoming.subjectEntityId) return false
+  if (!existing.predicate || !incoming.predicate) return false
+  if (existing.subjectEntityId !== incoming.subjectEntityId) return false
+  if (existing.predicate.toLowerCase() !== incoming.predicate.toLowerCase()) return false
+
+  const existingObject =
+    existing.objectEntityId ?? (existing.objectLiteral?.toLowerCase() ?? null)
+  const incomingObject =
+    incoming.objectEntityId ?? (incoming.objectLiteral?.toLowerCase() ?? null)
+
+  if (!existingObject || !incomingObject) return false
+  return existingObject !== incomingObject
+}
+
+export function resolveObservationConflict(
+  existing: ObservationForConflictResolution,
+  incoming: ObservationForConflictResolution
+): ObservationForConflictResolution | null {
+  // SVO branch — same (subject, predicate), different object.
+  if (isSvoConflict(existing, incoming)) {
+    const existingScore = computeMemoryTruthScore(existing)
+    const incomingScore = computeMemoryTruthScore(incoming)
+    if (incomingScore !== existingScore) {
+      return incomingScore > existingScore ? incoming : existing
+    }
+    const existingTime = existing.capturedAt ? new Date(existing.capturedAt).getTime() : 0
+    const incomingTime = incoming.capturedAt ? new Date(incoming.capturedAt).getTime() : 0
+    return incomingTime >= existingTime ? incoming : existing
+  }
+
+  // Free-form branch — reuse the memory conflict path.
+  return resolveMemoryConflict(existing, incoming) as ObservationForConflictResolution | null
+}
+
 export function mergeGovernedList(
   existing: string[],
   incoming: string[],

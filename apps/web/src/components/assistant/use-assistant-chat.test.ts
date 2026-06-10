@@ -72,7 +72,7 @@ describe("derivePath branch reconstruction", () => {
 })
 
 function ui(id: string, parentId: string | null, role: "user" | "assistant"): UiMessage {
-  return { id, parentId, role, content: `${role}:${id}`, actionResults: [], attachments: [], feedback: null }
+  return { id, parentId, role, content: `${role}:${id}`, actionResults: [], pendingActions: [], toolSteps: [], attachments: [], feedback: null }
 }
 
 describe("derivePath action-result persistence (cards survive refresh)", () => {

@@ -13,14 +13,16 @@ export default async function ChatPage({
 }) {
   const viewer = await requirePageViewer("/chat")
   const [projects, entitlements] = await Promise.all([
-    listProjectsForUser(viewer.userId),
+    listProjectsForUser(viewer.userId, { includePersonal: true }),
     resolveViewerEntitlements(viewer.userId)
   ])
 
   const { project: selectedProjectId, chatId } = await searchParams
+  // Personal is selectable by explicit ?project=, but never the implicit default.
+  const defaultProject = projects.find((p) => p.kind !== "personal") ?? projects[0] ?? null
   const currentProject = selectedProjectId
     ? projects.find((p) => p.id === selectedProjectId) ?? null
-    : projects[0] ?? null
+    : defaultProject
 
   return (
     <>

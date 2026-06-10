@@ -1,109 +1,136 @@
-import { describe, expect, it } from "vitest";
-import type { MemoryItemDto } from "@relay/shared";
+import { describe, expect, it } from "vitest"
+import type { ProjectGraphSnapshot } from "@relay/shared"
 
-import { buildGraphLinks, buildGraphNodes, type EntityGraphDto, type SourceGraphDto } from "./memory-graph-utils";
+import { filterGraphData, snapshotToGraphData } from "./memory-graph-utils"
 
-function memoryItem(id: string, content: string): MemoryItemDto {
+function snapshot(): ProjectGraphSnapshot {
   return {
-    id,
-    type: "decision",
-    title: content,
-    content,
-    pinned: false,
-    updatedAt: "2026-05-10T00:00:00.000Z",
-    sourceSurface: null,
-    sourceUrl: null,
-    capturedAt: "2026-05-10T00:00:00.000Z",
-    decayScore: 0.8,
-    lastReaffirmedAt: null,
-  };
+    projectId: "project-1",
+    density: "full",
+    includeEvidence: true,
+    nodes: [
+      {
+        id: "memory:memory-1",
+        kind: "memory",
+        label: "Use Postgres",
+        content: "Use Postgres.",
+        updatedAt: "2026-06-01T00:00:00.000Z",
+        metadata: { personalCategory: "concept" },
+        memory: {
+          id: "memory-1",
+          type: "decision",
+          title: "Use Postgres",
+          pinned: false,
+          sourceSurface: "manual",
+          sourceUrl: null,
+          capturedAt: "2026-06-01T00:00:00.000Z",
+          lastReaffirmedAt: null,
+        },
+      },
+      {
+        id: "entity:entity-1",
+        kind: "entity",
+        label: "Postgres",
+        content: "technology: Postgres",
+        updatedAt: "",
+        metadata: {},
+        entity: { id: "entity-1", kind: "technology" },
+      },
+      {
+        id: "observation:observation-1",
+        kind: "observation",
+        label: "Postgres stores state",
+        content: "Postgres stores state.",
+        updatedAt: "2026-06-01T00:00:00.000Z",
+        metadata: {},
+        observation: { id: "observation-1", predicate: "stores", confidence: 0.9 },
+      },
+    ],
+    edges: [
+      {
+        id: "mentions-1",
+        source: "entity:entity-1",
+        target: "memory:memory-1",
+        kind: "mentions",
+        label: "mentions",
+        confidence: 0.84,
+      },
+      {
+        id: "supports-1",
+        source: "observation:observation-1",
+        target: "memory:memory-1",
+        kind: "supports",
+        label: "supports",
+        confidence: 0.9,
+      },
+    ],
+    stats: { nodeCount: 3, edgeCount: 2, isolatedNodeCount: 0, truncated: false },
+  }
 }
 
-const source: SourceGraphDto = {
-  id: "source-1",
-  kind: "uploaded_file",
-  status: "ready",
-  displayName: "architecture.md",
-  originalFileName: "architecture.md",
-  mimeType: "text/markdown",
-  byteSize: 1800,
-  updatedAt: "2026-05-10T00:00:00.000Z",
-  sourceUri: null,
-  chunkCount: 2,
-  tokenEstimate: 420,
-  previewText: "Relay stores source documents encrypted in R2.",
-};
+describe("real evidence graph adapter", () => {
+  it("maps persisted snapshot nodes and edges without synthetic topology", () => {
+    const graph = snapshotToGraphData(snapshot())
 
-const stripeEntity: EntityGraphDto = {
-  id: "entity-1",
-  name: "Stripe",
-  kind: "technology",
-  memoryItemIds: ["memory-source"],
-};
+    expect(graph.nodes.map((node) => node.kind)).toEqual(["memory", "entity", "observation"])
+    expect(graph.nodes.some((node) => node.id.startsWith("__"))).toBe(false)
+    expect(graph.links).toEqual(expect.arrayContaining([
+      expect.objectContaining({ relationType: "mentions", label: "mentions" }),
+      expect.objectContaining({ relationType: "supports", label: "supports" }),
+    ]))
+  })
 
-describe("memory graph source topology", () => {
-  it("connects source file nodes directly to root", () => {
-    const nodes = buildGraphNodes(
-      [memoryItem("memory-manual", "Manual decision"), memoryItem("memory-source", "Source decision")],
-      new Set(),
-      "Test Project",
-      [source],
-    );
-    const links = buildGraphLinks(nodes, [], [], [
-      { sourceId: "source-1", memoryItemId: "memory-source", confidence: 0.93 },
-    ]);
+  it("keeps real isolated nodes", () => {
+    const input = snapshot()
+    input.edges = []
 
-    expect(nodes).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "__root__", hub: "root" }),
-      expect.objectContaining({ id: "__source__source-1", kind: "source-file", source: expect.objectContaining({ displayName: "architecture.md" }) }),
-    ]));
-    expect(links).toEqual(expect.arrayContaining([
-      expect.objectContaining({ source: "__root__", target: "__source__source-1" }),
-      expect.objectContaining({ source: "__source__source-1", target: "memory-source", sourceLink: true }),
-    ]));
-  });
+    const graph = snapshotToGraphData(input)
 
-  it("keeps source-derived memory out of type hub fallback links", () => {
-    const nodes = buildGraphNodes(
-      [memoryItem("memory-manual", "Manual decision"), memoryItem("memory-source", "Source decision")],
-      new Set(),
-      "Test Project",
-      [source],
-    );
-    const links = buildGraphLinks(nodes, [], [], [
-      { sourceId: "source-1", memoryItemId: "memory-source", confidence: 0.93 },
-    ]);
+    expect(graph.nodes).toHaveLength(3)
+    expect(graph.links).toHaveLength(0)
+  })
 
-    expect(links).toEqual(expect.arrayContaining([
-      expect.objectContaining({ target: "memory-manual", hubLink: "hub-to-item" }),
-    ]));
-    expect(links).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ target: "memory-source", hubLink: "hub-to-item" }),
-    ]));
-  });
+  it("filters nodes and drops edges with hidden endpoints", () => {
+    const graph = snapshotToGraphData(snapshot())
+    const filtered = filterGraphData(graph, {
+      nodeKinds: new Set(["memory", "entity"]),
+      memoryTypes: new Set(["decision"]),
+      personalCategories: new Set(["concept"]),
+      edgeKinds: new Set(["mentions"]),
+    })
 
-  it("adds entity nodes and entity-to-memory relation links", () => {
-    const nodes = buildGraphNodes(
-      [memoryItem("memory-source", "Stripe checkout decision")],
-      new Set(),
-      "Test Project",
-      [source],
-      [stripeEntity],
-    );
-    const links = buildGraphLinks(nodes, [], [], [], [
-      { entityId: "entity-1", memoryItemId: "memory-source", confidence: 0.86 },
-    ]);
+    expect(filtered.nodes.map((node) => node.kind)).toEqual(["memory", "entity"])
+    expect(filtered.links).toEqual([
+      expect.objectContaining({ relationType: "mentions" }),
+    ])
+  })
 
-    expect(nodes).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "__entity__entity-1", kind: "entity", label: "Stripe" }),
-    ]));
-    expect(links).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        source: "__entity__entity-1",
-        target: "memory-source",
-        relationType: "mentions",
-        entityLink: true,
-      }),
-    ]));
-  });
-});
+  it("excludes uncategorized memory nodes when personal category filters are active", () => {
+    const input = snapshot()
+    input.nodes.push({
+      id: "memory:memory-2",
+      kind: "memory",
+      label: "Untagged note",
+      content: "No category.",
+      updatedAt: "2026-06-02T00:00:00.000Z",
+      metadata: {},
+      memory: {
+        id: "memory-2",
+        type: "note",
+        title: null,
+        pinned: false,
+        sourceSurface: "manual",
+        sourceUrl: null,
+        capturedAt: "2026-06-02T00:00:00.000Z",
+        lastReaffirmedAt: null,
+      },
+    })
+
+    const filtered = filterGraphData(snapshotToGraphData(input), {
+      personalCategories: new Set(["concept"]),
+    })
+
+    expect(filtered.nodes.some((node) => node.id === "memory:memory-1")).toBe(true)
+    expect(filtered.nodes.some((node) => node.id === "memory:memory-2")).toBe(false)
+  })
+})

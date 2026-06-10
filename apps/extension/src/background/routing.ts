@@ -192,6 +192,27 @@ function hasIncidentalReferenceMention(project: RelayProjectOption, haystack: st
   ].some((phrase) => normalizedHaystack.includes(phrase))
 }
 
+export function hasPersonalProfileIntent(haystack: string | null | undefined) {
+  const normalizedHaystack = normalizeText(haystack ?? "").toLowerCase()
+  if (!normalizedHaystack) return false
+
+  return [
+    "about me",
+    "know about me",
+    "what you know about me",
+    "everything you know about me",
+    "my profile",
+    "personal profile",
+    "user profile",
+    "personal facts",
+    "personal memory",
+    "who am i",
+  ].some((phrase) => normalizedHaystack.includes(phrase)) ||
+    /\bsummari[sz]e\b[\s\S]{0,80}\bme\b/.test(normalizedHaystack) ||
+    /\bwhat\b[\s\S]{0,60}\byou\b[\s\S]{0,60}\bknow\b[\s\S]{0,60}\bme\b/.test(normalizedHaystack)
+}
+
+
 function collectProjectTokens(project: RelayProjectOption) {
   return uniqueTokens([project.name, project.slug ?? null])
 }
@@ -247,6 +268,36 @@ function buildAssociationComparisonKey(page: Pick<RelayPageState, "platform" | "
 
 export function buildAssociationKey(page: Pick<RelayPageState, "platform" | "pageFingerprint" | "pathname" | "url" | "sourceConversationId">) {
   return buildAssociationComparisonKey(page)
+}
+
+/**
+ * Pick the project id that should drive the active/picker project and the next
+ * save, honoring precedence: a manual project override wins over the chat's
+ * auto-derived association, which wins over a remembered approved association.
+ *
+ * Membership matters: a candidate id is only honored when it exists in the
+ * current project options (the personal project IS in this list). An override
+ * whose project is no longer available falls through to the association rather
+ * than silently nulling the selection. Returns null when nothing qualifies.
+ */
+export function pickPreferredProjectId(input: {
+  manualProjectId?: string | null
+  associationProjectId?: string | null
+  rememberedProjectId?: string | null
+  projectIds: ReadonlyArray<string>
+}): string | null {
+  const available = new Set(input.projectIds)
+  const candidates = [
+    input.manualProjectId,
+    input.associationProjectId,
+    input.rememberedProjectId,
+  ]
+  for (const candidate of candidates) {
+    if (candidate && available.has(candidate)) {
+      return candidate
+    }
+  }
+  return null
 }
 
 export function findApprovedAssociationMatch(
@@ -373,6 +424,10 @@ function scoreProjectCandidate(
   const recentWindowTokens = uniqueTokens([routingText])
   const fullVisibleRoutingText = getFullVisibleRoutingText(input.page)
   const fullVisibleTokens = uniqueTokens([fullVisibleRoutingText])
+  const personalProfileIntent =
+    hasPersonalProfileIntent(input.page.title) ||
+    hasPersonalProfileIntent(routingText) ||
+    hasPersonalProfileIntent(fullVisibleRoutingText)
 
   for (const association of input.approvedAssociations) {
     scoreApprovedAssociation(candidate, input, association)
@@ -573,6 +628,16 @@ function scoreProjectCandidate(
     pushReason(candidate, "This is the currently selected project.")
   }
 
+  if (
+    personalProfileIntent &&
+    project.kind !== "personal" &&
+    !candidate.signalCategories.has("association")
+  ) {
+    candidate.score = Math.min(candidate.score, 20)
+    candidate.highConfidenceEligible = false
+    pushReason(candidate, "The chat is primarily asking about the user, not this project.")
+  }
+
   // Cap description-only scoring: if the ONLY signals are from description overlap
   // (no name, title, context, or binding), cap score at 40 to prevent pure
   // description matching from reaching auto-save thresholds
@@ -664,6 +729,61 @@ export function evaluateProjectRouting(input: EvaluateProjectRoutingInput): Rela
       topCandidates: [],
     }
   }
+
+  // Personal-profile intent: route to Personal when the chat is primarily a
+  // personal inquiry AND no other project clearly wins. Score non-personal
+  // candidates first — if one reaches auto-save confidence (score ≥ 70,
+  // highConfidenceEligible), that project takes priority. This prevents
+  // mixed-intent chats ("what do you know about me and my Relay project")
+  // from misrouting to Personal when the user is clearly working on a project.
+  // Falls through to normal scoring when no personal project exists.
+  const personalProject = input.projects.find((p) => p.kind === "personal")
+  if (personalProject) {
+    const routingText = getRecentRoutingText(input.page)
+    const fullText = getFullVisibleRoutingText(input.page)
+    const isPersonalIntent =
+      hasPersonalProfileIntent(input.page.title) ||
+      hasPersonalProfileIntent(routingText) ||
+      hasPersonalProfileIntent(fullText)
+    if (isPersonalIntent) {
+      const topNonPersonal = input.projects
+        .filter((p) => p.kind !== "personal")
+        .map((project) => scoreProjectCandidate(project, input))
+        .sort((a, b) => b.score - a.score)[0]
+      const nonPersonalWins =
+        topNonPersonal &&
+        topNonPersonal.highConfidenceEligible &&
+        topNonPersonal.score >= 70
+      if (!nonPersonalWins) {
+        return {
+          mode: "auto-save",
+          confidence: "high",
+          candidateProjectId: personalProject.id,
+          candidateProjectName: personalProject.name,
+          score: 100,
+          reasons: ["The chat is a personal inquiry — saving to your Personal project."],
+          diagnostics: {
+            phase: "context-aware",
+            scoreGap: topNonPersonal ? 100 - topNonPersonal.score : 100,
+            explicitNameSignal: false,
+            wholeChatExactMention: false,
+            highConfidenceEligible: true,
+            signalCategories: [],
+          },
+          topCandidates: [{
+            projectId: personalProject.id,
+            projectName: personalProject.name,
+            score: 100,
+            reasons: ["Personal profile intent detected — no competing project."],
+          }],
+        }
+      }
+      // Non-personal project clearly wins — fall through to full scoring below.
+    }
+  }
+
+  // The personalProfileIntent cap in scoreProjectCandidate still protects
+  // non-personal projects when no personal project exists (no early return above).
 
   const candidates = input.projects
     .map((project) => scoreProjectCandidate(project, input))

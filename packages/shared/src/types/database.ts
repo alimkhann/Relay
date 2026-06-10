@@ -47,6 +47,8 @@ export interface ProfileRow {
   updatedAt: string
 }
 
+export type ProjectKind = "project" | "personal"
+
 export interface ProjectRow {
   id: string
   ownerId: string
@@ -55,6 +57,8 @@ export interface ProjectRow {
   description: string | null
   projectUrl: string | null
   isArchived: boolean
+  /** 'personal' backs a user's personal memory; 'project' is a normal project. */
+  kind: ProjectKind
   createdAt: string
   updatedAt: string
 }
@@ -113,9 +117,11 @@ export type SourceSurface =
   | "api"
   | "ask_relay"
   | "extension"
+  | "manual"
 
 export interface MemoryItemRow {
   id: string
+  /** Project scope. Always set — a kind='personal' project backs personal memory. */
   projectId: string
   sourceTurnId: string | null
   type: MemoryItemType
@@ -147,6 +153,10 @@ export interface MemoryItemRow {
   forgetAfter: string | null
   /** Timestamp of last reaffirmation — resets the decay clock */
   lastReaffirmedAt: string | null
+  /** Memory v2 lifecycle state. Optional so pre-v2 fixtures stay valid. */
+  lifecycleState?: "active" | "cooling" | "archived" | "forgotten"
+  /** Cosine similarity score, attached by hybridSearch/semanticSearch. Absent on lexical-only or non-search rows. */
+  similarity?: number
 }
 
 export type MemoryRelationType = "supersedes" | "extends" | "derives"
@@ -319,6 +329,16 @@ export type MemoryEventType =
   | "superseded"
   | "disputed"
   | "restored"
+  // Memory v2 lifecycle + hygiene events (see migration 0042 + 0046)
+  | "observation_created"
+  | "observation_expired"
+  | "entity_relation_created"
+  | "entity_relation_invalidated"
+  | "cooled"
+  | "restored_auto"
+  | "forgotten"
+  | "obsoleted"
+  | "decay_proposed"
 
 export interface MemoryEventRow {
   id: string
@@ -471,6 +491,10 @@ export interface UserSettingsRow {
       dismissedAt: string | null
       completedVia: "web" | "extension" | null
     }
+    /** @deprecated compatibility alias for dashboard visibility */
+    hideAskRelayPanel?: boolean
+    hideAskRelayDashboard?: boolean
+    hideAskRelayExtension?: boolean
   }
   createdAt: string
   updatedAt: string
@@ -486,6 +510,13 @@ export interface ProjectSettingsRow {
     showTentativeUpdates: boolean
     includeTentativeUpdatesInPackets: boolean
     compactionMode: ProjectCompactionMode
+    autoCapture?: boolean
+    /** Per-(platform) auto-capture override; wins over `autoCapture`. */
+    autoCapturePlatforms?: Partial<Record<SupportedPlatform, boolean>>
+    /** Per-project inline-chip override; undefined = inherit the global setting. */
+    inlineChip?: boolean
+    /** Per-(platform) inline-chip override; wins over `inlineChip`. */
+    inlineChipPlatforms?: Partial<Record<SupportedPlatform, boolean>>
   }
   createdAt: string
   updatedAt: string

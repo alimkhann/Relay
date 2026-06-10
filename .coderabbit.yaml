@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Scoped pass — restored by scripts/coderabbit-restore-config.sh
+language: en-US
+enable_free_tier: true
+reviews:
+  profile: chill
+  poem: false
+  review_status: true
+  path_filters:
+    - "apps/web/src/components/ui/**"
+    - "apps/web/src/components/ai-elements/**"
+    - "apps/web/src/app/docs/**"
+    - "apps/web/src/features/brief/**"
+    - "apps/web/src/app/(workspace)/chat/**"
+    - "apps/web/src/app/(workspace)/sources/**"
+    - "!**/*.png"
+    - "!**/*.jpg"
+    - "!**/*.jpeg"
+    - "!**/*.log"
+    - "!**/.superpowers/**"
+    - "!pnpm-lock.yaml"
+    - "!**/*.test.ts"
+    - "!**/*.test.tsx"
+    - "!tests/**"
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - ".*"
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        Follow AGENTS.md at the repo root. Keep changes small and reviewable.
+        This is a pnpm monorepo (apps/web, apps/extension, packages/*).
+chat:
+  auto_reply: true

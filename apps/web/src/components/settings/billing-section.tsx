@@ -172,25 +172,39 @@ export function BillingSection({ billing, checkoutSuccess, referralProgram }: Bi
         upgradeCopy: `unlock ${10} active projects`,
       },
       {
-        label: "Captures",
-        used: usage.capturesThisMonth,
-        limit: entitlements.limits.captureMonthly,
+        label: "Reads today",
+        used: usage.readsToday,
+        limit: entitlements.limits.readsDaily,
+        periodLabel: "/ day",
+        upgradeCopy: `unlock more daily reads`,
+      },
+      {
+        label: "Reads this month",
+        used: usage.readsThisMonth,
+        limit: entitlements.limits.readsMonthly,
         periodLabel: "/ month",
-        upgradeCopy: `unlock more monthly captures across all projects`,
+        upgradeCopy: `unlock more monthly reads`,
       },
       {
-        label: "MCP reads",
-        used: usage.mcpReadsToday,
-        limit: entitlements.limits.mcpReadDaily,
+        label: "Writes today",
+        used: usage.writesToday,
+        limit: entitlements.limits.writesDaily,
         periodLabel: "/ day",
-        upgradeCopy: `unlock more MCP reads per day`,
+        upgradeCopy: `unlock more daily writes`,
       },
       {
-        label: "MCP writes",
-        used: usage.mcpWritesToday,
-        limit: entitlements.limits.mcpWriteDaily,
-        periodLabel: "/ day",
-        upgradeCopy: `unlock more MCP writes per day`,
+        label: "Writes this month",
+        used: usage.writesThisMonth,
+        limit: entitlements.limits.writesMonthly,
+        periodLabel: "/ month",
+        upgradeCopy: `unlock more monthly writes`,
+      },
+      {
+        label: "Ask Relay messages",
+        used: usage.assistantMessagesThisMonth,
+        limit: entitlements.limits.assistantMessagesMonthly,
+        periodLabel: "/ month",
+        upgradeCopy: `unlock more Ask Relay messages`,
       },
       {
         label: "AI analyses",
@@ -272,7 +286,7 @@ export function BillingSection({ billing, checkoutSuccess, referralProgram }: Bi
       level: "warn",
       surface: "web-settings",
       area: "billing",
-      event: "usage_limit_block_shown",
+      event: "quota_blocked",
       message: "Rendered a blocking usage limit notice.",
       context: {
         limitName: topUsagePressure?.label ?? null,
@@ -288,7 +302,7 @@ export function BillingSection({ billing, checkoutSuccess, referralProgram }: Bi
       level: "info",
       surface: "web-settings",
       area: "billing",
-      event: "usage_limit_warning_shown",
+      event: "quota_warning_shown",
       message: "Rendered a usage limit warning notice.",
       context: {
         limitName: topUsagePressure?.label ?? null,
@@ -418,9 +432,9 @@ export function BillingSection({ billing, checkoutSuccess, referralProgram }: Bi
         telemetry: {
           surface: "web-settings",
           area: "settings-billing",
-          event: "upgrade_cta_clicked",
+          event: anyLimitReached ? "limit_upgrade_clicked" : "upgrade_cta_clicked",
           flowId,
-          context: { interval },
+          context: { interval, targetPlan: plan, limitName: topUsagePressure?.label ?? null },
           logSuccess: true,
         },
       })
@@ -815,6 +829,22 @@ export function BillingSection({ billing, checkoutSuccess, referralProgram }: Bi
           {usageItems.map((item) => (
             <UsageMeter key={item.label} item={item} />
           ))}
+          <div className="grid gap-2 border-t border-[var(--relay-line)] pt-4 sm:grid-cols-2">
+            {[
+              ["Memory items / project", entitlements.limits.memoryItemsPerProject.toLocaleString()],
+              ["Uploaded sources / project", entitlements.limits.sourcesPerProject.toLocaleString()],
+              ["External sources / project", entitlements.limits.externalSourcesPerProject.toLocaleString()],
+              ["Source storage", `${Math.round(entitlements.limits.sourceStorageBytes / 1024 / 1024)} MB`],
+              ["Ask Relay / day", entitlements.limits.assistantMessagesDaily.toLocaleString()],
+              ["Ask Relay tokens / month", entitlements.limits.assistantTokensMonthly.toLocaleString()],
+              ["Ask Relay max steps / turn", entitlements.limits.assistantMaxSteps.toLocaleString()],
+            ].map(([label, value]) => (
+              <div key={label} className="flex items-center justify-between gap-3 rounded-[var(--relay-radius-sm)] bg-[var(--relay-soft)] px-3 py-2 text-[12px]">
+                <span className="text-[var(--relay-muted)]">{label}</span>
+                <span className="font-medium text-[var(--relay-ink)]">{value}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
         {dynamicNotice ? (

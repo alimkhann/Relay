@@ -3,7 +3,7 @@
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 
-import { createRepositoryBundle } from "@relay/db"
+import { createServiceRepositoryBundle } from "@relay/db"
 
 import { clearLocalSessionCookie } from "@/lib/auth/local-session"
 import { getAuthProvider } from "@/lib/auth/provider"
@@ -33,7 +33,7 @@ async function clearNeonSessionCookies() {
 export async function deleteAccountAction() {
   const viewer = await requireSessionViewer()
 
-  const repositories = createRepositoryBundle()
+  const repositories = createServiceRepositoryBundle()
   const profile = await repositories.profiles.getById(viewer.userId)
   const email = profile?.email ?? viewer.email
   const name = profile?.displayName ?? viewer.name ?? null

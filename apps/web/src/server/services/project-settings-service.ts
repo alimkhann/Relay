@@ -30,10 +30,22 @@ export async function updateProjectSettings(userId: string, projectId: string, i
   const repositories = createRepositoryBundle(userId)
   const existing = await repositories.projectSettings.getByProject(projectId)
   const patch = updateProjectSettingsSchema.parse(input)
-  const merged = normalizeProjectSettings({
+  const combined: Record<string, unknown> = {
     ...(existing?.settings ?? defaultProjectSettings),
     ...patch,
-  })
+  }
+  // A `null` on any override clears it → inherit the next level up.
+  for (const key of [
+    "autoCapture",
+    "autoCapturePlatforms",
+    "inlineChip",
+    "inlineChipPlatforms",
+  ] as const) {
+    if (patch[key] === null) {
+      delete combined[key]
+    }
+  }
+  const merged = normalizeProjectSettings(combined as Partial<ProjectSettingsRow["settings"]>)
   const row = await repositories.projectSettings.upsert(projectId, merged)
   invalidateProjectCache(userId, projectId)
   return normalizeProjectSettings(row.settings)

@@ -4,7 +4,7 @@ import { createRepositoryBundle } from "@relay/db"
 import { withApiAuth } from "@/server/http/api-route"
 import { requireViewerScope, resolveViewer } from "@/server/policies/viewer"
 import { getMemoryForExplainability } from "@/server/services/continuity-explainability-service"
-import { consumeMcpWriteQuota } from "@/server/services/entitlement-service"
+import { consumeActionQuota, consumeMcpWriteQuota } from "@/server/services/entitlement-service"
 import { deleteMemoryItem, updateMemoryItem } from "@/server/services/memory-service"
 
 export const GET = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
@@ -23,6 +23,8 @@ export const PATCH = withApiAuth(async (request: Request, { params }: { params: 
   requireViewerScope(viewer, "memory:write")
   if (viewer.mode === "mcp") {
     await consumeMcpWriteQuota(viewer.userId)
+  } else {
+    await consumeActionQuota(viewer.userId, "write")
   }
   const { id } = await params
   const repositories = createRepositoryBundle(viewer.userId)
@@ -39,6 +41,8 @@ export const DELETE = withApiAuth(async (request: Request, { params }: { params:
   requireViewerScope(viewer, "memory:write")
   if (viewer.mode === "mcp") {
     await consumeMcpWriteQuota(viewer.userId)
+  } else {
+    await consumeActionQuota(viewer.userId, "write")
   }
   const { id } = await params
   const repositories = createRepositoryBundle(viewer.userId)

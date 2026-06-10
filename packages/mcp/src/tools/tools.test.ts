@@ -25,7 +25,7 @@ function getBriefStatus(result: { structuredContent?: unknown }) {
 function mockClient(overrides: Record<string, unknown> = {}) {
   return {
     get: vi.fn().mockImplementation((path: string) => {
-      if (path === "/api/projects") {
+      if (path === "/api/projects" || path.startsWith("/api/projects?")) {
         return Promise.resolve({
           projects: [
             {
@@ -532,7 +532,7 @@ describe("manage_memory", () => {
       memoryId: ["mem-1"]
     })
 
-    expect(client.patch).toHaveBeenCalledWith("/api/memory/mem-1", { isArchived: true })
+    expect(client.patch).toHaveBeenCalledWith("/api/memory/mem-1", { lifecycleState: "archived", isArchived: true })
     expect(result.content[0]!.text).toContain("Archived 1")
   })
 })

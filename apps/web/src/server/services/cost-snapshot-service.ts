@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 
-import { createRepositoryBundle } from "@relay/db"
+import { createWorkerRepositoryBundle } from "@relay/db"
 
 import { buildRelayAnalyticsPayload } from "@/lib/telemetry/analytics"
 import { captureServerEvent } from "@/lib/telemetry/posthog-server"
@@ -155,7 +155,7 @@ function parseJsonLikeText(text: string) {
 }
 
 async function buildGeminiCostSnapshot(period: ReturnType<typeof buildSnapshotPeriod>): Promise<CostSnapshotRecord> {
-  const repositories = createRepositoryBundle()
+  const repositories = createWorkerRepositoryBundle()
   const rows = await repositories.provider.query<{
     status: string
     actual_model: string | null
@@ -375,7 +375,7 @@ async function buildNeonFallbackSnapshot(
   apiKey: string,
   projectId: string,
 ): Promise<CostSnapshotRecord> {
-  const repositories = createRepositoryBundle()
+  const repositories = createWorkerRepositoryBundle()
   const response = await fetch(`https://console.neon.tech/api/v2/projects/${projectId}`, {
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -593,7 +593,7 @@ async function buildUnitEconomicsSnapshot(
     total: CostSnapshotRecord
   },
 ): Promise<UnitEconomicsSnapshotRecord> {
-  const repositories = createRepositoryBundle()
+  const repositories = createWorkerRepositoryBundle()
   const [counts] = await repositories.provider.query<{
     active_users: number
     activated_users: number

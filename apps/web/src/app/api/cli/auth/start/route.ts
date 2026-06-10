@@ -2,7 +2,7 @@ import { randomBytes, randomInt } from "node:crypto"
 
 import { NextResponse } from "next/server"
 
-import { createRepositoryBundle } from "@relay/db"
+import { createServiceRepositoryBundle } from "@relay/db"
 import { hashContent } from "@relay/shared"
 
 import { withApiRoute } from "@/server/http/api-route"
@@ -21,7 +21,7 @@ function generateSessionCode(): string {
 export const POST = withApiRoute(async (request: Request) => {
   await assertIpRateLimit(request, "cli_auth_start_ip", 5)
 
-  const repositories = createRepositoryBundle()
+  const repositories = createServiceRepositoryBundle()
   const sessionCode = generateSessionCode()
   const pollingSecret = `relay_cli_${randomBytes(16).toString("hex")}`
   const sessionHash = hashContent(pollingSecret)

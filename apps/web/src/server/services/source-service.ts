@@ -1,4 +1,4 @@
-import { createRepositoryBundle } from "@relay/db"
+import { createRepositoryBundle, createWorkerRepositoryBundle } from "@relay/db"
 import type { SourceChunkSearchResult } from "@relay/db"
 import type {
   ContextPackProjectSourcesInput,
@@ -906,7 +906,7 @@ export async function sweepStaleProcessingSources(
   const olderThanMinutes = options.olderThanMinutes ?? 15
   const limit = options.limit ?? 5
   const maxAttempts = options.maxAttempts ?? 2
-  const repos = createRepositoryBundle()
+  const repos = createWorkerRepositoryBundle()
 
   const rows = await repos.provider.query(
     `select id, project_id, created_by, kind, storage_object_key, metadata

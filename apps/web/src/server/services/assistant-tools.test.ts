@@ -68,6 +68,59 @@ describe("assistant tool registry", () => {
     expect(arch.actionResult?.irreversible).toBeFalsy()
   })
 
+  it("shows requested content in update previews instead of a stale reread", async () => {
+    const client = {
+      manageMemory: async () => {},
+      getMemory: async () => ({
+        id: "m1",
+        content: "Second UI Update Test Item",
+        type: "note",
+        title: null,
+      }),
+    } as unknown as RelayHttpMcpClient
+
+    const result = await executeAssistantTool(
+      client,
+      "manage_memory",
+      { action: "update", memoryId: "m1", content: "test 2" },
+      { plan: "pro" },
+    )
+
+    expect(result.actionResult?.previews?.[0]?.before?.content).toBe("Second UI Update Test Item")
+    expect(result.actionResult?.previews?.[0]?.after?.content).toBe("test 2")
+  })
+
+  it("passes atomic cross-project transfer details through manage_memory", async () => {
+    const calls: Record<string, unknown>[] = []
+    const client = {
+      manageMemory: async (args: Record<string, unknown>) => calls.push(args),
+      getMemory: async () => null,
+    } as unknown as RelayHttpMcpClient
+
+    const result = await executeAssistantTool(
+      client,
+      "manage_memory",
+      {
+        action: "transfer",
+        memoryId: ["m1"],
+        targetProjectId: "personal",
+        type: "note",
+        personalCategory: "person",
+      },
+      { plan: "pro" },
+    )
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        action: "transfer",
+        targetProjectId: "personal",
+        type: "note",
+        personalCategory: "person",
+      }),
+    ])
+    expect(result.actionResult?.previews?.[0]?.before?.id).toBe("m1")
+  })
+
   it("answers Relay product questions from public docs", async () => {
     const result = await executeAssistantTool(stubClient, "relay_knowledge", { query: "what is mcp" }, {
       plan: "free"

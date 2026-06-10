@@ -1,4 +1,4 @@
-import { createRepositoryBundle } from "@relay/db";
+import { createServiceRepositoryBundle } from "@relay/db";
 
 import { sendWelcomeEmail } from "./email-service";
 import { initializeUserSettings } from "./settings-service";
@@ -11,7 +11,7 @@ export interface SyncAuthUserInput {
 }
 
 export async function reconcileProfileForAuthUser(input: SyncAuthUserInput) {
-  const repositories = createRepositoryBundle();
+  const repositories = createServiceRepositoryBundle();
   const existingProfile = await repositories.profiles.getById(input.id);
   const existingProfileRows = await repositories.provider.query<{ id: string }>(
     `select id
@@ -244,6 +244,7 @@ export async function reconcileProfileForAuthUser(input: SyncAuthUserInput) {
     );
 
     await initializeUserSettings(input.id);
+    await repositories.projects.ensurePersonalProject(input.id);
     return;
   }
 
@@ -261,4 +262,8 @@ export async function reconcileProfileForAuthUser(input: SyncAuthUserInput) {
   await initializeUserSettings(input.id, {
     newUser: !existingProfile,
   });
+
+  // Every user gets exactly one personal project (kind='personal') that backs
+  // their personal memory. Idempotent — safe to call on every bootstrap.
+  await repositories.projects.ensurePersonalProject(input.id);
 }

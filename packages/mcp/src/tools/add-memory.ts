@@ -2,7 +2,7 @@ import { z } from "zod"
 import type { RelayClient } from "../client.js"
 
 export const addMemorySchema = z.object({
-  projectId: z.string().optional().describe("Project ID. Auto-detected if not provided."),
+  projectId: z.string().optional().describe("Project ID. Auto-detected if not provided. Personal memory is just a kind='personal' project — pass its id to write there."),
   type: z
     .enum(["note", "decision", "constraint", "requirement", "task", "artifact"])
     .describe("Memory item type"),

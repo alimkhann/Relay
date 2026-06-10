@@ -3,7 +3,7 @@ import { promoteSourceCitationSchema } from "@relay/shared"
 
 import { withApiAuth } from "@/server/http/api-route"
 import { resolveViewer, requireViewerProject } from "@/server/policies/viewer"
-import { consumeExternalSourceMcpActionQuota, consumeMcpWriteQuota } from "@/server/services/entitlement-service"
+import { consumeActionQuota, consumeExternalSourceMcpActionQuota, consumeMcpWriteQuota } from "@/server/services/entitlement-service"
 import { promoteSourceCitation } from "@/server/services/source-service"
 
 export const POST = withApiAuth(async (request: Request, { params }: { params: Promise<{ id: string; sourceId: string }> }) => {
@@ -13,6 +13,8 @@ export const POST = withApiAuth(async (request: Request, { params }: { params: P
   if (viewer.mode === "mcp") {
     await consumeMcpWriteQuota(viewer.userId)
     await consumeExternalSourceMcpActionQuota(viewer.userId)
+  } else {
+    await consumeActionQuota(viewer.userId, "write")
   }
   const parsed = promoteSourceCitationSchema.parse(await request.json())
   const result = await promoteSourceCitation(viewer.userId, id, sourceId, parsed)

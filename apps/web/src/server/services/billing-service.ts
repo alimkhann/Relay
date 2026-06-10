@@ -2,7 +2,7 @@ import type { BillingSubscriptionStatus } from "@relay/shared"
 import { Polar } from "@polar-sh/sdk"
 import { SDKValidationError } from "@polar-sh/sdk/models/errors/sdkvalidationerror.js"
 import { validateEvent, WebhookVerificationError } from "@polar-sh/sdk/webhooks"
-import { createRepositoryBundle } from "@relay/db"
+import { createRepositoryBundle, createServiceRepositoryBundle } from "@relay/db"
 import { billingCheckoutSchema, hashContent } from "@relay/shared"
 
 import { BILLING_RETURN_URL, BILLING_SUCCESS_URL, BILLING_WALKTHROUGH_SUCCESS_URL, PLAN_PRODUCT_IDS } from "./billing-config"
@@ -1107,7 +1107,7 @@ export async function handlePolarWebhook(rawBody: string, headers: Headers) {
   //    gives us a durable trail even when `validateEvent` throws, which was
   //    impossible in the previous implementation and left us completely blind
   //    to why Polar retries were failing.
-  const auditRepositories = createRepositoryBundle()
+  const auditRepositories = createServiceRepositoryBundle()
   const polarEventId = extractWebhookHeader(headers, "webhook-id")
   const polarEventType = extractWebhookHeader(headers, "webhook-type")
     ?? extractWebhookHeader(headers, "x-polar-event")
@@ -1218,7 +1218,7 @@ export async function handlePolarWebhook(rawBody: string, headers: Headers) {
   await auditRepositories.billingWebhookRawDeliveries.markStatus(rawDelivery.id, "verified")
 
   // 4. Deduplicate processing via the existing billing_webhook_events table.
-  const repositories = createRepositoryBundle()
+  const repositories = createServiceRepositoryBundle()
   const eventId = hashContent(rawBody)
 
   const { created, record } = await repositories.billingWebhookEvents.createIfAbsent({

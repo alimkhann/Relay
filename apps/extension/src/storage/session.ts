@@ -25,7 +25,8 @@ const keys = {
   assumedProjectName: "relay.assumedProjectName",
   trust: "relay.trust",
   projectOptions: "relay.projectOptions",
-  onboarding: "relay.onboarding"
+  onboarding: "relay.onboarding",
+  multiProjectCapture: "relay.multiProjectCapture"
 } as const
 
 export function resolveRelayApiBase(options?: {
@@ -115,6 +116,8 @@ export interface RelaySessionState {
   trust: RelayTrustMetadata
   projectOptions: RelayProjectOption[]
   onboarding: RelayOnboardingState
+  /** Server feature gate: show the "also save to" multi-project picker. */
+  multiProjectCapture: boolean
 }
 
 export function normalizeRelaySession(values: Record<string, unknown>): RelaySessionState {
@@ -158,7 +161,8 @@ export function normalizeRelaySession(values: Record<string, unknown>): RelaySes
       ? (values[keys.projectOptions] as RelayProjectOption[])
       : [],
     onboarding:
-      (values[keys.onboarding] as RelayOnboardingState | undefined) ?? createPendingOnboardingState()
+      (values[keys.onboarding] as RelayOnboardingState | undefined) ?? createPendingOnboardingState(),
+    multiProjectCapture: Boolean(values[keys.multiProjectCapture])
   }
 }
 
@@ -191,7 +195,8 @@ export async function getRelaySession() {
         savedContextCount: 0
       },
       projectOptions: [],
-      onboarding: createPendingOnboardingState()
+      onboarding: createPendingOnboardingState(),
+      multiProjectCapture: false
     }
   }
 
@@ -235,6 +240,7 @@ export async function setRelaySession(input: Partial<RelaySessionState>) {
   if (input.trust !== undefined) payload[keys.trust] = input.trust
   if (input.projectOptions !== undefined) payload[keys.projectOptions] = input.projectOptions
   if (input.onboarding !== undefined) payload[keys.onboarding] = input.onboarding
+  if (input.multiProjectCapture !== undefined) payload[keys.multiProjectCapture] = input.multiProjectCapture
 
   if (Object.keys(payload).length > 0) {
     await localStorageArea.set(payload)

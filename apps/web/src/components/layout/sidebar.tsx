@@ -16,7 +16,7 @@ import { SidebarPlanWidget } from "@/components/layout/sidebar-plan-widget";
 import { AccountMenu } from "@/components/layout/account-menu";
 
 interface SidebarProps {
-  projects?: { id: string; name: string }[];
+  projects?: { id: string; name: string; kind?: "project" | "personal" }[];
   currentProjectId?: string;
   user: {
     name: string;

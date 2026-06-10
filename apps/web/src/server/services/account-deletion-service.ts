@@ -1,4 +1,4 @@
-import { createRepositoryBundle, type RepositoryBundle } from "@relay/db"
+import { createRepositoryBundle, createServiceRepositoryBundle, type RepositoryBundle } from "@relay/db"
 
 import { revokeBillingSubscriptionsForAccountDeletion } from "./billing-service"
 
@@ -17,7 +17,7 @@ export async function deleteAccountRowsForUser(repositories: RepositoryBundle, u
 export async function deleteAccountForUser(userId: string) {
   await revokeBillingSubscriptionsForAccountDeletion(userId)
 
-  const repositories = createRepositoryBundle()
+  const repositories = createServiceRepositoryBundle()
   await repositories.provider.transaction(async (provider) => {
     await deleteAccountRowsForUser(createRepositoryBundle(userId, provider), userId)
   })

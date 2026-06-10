@@ -2,7 +2,7 @@ import { z } from "zod"
 import type { RelayClient } from "../client.js"
 
 export const listMemorySchema = z.object({
-  projectId: z.string().optional().describe("Project ID. Auto-detected if not provided."),
+  projectId: z.string().optional().describe("Project ID. Auto-detected if not provided. Personal memory is a kind='personal' project — pass its id to list it."),
   archived: z.boolean().optional().describe("Include archived memory items."),
   pinned: z.boolean().optional().describe("Filter by pinned status."),
   tag: z.string().optional().describe("Filter by a specific tag."),
@@ -27,9 +27,10 @@ export async function listMemory(
   }
 
   const suffix = params.toString()
+  const base = `/api/projects/${resolvedProjectId}/memory`
   try {
     const data = await client.get<{ memory: unknown[] }>(
-      `/api/projects/${resolvedProjectId}/memory${suffix ? `?${suffix}` : ""}`
+      `${base}${suffix ? `?${suffix}` : ""}`
     )
 
     return {

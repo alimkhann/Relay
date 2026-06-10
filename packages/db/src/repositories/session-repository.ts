@@ -2,6 +2,7 @@ import type { CapturePayload, SourceSessionRow } from "@relay/shared"
 
 import { toSessionRow } from "../mappers/session-mapper"
 import type { DatabaseProvider } from "../store/provider"
+import { MemberRepository } from "./member-repository"
 
 /** Raw result from grouped sessions query */
 export interface GroupedSessionResult {
@@ -41,12 +42,22 @@ export class SessionRepository {
   ): Promise<SourceSessionRow[]> {
     const includeArchived = input.includeArchived ?? false
     const limit = input.limit ?? 50
+    // Multi-project capture: a session surfaces in a project when it is the
+    // origin (project_id) OR linked via session_projects. The OR-exists form is
+    // a no-op until fan-out writes create extra links, so this stays identical
+    // to the single-project behavior until the feature is in use.
     const rows = await this.provider.query(
       `select *
-       from source_sessions
-       where project_id = $1
-         and ($2::boolean or is_archived = false)
-       order by captured_at desc
+       from source_sessions s
+       where (
+           s.project_id = $1
+           or exists (
+             select 1 from session_projects sp
+             where sp.session_id = s.id and sp.project_id = $1
+           )
+         )
+         and ($2::boolean or s.is_archived = false)
+       order by s.captured_at desc
        limit $3`,
       [projectId, includeArchived, limit]
     )
@@ -126,6 +137,48 @@ export class SessionRepository {
     return row ? toSessionRow(row as Record<string, unknown>) : null
   }
 
+  /**
+   * Link a session to additional projects (multi-project capture). Idempotent —
+   * re-linking an existing (session, project) pair is a no-op. The origin
+   * project is normally already present from capture/backfill.
+   */
+  async linkToProjects(
+    sessionId: string,
+    projectIds: string[],
+    userId?: string,
+  ): Promise<void> {
+    let unique = Array.from(new Set(projectIds.filter(Boolean)))
+    if (unique.length === 0) return
+    if (userId) {
+      const members = new MemberRepository(this.provider)
+      unique = await members.filterMemberProjectIds(unique, userId)
+      if (unique.length === 0) return
+    }
+    await this.provider.query(
+      `insert into session_projects (session_id, project_id)
+       select $1, unnest($2::uuid[])
+       on conflict (session_id, project_id) do nothing`,
+      [sessionId, unique]
+    )
+  }
+
+  /** Project ids a session is surfaced in (origin + every linked project). */
+  async listLinkedProjectIds(sessionId: string): Promise<string[]> {
+    const rows = await this.provider.query(
+      `select project_id from session_projects where session_id = $1`,
+      [sessionId]
+    )
+    return rows.map((row) => String((row as Record<string, unknown>).project_id))
+  }
+
+  /** Remove a single session↔project link (unlink from a non-origin project). */
+  async unlinkFromProject(sessionId: string, projectId: string): Promise<void> {
+    await this.provider.query(
+      `delete from session_projects where session_id = $1 and project_id = $2`,
+      [sessionId, projectId]
+    )
+  }
+
   async archive(id: string, archivedBy: string, archived = true): Promise<SourceSessionRow | null> {
     const rows = await this.provider.query(
       `update source_sessions
@@ -148,10 +201,16 @@ export class SessionRepository {
   ): Promise<number> {
     const includeArchived = input.includeArchived ?? false
     const rows = await this.provider.query(
-      `select count(distinct coalesce(source_conversation_id, url)) as count
-       from source_sessions
-       where project_id = $1
-          and ($2::boolean or is_archived = false)`,
+      `select count(distinct coalesce(s.source_conversation_id, s.url)) as count
+       from source_sessions s
+       where (
+           s.project_id = $1
+           or exists (
+             select 1 from session_projects sp
+             where sp.session_id = s.id and sp.project_id = $1
+           )
+         )
+          and ($2::boolean or s.is_archived = false)`,
       [projectId, includeArchived]
     )
 
@@ -170,12 +229,22 @@ export class SessionRepository {
     const limit = input.limit ?? 20
 
     const rows = await this.provider.query(
-      `with session_turns as (
-         select s.id as session_id, count(t.id) as turn_count
+      `with project_sessions as (
+         select s.*
          from source_sessions s
-         left join source_turns t on t.session_id = s.id
-         where s.project_id = $1
+         where (
+             s.project_id = $1
+             or exists (
+               select 1 from session_projects sp
+               where sp.session_id = s.id and sp.project_id = $1
+             )
+           )
            and ($2::boolean or s.is_archived = false)
+       ),
+       session_turns as (
+         select s.id as session_id, count(t.id) as turn_count
+         from project_sessions s
+         left join source_turns t on t.session_id = s.id
          group by s.id
        ),
        ranked_sessions as (
@@ -186,10 +255,8 @@ export class SessionRepository {
              partition by s.source_conversation_id
              order by s.captured_at desc
            ) as rn
-         from source_sessions s
+         from project_sessions s
          join session_turns st on st.session_id = s.id
-         where s.project_id = $1
-           and ($2::boolean or s.is_archived = false)
        )
        select
          source_conversation_id as conversation_id,

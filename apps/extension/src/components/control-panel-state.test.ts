@@ -6,6 +6,7 @@ import {
   deriveAssociationCardPresentation,
   deriveControlPanelState,
   deriveUnresolvedAssociationCardPresentation,
+  resolvePanelProjectOptions,
   shouldShowAssociationCard,
 } from "./control-panel-state"
 
@@ -75,6 +76,23 @@ describe("deriveControlPanelState", () => {
 
     expect(state.heroBadge).toBe("Project brief unavailable")
     expect(state.insertDisabled).toBe(true)
+  })
+})
+
+describe("resolvePanelProjectOptions", () => {
+  it("keeps session personal available when active tab project options are stale", () => {
+    const options = resolvePanelProjectOptions(
+      [{ id: "project_1", name: "Relay", kind: "project" }],
+      [
+        { id: "personal_1", name: "Personal", kind: "personal" },
+        { id: "project_1", name: "Relay", kind: "project" },
+      ],
+    )
+
+    expect(options.map((project) => project.id)).toEqual([
+      "personal_1",
+      "project_1",
+    ])
   })
 })
 

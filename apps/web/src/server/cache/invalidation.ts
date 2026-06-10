@@ -20,6 +20,12 @@ export function invalidateProjectCache(userId: string, projectId: string) {
   expireTag(relayCacheTags.memory(projectId))
 }
 
+export function invalidateProjectMemoryCache(userId: string, projectId: string) {
+  expireTag(relayCacheTags.activity(userId))
+  expireTag(relayCacheTags.dashboard(projectId))
+  expireTag(relayCacheTags.memory(projectId))
+}
+
 export function invalidateProjectSourceCache(userId: string, projectId: string, sourceId?: string | null) {
   invalidateProjectCache(userId, projectId)
   if (sourceId) {

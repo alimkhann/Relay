@@ -99,6 +99,53 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
     // Entity graph tables may not exist yet during migration rollout.
   }
 
+  // Memory v2: pull this project's entity_relations + observations summary.
+  // Failures are non-fatal — the dashboard renders its current payload even if
+  // the v2 tables are missing in a stale env.
+  let entityRelations: Array<{
+    id: string;
+    sourceEntityId: string;
+    targetEntityId: string;
+    relationType: string;
+    confidence: number;
+  }> = [];
+  let observationsSummary: { total: number; recent: Array<{ id: string; content: string; subjectEntityId: string | null; predicate: string | null; validFrom: string }> } = {
+    total: 0,
+    recent: [],
+  };
+
+  try {
+    const snapshot = await repositories.graph.getProjectGraphSnapshot(id, 200);
+    entityRelations = snapshot.relations;
+    // Single round-trip: total count + recent 25 in one CTE.
+    const [recentObservations, totalRows] = await Promise.all([
+      repositories.observations.listByProject(id, {
+        lifecycleStates: ["active", "cooling"],
+        limit: 25,
+      }),
+      repositories.provider.query<{ total: number }>(
+        `SELECT count(*)::int AS total
+         FROM observations
+         WHERE project_id IS NOT DISTINCT FROM $1::uuid
+           AND lifecycle_state IN ('active','cooling')
+           AND valid_until IS NULL`,
+        [id],
+      ),
+    ]);
+    observationsSummary = {
+      total: totalRows[0]?.total ?? 0,
+      recent: recentObservations.map((row) => ({
+        id: row.id,
+        content: row.content,
+        subjectEntityId: row.subjectEntityId,
+        predicate: row.predicate,
+        validFrom: row.validFrom,
+      })),
+    };
+  } catch {
+    // v2 tables not present in this env yet.
+  }
+
   return NextResponse.json({
     relations: relations.map((relation) => ({
       sourceId: relation.sourceId,
@@ -111,5 +158,7 @@ export const GET = withApiAuth(async (request: Request, { params }: { params: Pr
     sourceMemoryLinks,
     entities: entityDetails,
     entityMemoryLinks,
+    entityRelations,
+    observationsSummary,
   });
 });

@@ -11,6 +11,9 @@ import { BillingWebhookRawDeliveryRepository } from "../repositories/billing-web
 import { BootstrapPacketRepository } from "../repositories/bootstrap-packet-repository"
 import { CanonEntryRepository } from "../repositories/canon-entry-repository"
 import { EntityRepository } from "../repositories/entity-repository"
+import { EntityRelationRepository } from "../repositories/entity-relation-repository"
+import { GraphRepository } from "../repositories/graph-repository"
+import { ObservationRepository } from "../repositories/observation-repository"
 import { CanonEvidenceRepository } from "../repositories/canon-evidence-repository"
 import { ContextPacketRepository } from "../repositories/context-packet-repository"
 import { EventRepository } from "../repositories/event-repository"
@@ -19,6 +22,7 @@ import { EntitlementRepository } from "../repositories/entitlement-repository"
 import { ExtensionTokenRepository } from "../repositories/extension-token-repository"
 import { MemberRepository } from "../repositories/member-repository"
 import { MemoryEventRepository } from "../repositories/memory-event-repository"
+import { MemoryPipelineJobRepository } from "../repositories/memory-pipeline-job-repository"
 import { MemoryRepository } from "../repositories/memory-repository"
 import { McpAuthSessionRepository } from "../repositories/mcp-auth-session-repository"
 import { McpTokenRepository } from "../repositories/mcp-token-repository"
@@ -45,7 +49,12 @@ import { UsageCounterRepository } from "../repositories/usage-counter-repository
 import { WorkSessionCheckpointRepository } from "../repositories/work-session-checkpoint-repository"
 import { WorkSessionEventRepository } from "../repositories/work-session-event-repository"
 import { WorkSessionRepository } from "../repositories/work-session-repository"
-import { createRepositoryProvider, type DatabaseProvider } from "../store/provider"
+import {
+  createRepositoryProvider,
+  createServiceRepositoryProvider,
+  createWorkerRepositoryProvider,
+  type DatabaseProvider,
+} from "../store/provider"
 
 export interface RepositoryBundle {
   provider: DatabaseProvider
@@ -62,6 +71,7 @@ export interface RepositoryBundle {
   sessions: SessionRepository
   turns: TurnRepository
   memory: MemoryRepository
+  memoryPipelineJobs: MemoryPipelineJobRepository
   memoryEvents: MemoryEventRepository
   canonEntries: CanonEntryRepository
   canonEvidence: CanonEvidenceRepository
@@ -93,6 +103,9 @@ export interface RepositoryBundle {
   workSessionEvents: WorkSessionEventRepository
   workSessionCheckpoints: WorkSessionCheckpointRepository
   entities: EntityRepository
+  entityRelations: EntityRelationRepository
+  graph: GraphRepository
+  observations: ObservationRepository
   assistantChats: AssistantChatRepository
   assistantMessages: AssistantMessageRepository
   assistantAttachments: AssistantAttachmentRepository
@@ -119,6 +132,7 @@ export function createRepositoryBundle(
     sessions: new SessionRepository(provider),
     turns: new TurnRepository(provider),
     memory: new MemoryRepository(provider),
+    memoryPipelineJobs: new MemoryPipelineJobRepository(provider),
     memoryEvents: new MemoryEventRepository(provider),
     canonEntries: new CanonEntryRepository(provider),
     canonEvidence: new CanonEvidenceRepository(provider),
@@ -150,8 +164,29 @@ export function createRepositoryBundle(
     workSessionEvents: new WorkSessionEventRepository(provider),
     workSessionCheckpoints: new WorkSessionCheckpointRepository(provider),
     entities: new EntityRepository(provider),
+    entityRelations: new EntityRelationRepository(provider),
+    graph: new GraphRepository(provider),
+    observations: new ObservationRepository(provider),
     assistantChats: new AssistantChatRepository(provider),
     assistantMessages: new AssistantMessageRepository(provider),
     assistantAttachments: new AssistantAttachmentRepository(provider),
   }
+}
+
+/**
+ * Bundle for cron / background jobs. Runs under the worker role
+ * (WORKER_DATABASE_URL → relay_worker, bypassrls) so table-spanning sweeps
+ * write across every tenant. Falls back to DATABASE_URL when unset.
+ */
+export function createWorkerRepositoryBundle(): RepositoryBundle {
+  return createRepositoryBundle(undefined, createWorkerRepositoryProvider())
+}
+
+/**
+ * Bundle for service/admin flows with no user viewer: pre-auth, webhooks,
+ * account deletion. Runs under the service role (SERVICE_DATABASE_URL →
+ * relay_service, bypassrls). Falls back to DATABASE_URL when unset.
+ */
+export function createServiceRepositoryBundle(): RepositoryBundle {
+  return createRepositoryBundle(undefined, createServiceRepositoryProvider())
 }

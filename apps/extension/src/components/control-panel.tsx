@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, lazy, Suspense } from "react";
+import { Pencil, Trash2, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 
 // ── OTP cell component ──────────────────────────────────────────────────────
 
@@ -77,7 +78,17 @@ function OtpCells({ value, onChange, disabled }: OtpCellsProps) {
 }
 
 import { slugify } from "@relay/shared/utils/text";
+import {
+  effectiveAutoCapture,
+  effectiveInlineChip,
+} from "@relay/shared/utils/capture-settings";
+import type { CaptureResolutionInput } from "@relay/shared/utils/capture-settings";
 import { supportedPlatforms } from "@relay/shared/constants/platforms";
+import {
+  PERSONAL_CATEGORY_META,
+  sortPersonalCategoriesByFill,
+  type PersonalCategory,
+} from "@relay/shared/constants/memory-taxonomy";
 import type { SupportedPlatform, UserSettingsRow } from "@relay/shared/types/database";
 import type { BillingStatusDto, EntitlementLimitsDto } from "@relay/shared/types/billing";
 import {
@@ -86,7 +97,13 @@ import {
   type UsageMetric,
 } from "@relay/shared/utils/usage-metrics";
 
+import type { AssistantActionItem, AssistantActionResult } from "@relay/shared/types/assistant";
+import type { MemoryItemType } from "@relay/shared/types/database";
+
 import type { RelayActiveProjectState, RelayProjectOption } from "../messaging/contracts";
+import { preferContextPreviewOnSync } from "../utils/context-preview";
+import { LOCAL_PREVIEW_MUTATION_GUARD_MS } from "../utils/preview-mutation-guard";
+import { applyActionResultToContextPreview } from "../utils/context-preview-mutations";
 import { getActiveTab } from "../utils/browser";
 import { relayFetch } from "../utils/api";
 import {
@@ -108,6 +125,7 @@ import {
 import {
   deriveAssociationCardPresentation,
   deriveUnresolvedAssociationCardPresentation,
+  resolvePanelProjectOptions,
   shouldShowAssociationCard,
 } from "./control-panel-state";
 import { resolveDisplayedPlan } from "./control-panel-billing";
@@ -132,13 +150,22 @@ interface ControlPanelProps {
 }
 
 type ContextSection = "decisions" | "constraints" | "tasks";
-type ContextTab = "all" | ContextSection;
+type ContextTab = "all" | ContextSection | "notes" | "requirements";
 type ContextItem = RelayActiveProjectState["contextPreview"][ContextSection][number];
 
 const sectionColorClass: Record<ContextSection, string> = {
   decisions: "contextSectionDecisions",
   constraints: "contextSectionConstraints",
   tasks: "contextSectionTasks",
+};
+
+// Per-item side-stripe class for single-section tabs (F6). Mirrors the
+// All-tab section stripe colors so the visual cue persists when the user
+// filters to decisions/tasks/constraints.
+const sectionItemColorClass: Record<ContextSection, string> = {
+  decisions: "contextItemUnifiedDecisions",
+  constraints: "contextItemUnifiedConstraints",
+  tasks: "contextItemUnifiedTasks",
 };
 
 const sectionLabels: Record<ContextSection, string> = {
@@ -216,6 +243,7 @@ const emptyActiveState: RelayActiveProjectState = {
     constraints: [],
     tasks: [],
     notes: [],
+    requirements: [],
   },
   chatAssociation: {
     status: "none",
@@ -332,6 +360,16 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     null | "approving_held"
   >(null);
   const [projectScanPending, setProjectScanPending] = useState(false);
+  // Memory v2 — personal memory is a kind='personal' project that rides along
+  // in projectOptions (one per user). personalMode routes manual captures to it
+  // via the normal project memory endpoint; no separate spaces API.
+  const [personalMode, setPersonalMode] = useState(false);
+  // "Also save to" multi-project picker: the extra projects (besides the active
+  // one) the next Link & save should fan the captured session out to.
+  const [alsoSaveToOpen, setAlsoSaveToOpen] = useState(false);
+  const [alsoSaveToProjectIds, setAlsoSaveToProjectIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [newProjectUrl, setNewProjectUrl] = useState("");
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDescription, setNewProjectDescription] = useState("");
@@ -357,6 +395,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     constraints: "",
     tasks: "",
   });
+  const [noteDraft, setNoteDraft] = useState("");
+  // Regular All-tab memory-item sections (notes/requirements): per-section expand
+  // + add draft, keyed by memory type.
+  const [memorySectionExpanded, setMemorySectionExpanded] = useState<Record<string, boolean>>({});
+  const [memorySectionDrafts, setMemorySectionDrafts] = useState<Record<string, string>>({});
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
   const [themeMode, setThemeMode] = useState<RelayThemeMode>("system");
@@ -368,9 +411,25 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   const [billing, setBilling] = useState<BillingStatusDto | null>(null);
   const [userSettingsBusy, setUserSettingsBusy] = useState(false);
   const [showWalkthrough, setShowWalkthrough] = useState(false);
+  const panelProjectOptions = resolvePanelProjectOptions(
+    activeState.projectOptions,
+    session?.projectOptions ?? [],
+  );
+  // Active project is the personal project? Drives the Folk-category notes view.
+  const activeProjectIsPersonal =
+    panelProjectOptions.find((option) => option.id === activeState.projectId)?.kind === "personal";
+  const [personalNotesCategory, setPersonalNotesCategory] = useState<PersonalCategory | "all">("all");
+  // Personal panel: expanded category sections (All tab), per-category add drafts,
+  // and a page index for the single-category tab.
+  const [personalExpanded, setPersonalExpanded] = useState<Record<string, boolean>>({});
+  const [personalDrafts, setPersonalDrafts] = useState<Record<string, string>>({});
+  const [personalPage, setPersonalPage] = useState(0);
+  // Page index for a regular single-section tab (decisions/tasks/constraints/notes).
+  const [sectionPage, setSectionPage] = useState(0);
   const walkthroughChecked = useRef(false);
   const activeStateRequestInFlight = useRef(false);
   const lastActiveStateRefreshAt = useRef(0);
+  const lastLocalPreviewMutationAt = useRef(0);
   const userSettingsLoadedAt = useRef(0);
   const billingLoadedAt = useRef(0);
 
@@ -493,7 +552,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       changeInfo: { status?: string },
       tab: { active?: boolean },
     ) => {
-      if (changeInfo.status === "complete" && tab.active) {
+      if (changeInfo.status === "complete" && tab.active && !activeStateRequestInFlight.current) {
         void refreshActiveProjectState({ throttle: true });
       }
     };
@@ -507,19 +566,37 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     };
   }, []);
 
-  // Reflect agent writes from the embedded chat: when Ask Relay creates /
-  // updates / deletes memory, refresh the panel so it isn't stale.
+  // Reflect agent writes from the embedded Ask Relay chat in the memory tabs.
   useEffect(() => {
+    const onMutated = (event: Event) => {
+      const result = (event as CustomEvent<AssistantActionResult>).detail;
+      if (result) {
+        applyAgentMemoryMutation(result);
+        return;
+      }
+      void refreshActiveProjectState();
+    };
+
     let channel: BroadcastChannel | null = null;
     try {
       channel = new BroadcastChannel("relay-mutations");
-      channel.onmessage = () => {
+      channel.onmessage = (event) => {
+        const data = event.data as { type?: string; result?: AssistantActionResult };
+        if (data?.type === "memory-mutated" && data.result) {
+          applyAgentMemoryMutation(data.result);
+          return;
+        }
         void refreshActiveProjectState();
       };
     } catch {
       /* BroadcastChannel unavailable */
     }
-    return () => channel?.close();
+
+    window.addEventListener("relay:memory-mutated", onMutated);
+    return () => {
+      channel?.close();
+      window.removeEventListener("relay:memory-mutated", onMutated);
+    };
   }, []);
 
   useEffect(() => {
@@ -671,8 +748,47 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     };
   }, []);
 
+  function markLocalPreviewMutation() {
+    lastLocalPreviewMutationAt.current = Date.now();
+  }
+
+  function applyAgentMemoryMutation(result: AssistantActionResult) {
+    const projectId = activeStateRef.current.projectId;
+    if (!projectId) return;
+    markLocalPreviewMutation();
+    setActiveState((current) => {
+      if (!current.projectId || current.projectId !== projectId) return current;
+      return {
+        ...current,
+        contextPreview: applyActionResultToContextPreview(
+          current.contextPreview,
+          result,
+          projectId,
+        ),
+      };
+    });
+  }
+
   function applyActiveState(nextState: RelayActiveProjectState) {
-    setActiveState(nextState);
+    setActiveState((current) => {
+      if (nextState.page.supported || current.projectId !== nextState.projectId) {
+        return nextState;
+      }
+      const recentLocalMutation =
+        Date.now() - lastLocalPreviewMutationAt.current < LOCAL_PREVIEW_MUTATION_GUARD_MS;
+      if (recentLocalMutation) {
+        return { ...nextState, contextPreview: current.contextPreview };
+      }
+      // Non-AI same project: prefer the richer local preview while optimistic CRUD
+      // is ahead of a stale background sync (create/delete/edit flash-back).
+      return {
+        ...nextState,
+        contextPreview: preferContextPreviewOnSync(
+          current.contextPreview,
+          nextState.contextPreview,
+        ),
+      };
+    });
     setSession((current) =>
       current
         ? {
@@ -721,6 +837,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       if (!data.settings || typeof data.settings !== "object") return;
       if (userSettingsBusy) return;
       setUserSettings(data.settings);
+      // Sync the extension-only preference so ExtensionChat (a sibling component)
+      // can read it without prop-drilling through sidepanel.tsx.
+      const shouldHide = Boolean(data.settings.hideAskRelayExtension);
+      localStorage.setItem("relay:hideAskRelayExtension", String(shouldHide));
+      window.dispatchEvent(new StorageEvent("storage", { key: "relay:hideAskRelayExtension", newValue: String(shouldHide) }));
       userSettingsLoadedAt.current = Date.now();
       if (!walkthroughChecked.current) {
         walkthroughChecked.current = true;
@@ -792,12 +913,88 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
   }
 
-  async function togglePlatformEnabled(platform: SupportedPlatform, enabled: boolean) {
-    const current = userSettings?.enabledPlatforms ?? [...supportedPlatforms];
-    const next = enabled
-      ? Array.from(new Set([...current, platform]))
-      : current.filter((p) => p !== platform);
-    await patchUserSettings({ enabledPlatforms: next });
+  // Per-project (incl. personal) auto-capture override. value=null clears the
+  // override → inherit the global setting. runBusyAction refreshes the active
+  // state so the projectOptions override updates in place.
+  async function setProjectAutoCapture(projectId: string, value: boolean | null) {
+    if (busy || !projectId) return;
+    await runBusyAction(
+      "Updating auto-capture…",
+      value === null
+        ? "Auto-capture now inherits the global setting."
+        : value
+          ? "Auto-capture on for this space."
+          : "Auto-capture off for this space.",
+      async () => {
+        const response = await relayFetch(`/api/projects/${projectId}/settings`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ autoCapture: value }),
+        });
+        if (!response.ok) {
+          throw new Error(await readErrorMessage(response, "Could not update auto-capture."));
+        }
+      },
+    );
+  }
+
+  // Per-(project) capture/chip overrides. A `null` on any key clears it and
+  // inherits the next level up (platform leaf → project → global). Used by the
+  // tri-state matrix trees. runBusyAction refreshes the active state so the
+  // projectOptions overrides update in place.
+  async function patchProjectCaptureSettings(
+    projectId: string,
+    patch: {
+      autoCapture?: boolean | null;
+      autoCapturePlatforms?: Partial<Record<SupportedPlatform, boolean>> | null;
+      inlineChip?: boolean | null;
+      inlineChipPlatforms?: Partial<Record<SupportedPlatform, boolean>> | null;
+    },
+    successMessage: string,
+  ) {
+    if (busy || !projectId) return;
+    // Optimistic: reflect the override on the matching projectOption now so the
+    // tri-state trees update instantly. projectOptions otherwise lag behind the
+    // background session cache (15s), which is why the per-project/site toggles
+    // appeared dead while the global toggle (read from local userSettings) worked.
+    setActiveState((current) => ({
+      ...current,
+      projectOptions: current.projectOptions.map((option) =>
+        option.id === projectId
+          ? {
+              ...option,
+              ...("autoCapture" in patch
+                ? { autoCapture: patch.autoCapture ?? undefined }
+                : {}),
+              ...("autoCapturePlatforms" in patch
+                ? { autoCapturePlatforms: patch.autoCapturePlatforms ?? undefined }
+                : {}),
+              ...("inlineChip" in patch
+                ? { inlineChip: patch.inlineChip ?? undefined }
+                : {}),
+              ...("inlineChipPlatforms" in patch
+                ? { inlineChipPlatforms: patch.inlineChipPlatforms ?? undefined }
+                : {}),
+            }
+          : option,
+      ),
+    }));
+    await runBusyAction("Updating settings…", successMessage, async () => {
+      const response = await relayFetch(`/api/projects/${projectId}/settings`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Could not update settings."));
+      }
+      // Force the background to drop its cached session so the post-action
+      // refresh carries the freshly-written override (not a stale snapshot).
+      await chrome.runtime.sendMessage({
+        type: "RELAY_REFRESH_SESSION",
+        payload: { force: true },
+      });
+    });
   }
 
   async function changeThemeMode(nextMode: RelayThemeMode) {
@@ -976,7 +1173,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
 
       applyActiveState(response);
     } catch {
-      setActiveState(emptyActiveState);
+      // SW unavailable (restart or resource exhaustion) — preserve last state
+      setActiveState((current) => (current.projectId ? current : emptyActiveState));
     } finally {
       activeStateRequestInFlight.current = false;
     }
@@ -1533,6 +1731,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       );
 
       if (result?.ok) {
+        markLocalPreviewMutation();
         await refreshLocalSession();
         await refreshActiveProjectState();
       }
@@ -1555,6 +1754,12 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       return;
     }
 
+    // "Also save to" extras: exclude the primary project, send the rest so the
+    // server links the session to each and runs their digests.
+    const extraProjectIds = Array.from(alsoSaveToProjectIds).filter(
+      (id) => id !== activeState.projectId,
+    );
+
     setBusy(true);
     setStatus(`Saving to ${activeState.projectName ?? "the selected project"}…`);
 
@@ -1564,6 +1769,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         payload: {
           projectId: activeState.projectId,
           tabId: tab.id,
+          additionalProjectIds: extraProjectIds.length ? extraProjectIds : undefined,
         },
       })) as {
         ok?: boolean;
@@ -1576,15 +1782,20 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       };
 
       const savedProjectName = result?.projectName ?? activeState.projectName ?? "the selected project";
+      const alsoCount = extraProjectIds.length;
+      const alsoSuffix = alsoCount > 0 ? ` + ${alsoCount} more project${alsoCount === 1 ? "" : "s"}` : "";
       setStatus(
         result?.ok
           ? (result.skippedInsertedContext
               ? (result.reason ?? `Saved to ${savedProjectName}. Relay found no new edits after the inserted brief.`)
-              : `Saved to ${savedProjectName}.${result?.digestStatus === "analyzed" ? " Relay analyzed it." : result?.digestStatus === "queued" || result?.digestQueued ? " Relay is updating your project brief." : ""}`)
+              : `Saved to ${savedProjectName}${alsoSuffix}.${result?.digestStatus === "analyzed" ? " Relay analyzed it." : result?.digestStatus === "queued" || result?.digestQueued ? " Relay is updating your project brief." : ""}`)
           : (result?.reason ?? "Associate chat failed."),
       );
 
       if (result?.ok) {
+        setAlsoSaveToProjectIds(new Set());
+        setAlsoSaveToOpen(false);
+        markLocalPreviewMutation();
         await refreshLocalSession();
         await refreshActiveProjectState();
       }
@@ -1597,6 +1808,117 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
   }
 
+  function toggleAlsoSaveTo(projectId: string) {
+    setAlsoSaveToProjectIds((current) => {
+      const next = new Set(current);
+      if (next.has(projectId)) next.delete(projectId);
+      else next.add(projectId);
+      return next;
+    });
+  }
+
+  // Link & save button, with a "also save to" chevron when the server enables
+  // multi-project capture. The chevron expands a full-width dropdown of the
+  // other projects (Personal pinned first) with right-aligned checkboxes; the
+  // checked ones ride along as additionalProjectIds on the next save.
+  function renderLinkAndSave() {
+    const disabled =
+      busy || !activeState.projectId || !activeState.page.supported;
+    const showChevron = Boolean(session?.multiProjectCapture);
+
+    // Candidates = every project except the active/primary one (it is always
+    // saved to). Personal pinned to the top.
+    const candidates = panelProjectOptions
+      .filter((option) => option.id !== activeState.projectId)
+      .sort((a, b) => {
+        if (a.kind === "personal" && b.kind !== "personal") return -1;
+        if (b.kind === "personal" && a.kind !== "personal") return 1;
+        return 0;
+      });
+    const selectedCount = candidates.filter((option) =>
+      alsoSaveToProjectIds.has(option.id),
+    ).length;
+
+    if (!showChevron) {
+      return (
+        <button
+          className={styles.primaryButton}
+          disabled={disabled}
+          onClick={() => void associateCurrentChat()}
+        >
+          {busy ? "Saving…" : "Link & save"}
+        </button>
+      );
+    }
+
+    return (
+      <div className={styles.linkSaveWrap}>
+        <div className={styles.linkSaveRow}>
+          <button
+            className={styles.linkSaveMain}
+            disabled={disabled}
+            onClick={() => void associateCurrentChat()}
+          >
+            {busy
+              ? "Saving…"
+              : `Link & save${selectedCount > 0 ? ` (+${selectedCount})` : ""}`}
+          </button>
+          <button
+            className={styles.linkSaveChevron}
+            disabled={busy}
+            aria-label="Also save to"
+            aria-expanded={alsoSaveToOpen}
+            title="Also save to"
+            onClick={() => setAlsoSaveToOpen((open) => !open)}
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 12 12"
+              fill="none"
+              aria-hidden="true"
+              style={{
+                transform: alsoSaveToOpen ? "rotate(180deg)" : "none",
+                transition: "transform 120ms",
+              }}
+            >
+              <path
+                d="M3 4.5 6 7.5 9 4.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
+        {alsoSaveToOpen ? (
+          <div className={styles.alsoSaveMenu} role="group" aria-label="Also save to">
+            {candidates.length === 0 ? (
+              <p className={styles.alsoSaveEmpty}>No other projects yet.</p>
+            ) : (
+              candidates.map((option) => {
+                const checked = alsoSaveToProjectIds.has(option.id);
+                return (
+                  <label key={option.id} className={styles.alsoSaveItem}>
+                    <span className={styles.alsoSaveName}>
+                      {option.kind === "personal" ? "Personal" : option.name}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleAlsoSaveTo(option.id)}
+                    />
+                  </label>
+                );
+              })
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   async function handleProjectChange(nextProjectId: string) {
     if (!nextProjectId) return;
 
@@ -1606,9 +1928,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       activeState.chatAssociation.status === "held" ||
       activeState.chatAssociation.status === "saved";
     const nextProject =
-      activeState.projectOptions.find((project) => project.id === nextProjectId) ??
+      panelProjectOptions.find((project) => project.id === nextProjectId) ??
       null;
     const previousState = activeState;
+    const previousPersonalMode = personalMode;
     setBusy(true);
 
     try {
@@ -1617,6 +1940,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           ...current,
           projectId: nextProjectId,
           projectName: nextProject.name,
+          remoteStatus: current.remoteStatus === "ready" ? "stale" : "loading",
           chatAssociation: {
             ...current.chatAssociation,
             projectId: nextProjectId,
@@ -1635,7 +1959,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         }));
       }
 
-      const result = (await chrome.runtime.sendMessage(
+      const result = await chrome.runtime.sendMessage(
         associationAware
           ? {
               type: "RELAY_SET_CHAT_ASSOCIATION_PROJECT",
@@ -1652,13 +1976,37 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 tabId: tab?.id,
               },
             },
-      )) as { ok?: boolean; reason?: string };
-      if (!result?.ok) {
-        throw new Error(result?.reason ?? "Project switch failed.");
+      );
+
+      if (associationAware) {
+        const associationResult = result as {
+          ok?: boolean;
+          reason?: string;
+          state?: RelayActiveProjectState;
+          projectId?: string;
+          projectName?: string;
+        };
+        if (!associationResult?.ok) {
+          throw new Error(associationResult?.reason ?? "Project switch failed.");
+        }
+        if (isRelayActiveProjectState(associationResult.state)) {
+          applyActiveState(associationResult.state);
+        }
+      } else if (isRelayActiveProjectState(result)) {
+        applyActiveState(result);
+      } else {
+        const errorResult = result as { ok?: boolean; reason?: string };
+        if (errorResult?.ok === false) {
+          throw new Error(errorResult.reason ?? "Project switch failed.");
+        }
       }
+
       await setRelaySession({
         projectId: nextProjectId,
       });
+      if (nextProject) {
+        setPersonalMode(nextProject.kind === "personal");
+      }
       setStatus(
         associationAware
           ? activeState.chatAssociation.status === "saved"
@@ -1673,6 +2021,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       if (associationAware) {
         setActiveState(previousState);
       }
+      setPersonalMode(previousPersonalMode);
       setStatus(
         cause instanceof Error ? cause.message : "Project switch failed.",
       );
@@ -1681,19 +2030,67 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     }
   }
 
+  // Push a manual CRUD mutation directly to the background so the
+  // dashboardCache and state.contextPreview survive sidebar close/reopen
+  // and project switches without a server round-trip.
+  // Uses "add_memory" / "manage_memory" as tool names so actionResultToMemoryMutations
+  // processes them (those are the only tools in MEMORY_MUTATION_TOOLS).
+  async function sendManualMutation(
+    action: "created" | "updated" | "deleted",
+    projectId: string,
+    after?: { id: string; type: MemoryItemType; content: string },
+    before?: { id: string; type?: MemoryItemType; content?: string },
+  ) {
+    const tab = await getActiveTab();
+    const afterItem: AssistantActionItem | undefined = after
+      ? { id: after.id, label: after.content.slice(0, 80), content: after.content, type: after.type, projectId }
+      : undefined;
+    const beforeItem: AssistantActionItem | undefined = before
+      ? { id: before.id, label: (before.content ?? "").slice(0, 80), content: before.content, type: before.type, projectId }
+      : undefined;
+    const result: AssistantActionResult = {
+      tool: action === "created" ? "add_memory" : "manage_memory",
+      action,
+      entity: "memory item",
+      count: 1,
+      items: afterItem ? [afterItem] : beforeItem ? [beforeItem] : [],
+      previews: (afterItem || beforeItem) ? [{ before: beforeItem, after: afterItem }] : [],
+    };
+    void chrome.runtime.sendMessage({
+      type: "RELAY_APPLY_AGENT_MEMORY_MUTATION",
+      payload: { projectId, result, tabId: tab?.id ?? null },
+    });
+  }
+
   async function runBusyAction(
     pendingMessage: string,
     successMessage: string,
     task: () => Promise<void>,
+    options: { skipStateRefresh?: boolean } = {},
   ) {
     setBusy(true);
     setStatus(pendingMessage);
 
     try {
+      if (options.skipStateRefresh) {
+        markLocalPreviewMutation();
+      }
       await task();
       setStatus(successMessage);
+      const mutatedProjectId = activeState.projectId ?? session?.projectId;
+      // skipStateRefresh operations call sendManualMutation directly to patch
+      // background dashboardCache + contextPreview via RELAY_APPLY_AGENT_MEMORY_MUTATION.
+      // Non-skipStateRefresh operations still need invalidation + full sync.
+      if (mutatedProjectId && !options.skipStateRefresh) {
+        void chrome.runtime.sendMessage({
+          type: "RELAY_INVALIDATE_PROJECT_CACHE",
+          payload: { projectId: mutatedProjectId, sync: true },
+        });
+      }
       await refreshLocalSession();
-      await refreshActiveProjectState();
+      if (!options.skipStateRefresh) {
+        await refreshActiveProjectState();
+      }
     } catch (cause) {
       setStatus(cause instanceof Error ? cause.message : "Request failed.");
     } finally {
@@ -1746,13 +2143,37 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   async function addContext(section: ContextSection) {
     const projectId = activeState.projectId ?? session?.projectId ?? "";
     const content = drafts[section].trim();
-    if (!projectId || !content) return;
+    if (!content) return;
+    // Personal-mode captures target the user's personal project. Manual pick →
+    // no routingHint (the chosen target wins; no auto-classification).
+    const personalProject =
+      panelProjectOptions.find((project) => project.kind === "personal") ?? null;
+    if (!personalMode && !projectId) return;
+    if (personalMode && !personalProject) return;
+
+    const endpoint = personalMode
+      ? `/api/projects/${personalProject!.id}/memory`
+      : `/api/projects/${projectId}/memory`;
 
     await runBusyAction(
       `Saving ${sectionLabels[section].toLowerCase()}…`,
       `${sectionLabels[section]} updated.`,
       async () => {
-        const response = await relayFetch(`/api/projects/${projectId}/memory`, {
+        const optimisticKey = `opt-${crypto.randomUUID()}`;
+        const optimisticItem: ContextItem = {
+          key: optimisticKey,
+          text: content,
+          source: "manual",
+          memoryId: null,
+        };
+        setActiveState((current) => ({
+          ...current,
+          contextPreview: {
+            ...current.contextPreview,
+            [section]: [optimisticItem, ...current.contextPreview[section]],
+          },
+        }));
+        const response = await relayFetch(endpoint, {
           method: "POST",
           body: JSON.stringify({
             type: memoryTypeBySection[section],
@@ -1762,14 +2183,46 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         });
 
         if (!response.ok) {
+          setActiveState((current) => ({
+            ...current,
+            contextPreview: {
+              ...current.contextPreview,
+              [section]: current.contextPreview[section].filter((item) => item.key !== optimisticKey),
+            },
+          }));
           throw new Error(await readErrorMessage(response, "Context item creation failed."));
         }
-
+        const { item } = (await response.json()) as {
+          item: { id: string; content: string; sourceSurface?: "manual"; capturedAt?: string | null; updatedAt: string };
+        };
+        setActiveState((current) => ({
+          ...current,
+          contextPreview: {
+            ...current.contextPreview,
+            [section]: [
+              {
+                key: `manual:${item.id}`,
+                text: item.content,
+                source: "manual" as const,
+                memoryId: item.id,
+                sourceSurface: item.sourceSurface ?? "manual",
+                capturedAt: item.capturedAt ?? item.updatedAt,
+              },
+              ...current.contextPreview[section].filter((entry) => entry.key !== optimisticKey),
+            ],
+          },
+        }));
+        void sendManualMutation(
+          "created",
+          personalMode ? (personalProject?.id ?? "") : (activeState.projectId ?? session?.projectId ?? ""),
+          { id: item.id, type: memoryTypeBySection[section], content: item.content},
+        );
         setDrafts((current) => ({
           ...current,
           [section]: "",
         }));
       },
+      { skipStateRefresh: true },
     );
   }
 
@@ -1778,13 +2231,33 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       "Updating project context…",
       "Project context updated.",
       async () => {
+        setActiveState((current) => ({
+          ...current,
+          contextPreview: {
+            ...current.contextPreview,
+            [section]: current.contextPreview[section].filter((entry) => entry.key !== item.key),
+          },
+        }));
         if (item.source === "manual" && item.memoryId) {
           const response = await relayFetch(`/api/memory/${item.memoryId}`, {
             method: "DELETE",
           });
           if (!response.ok) {
+            setActiveState((current) => ({
+              ...current,
+              contextPreview: {
+                ...current.contextPreview,
+                [section]: [item, ...current.contextPreview[section]],
+              },
+            }));
             throw new Error(await readErrorMessage(response, "Manual context removal failed."));
           }
+          void sendManualMutation(
+            "deleted",
+            activeState.projectId ?? session?.projectId ?? "",
+            undefined,
+            { id: item.memoryId, type: memoryTypeBySection[section], content: item.text },
+          );
           return;
         }
 
@@ -1793,7 +2266,181 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           [hiddenFieldBySection[section]]: Array.from(new Set([...hiddenItems, item.text])),
         });
       },
+      { skipStateRefresh: true },
     );
+  }
+
+  async function addNote() {
+    const content = noteDraft.trim();
+    if (!content) return;
+    const projectId = activeState.projectId ?? session?.projectId ?? "";
+    const personalProject =
+      panelProjectOptions.find((project) => project.kind === "personal") ?? null;
+    if (!personalMode && !projectId) return;
+    if (personalMode && !personalProject) return;
+
+    const endpoint = personalMode
+      ? `/api/projects/${personalProject!.id}/memory`
+      : `/api/projects/${projectId}/memory`;
+
+    await runBusyAction("Saving note…", "Note saved.", async () => {
+      const optimisticKey = `opt-${crypto.randomUUID()}`;
+      const capturedAt = new Date().toISOString();
+      setActiveState((current) => ({
+        ...current,
+        contextPreview: {
+          ...current.contextPreview,
+          notes: [
+            {
+              key: optimisticKey,
+              text: content,
+              memoryId: "",
+              sourceUrl: null,
+              hostname: null,
+              capturedAt,
+            },
+            ...current.contextPreview.notes,
+          ],
+        },
+      }));
+      const response = await relayFetch(endpoint, {
+        method: "POST",
+        body: JSON.stringify({
+          type: "note",
+          title: null,
+          content,
+          pinned: true,
+        }),
+      });
+      if (!response.ok) {
+        setActiveState((current) => ({
+          ...current,
+          contextPreview: {
+            ...current.contextPreview,
+            notes: current.contextPreview.notes.filter((item) => item.key !== optimisticKey),
+          },
+        }));
+        throw new Error(await readErrorMessage(response, "Note creation failed."));
+      }
+      const { item } = (await response.json()) as {
+        item: { id: string; content: string; sourceSurface?: "manual"; capturedAt?: string | null; updatedAt: string };
+      };
+      setActiveState((current) => ({
+        ...current,
+        contextPreview: {
+          ...current.contextPreview,
+          notes: [
+            {
+              key: `note:${item.id}`,
+              text: item.content,
+              memoryId: item.id,
+              sourceUrl: null,
+              hostname: null,
+              sourceSurface: item.sourceSurface ?? "manual",
+              capturedAt: item.capturedAt ?? item.updatedAt,
+            },
+            ...current.contextPreview.notes.filter((entry) => entry.key !== optimisticKey),
+          ],
+        },
+      }));
+      void sendManualMutation(
+        "created",
+        personalMode ? (personalProject?.id ?? "") : projectId,
+        { id: item.id, type: "note", content: item.content},
+      );
+      setNoteDraft("");
+    }, { skipStateRefresh: true });
+  }
+
+  // Add a note/requirement (regular project memory-item sections) from a
+  // per-type draft. Notes are pinned so they surface in the preview.
+  async function addMemorySectionItem(type: "note" | "requirement") {
+    const content = (memorySectionDrafts[type] ?? "").trim();
+    if (!content) return;
+    const projectId = activeState.projectId ?? session?.projectId ?? "";
+    if (!projectId) return;
+    await runBusyAction("Saving…", "Saved.", async () => {
+      const response = await relayFetch(`/api/projects/${projectId}/memory`, {
+        method: "POST",
+        body: JSON.stringify({
+          type,
+          title: null,
+          content,
+          pinned: type === "note" ? true : undefined,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Creation failed."));
+      }
+      setMemorySectionDrafts((current) => ({ ...current, [type]: "" }));
+    });
+  }
+
+  async function addPersonalNote(category: PersonalCategory) {
+    const content = (personalDrafts[category] ?? "").trim();
+    if (!content) return;
+    const personalProject =
+      panelProjectOptions.find((project) => project.kind === "personal") ?? null;
+    if (!personalProject) return;
+    await runBusyAction("Saving…", "Saved.", async () => {
+      const response = await relayFetch(`/api/projects/${personalProject.id}/memory`, {
+        method: "POST",
+        body: JSON.stringify({
+          type: "note",
+          title: null,
+          content,
+          metadata: { personalCategory: category },
+          sourceSurface: "manual",
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Note creation failed."));
+      }
+      setPersonalDrafts((current) => ({ ...current, [category]: "" }));
+    });
+  }
+
+  async function saveNoteEdit(memoryId: string) {
+    const nextText = editingText.trim();
+    if (!nextText) return;
+    await runBusyAction("Saving note…", "Note updated.", async () => {
+      const previous = activeState.contextPreview.notes.find((note) => note.memoryId === memoryId);
+      setActiveState((current) => ({
+        ...current,
+        contextPreview: {
+          ...current.contextPreview,
+          notes: current.contextPreview.notes.map((note) =>
+            note.memoryId === memoryId ? { ...note, text: nextText, capturedAt: new Date().toISOString() } : note,
+          ),
+        },
+      }));
+      const response = await relayFetch(`/api/memory/${memoryId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ content: nextText }),
+      });
+      if (!response.ok) {
+        if (previous) {
+          setActiveState((current) => ({
+            ...current,
+            contextPreview: {
+              ...current.contextPreview,
+              notes: current.contextPreview.notes.map((note) =>
+                note.memoryId === memoryId ? previous : note,
+              ),
+            },
+          }));
+        }
+        throw new Error(await readErrorMessage(response, "Note update failed."));
+      }
+      void sendManualMutation(
+        "updated",
+        activeState.projectId ?? session?.projectId ?? "",
+        { id: memoryId, type: "note", content: nextText},
+        { id: memoryId, type: "note", content: previous?.text ?? "" },
+      );
+      setEditingKey(null);
+      setEditingText("");
+    }, { skipStateRefresh: true });
   }
 
   async function removeNote(memoryId: string) {
@@ -1801,13 +2448,37 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       "Removing note…",
       "Note removed.",
       async () => {
+        const previous = activeState.contextPreview.notes.find((note) => note.memoryId === memoryId);
+        setActiveState((current) => ({
+          ...current,
+          contextPreview: {
+            ...current.contextPreview,
+            notes: current.contextPreview.notes.filter((note) => note.memoryId !== memoryId),
+          },
+        }));
         const response = await relayFetch(`/api/memory/${memoryId}`, {
           method: "DELETE",
         });
         if (!response.ok && response.status !== 204) {
+          if (previous) {
+            setActiveState((current) => ({
+              ...current,
+              contextPreview: {
+                ...current.contextPreview,
+                notes: [previous, ...current.contextPreview.notes],
+              },
+            }));
+          }
           throw new Error(await readErrorMessage(response, "Note removal failed."));
         }
+        void sendManualMutation(
+          "deleted",
+          activeState.projectId ?? session?.projectId ?? "",
+          undefined,
+          { id: memoryId, type: "note", content: previous?.text ?? "" },
+        );
       },
+      { skipStateRefresh: true },
     );
   }
 
@@ -1824,6 +2495,16 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       "Saving context change…",
       "Project context updated.",
       async () => {
+        const previousSection = activeState.contextPreview[section];
+        setActiveState((current) => ({
+          ...current,
+          contextPreview: {
+            ...current.contextPreview,
+            [section]: current.contextPreview[section].map((entry) =>
+              entry.key === item.key ? { ...entry, text: nextText } : entry,
+            ),
+          },
+        }));
         if (item.source === "manual" && item.memoryId) {
           const response = await relayFetch(`/api/memory/${item.memoryId}`, {
             method: "PATCH",
@@ -1833,11 +2514,29 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           });
 
           if (!response.ok) {
+            setActiveState((current) => ({
+              ...current,
+              contextPreview: {
+                ...current.contextPreview,
+                [section]: previousSection,
+              },
+            }));
             throw new Error(await readErrorMessage(response, "Manual context update failed."));
           }
+          void sendManualMutation(
+            "updated",
+            activeState.projectId ?? session?.projectId ?? "",
+            { id: item.memoryId, type: memoryTypeBySection[section], content: nextText},
+            { id: item.memoryId, type: memoryTypeBySection[section], content: item.text },
+          );
         } else {
           const projectId = activeState.projectId ?? session?.projectId ?? "";
-          const createResponse = await relayFetch(`/api/projects/${projectId}/memory`, {
+          const personalProject =
+            panelProjectOptions.find((project) => project.kind === "personal") ?? null;
+          const endpoint = personalMode && personalProject
+            ? `/api/projects/${personalProject.id}/memory`
+            : `/api/projects/${projectId}/memory`;
+          const createResponse = await relayFetch(endpoint, {
             method: "POST",
             body: JSON.stringify({
               type: memoryTypeBySection[section],
@@ -1846,18 +2545,44 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             }),
           });
           if (!createResponse.ok) {
+            setActiveState((current) => ({
+              ...current,
+              contextPreview: {
+                ...current.contextPreview,
+                [section]: previousSection,
+              },
+            }));
             throw new Error(await readErrorMessage(createResponse, "Manual replacement failed."));
           }
-
+          const { item: createdItem } = (await createResponse.json()) as {
+            item: { id: string; content: string; sourceSurface?: string; capturedAt?: string | null; updatedAt: string };
+          };
+          void sendManualMutation(
+            "created",
+            personalMode && personalProject ? personalProject.id : projectId,
+            { id: createdItem.id, type: memoryTypeBySection[section], content: createdItem.content},
+          );
           const hiddenItems = await loadHiddenItems(section);
-          await patchProjectState({
-            [hiddenFieldBySection[section]]: Array.from(new Set([...hiddenItems, item.text])),
-          });
+          try {
+            await patchProjectState({
+              [hiddenFieldBySection[section]]: Array.from(new Set([...hiddenItems, item.text])),
+            });
+          } catch (cause) {
+            setActiveState((current) => ({
+              ...current,
+              contextPreview: {
+                ...current.contextPreview,
+                [section]: previousSection,
+              },
+            }));
+            throw cause;
+          }
         }
 
         setEditingKey(null);
         setEditingText("");
       },
+      { skipStateRefresh: true },
     );
   }
 
@@ -1974,6 +2699,18 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     session?.projectId ??
     session?.assumedProjectId ??
     "";
+  const selectedProjectOption =
+    panelProjectOptions.find((project) => project.id === selectedProjectId) ??
+    null;
+  const selectedProjectIsPersonal = selectedProjectOption?.kind === "personal";
+  const projectSwitcherLabel =
+    selectedProjectIsPersonal
+      ? "Personal"
+      : activeState.projectName ?? selectedProjectOption?.name ?? "No project";
+  useEffect(() => {
+    setPersonalMode(selectedProjectIsPersonal);
+  }, [selectedProjectIsPersonal]);
+
   const dashboardPath = (() => {
     const url = new URL("/dashboard", "http://relay.local");
     if (selectedProjectId) {
@@ -2164,73 +2901,115 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             </div>
           </div>
 
-          <div className={styles.settingsGroup}>
-            <span className={styles.settingsLabel}>Behavior</span>
-            <label className={styles.settingsToggleRow}>
-              <span className={styles.settingsToggleCopy}>
-                <span className={styles.settingsToggleTitle}>Auto-capture</span>
-                <span className={styles.settingsToggleHint}>
-                  Quietly capture useful turns as you chat.
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                className={styles.settingsToggleInput}
-                checked={userSettings?.autoCapture ?? session?.autoCapture ?? true}
-                disabled={userSettingsBusy || !userSettings}
-                onChange={(event) =>
-                  void patchUserSettings({ autoCapture: event.target.checked })
-                }
-              />
-            </label>
-            <label className={styles.settingsToggleRow}>
-              <span className={styles.settingsToggleCopy}>
-                <span className={styles.settingsToggleTitle}>Auto-show inline chip</span>
-                <span className={styles.settingsToggleHint}>
-                  Show the chip automatically on new chats. When off, press ⌘⇧I (Ctrl+Shift+I) to summon it.
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                className={styles.settingsToggleInput}
-                checked={userSettings?.showSidepanelOnSupportedSites ?? true}
-                disabled={userSettingsBusy || !userSettings}
-                onChange={(event) =>
-                  void patchUserSettings({
-                    showSidepanelOnSupportedSites: event.target.checked,
-                  })
-                }
-              />
-            </label>
-          </div>
+          {(() => {
+            // Personal pinned first, then projects in their picker order.
+            const captureProjects = [...panelProjectOptions].sort((a, b) =>
+              a.kind === "personal" ? -1 : b.kind === "personal" ? 1 : 0,
+            );
+            const treeDisabled = userSettingsBusy || !userSettings || busy;
+            const autoGlobal = userSettings?.autoCapture ?? session?.autoCapture ?? true;
+            const chipGlobal = userSettings?.showSidepanelOnSupportedSites ?? true;
+
+            const autoCaptureAxis: CaptureAxis = {
+              getProjectValue: (project) => project.autoCapture,
+              getProjectPlatforms: (project) => project.autoCapturePlatforms,
+              resolve: effectiveAutoCapture,
+            };
+            const inlineChipAxis: CaptureAxis = {
+              getProjectValue: (project) => project.inlineChip,
+              getProjectPlatforms: (project) => project.inlineChipPlatforms,
+              resolve: effectiveInlineChip,
+            };
+
+            return (
+              <div className={styles.settingsGroup}>
+                <span className={styles.settingsLabel}>Behavior</span>
+                <CaptureMatrixTree
+                  title="Auto-capture"
+                  hint="Quietly capture useful turns. Expand to override per project, then per site."
+                  global={autoGlobal}
+                  projects={captureProjects}
+                  disabled={treeDisabled}
+                  axis={autoCaptureAxis}
+                  onSetGlobal={(value) => void patchUserSettings({ autoCapture: value })}
+                  onSetProject={(project, value) =>
+                    void patchProjectCaptureSettings(
+                      project.id,
+                      { autoCapture: value, autoCapturePlatforms: null },
+                      value
+                        ? "Auto-capture on for this project."
+                        : "Auto-capture off for this project.",
+                    )
+                  }
+                  onSetPlatform={(project, platform, value) =>
+                    void patchProjectCaptureSettings(
+                      project.id,
+                      {
+                        autoCapturePlatforms: {
+                          ...(project.autoCapturePlatforms ?? {}),
+                          [platform]: value,
+                        },
+                      },
+                      "Updated auto-capture for this site.",
+                    )
+                  }
+                />
+                <CaptureMatrixTree
+                  title="Auto-show inline chip"
+                  hint="Show the chip on new chats. Expand to override per project, then per site. When off, press ⌘⇧I to summon it."
+                  global={chipGlobal}
+                  projects={captureProjects}
+                  disabled={treeDisabled}
+                  axis={inlineChipAxis}
+                  onSetGlobal={(value) =>
+                    void patchUserSettings({ showSidepanelOnSupportedSites: value })
+                  }
+                  onSetProject={(project, value) =>
+                    void patchProjectCaptureSettings(
+                      project.id,
+                      { inlineChip: value, inlineChipPlatforms: null },
+                      value
+                        ? "Inline chip on for this project."
+                        : "Inline chip off for this project.",
+                    )
+                  }
+                  onSetPlatform={(project, platform, value) =>
+                    void patchProjectCaptureSettings(
+                      project.id,
+                      {
+                        inlineChipPlatforms: {
+                          ...(project.inlineChipPlatforms ?? {}),
+                          [platform]: value,
+                        },
+                      },
+                      "Updated inline chip for this site.",
+                    )
+                  }
+                />
+              </div>
+            );
+          })()}
 
           <div className={styles.settingsGroup}>
-            <span className={styles.settingsLabel}>Platforms</span>
-            <p className={styles.settingsHint}>
-              Turn the inline chip and capture on or off per site.
-            </p>
-            <div className={styles.platformList}>
-              {supportedPlatforms.map((platform) => {
-                const enabled =
-                  userSettings?.enabledPlatforms?.includes(platform) ?? true;
-                return (
-                  <label key={platform} className={styles.platformRow}>
-                    <span className={styles.platformRowLabel}>
-                      <PlatformIcon platform={platform} size={14} />
-                      <span>{prettyPlatformName(platform)}</span>
-                    </span>
-                    <input
-                      type="checkbox"
-                      className={styles.settingsToggleInput}
-                      checked={enabled}
-                      disabled={userSettingsBusy || !userSettings}
-                      onChange={(event) =>
-                        void togglePlatformEnabled(platform, event.target.checked)
-                      }
-                    />
-                  </label>
-                );
-              })}
+            <span className={styles.settingsLabel}>Ask Relay</span>
+            <div className={styles.settingsToggleRow}>
+              <span className={styles.settingsToggleCopy}>
+                <span className={styles.settingsToggleTitle}>Show Ask Relay panel</span>
+                <span className={styles.settingsToggleHint}>The chat panel at the bottom of the sidebar</span>
+              </span>
+              <input
+                type="checkbox"
+                className={styles.settingsToggleInput}
+                checked={!(userSettings?.hideAskRelayExtension ?? false)}
+                disabled={userSettingsBusy || !userSettings}
+                aria-label="Show Ask Relay panel"
+                onChange={(e) => {
+                  const hide = !e.target.checked;
+                  void patchUserSettings({ hideAskRelayExtension: hide });
+                  localStorage.setItem("relay:hideAskRelayExtension", String(hide));
+                  window.dispatchEvent(new StorageEvent("storage", { key: "relay:hideAskRelayExtension", newValue: String(hide) }));
+                }}
+              />
             </div>
           </div>
 
@@ -2276,36 +3055,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               : "Sign in once. Relay captures useful work quietly and keeps your next chat ready."}
           </p>
 
-          {extensionAuthProvider === "local" ? (
-            <>
-              <label className={`${styles.field} ${styles.authField}`}>
-                <span>Email</span>
-                <input
-                  value={localAuthEmail}
-                  onChange={(event) => setLocalAuthEmail(event.target.value)}
-                  placeholder="you@example.com"
-                  type="email"
-                />
-              </label>
-
-              <label className={`${styles.field} ${styles.authField}`}>
-                <span>Name</span>
-                <input
-                  value={localAuthName}
-                  onChange={(event) => setLocalAuthName(event.target.value)}
-                  placeholder="Display name (optional)"
-                />
-              </label>
-
-              <button
-                className={`${styles.primaryButton} ${styles.authPrimaryButton}`}
-                disabled={busy || !localAuthEmail.trim()}
-                onClick={() => void signInLocally()}
-              >
-                {busy ? "Signing in…" : "Sign in locally"}
-              </button>
-            </>
-          ) : emailAuthAwaitingOtp ? (
+          {emailAuthAwaitingOtp && extensionAuthProvider !== "local" ? (
             <>
               <button
                 type="button"
@@ -2364,6 +3114,43 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 {busy ? "Signing in…" : "Continue with Google"}
               </button>
 
+              {extensionAuthProvider === "local" ? (
+                <>
+                  <div className={`${styles.dividerRow} ${styles.authDividerRow}`}>
+                    <div className={styles.dividerLine} />
+                    <span className={styles.authDividerLabel}>Or continue locally</span>
+                    <div className={styles.dividerLine} />
+                  </div>
+
+                  <label className={`${styles.field} ${styles.authField}`}>
+                    <span>Email</span>
+                    <input
+                      value={localAuthEmail}
+                      onChange={(event) => setLocalAuthEmail(event.target.value)}
+                      placeholder="you@example.com"
+                      type="email"
+                    />
+                  </label>
+
+                  <label className={`${styles.field} ${styles.authField}`}>
+                    <span>Name</span>
+                    <input
+                      value={localAuthName}
+                      onChange={(event) => setLocalAuthName(event.target.value)}
+                      placeholder="Display name (optional)"
+                    />
+                  </label>
+
+                  <button
+                    className={`${styles.primaryButton} ${styles.authPrimaryButton}`}
+                    disabled={busy || !localAuthEmail.trim()}
+                    onClick={() => void signInLocally()}
+                  >
+                    {busy ? "Signing in…" : "Sign in locally"}
+                  </button>
+                </>
+              ) : (
+                <>
               <div className={`${styles.dividerRow} ${styles.authDividerRow}`}>
                 <div className={styles.dividerLine} />
                 <span className={styles.authDividerLabel}>Or continue with email</span>
@@ -2462,8 +3249,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   onClick={() => void continueGuidedSetup(2)}
                 >
                   Open full setup guide
-                </button>
-              </div>
+                  </button>
+                </div>
+                </>
+              )}
             </>
           )}
         </section>
@@ -2548,37 +3337,6 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             </div>
           </section>
         </>
-      ) : activeState.viewState === "connected-loading" ? (
-        <section className={styles.panel}>
-          <div>
-            <h2 className={styles.projectName}>
-              {activeState.projectName ?? "Checking project"}
-            </h2>
-            <p className={styles.copy}>
-              Relay is keeping the last known project while this chat reloads.
-            </p>
-          </div>
-
-          <div className={styles.statusRow}>
-            <span className={`${styles.dot} ${styles.dotWaiting}`} />
-            <span className={styles.statusText}>Checking this chat…</span>
-          </div>
-
-          <div className={styles.trustLine}>
-            {activeState.trust.recentChatCount > 0 ||
-            activeState.trust.savedContextCount > 0 ? (
-              <span>
-                {activeState.trust.recentChatCount} chats ·{" "}
-                {activeState.trust.savedContextCount} saved items
-              </span>
-            ) : (
-              <span>{activeState.trustLine}</span>
-            )}
-            {activeState.freshnessText ? (
-              <span> · {activeState.freshnessText}</span>
-            ) : null}
-          </div>
-        </section>
       ) : (
         <>
           {/* ─── Project + Status ─── */}
@@ -2591,9 +3349,9 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                     setSwitcherMode("list");
                     setProjectSwitcherOpen((v) => !v);
                   }}
-                >
+                  >
                   <h2 className={styles.projectName}>
-                    {activeState.projectName ?? "No project"}
+                    {projectSwitcherLabel}
                   </h2>
                   <svg
                     className={`${styles.projectChevron} ${projectSwitcherOpen ? styles.projectChevronOpen : ""}`}
@@ -2612,13 +3370,49 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   <div className={styles.projectDropdown}>
                     {switcherMode === "list" ? (
                       <>
-                        {activeState.projectOptions.map((project) => (
+                        {/* Personal memory (kind='personal' project) pinned to
+                            the top of the picker. Selecting it routes manual
+                            captures to its normal project memory endpoint. */}
+                        {(() => {
+                          // Merge in session Personal when tab state is stale.
+                          const pickerOptions = panelProjectOptions;
+                          const personalProject = pickerOptions.find(
+                            (project) => project.kind === "personal",
+                          );
+                          if (!personalProject) return null;
+                          return (
+                            <div className={styles.projectOptionRow}>
+                              <button
+                                className={`${styles.projectOption} ${
+                                  selectedProjectIsPersonal
+                                    ? styles.projectOptionActive
+                                    : ""
+                                }`}
+                                onClick={() => {
+                                  void handleProjectChange(personalProject.id);
+                                }}
+                              >
+                                {selectedProjectIsPersonal ? "✓ " : ""}
+                                Personal
+                              </button>
+                            </div>
+                          );
+                        })()}
+                        {panelProjectOptions
+                          .filter((project) => project.kind !== "personal")
+                          .map((project) => (
                           <div key={project.id} className={styles.projectOptionRow}>
                             <button
-                              className={`${styles.projectOption} ${project.id === selectedProjectId ? styles.projectOptionActive : ""}`}
-                              onClick={() => void handleProjectChange(project.id)}
+                              className={`${styles.projectOption} ${
+                                !selectedProjectIsPersonal && project.id === selectedProjectId
+                                  ? styles.projectOptionActive
+                                  : ""
+                              }`}
+                              onClick={() => {
+                                void handleProjectChange(project.id);
+                              }}
                             >
-                              {project.id === selectedProjectId ? "✓ " : ""}
+                              {!selectedProjectIsPersonal && project.id === selectedProjectId ? "✓ " : ""}
                               {project.name}
                             </button>
                             <button
@@ -2756,6 +3550,32 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
               </div>
             </div>
 
+            {/* Per-target auto-capture override (active project or Personal). */}
+            {(() => {
+              const targetId = personalMode
+                ? (panelProjectOptions.find((p) => p.kind === "personal")?.id ?? null)
+                : (activeState.projectId ?? null);
+              if (!targetId) return null;
+              const targetOption = panelProjectOptions.find((p) => p.id === targetId);
+              const override = targetOption?.autoCapture;
+              const globalAuto = userSettings?.autoCapture ?? true;
+              const effective = override ?? globalAuto;
+              return (
+                <div className={styles.autoCaptureRow}>
+                  <span className={styles.autoCaptureLabel}>Auto-capture</span>
+                  <button
+                    type="button"
+                    className={`${styles.autoCaptureToggle} ${effective ? styles.autoCaptureToggleOn : ""}`}
+                    disabled={busy}
+                    aria-pressed={effective}
+                    onClick={() => void setProjectAutoCapture(targetId, !effective)}
+                  >
+                    {effective ? "On" : "Off"}
+                  </button>
+                </div>
+              );
+            })()}
+
             {/* Primary CTA */}
             <button
               className={styles.primaryButton}
@@ -2845,6 +3665,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                       unresolvedAssociationPresentation?.summary}
                   </p>
                 </div>
+                {/* Manual save & link / detach moved to the persistent in-page
+                    edge button (content script) — no side-panel half-circle. */}
               </div>
 
               {activeState.chatAssociation.status !== "none" &&
@@ -2907,28 +3729,12 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                     Restore chat
                   </button>
                 ) : null}
-                {activeState.chatAssociation.status === "ignored" ? (
-                  <button
-                    className={styles.primaryButton}
-                    disabled={
-                      busy || !activeState.projectId || !activeState.page.supported
-                    }
-                    onClick={() => void associateCurrentChat()}
-                  >
-                    {busy ? "Saving…" : "Link & save"}
-                  </button>
-                ) : null}
-                {activeState.chatAssociation.status === "none" ? (
-                  <button
-                    className={styles.primaryButton}
-                    disabled={
-                      busy || !activeState.projectId || !activeState.page.supported
-                    }
-                    onClick={() => void associateCurrentChat()}
-                  >
-                    {busy ? "Saving…" : "Link & save"}
-                  </button>
-                ) : null}
+                {activeState.chatAssociation.status === "ignored"
+                  ? renderLinkAndSave()
+                  : null}
+                {activeState.chatAssociation.status === "none"
+                  ? renderLinkAndSave()
+                  : null}
               </div>
             </section>
           ) : null}
@@ -2942,8 +3748,53 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
             </div>
 
             {/* ─── Subtabs ─── */}
+            {activeProjectIsPersonal ? (
+              /* Personal project: Folk category tabs filtering the notes list,
+                 ordered most-filled + most-recent first. */
+              <div className={styles.contextTabs}>
+                {(["all", ...sortPersonalCategoriesByFill(
+                  activeState.contextPreview.notes.map((note) => ({
+                    metadata: { personalCategory: note.personalCategory },
+                    capturedAt: note.capturedAt,
+                  })),
+                )] as const)
+                  .map((tab) => {
+                    const count =
+                      tab === "all"
+                        ? activeState.contextPreview.notes.length
+                        : activeState.contextPreview.notes.filter(
+                            (note) => note.personalCategory === tab,
+                          ).length;
+                    return { tab, count };
+                  })
+                  .filter(({ tab, count }) => tab === "all" || count > 0)
+                  .map(({ tab, count }) => {
+                    const meta = tab === "all" ? null : PERSONAL_CATEGORY_META[tab as PersonalCategory];
+                    return (
+                      <button
+                        key={tab}
+                        type="button"
+                        className={`${styles.contextTab} ${personalNotesCategory === tab ? styles.contextTabActive : ""}`}
+                        onClick={() => {
+                          setPersonalNotesCategory(tab as PersonalCategory | "all");
+                          setPersonalPage(0);
+                        }}
+                      >
+                        {meta ? (
+                          <span
+                            aria-hidden="true"
+                            style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: meta.color, marginRight: 5 }}
+                          />
+                        ) : null}
+                        {meta ? meta.label : "All"}
+                        <span className={styles.contextTabCount}>{count}</span>
+                      </button>
+                    );
+                  })}
+              </div>
+            ) : (
             <div className={styles.contextTabs}>
-              {(["all", "decisions", "tasks", "constraints"] as const).map(
+              {(["all", "decisions", "tasks", "constraints", "notes", "requirements"] as const).map(
                 (tab) => {
                   const count =
                     tab === "all"
@@ -2952,23 +3803,240 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                           0,
                         )
                       : activeState.contextPreview[tab].length;
+                  const label =
+                    tab === "all"
+                      ? "All"
+                      : tab === "notes"
+                        ? "Notes"
+                        : tab === "requirements"
+                          ? "Requirements"
+                          : sectionLabels[tab];
+                  const dotColor: Record<string, string> = {
+                    decisions: "#60a5fa",
+                    tasks: "#34d399",
+                    constraints: "#fbbf24",
+                    notes: "#a1a1aa",
+                    requirements: "#ef4444",
+                  };
                   return (
                     <button
                       key={tab}
                       type="button"
                       className={`${styles.contextTab} ${activeContextTab === tab ? styles.contextTabActive : ""}`}
-                      onClick={() => setActiveContextTab(tab)}
+                      onClick={() => {
+                        setActiveContextTab(tab);
+                        setSectionPage(0);
+                      }}
                     >
-                      {tab === "all" ? "All" : sectionLabels[tab]}
+                      {dotColor[tab] ? (
+                        <span
+                          aria-hidden="true"
+                          style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: dotColor[tab], marginRight: 5 }}
+                        />
+                      ) : null}
+                      {label}
                       <span className={styles.contextTabCount}>{count}</span>
                     </button>
                   );
                 },
               )}
             </div>
+            )}
 
             {/* ─── Tab content ─── */}
-            {activeContextTab === "all" ? (
+            {activeProjectIsPersonal ? (
+              personalNotesCategory === "all" ? (
+                /* Personal All: one section card per non-empty Folk category
+                   (sorted most-filled first), limited preview + per-category add. */
+                <div className={styles.contextStack}>
+                  {(() => {
+                    const notes = activeState.contextPreview.notes;
+                    const ordered = sortPersonalCategoriesByFill(
+                      notes.map((note) => ({
+                        metadata: { personalCategory: note.personalCategory },
+                        capturedAt: note.capturedAt,
+                      })),
+                    ).filter((category) =>
+                      notes.some((note) => note.personalCategory === category),
+                    );
+                    if (ordered.length === 0) {
+                      return contextLoading ? (
+                        // Match the regular panel's sectioned skeleton (cards with
+                        // a header + skeleton lines), not a flat list.
+                        <>
+                          {[0, 1, 2].map((i) => (
+                            <div key={i} className={styles.contextSection} style={{ borderLeft: "2px solid #a1a1aa" }}>
+                              <div className={styles.contextSectionHeader}>
+                                <span className={styles.skeletonLine} style={{ width: 64, height: 10 }} />
+                              </div>
+                              <ContextSkeleton lines={2} />
+                            </div>
+                          ))}
+                        </>
+                      ) : (
+                        <p className={styles.emptyHint}>
+                          Nothing here yet. Relay fills your personal memory as you chat about yourself.
+                        </p>
+                      );
+                    }
+                    return ordered.map((category) => {
+                      const meta = PERSONAL_CATEGORY_META[category];
+                      const categoryNotes = notes.filter(
+                        (note) => note.personalCategory === category,
+                      );
+                      const expanded = personalExpanded[category];
+                      const visible = expanded
+                        ? categoryNotes.slice(0, 5)
+                        : categoryNotes.slice(0, 1);
+                      return (
+                        <div
+                          key={category}
+                          className={styles.contextSection}
+                          style={{ borderLeft: `2px solid ${meta.color}` }}
+                        >
+                          <div className={styles.contextSectionHeader}>
+                            <span className={styles.contextLabel}>
+                              {meta.label}
+                              <span className={styles.contextTabCount} style={{ marginLeft: 6 }}>
+                                {categoryNotes.length}
+                              </span>
+                            </span>
+                            <button
+                              className={styles.ghostButton}
+                              type="button"
+                              aria-label={expanded ? "Collapse" : "Expand"}
+                              aria-expanded={expanded}
+                              onClick={() =>
+                                setPersonalExpanded((current) => ({
+                                  ...current,
+                                  [category]: !current[category],
+                                }))
+                              }
+                            >
+                              <ChevronDown
+                                size={14}
+                                style={{ transform: expanded ? "rotate(180deg)" : undefined, transition: "transform 150ms ease" }}
+                              />
+                            </button>
+                          </div>
+                          {visible.map((note) => (
+                            <SidepanelNoteItem
+                              key={note.memoryId}
+                              note={note}
+                              busy={busy}
+                              editing={editingKey === `note:${note.memoryId}`}
+                              editingText={editingText}
+                              onChangeEditingText={setEditingText}
+                              onStartEdit={() => {
+                                setEditingKey(`note:${note.memoryId}`);
+                                setEditingText(note.text);
+                              }}
+                              onSaveEdit={() => void saveNoteEdit(note.memoryId)}
+                              onCancelEdit={() => {
+                                setEditingKey(null);
+                                setEditingText("");
+                              }}
+                              onDelete={() => void removeNote(note.memoryId)}
+                            />
+                          ))}
+                          {expanded ? (
+                            <div className={styles.contextComposer}>
+                              <textarea
+                                className={styles.contextEditor}
+                                value={personalDrafts[category] ?? ""}
+                                placeholder={`Add a ${meta.label.toLowerCase()} fact.`}
+                                onChange={(event) =>
+                                  setPersonalDrafts((current) => ({
+                                    ...current,
+                                    [category]: event.target.value,
+                                  }))
+                                }
+                              />
+                              <button
+                                className={styles.secondaryButton}
+                                disabled={busy || !(personalDrafts[category] ?? "").trim()}
+                                onClick={() => void addPersonalNote(category)}
+                              >
+                                Add
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              ) : (
+                /* Personal single category: paginated list + add composer. */
+                (() => {
+                  const category = personalNotesCategory;
+                  const meta = PERSONAL_CATEGORY_META[category];
+                  const categoryNotes = activeState.contextPreview.notes.filter(
+                    (note) => note.personalCategory === category,
+                  );
+                  const PAGE = 10;
+                  const totalPages = Math.max(1, Math.ceil(categoryNotes.length / PAGE));
+                  const page = Math.min(personalPage, totalPages - 1);
+                  const pageNotes = categoryNotes.slice(page * PAGE, (page + 1) * PAGE);
+                  return (
+                    <div className={`${styles.contextItemList} ${styles.contextItemListScroll}`}>
+                      <ContextPager page={page} totalPages={totalPages} onPage={setPersonalPage} />
+                      {categoryNotes.length === 0 ? (
+                        contextLoading ? (
+                          <ContextSkeleton lines={3} />
+                        ) : (
+                          <p className={styles.emptyHint}>No {meta.label.toLowerCase()} yet.</p>
+                        )
+                      ) : (
+                        pageNotes.map((note) => (
+                          <SidepanelNoteItem
+                            key={note.memoryId}
+                            note={note}
+                            variant="unified"
+                            stripeColor={meta.color}
+                            busy={busy}
+                            editing={editingKey === `note:${note.memoryId}`}
+                            editingText={editingText}
+                            onChangeEditingText={setEditingText}
+                            onStartEdit={() => {
+                              setEditingKey(`note:${note.memoryId}`);
+                              setEditingText(note.text);
+                            }}
+                            onSaveEdit={() => void saveNoteEdit(note.memoryId)}
+                            onCancelEdit={() => {
+                              setEditingKey(null);
+                              setEditingText("");
+                            }}
+                            onDelete={() => void removeNote(note.memoryId)}
+                          />
+                        ))
+                      )}
+                      <ContextPager page={page} totalPages={totalPages} onPage={setPersonalPage} />
+                      <div className={styles.contextComposer}>
+                        <textarea
+                          className={styles.contextEditor}
+                          value={personalDrafts[category] ?? ""}
+                          placeholder={`Add a ${meta.label.toLowerCase()} fact.`}
+                          onChange={(event) =>
+                            setPersonalDrafts((current) => ({
+                              ...current,
+                              [category]: event.target.value,
+                            }))
+                          }
+                        />
+                        <button
+                          className={styles.secondaryButton}
+                          disabled={busy || !(personalDrafts[category] ?? "").trim()}
+                          onClick={() => void addPersonalNote(category)}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()
+              )
+            ) : activeContextTab === "all" ? (
               /* All tab: 3-card layout + notes row */
               <>
               <div className={styles.contextStack}>
@@ -2980,10 +4048,18 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   return (
                     <div key={section} className={`${styles.contextSection} ${styles[sectionColorClass[section]]}`}>
                       <div className={styles.contextSectionHeader}>
-                        <span className={styles.contextLabel}>{sectionLabels[section]}</span>
+                        <span className={styles.contextLabel}>
+                          {sectionLabels[section]}
+                          <span className={styles.contextTabCount} style={{ marginLeft: 6 }}>
+                            {items.length}
+                          </span>
+                        </span>
                         <button
                           className={styles.ghostButton}
                           type="button"
+                          aria-label={expanded ? "Collapse" : "Expand"}
+                          aria-expanded={expanded}
+                          title={expanded ? "Collapse" : "Expand"}
                           onClick={() =>
                             setExpandedSections((current) => ({
                               ...current,
@@ -2991,7 +4067,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                             }))
                           }
                         >
-                          {expanded ? "Collapse" : items.length > 1 ? "Expand" : "Add"}
+                          <ChevronDown
+                            size={14}
+                            style={{ transform: expanded ? "rotate(180deg)" : undefined, transition: "transform 150ms ease" }}
+                          />
                         </button>
                       </div>
 
@@ -3033,21 +4112,26 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                               </>
                             ) : (
                               <>
+                                <ContextItemMeta item={item} />
                                 <p className={styles.contextText}>{item.text}</p>
                                 <div className={styles.contextActions}>
                                   <button
                                     className={styles.ghostButton}
                                     type="button"
                                     onClick={() => startEdit(item)}
+                                    aria-label="Edit item"
+                                    title="Edit"
                                   >
-                                    Edit
+                                    <Pencil size={14} />
                                   </button>
                                   <button
                                     className={styles.ghostButton}
                                     type="button"
                                     onClick={() => void removeContextItem(section, item)}
+                                    aria-label="Remove item"
+                                    title="Remove"
                                   >
-                                    Remove
+                                    <Trash2 size={14} />
                                   </button>
                                 </div>
                               </>
@@ -3082,16 +4166,103 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                   );
                 })}
               </div>
-              <div className={`${styles.contextSection} ${styles.contextSectionNotes}`}>
-                <div className={styles.contextSectionHeader}>
-                  <span className={styles.contextLabel}>Notes</span>
-                </div>
+              {([
+                { type: "note" as const, label: "Notes", sectionClass: styles.contextSectionNotes, items: activeState.contextPreview.notes, empty: "Right-click any text on the web → Save to Relay." },
+                { type: "requirement" as const, label: "Requirements", sectionClass: styles.contextSectionRequirements, items: activeState.contextPreview.requirements, empty: "No requirements yet." },
+              ]).map(({ type, label, sectionClass, items, empty }) => {
+                const expanded = memorySectionExpanded[type];
+                const visible = expanded ? items.slice(0, 5) : items.slice(0, 1);
+                return (
+                  <div key={type} className={`${styles.contextSection} ${sectionClass}`}>
+                    <div className={styles.contextSectionHeader}>
+                      <span className={styles.contextLabel}>
+                        {label}
+                        <span className={styles.contextTabCount} style={{ marginLeft: 6 }}>
+                          {items.length}
+                        </span>
+                      </span>
+                      <button
+                        className={styles.ghostButton}
+                        type="button"
+                        aria-label={expanded ? "Collapse" : "Expand"}
+                        aria-expanded={expanded}
+                        onClick={() =>
+                          setMemorySectionExpanded((current) => ({
+                            ...current,
+                            [type]: !current[type],
+                          }))
+                        }
+                      >
+                        <ChevronDown
+                          size={14}
+                          style={{ transform: expanded ? "rotate(180deg)" : undefined, transition: "transform 150ms ease" }}
+                        />
+                      </button>
+                    </div>
+                    {visible.length === 0 ? (
+                      contextLoading ? (
+                        <ContextSkeleton lines={2} />
+                      ) : (
+                        <p className={styles.emptyHint}>{empty}</p>
+                      )
+                    ) : (
+                      visible.map((note) => (
+                        <SidepanelNoteItem
+                          key={note.memoryId}
+                          note={note}
+                          busy={busy}
+                          editing={editingKey === `note:${note.memoryId}`}
+                          editingText={editingText}
+                          onChangeEditingText={setEditingText}
+                          onStartEdit={() => {
+                            setEditingKey(`note:${note.memoryId}`);
+                            setEditingText(note.text);
+                          }}
+                          onSaveEdit={() => void saveNoteEdit(note.memoryId)}
+                          onCancelEdit={() => {
+                            setEditingKey(null);
+                            setEditingText("");
+                          }}
+                          onDelete={() => void removeNote(note.memoryId)}
+                        />
+                      ))
+                    )}
+                    {expanded ? (
+                      <div className={styles.contextComposer}>
+                        <textarea
+                          className={styles.contextEditor}
+                          value={memorySectionDrafts[type] ?? ""}
+                          placeholder={`Add a ${type} Relay should keep.`}
+                          onChange={(event) =>
+                            setMemorySectionDrafts((current) => ({
+                              ...current,
+                              [type]: event.target.value,
+                            }))
+                          }
+                        />
+                        <button
+                          className={styles.secondaryButton}
+                          disabled={busy || !(memorySectionDrafts[type] ?? "").trim()}
+                          onClick={() => void addMemorySectionItem(type)}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+              </>
+            ) : activeContextTab === "notes" ? (
+              /* Notes tab: scrollable list + composer */
+              <div className={`${styles.contextItemList} ${styles.contextItemListScroll}`}>
                 {activeState.contextPreview.notes.length === 0 ? (
                   contextLoading ? (
-                    <ContextSkeleton lines={2} />
+                    <ContextSkeleton lines={3} />
                   ) : (
                     <p className={styles.emptyHint}>
-                      Right-click any text on the web → Save to Relay.
+                      No notes yet. Add one below, or right-click any text on the
+                      web → Save to Relay.
                     </p>
                   )
                 ) : (
@@ -3099,21 +4270,110 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                     <SidepanelNoteItem
                       key={note.memoryId}
                       note={note}
+                      variant="unified"
+                      stripeColor="#a1a1aa"
                       busy={busy}
+                      editing={editingKey === `note:${note.memoryId}`}
+                      editingText={editingText}
+                      onChangeEditingText={setEditingText}
+                      onStartEdit={() => {
+                        setEditingKey(`note:${note.memoryId}`);
+                        setEditingText(note.text);
+                      }}
+                      onSaveEdit={() => void saveNoteEdit(note.memoryId)}
+                      onCancelEdit={() => {
+                        setEditingKey(null);
+                        setEditingText("");
+                      }}
                       onDelete={() => void removeNote(note.memoryId)}
                     />
                   ))
                 )}
+
+                <div className={styles.contextComposer}>
+                  <textarea
+                    className={styles.contextEditor}
+                    value={noteDraft}
+                    placeholder="Add a note Relay should keep."
+                    onChange={(event) => setNoteDraft(event.target.value)}
+                  />
+                  <button
+                    className={styles.secondaryButton}
+                    disabled={busy || !noteDraft.trim()}
+                    onClick={() => void addNote()}
+                  >
+                    Add
+                  </button>
+                </div>
               </div>
-              </>
+            ) : activeContextTab === "requirements" ? (
+              /* Requirements tab: scrollable list + composer */
+              <div className={`${styles.contextItemList} ${styles.contextItemListScroll}`}>
+                {activeState.contextPreview.requirements.length === 0 ? (
+                  contextLoading ? (
+                    <ContextSkeleton lines={3} />
+                  ) : (
+                    <p className={styles.emptyHint}>No requirements yet. Add one below.</p>
+                  )
+                ) : (
+                  activeState.contextPreview.requirements.map((note) => (
+                    <SidepanelNoteItem
+                      key={note.memoryId}
+                      note={note}
+                      variant="unified"
+                      stripeColor="#ef4444"
+                      busy={busy}
+                      editing={editingKey === `note:${note.memoryId}`}
+                      editingText={editingText}
+                      onChangeEditingText={setEditingText}
+                      onStartEdit={() => {
+                        setEditingKey(`note:${note.memoryId}`);
+                        setEditingText(note.text);
+                      }}
+                      onSaveEdit={() => void saveNoteEdit(note.memoryId)}
+                      onCancelEdit={() => {
+                        setEditingKey(null);
+                        setEditingText("");
+                      }}
+                      onDelete={() => void removeNote(note.memoryId)}
+                    />
+                  ))
+                )}
+
+                <div className={styles.contextComposer}>
+                  <textarea
+                    className={styles.contextEditor}
+                    value={memorySectionDrafts.requirement ?? ""}
+                    placeholder="Add a requirement Relay should keep."
+                    onChange={(event) =>
+                      setMemorySectionDrafts((current) => ({
+                        ...current,
+                        requirement: event.target.value,
+                      }))
+                    }
+                  />
+                  <button
+                    className={styles.secondaryButton}
+                    disabled={busy || !(memorySectionDrafts.requirement ?? "").trim()}
+                    onClick={() => void addMemorySectionItem("requirement")}
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
             ) : (
               /* Single-section tab: unified list with composer */
               (() => {
                 const section = activeContextTab;
                 const items = activeState.contextPreview[section];
+                const PAGE = 10;
+                const totalPages = Math.max(1, Math.ceil(items.length / PAGE));
+                const page = Math.min(sectionPage, totalPages - 1);
+                const pageItems = items.slice(page * PAGE, (page + 1) * PAGE);
 
                 return (
-                  <div className={styles.contextItemList}>
+                  <div className={`${styles.contextItemList} ${styles.contextItemListScroll}`}>
+                    <ContextPager page={page} totalPages={totalPages} onPage={setSectionPage} />
                     {items.length === 0 ? (
                       contextLoading ? (
                         <ContextSkeleton lines={3} />
@@ -3123,8 +4383,11 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                         </p>
                       )
                     ) : (
-                      items.map((item) => (
-                        <div key={item.key} className={styles.contextItemUnified}>
+                      pageItems.map((item) => (
+                        <div
+                          key={item.key}
+                          className={`${styles.contextItemUnified} ${styles[sectionItemColorClass[section]]}`}
+                        >
                           {editingKey === item.key ? (
                             <>
                               <textarea
@@ -3154,21 +4417,26 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                             </>
                           ) : (
                             <>
+                              <ContextItemMeta item={item} />
                               <p className={styles.contextText}>{item.text}</p>
                               <div className={styles.contextActions}>
                                 <button
                                   className={styles.ghostButton}
                                   type="button"
                                   onClick={() => startEdit(item)}
+                                  aria-label="Edit item"
+                                  title="Edit"
                                 >
-                                  Edit
+                                  <Pencil size={14} />
                                 </button>
                                 <button
                                   className={styles.ghostButton}
                                   type="button"
                                   onClick={() => void removeContextItem(section, item)}
+                                  aria-label="Remove item"
+                                  title="Remove"
                                 >
-                                  Remove
+                                  <Trash2 size={14} />
                                 </button>
                               </div>
                             </>
@@ -3176,6 +4444,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                         </div>
                       ))
                     )}
+
+                    <ContextPager page={page} totalPages={totalPages} onPage={setSectionPage} />
 
                     {/* Composer always visible in single-section tab */}
                     <div className={styles.contextComposer}>
@@ -3207,8 +4477,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
         </>
       )}
 
-      {/* Feedback — only show when signed in and not in a transient loading state */}
-      {session?.connected && activeState.viewState !== "connected-loading" ? (
+      {/* Feedback — only show when signed in */}
+      {session?.connected ? (
         <div className={styles.feedbackRow}>
           <a
             href="https://relay.featurebase.app"
@@ -3275,6 +4545,277 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   );
 }
 
+const SURFACE_LABELS: Record<string, string> = {
+  chatgpt: "ChatGPT",
+  claude: "Claude",
+  gemini: "Gemini",
+  grok: "Grok",
+  perplexity: "Perplexity",
+  deepseek: "DeepSeek",
+  codex: "Codex",
+  mcp: "MCP",
+  web: "Web",
+  api: "API",
+  ask_relay: "Ask Relay",
+  extension: "Extension",
+  manual: "Manual",
+};
+
+function ContextItemMeta({ item }: { item: ContextItem }) {
+  // Derived lines surface the project's predominant capture platform when known
+  // (set server-side); only a sourceless derived line shows the bare "Derived".
+  const label =
+    item.source === "derived" && !item.sourceSurface
+      ? "Derived"
+      : SURFACE_LABELS[item.sourceSurface ?? "manual"] ?? "Manual";
+  const time = item.capturedAt ? formatNoteRelativeTime(item.capturedAt) : null;
+  return (
+    <div className={styles.contextItemMeta}>
+      <span className={styles.contextItemBadge}>{label}</span>
+      {time ? (
+        <time className={styles.contextItemTime} dateTime={item.capturedAt ?? undefined}>
+          {time}
+        </time>
+      ) : null}
+    </div>
+  );
+}
+
+/** Compact, minimal pager reused above and below long context lists. */
+function ContextPager({
+  page,
+  totalPages,
+  onPage,
+}: {
+  page: number;
+  totalPages: number;
+  onPage: (next: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+  return (
+    <div
+      style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "3px 0" }}
+    >
+      <button
+        type="button"
+        className={styles.ghostButton}
+        disabled={page === 0}
+        aria-label="Previous page"
+        onClick={() => onPage(Math.max(0, page - 1))}
+      >
+        <ChevronLeft size={13} />
+      </button>
+      <span style={{ fontSize: 10, opacity: 0.7, minWidth: 24, textAlign: "center" }}>
+        {page + 1}/{totalPages}
+      </span>
+      <button
+        type="button"
+        className={styles.ghostButton}
+        disabled={page >= totalPages - 1}
+        aria-label="Next page"
+        onClick={() => onPage(Math.min(totalPages - 1, page + 1))}
+      >
+        <ChevronRight size={13} />
+      </button>
+    </div>
+  );
+}
+
+type CaptureTri = "on" | "off" | "mixed";
+
+interface CaptureAxis {
+  getProjectValue: (project: RelayProjectOption) => boolean | undefined;
+  getProjectPlatforms: (
+    project: RelayProjectOption,
+  ) => Partial<Record<SupportedPlatform, boolean>> | undefined;
+  resolve: (input: CaptureResolutionInput) => boolean;
+}
+
+function nextCaptureValue(tri: CaptureTri): boolean {
+  // on → off; off/mixed → on (mixed resolves to a fully-on subtree).
+  return tri !== "on";
+}
+
+function TriStateCheckbox({
+  tri,
+  disabled,
+  onToggle,
+  ariaLabel,
+}: {
+  tri: CaptureTri;
+  disabled: boolean;
+  onToggle: () => void;
+  ariaLabel: string;
+}) {
+  const ref = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = tri === "mixed";
+  }, [tri]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      className={styles.settingsToggleInput}
+      checked={tri === "on"}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      onChange={onToggle}
+    />
+  );
+}
+
+function CaptureMatrixTree({
+  title,
+  hint,
+  global,
+  projects,
+  disabled,
+  axis,
+  onSetGlobal,
+  onSetProject,
+  onSetPlatform,
+}: {
+  title: string;
+  hint: string;
+  global: boolean;
+  projects: RelayProjectOption[];
+  disabled: boolean;
+  axis: CaptureAxis;
+  onSetGlobal: (value: boolean) => void;
+  onSetProject: (project: RelayProjectOption, value: boolean) => void;
+  onSetPlatform: (
+    project: RelayProjectOption,
+    platform: SupportedPlatform,
+    value: boolean,
+  ) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [openProjects, setOpenProjects] = useState<Record<string, boolean>>({});
+
+  const platformValue = (project: RelayProjectOption, platform: SupportedPlatform) =>
+    axis.resolve({
+      platform,
+      global,
+      project: axis.getProjectValue(project),
+      projectPlatforms: axis.getProjectPlatforms(project),
+    });
+
+  const projectTri = (project: RelayProjectOption): CaptureTri => {
+    const values = supportedPlatforms.map((platform) => platformValue(project, platform));
+    if (values.every(Boolean)) return "on";
+    if (values.every((value) => !value)) return "off";
+    return "mixed";
+  };
+
+  const globalTri = (): CaptureTri => {
+    if (projects.length === 0) return global ? "on" : "off";
+    const tris = projects.map(projectTri);
+    if (tris.every((tri) => tri === "on")) return "on";
+    if (tris.every((tri) => tri === "off")) return "off";
+    return "mixed";
+  };
+
+  return (
+    <div className={styles.settingsGroup}>
+      <div className={styles.captureTreeHeader}>
+        <button
+          type="button"
+          className={styles.captureTreeChevron}
+          aria-label={expanded ? "Collapse" : "Expand"}
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          <ChevronDown
+            size={14}
+            style={{
+              transform: expanded ? "rotate(180deg)" : undefined,
+              transition: "transform 150ms ease",
+            }}
+          />
+        </button>
+        <span className={styles.settingsToggleCopy}>
+          <span className={styles.settingsToggleTitle}>{title}</span>
+          <span className={styles.settingsToggleHint}>{hint}</span>
+        </span>
+        <TriStateCheckbox
+          tri={globalTri()}
+          disabled={disabled}
+          ariaLabel={`${title} (all projects)`}
+          onToggle={() => onSetGlobal(nextCaptureValue(globalTri()))}
+        />
+      </div>
+
+      {expanded ? (
+        <div className={styles.captureTreeBody}>
+          {projects.map((project) => {
+            const open = openProjects[project.id] ?? false;
+            return (
+              <div key={project.id} className={styles.captureTreeProject}>
+                <div className={styles.captureTreeRow}>
+                  <button
+                    type="button"
+                    className={styles.captureTreeChevron}
+                    aria-label={open ? "Collapse" : "Expand"}
+                    aria-expanded={open}
+                    onClick={() =>
+                      setOpenProjects((current) => ({
+                        ...current,
+                        [project.id]: !open,
+                      }))
+                    }
+                  >
+                    <ChevronDown
+                      size={12}
+                      style={{
+                        transform: open ? "rotate(180deg)" : undefined,
+                        transition: "transform 150ms ease",
+                      }}
+                    />
+                  </button>
+                  <span className={styles.captureTreeProjectName}>
+                    {project.name}
+                    {project.kind === "personal" ? (
+                      <span className={styles.captureTreePersonalTag}>Personal</span>
+                    ) : null}
+                  </span>
+                  <TriStateCheckbox
+                    tri={projectTri(project)}
+                    disabled={disabled}
+                    ariaLabel={`${title} for ${project.name}`}
+                    onToggle={() => onSetProject(project, nextCaptureValue(projectTri(project)))}
+                  />
+                </div>
+
+                {open ? (
+                  <div className={styles.captureTreePlatforms}>
+                    {supportedPlatforms.map((platform) => (
+                      <label key={platform} className={styles.captureTreePlatformRow}>
+                        <span className={styles.platformRowLabel}>
+                          <PlatformIcon platform={platform} size={13} />
+                          <span>{prettyPlatformName(platform)}</span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          className={styles.settingsToggleInput}
+                          checked={platformValue(project, platform)}
+                          disabled={disabled}
+                          onChange={(event) =>
+                            onSetPlatform(project, platform, event.target.checked)
+                          }
+                        />
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function formatNoteRelativeTime(iso: string): string {
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return "";
@@ -3291,7 +4832,18 @@ function formatNoteRelativeTime(iso: string): string {
 interface SidepanelNoteItemProps {
   note: RelayActiveProjectState["contextPreview"]["notes"][number];
   busy: boolean;
+  editing: boolean;
+  editingText: string;
+  onChangeEditingText: (value: string) => void;
+  onStartEdit: () => void;
+  onSaveEdit: () => void;
+  onCancelEdit: () => void;
   onDelete: () => void;
+  /** "section" = inside a section card (no stripe, like regular contextItem);
+   *  "unified" = standalone single-tab item with a colored left stripe. */
+  variant?: "section" | "unified";
+  /** Stripe color for the unified variant (Folk category / type color). */
+  stripeColor?: string;
 }
 
 function ContextSkeleton({ lines = 2 }: { lines?: number }) {
@@ -3309,43 +4861,99 @@ function ContextSkeleton({ lines = 2 }: { lines?: number }) {
   );
 }
 
-function SidepanelNoteItem({ note, busy, onDelete }: SidepanelNoteItemProps) {
-  const favicon = note.hostname
-    ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(note.hostname)}&sz=32`
-    : null;
+function SidepanelNoteItem({
+  note,
+  busy,
+  editing,
+  editingText,
+  onChangeEditingText,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
+  onDelete,
+  variant = "section",
+  stripeColor,
+}: SidepanelNoteItemProps) {
+  // Identical markup to the regular decision/task/constraint item: section
+  // variant has no stripe (the section card carries the color); unified variant
+  // (single-tab) has a colored left stripe via the --stripe custom property.
+  const containerClass =
+    variant === "unified" ? styles.contextItemUnified : styles.contextItem;
+  const containerStyle =
+    variant === "unified" && stripeColor
+      ? ({ "--stripe": stripeColor } as React.CSSProperties)
+      : undefined;
+
+  if (editing) {
+    return (
+      <div className={containerClass} style={containerStyle}>
+        <textarea
+          className={styles.contextEditor}
+          value={editingText}
+          onChange={(event) => onChangeEditingText(event.target.value)}
+        />
+        <div className={styles.contextActions} style={{ opacity: 1 }}>
+          <button
+            className={styles.secondaryButton}
+            disabled={busy || !editingText.trim()}
+            onClick={onSaveEdit}
+          >
+            Save
+          </button>
+          <button className={styles.ghostButton} type="button" onClick={onCancelEdit}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <article className={styles.noteItem}>
-      <p className={styles.noteText}>{note.text}</p>
-      <footer className={styles.noteFooter}>
+    <div className={containerClass} style={containerStyle}>
+      <div className={styles.contextItemMeta}>
         {note.sourceUrl && note.hostname ? (
           <a
             href={note.sourceUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className={styles.noteSourceChip}
+            className={styles.contextItemBadge}
             onClick={(event) => event.stopPropagation()}
           >
-            {favicon ? (
-              <img src={favicon} alt="" width={12} height={12} />
-            ) : null}
-            <span className={styles.noteHostname}>{note.hostname}</span>
+            {note.hostname}
           </a>
-        ) : null}
-        <time className={styles.noteTime} dateTime={note.capturedAt}>
+        ) : (
+          <span className={styles.contextItemBadge}>
+            {SURFACE_LABELS[note.sourceSurface ?? "manual"] ?? "Note"}
+          </span>
+        )}
+        <time className={styles.contextItemTime} dateTime={note.capturedAt}>
           {formatNoteRelativeTime(note.capturedAt)}
         </time>
+      </div>
+      <p className={styles.contextText}>{note.text}</p>
+      <div className={styles.contextActions}>
         <button
           type="button"
-          className={styles.noteDelete}
+          className={styles.ghostButton}
+          disabled={busy}
+          onClick={onStartEdit}
+          aria-label="Edit note"
+          title="Edit"
+        >
+          <Pencil size={14} />
+        </button>
+        <button
+          type="button"
+          className={styles.ghostButton}
           disabled={busy}
           onClick={onDelete}
           aria-label="Delete note"
+          title="Remove"
         >
-          Remove
+          <Trash2 size={14} />
         </button>
-      </footer>
-    </article>
+      </div>
+    </div>
   );
 }
 
@@ -3455,15 +5063,22 @@ function UsageTable({
   const u = usage ?? null;
   const n = (v: number | undefined) => v ?? 0;
   const l = limits;
-  const rows: Array<{ label: string; used: number; limit: number; period: string }> = [
-    { label: "Captures", used: n(u?.capturesThisMonth), limit: l.captureMonthly, period: "mo" },
-    { label: "MCP reads", used: n(u?.mcpReadsToday), limit: l.mcpReadDaily, period: "day" },
-    { label: "MCP writes", used: n(u?.mcpWritesToday), limit: l.mcpWriteDaily, period: "day" },
+  const rows: Array<{ label: string; used?: number; limit: number; period: string }> = [
+    { label: "Reads today", used: n(u?.readsToday), limit: l.readsDaily, period: "day" },
+    { label: "Reads this month", used: n(u?.readsThisMonth), limit: l.readsMonthly, period: "mo" },
+    { label: "Writes today", used: n(u?.writesToday), limit: l.writesDaily, period: "day" },
+    { label: "Writes this month", used: n(u?.writesThisMonth), limit: l.writesMonthly, period: "mo" },
+    { label: "Ask Relay", used: n(u?.assistantMessagesThisMonth), limit: l.assistantMessagesMonthly, period: "mo" },
     { label: "AI analyses", used: n(u?.aiAnalysesToday), limit: l.aiAnalysesPerUserDaily, period: "day" },
     { label: "Active projects", used: n(u?.activeProjects), limit: l.activeProjects, period: "" },
     { label: "External indexes", used: n(u?.externalSourceIndexesToday), limit: l.externalSourceIndexesDaily, period: "day" },
     { label: "External searches", used: n(u?.externalSourceSearchesToday), limit: l.externalSourceSearchesDaily, period: "day" },
     { label: "External refreshes", used: n(u?.externalSourceRefreshesToday), limit: l.externalSourceRefreshesDaily, period: "day" },
+    { label: "Memory / project", limit: l.memoryItemsPerProject, period: "" },
+    { label: "Uploaded sources / project", limit: l.sourcesPerProject, period: "" },
+    { label: "External sources / project", limit: l.externalSourcesPerProject, period: "" },
+    { label: "Ask Relay tokens", limit: l.assistantTokensMonthly, period: "mo" },
+    { label: "Ask Relay steps / turn", limit: l.assistantMaxSteps, period: "" },
   ];
   return (
     <div className={styles.usageTable}>
@@ -3472,9 +5087,9 @@ function UsageTable({
           <span className={styles.usageTableLabel}>{r.label}</span>
           <span
             className={styles.usageTableValue}
-            data-level={usageLevel(r.used, r.limit)}
+            data-level={r.used === undefined ? undefined : usageLevel(r.used, r.limit)}
           >
-            {r.used}/{r.limit}
+            {r.used === undefined ? r.limit : `${r.used}/${r.limit}`}
             {r.period ? <span> /{r.period}</span> : null}
           </span>
         </div>

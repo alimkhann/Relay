@@ -47,15 +47,15 @@ export default async function WorkspaceLayout({
     }).catch(() => {})
   }
   const repositories = createRepositoryBundle(viewer.userId)
-  const [projects, onboarding, settings, entitlements, profile, extensionTokens, referralProgram, capturesUsed] = await Promise.all([
-    listProjectsForUser(viewer.userId),
+  const [projects, onboarding, settings, entitlements, profile, extensionTokens, referralProgram, writesUsed] = await Promise.all([
+    listProjectsForUser(viewer.userId, { includePersonal: true }),
     getResolvedOnboardingStateForUser(viewer.userId),
     getUserSettings(viewer.userId),
     resolveViewerEntitlements(viewer.userId),
     repositories.profiles.getById(viewer.userId),
     listExtensionTokensForUser(viewer.userId),
     getReferralProgramForUser(viewer.userId).catch(() => null),
-    getUsageCount(viewer.userId, "capture_monthly", "month").catch(() => 0),
+    getUsageCount(viewer.userId, "write_monthly", "month").catch(() => 0),
   ])
   const hasConnectedExtension = extensionTokens.some((token) => !token.revokedAt)
 
@@ -79,17 +79,17 @@ export default async function WorkspaceLayout({
       />
       <div className="flex min-h-screen bg-[var(--relay-bg)] text-[var(--relay-ink)]">
         <WorkspaceSidebarShell
-          projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+          projects={projects.map((p) => ({ id: p.id, name: p.name, kind: p.kind }))}
           user={sidebarUser}
           referral={referralProgram ? { code: referralProgram.code, link: referralProgram.link, qualifiedCount: referralProgram.qualifiedCount } : undefined}
-          plan={{ plan: entitlements.plan, isPaid: entitlements.isPaid, capturesUsed, capturesLimit: entitlements.limits.captureMonthly }}
+          plan={{ plan: entitlements.plan, isPaid: entitlements.isPaid, capturesUsed: writesUsed, capturesLimit: entitlements.limits.writesMonthly }}
         />
 
         <SidebarMainArea>
           {onboarding.status === "completed" ? <AutoCaptureOnboardingBanner settings={settings.settings} /> : null}
           {children}
         </SidebarMainArea>
-        <AskRelayLauncher plan={entitlements.plan} surface="dashboard" />
+        <AskRelayLauncher plan={entitlements.plan} surface="dashboard" initialHidden={settings.settings.hideAskRelayDashboard ?? false} />
       </div>
     </SidebarProvider>
     </TooltipProvider>

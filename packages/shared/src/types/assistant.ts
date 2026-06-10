@@ -5,10 +5,32 @@ export type AssistantMessageRole = "user" | "assistant" | "tool" | "system"
 export type AssistantMessageFeedback = "like" | "dislike"
 
 export type AssistantActionKind = "created" | "updated" | "deleted" | "read"
+export type AssistantActionStatus =
+  | "pending"
+  | "running"
+  | "approved"
+  | "declined"
+  | "succeeded"
+  | "failed"
 
 export interface AssistantActionItem {
   id?: string
   label: string
+  title?: string | null
+  content?: string
+  type?: string
+  projectId?: string | null
+  personalCategory?: string | null
+  /** When the action transitions a memory item's lifecycle, the card renders
+   * a pill so the user can see at a glance what state the item is now in.
+   * Set by hygiene-command tool results (F2) and recall hits that surface
+   * non-`active` items. */
+  lifecycle?: "active" | "cooling" | "archived" | "forgotten"
+}
+
+export interface AssistantActionPreview {
+  before?: AssistantActionItem
+  after?: AssistantActionItem
 }
 
 /** Structured summary a tool returns so the UI can render a "what changed" card. */
@@ -18,6 +40,7 @@ export interface AssistantActionResult {
   entity: string
   count: number
   items: AssistantActionItem[]
+  previews?: AssistantActionPreview[]
   /** Present only for reversible creates so the UI can offer Undo. */
   undoRef?: {
     tool: string
@@ -34,6 +57,10 @@ export interface AssistantPendingAction {
   tool: string
   summary: string
   args: Record<string, unknown>
+  status?: AssistantActionStatus
+  result?: AssistantActionResult
+  error?: string
+  previews?: AssistantActionPreview[]
 }
 
 /** One web result the model used to ground its answer. */
@@ -113,6 +140,16 @@ export interface AssistantMessageDto {
   attachments: AssistantAttachmentDto[]
   feedback: AssistantMessageFeedback | null
   createdAt: string
+  /** Populated for unconsumed pending_action messages so the UI can re-render confirm/decline buttons after reload. */
+  pending?: AssistantPendingAction | null
+  pendingActions?: AssistantPendingAction[]
+  toolSteps?: Array<{
+    label: string
+    status: "active" | "complete" | "pending"
+    startedAt?: string
+    completedAt?: string
+    durationMs?: number
+  }>
 }
 
 /** Server-Sent Events emitted by POST /api/assistant/chat. */
@@ -122,6 +159,11 @@ export type AssistantStreamEvent =
   | { type: "tool_start"; tool: string }
   | { type: "tool_result"; result: AssistantActionResult }
   | { type: "pending_action"; action: AssistantPendingAction }
-  | { type: "usage"; totalTokens: number }
+  | { type: "action_update"; action: AssistantPendingAction }
+  /** Step budget exhausted. UI shows a "Continue" button so the user can
+   * resume without re-typing — sends a follow-up turn that branches off the
+   * cap-hit assistant message. Server still emits the trailing text + done. */
+  | { type: "pending_continuation"; reason: "step_limit"; assistantMessageId?: string }
+  | { type: "usage"; totalTokens: number; maxContextTokens?: number; model?: string }
   | { type: "done"; messageId: string }
   | { type: "error"; message: string; upgradeUrl?: string; plan?: string }

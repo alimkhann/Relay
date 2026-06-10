@@ -2,11 +2,12 @@ import { timingSafeEqual } from "node:crypto"
 
 import { NextResponse } from "next/server"
 
-import { createRepositoryBundle } from "@relay/db"
+import { createWorkerRepositoryBundle } from "@relay/db"
 
 import { runContinuityMaintenanceForUser } from "@/server/services/continuity-maintenance-service"
 import { emitDailyCostSnapshots } from "@/server/services/cost-snapshot-service"
 import { drainDigestJobs } from "@/server/services/digest-service"
+import { drainDueProjectHygiene, drainMemoryPipelineJobs } from "@/server/services/memory-pipeline-scheduler"
 import { sweepStaleProcessingSources } from "@/server/services/source-service"
 
 const MAX_USERS_PER_INVOCATION = 1
@@ -30,8 +31,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 })
   }
 
-  // Query without RLS to find all users with pending/timed_out jobs
-  const repositories = createRepositoryBundle()
+  // Cross-tenant scan to find all users with pending jobs — runs under the
+  // worker role (bypassrls).
+  const repositories = createWorkerRepositoryBundle()
   const rows = await repositories.provider.query(
     `select distinct created_by
      from ai_job_runs
@@ -78,5 +80,17 @@ export async function GET(request: Request) {
       }))
     : { skipped: "work budget exhausted" }
 
-  return NextResponse.json({ processed: results.length, results, costSnapshots, staleSources })
+  const memoryPipeline = Date.now() - startedAt < MAX_WORK_MS
+    ? await drainMemoryPipelineJobs({ limit: 10, maxMs: 10_000 }).catch((error) => ({
+        error: error instanceof Error ? error.message : "Unknown error",
+      }))
+    : { skipped: "work budget exhausted" }
+
+  const memoryHygiene = Date.now() - startedAt < MAX_WORK_MS
+    ? await drainDueProjectHygiene({ limit: 5, maxMs: 10_000 }).catch((error) => ({
+        error: error instanceof Error ? error.message : "Unknown error",
+      }))
+    : { skipped: "work budget exhausted" }
+
+  return NextResponse.json({ processed: results.length, results, costSnapshots, staleSources, memoryPipeline, memoryHygiene })
 }

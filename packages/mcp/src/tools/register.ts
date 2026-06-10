@@ -118,7 +118,7 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 
   server.tool(
     "set_current_project",
-    "Switch the current Relay project for this MCP session. Use this when the user is clearly working on a different project than the cached/auto-detected one. The switch persists for the lifetime of the MCP server process. Call list_projects first to find the correct projectId.",
+    "Switch the current Relay project for this MCP session. Use this when the user is clearly working on a different project than the cached/auto-detected one. The switch persists for the lifetime of the MCP server process. Call list_projects first to find the correct projectId. Personal memory is a kind='personal' project — switch to its id to work there.",
     z.object({
       projectId: z.string().uuid().describe("The ID of the project to switch to."),
     }).shape,
@@ -231,7 +231,12 @@ Pass action-specific fields in payload. Examples:
 - { action: "manage_memory", payload: { action: "archive", memoryId: "..." } }
 - { action: "archive_session", payload: { sessionId: "...", archived: true } }
 
-Use manage_memory whenever get_brief or recall shows stale, completed, contradicted, or superseded context. Prefer archiving old facts over adding corrections that leave obsolete memory active.`,
+Use manage_memory whenever get_brief or recall shows stale, completed, contradicted, or superseded context. Prefer archiving old facts over adding corrections that leave obsolete memory active.
+
+What to save (be selective — quality over volume):
+- SAVE durable project facts: decisions made, constraints/requirements, open tasks, and stable artifacts. One atomic fact per item; phrase so it stands alone without this chat.
+- DO NOT save: transient state (the current bug, "right now"), questions, raw code/config/logs, or anything already in the brief.
+- Personal vs project: durable facts about the USER (identity, stable preferences, what they're building, skills, goals, personal constraints) belong in the kind='personal' project — pass projectId "personal" (or its id) to add_memory. Keep project-technical detail out of personal memory, and personal bio out of project memory. Relay auto-classifies personal facts into Folk-style categories (person, company, concept, event, meeting, signals, note); you don't set the category — just write the atomic fact.`,
     saveSchema.shape,
     async (args) => {
       const projectId = await resolveProjectId(args.projectId)

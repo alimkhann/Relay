@@ -1,5 +1,9 @@
 import { z } from "zod"
 
+import { supportedPlatforms } from "../constants/platforms"
+
+const platformBoolMapSchema = z.record(z.enum(supportedPlatforms), z.boolean())
+
 export const projectUrlSchema = z
   .string()
   .trim()
@@ -43,9 +47,26 @@ export const projectSettingsSchema = z.object({
   showTentativeUpdates: z.boolean().default(true),
   includeTentativeUpdatesInPackets: z.boolean().default(true),
   compactionMode: z.enum(["light", "standard", "aggressive"]).default("standard"),
+  // Per-project auto-capture override. Absent = inherit the global user
+  // setting; true/false = force on/off for this project (incl. personal).
+  autoCapture: z.boolean().optional(),
+  // Per-(platform) overrides; a present leaf wins over the project-level value.
+  autoCapturePlatforms: platformBoolMapSchema.optional(),
+  // Per-project inline-chip override; absent = inherit `showSidepanelOnSupportedSites`.
+  inlineChip: z.boolean().optional(),
+  inlineChipPlatforms: platformBoolMapSchema.optional(),
 })
 
-export const updateProjectSettingsSchema = projectSettingsSchema.partial()
+// PATCH additionally accepts `null` on each override to clear it and fall back
+// to the next level up (platform leaf → project → global).
+export const updateProjectSettingsSchema = projectSettingsSchema
+  .partial()
+  .extend({
+    autoCapture: z.boolean().nullable().optional(),
+    autoCapturePlatforms: platformBoolMapSchema.nullable().optional(),
+    inlineChip: z.boolean().nullable().optional(),
+    inlineChipPlatforms: platformBoolMapSchema.nullable().optional(),
+  })
 
 export type ProjectSettingsInput = z.infer<typeof projectSettingsSchema>
 export type UpdateProjectSettingsInput = z.infer<typeof updateProjectSettingsSchema>

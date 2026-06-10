@@ -21,7 +21,7 @@ function PricingCard({
   inView: boolean
   delay: number
 }) {
-  const isFeatured = plan.monthlyPrice > 0
+  const isFeatured = plan.name === "Starter"
   // When yearly: show per-month equivalent (yearlyPrice / 12), not total
   const price = plan.monthlyPrice === 0
     ? 0
@@ -42,6 +42,11 @@ function PricingCard({
           : "border-white/[0.07] bg-[#111]"
       )}
     >
+      {"badge" in plan && plan.badge ? (
+        <span className="absolute right-5 top-5 rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#0a0a0a]">
+          {plan.badge}
+        </span>
+      ) : null}
       <h3 className="text-xl font-semibold text-white">{plan.name}</h3>
 
       <div className="mt-3 flex items-baseline gap-1">
@@ -55,6 +60,9 @@ function PricingCard({
           <span className="ml-1 text-xs text-emerald-400/60">-17%</span>
         )}
       </div>
+      {yearly && plan.monthlyPrice > 0 ? (
+        <p className="mt-1 text-xs text-white/35">Billed ${plan.yearlyPrice} / year</p>
+      ) : null}
 
       <p className="mt-2 text-sm text-white/40">{plan.description}</p>
 
@@ -78,7 +86,7 @@ function PricingCard({
         href={isFeatured ? "/get-started?upgrade=true" : "/get-started"}
         onClick={() => {
           trackMarketingEvent(isFeatured ? "billing_upgrade_clicked" : "get_started_clicked", {
-            source: isFeatured ? "pricing_pro" : "pricing_free",
+            source: plan.monthlyPrice > 0 ? `pricing_${plan.name.toLowerCase()}` : "pricing_free",
             plan: plan.name.toLowerCase(),
             interval: yearly ? "year" : "month",
           })

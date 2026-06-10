@@ -1,0 +1,4 @@
+{"type":"server-started","port":56582,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:56582","screen_dir":"/Users/alim/Developer/Projects/Apps/Relay/.superpowers/brainstorm/11583-1777989777/content","state_dir":"/Users/alim/Developer/Projects/Apps/Relay/.superpowers/brainstorm/11583-1777989777/state"}
+{"type":"screen-added","file":"/Users/alim/Developer/Projects/Apps/Relay/.superpowers/brainstorm/11583-1777989777/content/fullscreen-v4.html"}
+{"type":"screen-added","file":"/Users/alim/Developer/Projects/Apps/Relay/.superpowers/brainstorm/11583-1777989777/content/waiting.html"}
+{"type":"server-stopped","reason":"idle timeout"}

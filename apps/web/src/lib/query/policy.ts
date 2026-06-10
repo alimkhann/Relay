@@ -1,0 +1,23 @@
+import type { QueryClient } from "@tanstack/react-query"
+
+import { queryKeys } from "@/lib/query/keys"
+
+/**
+ * Relay web read-cache policy (TanStack Query client + Next unstable_cache server).
+ *
+ * - Client staleTime: instant revisits, background refetch when stale or invalidated.
+ * - Server revalidate (300s): caps Neon reads; tag invalidation on writes busts stale rows.
+ * - Mutations: optimistic setQueryData first, invalidateQueries in finally for reconcile.
+ * - Do not use router.refresh() for dashboard/memory data — it skips React Query.
+ */
+export const AUTHENTICATED_READ_STALE_TIME_MS = 5 * 60_000
+
+export function invalidateDashboard(queryClient: QueryClient, projectId: string) {
+  // Mark stale without an immediate refetch — callers already applied
+  // setQueryData via optimistic envelopes; an eager refetch can briefly restore
+  // server-cached rows that were just deleted.
+  return queryClient.invalidateQueries({
+    queryKey: queryKeys.dashboard(projectId),
+    refetchType: "none",
+  })
+}

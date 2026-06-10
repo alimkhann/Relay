@@ -45,6 +45,8 @@ function normalizeSettings(input: Partial<UserSettingsRow["settings"]> | null | 
       autoImportFromExtension:
         input?.sourceImports?.autoImportFromExtension ?? defaultSettings.sourceImports.autoImportFromExtension,
     },
+    hideAskRelayDashboard: input?.hideAskRelayDashboard ?? input?.hideAskRelayPanel ?? false,
+    hideAskRelayExtension: input?.hideAskRelayExtension ?? false,
     ...(input?.walkthrough !== undefined
       ? { walkthrough: input.walkthrough }
       : {}),

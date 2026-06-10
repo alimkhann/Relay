@@ -7,12 +7,14 @@ const storage = typeof chrome !== "undefined" ? chrome.storage.local : null
 const keys = {
   approvedAssociations: "relay.routing.approvedAssociations",
   ignoredChatKeys: "relay.routing.ignoredChatKeys",
-  adjudications: "relay.routing.adjudications"
+  adjudications: "relay.routing.adjudications",
+  manualOverrides: "relay.routing.manualOverrides"
 } as const
 
 const MAX_APPROVED_ASSOCIATIONS = 80
 const MAX_IGNORED_CHAT_KEYS = 40
 const MAX_ADJUDICATIONS = 120
+const MAX_MANUAL_OVERRIDES = 60
 
 export interface RelayApprovedAssociation {
   key: string
@@ -61,6 +63,24 @@ function normalizeApprovedAssociation(input: RelayApprovedAssociation): RelayApp
     recentUserTurnText: input.recentUserTurnText ?? null,
     sessionId: input.sessionId ?? null
   }
+}
+
+/**
+ * A fresh chat has no stable conversation id, so its key is a pre-id `:path:` /
+ * `:url:` form. Once the platform assigns an id (e.g. Perplexity navigates
+ * `/` → `/search/{id}` after the first answer), the key flips to a stable
+ * `:conversation:` / `:fingerprint:` form ON THE SAME TAB. That's the same chat
+ * gaining an id — NOT a navigation to a different conversation — so a manual
+ * project override must migrate to the new key, not be dropped (else Personal
+ * reverts to the domain binding right after the first answer).
+ */
+export function isFreshChatKeyUpgrade(oldKey: string, newKey: string): boolean {
+  const oldPlatform = oldKey.split(":", 1)[0]
+  const newPlatform = newKey.split(":", 1)[0]
+  if (oldPlatform !== newPlatform) return false
+  const oldIsPreId = oldKey.includes(":path:") || oldKey.includes(":url:")
+  const newIsStable = newKey.includes(":conversation:") || newKey.includes(":fingerprint:")
+  return oldIsPreId && newIsStable
 }
 
 export function buildChatLookupKey(page: Pick<RelayPageState, "platform" | "pageFingerprint" | "pathname" | "url" | "sourceConversationId">) {
@@ -189,4 +209,48 @@ export async function removeApprovedAssociationBySession(sessionId: string) {
   await setRoutingMemory({
     approvedAssociations: memory.approvedAssociations.filter((candidate) => candidate.sessionId !== sessionId)
   })
+}
+
+// ── Manual project overrides ──────────────────────────────────────
+// A manual "switch to project" on a supported chat must win over the
+// chat's auto-derived association and survive re-syncs of the SAME chat.
+// Keyed by chat lookup key so it never clobbers other tabs/chats. Bounded;
+// dropped when the user navigates to a different conversation.
+export interface RelayManualOverride {
+  projectId: string
+  updatedAt: string
+}
+
+async function getManualOverrides(): Promise<Record<string, RelayManualOverride>> {
+  if (!storage) return {}
+  const values = await storage.get(keys.manualOverrides)
+  const raw = values[keys.manualOverrides]
+  return raw && typeof raw === "object" ? (raw as Record<string, RelayManualOverride>) : {}
+}
+
+export async function readManualOverride(chatKey: string): Promise<RelayManualOverride | null> {
+  if (!chatKey) return null
+  const overrides = await getManualOverrides()
+  return overrides[chatKey] ?? null
+}
+
+export async function rememberManualOverride(chatKey: string, projectId: string) {
+  if (!storage || !chatKey) return
+  const overrides = await getManualOverrides()
+  overrides[chatKey] = { projectId, updatedAt: new Date().toISOString() }
+
+  // Bound the map: keep the most recent MAX_MANUAL_OVERRIDES entries.
+  const entries = Object.entries(overrides).sort(
+    ([, a], [, b]) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  )
+  const bounded = Object.fromEntries(entries.slice(0, MAX_MANUAL_OVERRIDES))
+  await storage.set({ [keys.manualOverrides]: bounded })
+}
+
+export async function clearManualOverride(chatKey: string) {
+  if (!storage || !chatKey) return
+  const overrides = await getManualOverrides()
+  if (!(chatKey in overrides)) return
+  delete overrides[chatKey]
+  await storage.set({ [keys.manualOverrides]: overrides })
 }

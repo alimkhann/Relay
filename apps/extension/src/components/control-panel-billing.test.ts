@@ -26,6 +26,10 @@ describe("resolveDisplayedPlan", () => {
           limits: {
             activeProjects: 15,
             historyRetentionDays: 3650,
+            readsMonthly: 3000,
+            readsDaily: 300,
+            writesMonthly: 1500,
+            writesDaily: 150,
             captureMonthly: 1000,
             mcpReadDaily: 300,
             mcpDeepReadDaily: 20,
@@ -120,6 +124,10 @@ describe("resolveDisplayedPlan", () => {
           limits: {
             activeProjects: 5,
             historyRetentionDays: 3650,
+            readsMonthly: 1000,
+            readsDaily: 100,
+            writesMonthly: 500,
+            writesDaily: 50,
             captureMonthly: 500,
             mcpReadDaily: 120,
             mcpDeepReadDaily: 8,

@@ -13,17 +13,22 @@ export default async function SourcesPage({
   searchParams: Promise<{ project?: string }>
 }) {
   const viewer = await requirePageViewer("/sources")
-  const projects = await listProjectsForUser(viewer.userId)
+  const projects = await listProjectsForUser(viewer.userId, { includePersonal: true })
 
   if (projects.length === 0) {
     redirect("/dashboard")
   }
 
   const { project: selectedProjectId } = await searchParams
-  const currentProject =
-    (selectedProjectId
-      ? projects.find((project) => project.id === selectedProjectId)
-      : projects[0]) ?? projects[0]!
+  // Personal is selectable by explicit ?project=, but never the implicit default.
+  const defaultProject = projects.find((project) => project.kind !== "personal") ?? projects[0]!
+  const explicitProject = selectedProjectId
+    ? projects.find((project) => project.id === selectedProjectId) ?? null
+    : null
+  if (selectedProjectId && !explicitProject) {
+    redirect("/sources")
+  }
+  const currentProject = explicitProject ?? defaultProject
 
   return (
     <>

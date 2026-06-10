@@ -2,7 +2,7 @@ import { randomBytes, randomInt } from "node:crypto"
 
 import { NextResponse } from "next/server"
 
-import { createRepositoryBundle } from "@relay/db"
+import { createServiceRepositoryBundle } from "@relay/db"
 import { hashContent } from "@relay/shared"
 
 import { withApiRoute } from "@/server/http/api-route"
@@ -38,7 +38,7 @@ export const POST = withApiRoute(async (request: Request) => {
     return NextResponse.json({ error: "codeChallenge is required." }, { status: 400 })
   }
 
-  const repositories = createRepositoryBundle()
+  const repositories = createServiceRepositoryBundle()
   const sessionCode = generateSessionCode()
   const pollingSecret = `relay_wizard_${randomBytes(16).toString("hex")}`
   const sessionHash = hashContent(pollingSecret)

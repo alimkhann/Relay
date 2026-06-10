@@ -16,10 +16,13 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useProjectDashboard } from "@/features/projects/use-project-dashboard";
+import { useMemoryCacheSync } from "@/lib/query/memory-cache-sync";
 import { queryKeys } from "@/lib/query/keys";
 import { DashboardStats } from "@/features/projects/dashboard-stats";
 import { DashboardAnalyticsBar } from "@/features/projects/dashboard-analytics-bar";
 import { DashboardMemoryCard } from "@/features/projects/dashboard-memory-card";
+import { PersonalStateCard } from "@/features/projects/personal-state-card";
+import { PersonalCategorySummaryBoard } from "@/features/projects/personal-category-summary-board";
 import { DashboardBriefCard } from "@/features/projects/dashboard-brief-card";
 import { DashboardActivityCard } from "@/features/projects/dashboard-activity-card";
 import { DashboardGovernanceSummary } from "@/features/projects/dashboard-governance-summary";
@@ -85,7 +88,7 @@ function groupSessionsByConversation(
 /* ─── Component ─── */
 
 interface DashboardContentProps {
-  project: { id: string; name: string; description?: string | null; projectUrl?: string | null };
+  project: { id: string; name: string; description?: string | null; projectUrl?: string | null; kind?: "project" | "personal" };
   walkthroughInitiallyOpen?: boolean;
   walkthroughInitialStep?: number;
 }
@@ -94,6 +97,7 @@ export function DashboardContent({ project, walkthroughInitiallyOpen = false, wa
   const router = useRouter();
   const queryClient = useQueryClient();
   const { data: dashboard, isPending } = useProjectDashboard(project.id);
+  useMemoryCacheSync(project.id);
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState("");
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -416,6 +420,7 @@ export function DashboardContent({ project, walkthroughInitiallyOpen = false, wa
           totalContextItems={totalContextItems}
           briefStatus={briefStatus}
           briefGeneratedAt={briefGeneratedAt}
+          kind={project.kind}
         />
       </FadeIn>
 
@@ -444,12 +449,24 @@ export function DashboardContent({ project, walkthroughInitiallyOpen = false, wa
       {/* ─── 2-column: Memory + Brief ─── */}
       <FadeIn delay={0.1}>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          <DashboardMemoryCard
-            projectId={project.id}
-            overview={dashboard.projectState?.projectOverview ?? project.description ?? ""}
-            objective={dashboard.projectState?.currentObjective ?? ""}
-            progress={dashboard.projectState?.recentProgress ?? ""}
-          />
+          {project.kind === "personal" ? (
+            <PersonalStateCard
+              projectId={project.id}
+              overview={dashboard.projectState?.projectOverview ?? ""}
+              objective={dashboard.projectState?.currentObjective ?? ""}
+              overridden={Boolean(
+                dashboard.stateOverrides?.projectOverviewOverride ||
+                  dashboard.stateOverrides?.currentObjectiveOverride,
+              )}
+            />
+          ) : (
+            <DashboardMemoryCard
+              projectId={project.id}
+              overview={dashboard.projectState?.projectOverview ?? project.description ?? ""}
+              objective={dashboard.projectState?.currentObjective ?? ""}
+              progress={dashboard.projectState?.recentProgress ?? ""}
+            />
+          )}
           <DashboardBriefCard
             projectId={project.id}
             packets={dashboard.packets}
@@ -465,9 +482,13 @@ export function DashboardContent({ project, walkthroughInitiallyOpen = false, wa
         />
       </FadeIn>
 
-      {/* ─── Governance summary ─── */}
+      {/* ─── Memory summary ─── */}
       <FadeIn delay={0.2}>
-        <DashboardGovernanceSummary projectId={project.id} dashboard={dashboard} />
+        {project.kind === "personal" ? (
+          <PersonalCategorySummaryBoard projectId={project.id} memory={dashboard.memory} />
+        ) : (
+          <DashboardGovernanceSummary projectId={project.id} dashboard={dashboard} />
+        )}
       </FadeIn>
 
       {/* ─── Edit project dialog ─── */}

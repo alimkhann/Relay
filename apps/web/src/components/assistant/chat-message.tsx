@@ -27,7 +27,10 @@ import type {
 import { Markdown } from "@/components/markdown"
 import { cn } from "@/lib/cn"
 
-import { ActionResultCard } from "./action-result-card"
+import { filterRenderablePendingActions, shouldRenderPendingAction } from "@relay/shared/utils/assistant-chat-path"
+
+import { ChainOfThought, ChainOfThoughtContent, ChainOfThoughtHeader, ChainOfThoughtStep } from "@/components/ai-elements/chain-of-thought"
+import { ActionResultCard, MemoryActionPreview } from "./action-result-card"
 import type { UiMessage } from "./use-assistant-chat"
 
 function IconButton({
@@ -156,16 +159,23 @@ function AttachmentChips({
 export function ChatMessage({
   message,
   onConfirm,
+  onDecline,
+  onConfirmAll,
+  onDeclineAll,
   onUndo,
   onCopy,
   onFeedback,
   onEdit,
   onSelectBranch,
   onSaveAttachment,
-  canSaveAttachments
+  canSaveAttachments,
+  onContinue
 }: {
   message: UiMessage
   onConfirm: (action: AssistantPendingAction) => void
+  onDecline: (action: AssistantPendingAction) => void
+  onConfirmAll?: (message: UiMessage) => void
+  onDeclineAll?: (message: UiMessage) => void
   onUndo: (result: AssistantActionResult) => void
   onCopy: (text: string) => void
   onFeedback: (id: string, value: AssistantMessageFeedback) => void
@@ -173,6 +183,7 @@ export function ChatMessage({
   onSelectBranch: (parentId: string | null, siblingId: string) => void
   onSaveAttachment: (id: string) => Promise<void>
   canSaveAttachments: boolean
+  onContinue?: (message: UiMessage) => void
 }) {
   const isUser = message.role === "user"
   const [editing, setEditing] = useState(false)
@@ -262,34 +273,130 @@ export function ChatMessage({
           )
         ) : null}
 
+        {message.toolSteps && message.toolSteps.length > 0 && !message.streaming ? (
+          <ChainOfThought defaultOpen={false}>
+            <ChainOfThoughtHeader>Tool calls ({message.toolSteps.length})</ChainOfThoughtHeader>
+            <ChainOfThoughtContent>
+              {message.toolSteps.map((step, i) => (
+                <ChainOfThoughtStep
+                  key={i}
+                  label={step.label}
+                  status={step.status}
+                  description={step.durationMs !== undefined ? `${step.durationMs} ms` : undefined}
+                />
+              ))}
+            </ChainOfThoughtContent>
+          </ChainOfThought>
+        ) : null}
+
         {message.actionResults.map((result, i) => (
           <ActionResultCard key={i} result={result} onUndo={onUndo} />
         ))}
 
-        {message.pending ? (
-          <div className="rounded-[var(--relay-radius-lg)] border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+        {message.pendingContinuation && onContinue ? (
+          <div className="rounded-[var(--relay-radius-lg)] border border-[var(--relay-line)] bg-[var(--relay-soft)]/60 p-3 text-sm">
             <p className="text-[var(--relay-ink)]">
-              Confirm to <span className="font-semibold">{message.pending.summary}</span>?
+              Reached the step limit. Continue from where I stopped?
             </p>
             <div className="mt-2 flex gap-2">
               <button
                 type="button"
-                onClick={() => message.pending && onConfirm(message.pending)}
+                onClick={() => onContinue(message)}
                 className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-accent-blue)] px-3 py-1.5 text-xs font-semibold text-[var(--relay-accent-blue-ink)] hover:bg-[var(--relay-accent-blue-hover)]"
               >
-                Confirm
+                Continue
               </button>
-              <span className="self-center text-xs text-[var(--relay-muted)]">
-                This changes saved data.
-              </span>
             </div>
           </div>
         ) : null}
 
+        {(() => {
+          const renderable = filterRenderablePendingActions(message.pendingActions ?? [])
+          // Also render legacy single-pending if pendingActions is empty
+          const legacySingle = renderable.length === 0 && shouldRenderPendingAction(message.pending, message.actionResults)
+            ? message.pending
+            : null
+          const allPending = renderable.length > 0 ? renderable : legacySingle ? [legacySingle] : []
+          if (allPending.length === 0) return null
+          const awaitingApproval = allPending.filter((a) => !a.status || a.status === "pending")
+          return (
+            <div className="space-y-2">
+              {allPending.map((action) => (
+                <div
+                  key={action.id}
+                  className={cn(
+                    "rounded-[var(--relay-radius-lg)] border border-[var(--relay-line)] bg-[var(--relay-soft)]/60 p-3 text-sm",
+                    action.status === "failed" && "border-[var(--relay-danger)]/50 bg-[var(--relay-danger)]/5",
+                    action.status === "succeeded" && "border-emerald-500/30 bg-emerald-500/5"
+                  )}
+                >
+                  <p className="text-[var(--relay-ink)]">
+                    {action.status === "succeeded"
+                      ? "Completed"
+                      : action.status === "failed"
+                        ? "Failed"
+                        : action.status === "running"
+                          ? "Running"
+                          : "Allow agent to"}{" "}
+                    <span className="font-semibold">{action.summary}</span>
+                    {!action.status || action.status === "pending" ? "?" : ""}
+                  </p>
+                  {action.error ? (
+                    <p className="mt-1 text-xs text-[var(--relay-danger)]">{action.error}</p>
+                  ) : null}
+                  {action.previews && action.previews.length > 0 ? (
+                    <div className="mt-2 space-y-2">
+                      {action.previews.slice(0, 3).map((preview, index) => (
+                        <MemoryActionPreview key={index} preview={preview} />
+                      ))}
+                    </div>
+                  ) : null}
+                  {!action.status || action.status === "pending" ? (
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onConfirm(action)}
+                        className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-accent-blue)] px-3 py-1.5 text-xs font-semibold text-[var(--relay-accent-blue-ink)] hover:bg-[var(--relay-accent-blue-hover)]"
+                      >
+                        Allow
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDecline(action)}
+                        className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-3 py-1.5 text-xs text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+              {awaitingApproval.length > 1 && onConfirmAll && onDeclineAll ? (
+                <div className="flex gap-2 border-t border-[var(--relay-line)] pt-2">
+                  <button
+                    type="button"
+                    onClick={() => onConfirmAll(message)}
+                    className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-accent-blue)] px-3 py-1.5 text-xs font-semibold text-[var(--relay-accent-blue-ink)] hover:bg-[var(--relay-accent-blue-hover)]"
+                  >
+                    Allow all ({awaitingApproval.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDeclineAll(message)}
+                    className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-3 py-1.5 text-xs text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
+                  >
+                    Decline all
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          )
+        })()}
+
         {!editing && !message.streaming ? (
           <div
             className={cn(
-              "flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100",
+              "flex items-center gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100",
               isUser ? "flex-row-reverse" : "flex-row"
             )}
           >

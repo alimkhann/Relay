@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { Menu } from "lucide-react"
 
@@ -8,7 +9,7 @@ import { CommandPalette } from "@/components/layout/command-palette"
 import { useSidebar } from "@/components/layout/sidebar-context"
 
 interface WorkspaceSidebarShellProps {
-  projects: { id: string; name: string }[]
+  projects: { id: string; name: string; kind?: "project" | "personal" }[]
   user: {
     name: string
     email?: string
@@ -24,10 +25,20 @@ export function WorkspaceSidebarShell({
   plan,
 }: WorkspaceSidebarShellProps) {
   const searchParams = useSearchParams()
-  const cookieProjectId = typeof document !== "undefined"
-    ? document.cookie.match(/relay-last-project=([^;]+)/)?.[1]
-    : undefined
-  const currentProjectId = searchParams.get("project") ?? cookieProjectId ?? projects[0]?.id
+  // Read cookie client-side only (after hydration) to avoid SSR mismatch.
+  const [cookieProjectId, setCookieProjectId] = useState<string | undefined>(undefined)
+  useEffect(() => {
+    setCookieProjectId(document.cookie.match(/relay-last-project=([^;]+)/)?.[1])
+  }, [])
+  // Default to the first non-personal project — the personal project is
+  // selectable in the switcher but is never the implicit current project.
+  const requestedProjectId = searchParams.get("project") ?? cookieProjectId
+  const currentProjectId =
+    (requestedProjectId && projects.some((p) => p.id === requestedProjectId)
+      ? requestedProjectId
+      : undefined) ??
+    projects.find((p) => p.kind !== "personal")?.id ??
+    projects[0]?.id
   const { setMobileOpen } = useSidebar()
 
   return (

@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 // Deep import keeps the shared barrel (node:crypto via utils/hashing) out of
 // the extension bundle.
 import {
+  appendActionResult,
   derivePath,
   spliceOptimistic,
   type UiMessage
@@ -74,7 +75,7 @@ async function api(path: string, init?: RequestInit) {
   })
 }
 
-export function useExtensionChat(opts?: {
+export function useExtensionChat(projectId: string | null, opts?: {
   onMutation?: (r: AssistantActionResult) => void
   onChatChanged?: () => void
 }) {
@@ -90,11 +91,28 @@ export function useExtensionChat(opts?: {
   const [chatId, setChatId] = useState<string | null>(null)
   const [streaming, setStreaming] = useState(false)
   const [activeTool, setActiveTool] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<{ message: string; upgradeUrl?: string } | string | null>(null)
   const [attachments, setAttachments] = useState<ExtAttachment[]>([])
   const attachmentsRef = useRef<ExtAttachment[]>([])
   const chatIdRef = useRef<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const autoApproveRef = useRef(false)
+
+  useEffect(() => {
+    abortRef.current?.abort()
+    abortRef.current = null
+    chatIdRef.current = null
+    setChatId(null)
+    setServerNodes([])
+    setOptimistic([])
+    setSelections({})
+    setBranchParentId(null)
+    setStreaming(false)
+    setActiveTool(null)
+    setError(null)
+    setAttachments([])
+    attachmentsRef.current = []
+  }, [projectId])
 
   const updateAttachments = useCallback((updater: (prev: ExtAttachment[]) => ExtAttachment[]) => {
     setAttachments((prev) => {
@@ -143,16 +161,18 @@ export function useExtensionChat(opts?: {
     async (
       body: Record<string, unknown>,
       optimisticUser: string | null,
-      parentForOptimistic: string | null
+      parentForOptimistic: string | null,
+      opts?: { replaceMessage?: UiMessage }
     ) => {
       setError(null)
       setStreaming(true)
-      setBranchParentId(parentForOptimistic)
+      const replaceMessage = opts?.replaceMessage
+      setBranchParentId(replaceMessage?.parentId ?? parentForOptimistic)
       const controller = new AbortController()
       abortRef.current = controller
       let aborted = false
       const userTmp = tmp()
-      const asstTmp = tmp()
+      const asstTmp = replaceMessage?.id ?? tmp()
       const seed: UiMessage[] = []
       const optimisticAttachments =
         body.attachmentIds && Array.isArray(body.attachmentIds)
@@ -160,27 +180,35 @@ export function useExtensionChat(opts?: {
               .filter((a) => !a.uploading && (body.attachmentIds as unknown[]).includes(a.id))
               .map(toAttachmentDto)
           : []
-      if (optimisticUser) {
+      if (replaceMessage) {
+        seed.push({ ...replaceMessage, streaming: true })
+      } else {
+        if (optimisticUser) {
+          seed.push({
+            id: userTmp,
+            parentId: parentForOptimistic,
+            role: "user",
+            content: optimisticUser,
+            actionResults: [],
+            pendingActions: [],
+            toolSteps: [],
+            attachments: optimisticAttachments,
+            feedback: null
+          })
+        }
         seed.push({
-          id: userTmp,
-          parentId: parentForOptimistic,
-          role: "user",
-          content: optimisticUser,
+          id: asstTmp,
+          parentId: optimisticUser ? userTmp : parentForOptimistic,
+          role: "assistant",
+          content: "",
           actionResults: [],
-          attachments: optimisticAttachments,
-          feedback: null
+          pendingActions: [],
+          toolSteps: [],
+          attachments: [],
+          feedback: null,
+          streaming: true
         })
       }
-      seed.push({
-        id: asstTmp,
-        parentId: optimisticUser ? userTmp : parentForOptimistic,
-        role: "assistant",
-        content: "",
-        actionResults: [],
-        attachments: [],
-        feedback: null,
-        streaming: true
-      })
       setOptimistic(seed)
       const patch = (fn: (m: UiMessage) => UiMessage) =>
         setOptimistic((prev) => prev.map((m) => (m.id === asstTmp ? fn(m) : m)))
@@ -197,12 +225,26 @@ export function useExtensionChat(opts?: {
           body: JSON.stringify({
             ...body,
             surface: "extension",
+            projectId,
             chatId: chatIdRef.current,
-            pageContext
+            pageContext,
+            autoApproveDestructive: autoApproveRef.current || undefined
           })
         })
         if (!res.ok || !res.body) {
-          setError("Relay is unavailable right now.")
+          let payload: { error?: string; upgradeUrl?: string; resetAt?: string } = {}
+          try {
+            payload = await res.json()
+          } catch {
+            /* noop */
+          }
+          const resetCopy = payload.resetAt
+            ? ` Try again after ${new Date(payload.resetAt).toLocaleString()}.`
+            : ""
+          setError({
+            message: `${payload.error ?? "Relay is unavailable right now."}${resetCopy}`,
+            upgradeUrl: payload.upgradeUrl
+          })
           setOptimistic([])
           return
         }
@@ -233,20 +275,93 @@ export function useExtensionChat(opts?: {
               patch((m) => ({ ...m, content: m.content + delta }))
             } else if (ev.type === "tool_start") {
               setActiveTool(ev.tool)
+              patch((m) => ({
+                ...m,
+                toolSteps: [
+                  ...(m.toolSteps ?? []).map((s) =>
+                    s.status === "active" ? { ...s, status: "complete" as const } : s
+                  ),
+                  { label: ev.tool, status: "active" as const }
+                ]
+              }))
             } else if (ev.type === "tool_result") {
               const result = ev.result
-              patch((m) => ({ ...m, actionResults: [...m.actionResults, result] }))
+              patch((m) => ({
+                ...m,
+                actionResults: appendActionResult(m.actionResults, result),
+                pending: undefined,
+                toolSteps: (m.toolSteps ?? []).map((s, i, arr) =>
+                  i === arr.length - 1 && s.status === "active"
+                    ? { ...s, status: "complete" as const }
+                    : s
+                )
+              }))
               setActiveTool(null)
               if (result.action !== "read") onMutationRef.current?.(result)
             } else if (ev.type === "pending_action") {
               const action = ev.action
               patch((m) => ({
                 ...m,
-                pending: action,
+                pendingActions: [...(m.pendingActions ?? []), action],
                 content: m.content || `I can ${action.summary}. Confirm to proceed.`
               }))
+            } else if (ev.type === "action_update") {
+              const action = ev.action
+              patch((m) => {
+                const existingIdx = (m.pendingActions ?? []).findIndex((pa) => pa.id === action.id)
+                if (existingIdx === -1) {
+                  // Legacy fallback
+                  if ((action.status === "succeeded" || action.status === "failed") && action.result) {
+                    return {
+                      ...m,
+                      actionResults: appendActionResult(m.actionResults, action.result),
+                      pending: undefined,
+                      content: "",
+                      streaming: false
+                    }
+                  }
+                  return { ...m, pending: action, content: action.status === "pending" ? m.content : "" }
+                }
+                const pendingActions = (m.pendingActions ?? []).map((pa) =>
+                  pa.id === action.id ? { ...pa, ...action } : pa
+                )
+                if ((action.status === "succeeded" || action.status === "failed") && action.result) {
+                  return {
+                    ...m,
+                    pendingActions,
+                    actionResults: appendActionResult(m.actionResults, action.result)
+                  }
+                }
+                return { ...m, pendingActions }
+              })
+              if (action.status === "succeeded" && action.result && action.result.action !== "read") {
+                onMutationRef.current?.(action.result)
+              }
             } else if (ev.type === "error") {
               setError(ev.message)
+              patch((m) => {
+                const pendingActions = (m.pendingActions ?? []).map((pa) =>
+                  pa.status === "running" ? { ...pa, status: "pending" as const } : pa
+                )
+                if (m.pending?.status === "running") {
+                  return {
+                    ...m,
+                    pending: { ...m.pending, status: "pending" },
+                    pendingActions,
+                    streaming: false
+                  }
+                }
+                return { ...m, pendingActions, streaming: false }
+              })
+            } else if (ev.type === "usage") {
+              patch((m) => ({
+                ...m,
+                usage: {
+                  totalTokens: ev.totalTokens,
+                  maxContextTokens: ev.maxContextTokens,
+                  model: ev.model
+                }
+              }))
             } else if (ev.type === "done") {
               onChatChangedRef.current?.()
             }
@@ -274,7 +389,7 @@ export function useExtensionChat(opts?: {
         }
       }
     },
-    [refresh, attachments]
+    [refresh, attachments, projectId]
   )
 
   const stop = useCallback(() => abortRef.current?.abort(), [])
@@ -331,16 +446,114 @@ export function useExtensionChat(opts?: {
     [runStream, streaming, hasUploadingAttachments, readyAttachmentIds]
   )
 
+  const [autoApprove, setAutoApproveState] = useState(false)
+  const setAutoApprove = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
+    setAutoApproveState((prev) => {
+      const next = typeof v === "function" ? v(prev) : v
+      autoApproveRef.current = next
+      return next
+    })
+  }, [])
+
   const confirmAction = useCallback(
     (action: AssistantPendingAction) => {
       if (streaming) return
+      const pendingMsg = path.find(
+        (m) => m.pending?.id === action.id || m.pendingActions.some((pa) => pa.id === action.id)
+      )
+      if (!pendingMsg) return
       void runStream(
-        { message: `Confirmed: ${action.summary}`, confirmActionId: action.id, parentId: leafId },
+        {
+          message: `Allow: ${action.summary}`,
+          actionDecision: { actionId: action.id, decision: "allow" },
+          parentId: leafId
+        },
         null,
-        leafId
+        pendingMsg.parentId,
+        {
+          replaceMessage: {
+            ...pendingMsg,
+            pending: { ...action, status: "running" },
+            pendingActions: pendingMsg.pendingActions.map((pa) =>
+              pa.id === action.id ? { ...pa, status: "running" as const } : pa
+            ),
+            streaming: true
+          }
+        }
       )
     },
-    [runStream, streaming, leafId]
+    [runStream, streaming, leafId, path]
+  )
+
+  const declineAction = useCallback(
+    (action: AssistantPendingAction) => {
+      if (streaming) return
+      const pendingMsg = path.find(
+        (m) => m.pending?.id === action.id || m.pendingActions.some((pa) => pa.id === action.id)
+      )
+      if (!pendingMsg) return
+      void runStream(
+        {
+          message: `Decline: ${action.summary}`,
+          actionDecision: { actionId: action.id, decision: "decline" },
+          parentId: leafId
+        },
+        null,
+        pendingMsg.parentId,
+        {
+          replaceMessage: {
+            ...pendingMsg,
+            pendingActions: pendingMsg.pendingActions.filter((pa) => pa.id !== action.id),
+            streaming: true
+          }
+        }
+      )
+    },
+    [runStream, streaming, leafId, path]
+  )
+
+  const confirmAllActions = useCallback(
+    (msg: UiMessage) => {
+      const pending = msg.pendingActions.filter((pa) => pa.status === "pending")
+      if (streaming || pending.length === 0) return
+      void runStream(
+        {
+          message: `Allow ${pending.length} actions`,
+          actionDecision: { actionId: pending[0]!.id, actionIds: pending.map((action) => action.id), decision: "allow" },
+          parentId: leafId
+        },
+        null,
+        msg.parentId,
+        {
+          replaceMessage: {
+            ...msg,
+            pendingActions: msg.pendingActions.map((action) =>
+              action.status === "pending" ? { ...action, status: "running" as const } : action
+            ),
+            streaming: true
+          }
+        }
+      )
+    },
+    [leafId, runStream, streaming]
+  )
+
+  const declineAllActions = useCallback(
+    (msg: UiMessage) => {
+      const pending = msg.pendingActions.filter((pa) => pa.status === "pending")
+      if (streaming || pending.length === 0) return
+      void runStream(
+        {
+          message: `Decline ${pending.length} actions`,
+          actionDecision: { actionId: pending[0]!.id, actionIds: pending.map((action) => action.id), decision: "decline" },
+          parentId: leafId
+        },
+        null,
+        msg.parentId,
+        { replaceMessage: { ...msg, pendingActions: [], streaming: true } }
+      )
+    },
+    [leafId, runStream, streaming]
   )
 
   const selectBranch = useCallback((parentId: string | null, siblingId: string) => {
@@ -353,7 +566,7 @@ export function useExtensionChat(opts?: {
       const res = await api("/api/assistant/chats", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ surface: "extension" })
+        body: JSON.stringify({ surface: "extension", projectId })
       })
       if (!res.ok) return null
       const data = (await res.json()) as { chat: { id: string } }
@@ -363,7 +576,7 @@ export function useExtensionChat(opts?: {
     } catch {
       return null
     }
-  }, [])
+  }, [projectId])
 
   const addFiles = useCallback(
     async (files: File[]) => {
@@ -545,8 +758,37 @@ export function useExtensionChat(opts?: {
     setError(null)
   }, [revokePreviewUrls, updateAttachments])
 
+  // Reverse a reversible agent mutation (parity with the web assistant). The
+  // action card flips to its "undone" label locally on success.
+  const undo = useCallback(async (result: AssistantActionResult): Promise<boolean> => {
+    if (!result.undoRef) return false
+    try {
+      const res = await api("/api/assistant/undo", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(result.undoRef),
+      })
+      if (res.ok && result.action === "created") {
+        onMutationRef.current?.({
+          tool: result.tool,
+          action: "deleted",
+          entity: result.entity,
+          count: result.count,
+          items: result.items,
+          previews: result.previews?.map((preview) => ({
+            before: preview.after ?? preview.before,
+          })),
+        })
+      }
+      return res.ok
+    } catch {
+      return false
+    }
+  }, [])
+
   return {
     messages: path,
+    undo,
     chatId,
     streaming,
     activeTool,
@@ -557,6 +799,11 @@ export function useExtensionChat(opts?: {
     stop,
     editMessage,
     confirmAction,
+    declineAction,
+    confirmAllActions,
+    declineAllActions,
+    autoApprove,
+    setAutoApprove,
     selectBranch,
     addFiles,
     removeAttachment,

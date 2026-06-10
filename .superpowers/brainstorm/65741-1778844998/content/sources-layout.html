@@ -1,0 +1,88 @@
+<h2>Sources Page Structure</h2>
+<p class="subtitle">Pick the direction that best matches Relay: memory stays compact, sources become searchable reference material.</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">A. Segmented Sources</div>
+        <div class="mockup-body">
+          <div style="display:flex;gap:8px;margin-bottom:14px">
+            <button class="mock-button">Files</button>
+            <button class="mock-button" style="background:#eef6ff">External</button>
+          </div>
+          <div style="display:grid;grid-template-columns:220px 1fr;gap:12px">
+            <div class="mock-sidebar">
+              <div style="font-weight:700;margin-bottom:10px">External sources</div>
+              <div>arXiv paper</div>
+              <div>Docs site</div>
+              <div>PDF report</div>
+            </div>
+            <div class="mock-content">
+              <div style="font-weight:700">Source detail</div>
+              <div class="placeholder" style="height:56px;margin-top:10px">Search, chunks, citations, refresh</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Top-Level Segmented Control</h3>
+      <p>Simple split between regular file sources and external sources inside the same Sources page.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">B. Unified Library</div>
+        <div class="mockup-body">
+          <div style="display:flex;gap:8px;margin-bottom:14px">
+            <input class="mock-input" placeholder="Search all sources">
+            <button class="mock-button">Add</button>
+          </div>
+          <div style="display:grid;grid-template-columns:220px 1fr;gap:12px">
+            <div class="mock-sidebar">
+              <div class="label">Filters</div>
+              <div>Kind: File, Web, Paper, Docs</div>
+              <div>Status: Ready, Stale</div>
+            </div>
+            <div class="mock-content">
+              <div style="font-weight:700">All sources</div>
+              <div class="placeholder" style="height:56px;margin-top:10px">Mixed list with badges and provider metadata</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Unified Library With Filters</h3>
+      <p>Everything is one searchable library; source kind and origin are filters and badges.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">C. External Workspace</div>
+        <div class="mockup-body">
+          <div style="display:grid;grid-template-columns:160px 1fr;gap:12px">
+            <div class="mock-sidebar">
+              <div>Files</div>
+              <div style="font-weight:700;color:#0b5cad">External</div>
+              <div>Usage</div>
+            </div>
+            <div class="mock-content">
+              <div style="font-weight:700">External research workspace</div>
+              <div class="placeholder" style="height:70px;margin-top:10px">Discover, index, search, citations, provider status</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Subsection Workspace</h3>
+      <p>External sources get a heavier workspace inside Sources, useful later for connectors and research flows.</p>
+    </div>
+  </div>
+</div>

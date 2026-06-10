@@ -1,4 +1,4 @@
-import { createRepositoryBundle } from "@relay/db"
+import { createServiceRepositoryBundle } from "@relay/db"
 
 import { requireAuthServer } from "@/lib/auth/server"
 import { logServerEvent } from "@/server/logging/logger"
@@ -65,7 +65,7 @@ async function ensureGoogleAccountLink(input: {
   userId: string
   googleAccountId: string
 }) {
-  const repositories = createRepositoryBundle()
+  const repositories = createServiceRepositoryBundle()
   const existingAccountRows = await repositories.provider.query<{ id: string }>(
     `select id
      from neon_auth.account
@@ -104,7 +104,7 @@ async function ensureGoogleAccountLink(input: {
 export async function resolveOrProvisionAuthUser(input: {
   googleUser: GoogleUserInfo
 }) {
-  const repositories = createRepositoryBundle()
+  const repositories = createServiceRepositoryBundle()
   let isNewUser = false
 
   const linkedAccountRows = await repositories.provider.query<{

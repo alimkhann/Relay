@@ -2,11 +2,13 @@
 
 import { ExternalLink, FileText, Pin, X } from "lucide-react";
 
+import { PERSONAL_CATEGORY_META, personalCategoryFromMetadata } from "@relay/shared/constants/memory-taxonomy";
+
 import {
   formatMemoryDate,
   graphEndpointId,
+  nodeColor,
   RELATION_COLORS,
-  TYPE_COLORS,
   TYPE_LABELS,
   type GraphLink,
   type GraphNode,
@@ -33,8 +35,12 @@ export function MemoryGraphDetailPanel({
     return graphEndpointId(link.source) === node.id || graphEndpointId(link.target) === node.id;
   });
   const nodesById = new Map(allNodes.map((item) => [item.id, item]));
-  const sourceFile = node.kind === "source-file" ? node.source : undefined;
+  const sourceFile = node.kind === "source" ? node.source : undefined;
   const isSourceFile = Boolean(sourceFile);
+  const personalCategory = personalCategoryFromMetadata(node.metadata);
+  const typeLabel = personalCategory
+    ? PERSONAL_CATEGORY_META[personalCategory].label
+    : TYPE_LABELS[node.type];
 
   return (
     <aside className="absolute right-3 top-3 bottom-3 z-20 flex w-[min(360px,calc(100%-24px))] flex-col overflow-hidden rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)]/92 shadow-[var(--relay-shadow-lg)] backdrop-blur-xl">
@@ -43,9 +49,9 @@ export function MemoryGraphDetailPanel({
           <div className="mb-1 flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-[var(--relay-muted)]">
             <span
               className="h-2 w-2 rounded-full"
-              style={{ backgroundColor: TYPE_COLORS[node.type] }}
+              style={{ backgroundColor: nodeColor(node) }}
             />
-            {isSourceFile ? "Source file" : TYPE_LABELS[node.type]}
+            {isSourceFile ? "Source file" : node.kind === "entity" ? "Entity" : node.kind === "conversation" ? "Conversation" : node.kind === "observation" ? "Evidence" : typeLabel}
             {node.pinned && <Pin className="h-3 w-3 fill-current" />}
           </div>
           <h2 className="truncate text-sm font-semibold text-[var(--relay-ink)]">
@@ -78,7 +84,11 @@ export function MemoryGraphDetailPanel({
           <div className="rounded-[var(--relay-radius-sm)] bg-[var(--relay-soft)] px-3 py-2">
             <p className="text-[10px] uppercase tracking-wide text-[var(--relay-muted)]">{isSourceFile ? "Chunks" : "Captured"}</p>
             <p className="mt-1 font-medium text-[var(--relay-ink)]">
-              {isSourceFile ? sourceFile?.chunkCount.toLocaleString("en-US") : formatMemoryDate(node.capturedAt)}
+              {isSourceFile
+                ? sourceFile?.chunkCount != null
+                  ? sourceFile.chunkCount.toLocaleString("en-US")
+                  : "—"
+                : formatMemoryDate(node.capturedAt)}
             </p>
           </div>
         </div>
@@ -99,12 +109,16 @@ export function MemoryGraphDetailPanel({
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--relay-muted)]">
           {isSourceFile && (
             <>
-              <span className="rounded-full border border-[var(--relay-line)] px-2 py-1">
-                {(((sourceFile?.byteSize ?? 0) / 1024)).toFixed(1)} KB
-              </span>
-              <span className="rounded-full border border-[var(--relay-line)] px-2 py-1">
-                {(sourceFile?.tokenEstimate ?? 0).toLocaleString("en-US")} tokens
-              </span>
+              {sourceFile?.byteSize != null ? (
+                <span className="rounded-full border border-[var(--relay-line)] px-2 py-1">
+                  {(sourceFile.byteSize / 1024).toFixed(1)} KB
+                </span>
+              ) : null}
+              {sourceFile?.tokenEstimate != null ? (
+                <span className="rounded-full border border-[var(--relay-line)] px-2 py-1">
+                  {sourceFile.tokenEstimate.toLocaleString("en-US")} tokens
+                </span>
+              ) : null}
               {sourceFile?.mimeType && (
                 <span className="rounded-full border border-[var(--relay-line)] px-2 py-1">
                   {sourceFile.mimeType}
@@ -156,7 +170,7 @@ export function MemoryGraphDetailPanel({
                       className="text-[11px] font-medium uppercase tracking-wide"
                       style={{ color: RELATION_COLORS[link.relationType] }}
                     >
-                      {link.relationType} · {Math.round(link.confidence * 100)}%
+                      {link.label} · {Math.round(link.confidence * 100)}%
                     </span>
                     <span className="mt-1 block truncate text-[12px] text-[var(--relay-ink)]">
                       {relatedNode.label}
@@ -167,7 +181,7 @@ export function MemoryGraphDetailPanel({
             </div>
           ) : (
             <p className="rounded-[var(--relay-radius-sm)] border border-dashed border-[var(--relay-line)] px-3 py-3 text-[12px] text-[var(--relay-muted)]">
-              No explicit relations yet. Relay will connect this item as more memory accumulates.
+              No persisted relation evidence yet. Relay will connect this node after more captures or source processing.
             </p>
           )}
         </div>

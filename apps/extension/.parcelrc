@@ -1,0 +1,8 @@
+{
+  "extends": "@plasmohq/parcel-config",
+  "resolvers": [
+    "@parcel/resolver-default",
+    "@plasmohq/parcel-resolver",
+    "@plasmohq/parcel-resolver-post"
+  ]
+}

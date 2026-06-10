@@ -5,7 +5,7 @@ import type { DatabaseProvider } from "../store/provider"
 import { decryptTextIfNeeded, encryptTextIfConfigured } from "../utils/encrypted-text"
 
 /** Columns to select for general memory queries — excludes large/internal index columns. */
-const MEMORY_COLS = `id, project_id, source_turn_id, type, title, content, pinned, is_archived, sort_order, tags, metadata, created_by, created_at, updated_at, source_surface, source_conversation_id, source_url, captured_at, derived_from, embedding_model, forget_after, last_reaffirmed_at`
+const MEMORY_COLS = `id, project_id, source_turn_id, type, title, content, pinned, is_archived, sort_order, tags, metadata, created_by, created_at, updated_at, source_surface, source_conversation_id, source_url, captured_at, derived_from, embedding_model, forget_after, last_reaffirmed_at, lifecycle_state`
 
 const compactionPenaltyExpr = (alias = "m") => `case ${alias}.metadata->>'compactionState'
   when 'covered_by_canon' then 0.45
@@ -22,6 +22,28 @@ function prefixCols(alias: string) {
 
 export interface MemorySearchResult extends MemoryItemRow {
   rank: number
+}
+
+/** Scope + lifecycle options shared by the read/search paths (Memory v2). */
+interface ScopeLifecycleOptions {
+  /** Explicit lifecycle filter. Defaults to ['active','cooling']; 'forgotten' is always excluded. */
+  lifecycleStates?: string[]
+  /** Convenience flag: add 'archived' to the default lifecycle set. Ignored when lifecycleStates is set. */
+  includeArchived?: boolean
+}
+
+/**
+ * Resolve the allowed lifecycle_state list for a read query. Default keeps the
+ * legacy `is_archived = false` behavior (active + cooling). 'forgotten' is never
+ * returned.
+ */
+function resolveLifecycleStates(options?: ScopeLifecycleOptions): string[] {
+  if (options?.lifecycleStates?.length) {
+    return options.lifecycleStates.filter((s) => s !== "forgotten")
+  }
+  const base = ["active", "cooling"]
+  if (options?.includeArchived) base.push("archived")
+  return base
 }
 
 export interface SemanticSearchResult extends MemoryItemRow {
@@ -86,6 +108,7 @@ export class MemoryRepository {
       pinned?: boolean
       limit?: number
       sort?: "updated_desc" | "created_desc"
+      cursor?: { pinned: boolean; at: string; id: string } | null
     } = {},
   ): Promise<MemoryItemRow[]> {
     const conditions = ["project_id = $1"]
@@ -97,7 +120,7 @@ export class MemoryRepository {
     }
 
     if (options.types?.length) {
-      conditions.push(`type = ANY($${paramIndex}::text[])`)
+      conditions.push(`type::text = ANY($${paramIndex}::text[])`)
       params.push(options.types)
       paramIndex += 1
     }
@@ -114,9 +137,16 @@ export class MemoryRepository {
       paramIndex += 1
     }
 
+    const cursorColumn = options.sort === "created_desc" ? "created_at" : "updated_at"
+    if (options.cursor) {
+      conditions.push(`(pinned, ${cursorColumn}, id) < ($${paramIndex}::boolean, $${paramIndex + 1}::timestamptz, $${paramIndex + 2}::uuid)`)
+      params.push(options.cursor.pinned, options.cursor.at, options.cursor.id)
+      paramIndex += 3
+    }
+
     const orderBy = options.sort === "created_desc"
-      ? "pinned desc, created_at desc"
-      : "pinned desc, updated_at desc"
+      ? "pinned desc, created_at desc, id desc"
+      : "pinned desc, updated_at desc, id desc"
 
     let limitClause = ""
     if (typeof options.limit === "number") {
@@ -135,16 +165,58 @@ export class MemoryRepository {
     return rows.map((record) => toMemoryRow(record as Record<string, unknown>))
   }
 
+  async listActiveNotesForUpdate(projectId: string, limit = 500): Promise<MemoryItemRow[]> {
+    const rows = await this.provider.query(
+      `select ${MEMORY_COLS}
+       from memory_items
+       where project_id = $1
+         and type = 'note'
+         and is_archived = false
+       order by pinned desc, updated_at desc, id desc
+       limit $2
+       for update`,
+      [projectId, Math.min(Math.max(limit, 1), 1000)],
+    )
+    return rows.map((record) => toMemoryRow(record as Record<string, unknown>))
+  }
+
+  /**
+   * Memory v2: list items by project (a kind='personal' project is just a
+   * project). Returns the typed, decrypted `MemoryItemRow` shape — never raw
+   * DB columns. Active + cooling by default; forgotten/archived excluded
+   * unless requested.
+   */
+  async listByProjectV2(
+    projectId: string,
+    options: {
+      lifecycleStates?: string[]
+      limit?: number
+    } = {},
+  ): Promise<MemoryItemRow[]> {
+    const states = options.lifecycleStates ?? ["active", "cooling"]
+    const limit = Math.min(Math.max(options.limit ?? 200, 1), 1000)
+    const rows = await this.provider.query(
+      `select ${MEMORY_COLS}
+       from memory_items
+       where project_id = $1
+         and lifecycle_state = any($2::text[])
+       order by pinned desc, updated_at desc
+       limit $3`,
+      [projectId, states, limit],
+    )
+    return rows.map((record) => toMemoryRow(record as Record<string, unknown>))
+  }
+
   async create(userId: string, input: CreateMemoryItemInput): Promise<MemoryItemRow> {
     const plaintextContent = input.content
     const encryptedContent = encryptTextIfConfigured(plaintextContent)
 
     const rows = await this.provider.query(
-      `insert into memory_items (project_id, source_turn_id, type, title, content, pinned, tags, metadata, created_by, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector, forget_after)
-       values ($1, $2, $3, $4, $5, $6, $7::text[], $8::jsonb, $9, $10, $11, $12, coalesce($13::timestamptz, now()), $14::text[], to_tsvector('english', coalesce($4, '') || ' ' || $15), $16::timestamptz)
+      `insert into memory_items (project_id, source_turn_id, type, title, content, pinned, tags, metadata, created_by, source_surface, source_conversation_id, source_url, captured_at, derived_from, search_vector, forget_after, valid_from)
+       values ($1, $2, $3, $4, $5, $6, $7::text[], $8::jsonb, $9, $10, $11, $12, coalesce($13::timestamptz, now()), $14::text[], to_tsvector('english', coalesce($4, '') || ' ' || $15), $16::timestamptz, coalesce($13::timestamptz, now()))
        returning ${MEMORY_COLS}`,
       [
-        input.projectId,
+        input.projectId ?? null,
         input.sourceTurnId ?? null,
         input.type,
         input.title ?? null,
@@ -218,7 +290,7 @@ export class MemoryRepository {
     const rows = await this.provider.query(
       `update memory_items
        set title = case when $2::boolean then null else coalesce($3, title) end,
-            content = coalesce($4, content),
+            content = case when $21::boolean then '' else coalesce($4, content) end,
             type = coalesce($5, type),
             pinned = coalesce($6, pinned),
             tags = coalesce($7::text[], tags),
@@ -228,8 +300,15 @@ export class MemoryRepository {
             source_url = case when $12::boolean then null else coalesce($13, source_url) end,
             captured_at = case when $14::boolean then null else coalesce($15::timestamptz, captured_at) end,
             derived_from = case when $16::boolean then null else coalesce($17::text[], derived_from) end,
-            search_vector = case when $18::text is not null then to_tsvector('english', coalesce(case when $2::boolean then null else coalesce($3, title) end, '') || ' ' || $18) else search_vector end,
+            search_vector = case
+              when $21::boolean then to_tsvector('english', '')
+              when $18::text is not null then to_tsvector('english', coalesce(case when $2::boolean then null else coalesce($3, title) end, '') || ' ' || $18)
+              else search_vector end,
             forget_after = case when $19::boolean then null else coalesce($20::timestamptz, forget_after) end,
+            -- Memory v2 lifecycle columns (atomic with the rest of the patch).
+            lifecycle_state = coalesce($22, lifecycle_state),
+            valid_until = case when $23::boolean then null else coalesce($24::timestamptz, valid_until) end,
+            last_reaffirmed_at = case when $25::boolean then null else coalesce($26::timestamptz, last_reaffirmed_at) end,
             updated_at = now()
         where id = $1
         returning ${MEMORY_COLS}`,
@@ -254,6 +333,12 @@ export class MemoryRepository {
         plaintextContent,
         patch.forgetAfter === null,
         patch.forgetAfter ?? null,
+        patch.nullContent ?? false,
+        patch.lifecycleState ?? null,
+        patch.validUntil === null,
+        patch.validUntil ?? null,
+        patch.lastReaffirmedAt === null,
+        patch.lastReaffirmedAt ?? null,
       ]
     )
 
@@ -262,18 +347,52 @@ export class MemoryRepository {
     return toMemoryRow(row as Record<string, unknown>)
   }
 
-  async search(projectId: string, query: string, options?: { types?: string[]; tags?: string[]; limit?: number }): Promise<MemorySearchResult[]> {
+  async transfer(
+    id: string,
+    targetProjectId: string,
+    patch: { type?: MemoryItemType; metadata?: Record<string, unknown> },
+  ): Promise<MemoryItemRow> {
+    const rows = await this.provider.query(
+      `update memory_items
+       set project_id = $2,
+           type = coalesce($3, type),
+           metadata = coalesce($4::jsonb, metadata),
+           enrichment_status = 'pending',
+           enrichment_error = null,
+           updated_at = now()
+       where id = $1
+       returning ${MEMORY_COLS}`,
+      [id, targetProjectId, patch.type ?? null, patch.metadata ? JSON.stringify(patch.metadata) : null],
+    )
+    const row = rows[0]
+    if (!row) throw new Error("Memory item not found")
+    return toMemoryRow(row as Record<string, unknown>)
+  }
+
+  async markPendingEnrichment(id: string): Promise<void> {
+    await this.provider.query(
+      `update memory_items
+       set enrichment_status = 'pending',
+           enrichment_error = null,
+           updated_at = now()
+       where id = $1`,
+      [id],
+    )
+  }
+
+  async search(projectId: string, query: string, options?: { types?: string[]; tags?: string[]; limit?: number } & ScopeLifecycleOptions): Promise<MemorySearchResult[]> {
     const limit = options?.limit ?? 20
+    const lifecycleStates = resolveLifecycleStates(options)
     const conditions = [
-      "project_id = $1",
-      "is_archived = false",
+      `project_id = $1`,
+      "lifecycle_state = ANY($3::text[])",
       "search_vector @@ plainto_tsquery('english', $2)"
     ]
-    const params: unknown[] = [projectId, query]
-    let paramIndex = 3
+    const params: unknown[] = [projectId, query, lifecycleStates]
+    let paramIndex = 4
 
     if (options?.types?.length) {
-      conditions.push(`type = ANY($${paramIndex}::text[])`)
+      conditions.push(`type::text = ANY($${paramIndex}::text[])`)
       params.push(options.types)
       paramIndex++
     }
@@ -402,7 +521,7 @@ export class MemoryRepository {
     let paramIndex = 4
 
     if (options?.types?.length) {
-      conditions.push(`type = ANY($${paramIndex}::text[])`)
+      conditions.push(`type::text = ANY($${paramIndex}::text[])`)
       params.push(options.types)
       paramIndex++
     }
@@ -443,11 +562,12 @@ export class MemoryRepository {
     includeSuperseded?: boolean
     /** Recency half-life in days for the decay multiplier. Defaults to 30. */
     recencyHalfLifeDays?: number
-  }): Promise<SemanticSearchResult[]> {
+  } & ScopeLifecycleOptions): Promise<SemanticSearchResult[]> {
     const limit = options?.limit ?? 20
     const threshold = options?.threshold ?? 0.5
     const halfLifeDays = options?.recencyHalfLifeDays ?? 30
     const includeSuperseded = options?.includeSuperseded === true
+    const lifecycleStates = resolveLifecycleStates(options)
 
     // Build parameter list with a running counter so optional filters
     // can be mixed and matched cleanly.
@@ -456,8 +576,9 @@ export class MemoryRepository {
       params.push(value)
       return `$${params.length}`
     }
+    const lifecycleClause = `and lifecycle_state = ANY(${addParam(lifecycleStates)}::text[])`
 
-    const typeClause = options?.types?.length ? `and type = ANY(${addParam(options.types)}::text[])` : ""
+    const typeClause = options?.types?.length ? `and type::text = ANY(${addParam(options.types)}::text[])` : ""
     const tagClause = options?.tags?.length ? `and tags && ${addParam(options.tags)}::text[]` : ""
     const fromClause = options?.dateRange?.from
       ? `and captured_at >= ${addParam(options.dateRange.from)}::timestamptz`
@@ -494,7 +615,7 @@ export class MemoryRepository {
          select id, 1 - (embedding <=> $3::vector) as score, 'semantic'::text as match_type
          from memory_items
          where project_id = $1
-           and is_archived = false
+           ${lifecycleClause}
            and embedding is not null
            and 1 - (embedding <=> $3::vector) >= $4
            ${filterSql}
@@ -505,7 +626,7 @@ export class MemoryRepository {
          select id, ts_rank(search_vector, websearch_to_tsquery('english', $2)) as score, 'lexical'::text as match_type
          from memory_items
          where project_id = $1
-           and is_archived = false
+           ${lifecycleClause}
            and search_vector @@ websearch_to_tsquery('english', $2)
            ${filterSql}
          order by score desc
@@ -566,13 +687,15 @@ export class MemoryRepository {
     return rows.map((record) => toMemoryRelationRow(record as Record<string, unknown>))
   }
 
-  async getRelationsForProject(projectId: string): Promise<MemoryRelationRow[]> {
+  async getRelationsForProject(projectId: string, options: { limit?: number } = {}): Promise<MemoryRelationRow[]> {
+    const limit = Math.min(Math.max(options.limit ?? 1000, 1), 5000)
     const rows = await this.provider.query(
       `select mr.* from memory_relations mr
        join memory_items mi on mi.id = mr.source_id
        where mi.project_id = $1
-       order by mr.created_at desc`,
-      [projectId]
+       order by mr.created_at desc
+       limit $2`,
+      [projectId, limit]
     )
 
     return rows.map((record) => toMemoryRelationRow(record as Record<string, unknown>))

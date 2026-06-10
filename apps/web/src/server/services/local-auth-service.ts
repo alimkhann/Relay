@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 
-import { createRepositoryBundle } from "@relay/db"
+import { createServiceRepositoryBundle } from "@relay/db"
 
 import { initializeUserSettings } from "./settings-service"
 
@@ -42,7 +42,7 @@ export interface LocalAuthUser {
 
 export async function resolveOrCreateLocalAuthUser(input: unknown): Promise<LocalAuthUser> {
   const parsed = parseLocalAuthInput(input)
-  const repositories = createRepositoryBundle()
+  const repositories = createServiceRepositoryBundle()
   const existing = await repositories.profiles.getByEmail(parsed.email)
   const displayName = parsed.name || existing?.displayName || fallbackDisplayName(parsed.email)
 

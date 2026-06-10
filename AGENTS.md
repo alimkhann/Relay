@@ -72,6 +72,16 @@ This is the canonical repository policy for coding agents working in Relay. Clie
 - Run the full `pnpm test` only when the changed area warrants it or before high-risk merges.
 - If the full suite is already known to have unrelated failures, do not block useful work on them; report them clearly.
 
+## Feature Dev Lifecycle
+
+- Classify the change first: **major/medium** (new feature, schema/data change, cross-cutting refactor) vs **small/visual** (copy, styling, isolated component, single-file fix).
+- **Major/medium features:**
+  - Spin up the local dev server against a **Neon dev branch** (Neon MCP) and **keep both alive** through the whole cycle: implement → self-verify → hand to the user for local testing → user approves → cutover/ship to prod → **only then** delete the Neon dev branch and stop the dev server.
+  - Do **not** tear the branch/server down mid-flight (between implementing and the user finishing their test pass), even if checks are green.
+  - Before handing to the user, run a **Playwright e2e quality pass** on the affected flows (not just typecheck/unit) to catch runtime/integration bugs. "Green typecheck + unit" is necessary, not sufficient — verify the real flow.
+- **Small/visual changes:** no Neon branch needed. Verify locally or capture a **Playwright screenshot**; if it looks right, proceed and clean up. Use a branch only if the change actually touches data/schema.
+- Always confirm the FULL runtime chain works, not just that code compiles or that rows/links were written — deferred jobs, caches, and budget gates can silently no-op.
+
 ## Agent Standards
 
 - `AGENTS.md` is the shared core for Codex, Warp, OpenCode, Cursor, Windsurf, and compatible tools.
@@ -88,6 +98,7 @@ This is the canonical repository policy for coding agents working in Relay. Clie
 - Use `sources` for project source lifecycle: resolve, index, search, read, refresh, import, promote, delete, and purge.
 - Use `save` for session writeback, checkpoints, durable memory, memory cleanup, state updates, and brief/session maintenance.
 - If Relay context is stale, completed, contradicted, or superseded, clean it up with `save` action `manage_memory` or `set_state`.
+- Durable facts about the USER go to personal memory: pass `projectId: "personal"` to `save`/`add_memory`. Relay auto-classifies them into Folk-style categories (person, company, concept, event, meeting, signals, note) — write the atomic fact, do not set the category.
 - Hookless clients should call `save` action `checkpoint` only at meaningful boundaries:
   - before compaction-equivalent actions
   - before switching threads or tasks

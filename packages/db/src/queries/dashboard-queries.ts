@@ -4,7 +4,7 @@ import type { RepositoryBundle } from "./repository-bundle"
 import { getProjectSummaries } from "./project-queries"
 
 export async function getProjectDashboard(repositories: RepositoryBundle, ownerId: string, projectId: string): Promise<ProjectDashboardDto | null> {
-  const [projectSummary] = (await getProjectSummaries(repositories, ownerId)).filter((project) => project.id === projectId)
+  const [projectSummary] = (await getProjectSummaries(repositories, ownerId, { includePersonal: true })).filter((project) => project.id === projectId)
   if (!projectSummary) return null
 
   const [recentSessions, sessionHistory, distinctConversationCount, memory, packets, legacyPackets, targetProfiles, projectState, stateOverrides, recentDigests, digestJobs] = await Promise.all([

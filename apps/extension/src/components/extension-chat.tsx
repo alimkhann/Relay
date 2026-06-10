@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import {
   ArrowUp,
+  ArrowDown,
   Check,
   CheckCircle2,
   ChevronLeft,
@@ -25,12 +26,16 @@ import {
   Trash2,
   Undo2,
   X,
+  Zap,
   type LucideIcon
 } from "lucide-react"
 
-import type { AssistantActionResult, AssistantAttachmentDto, UiMessage } from "@relay/shared"
+import type { AssistantActionItem, AssistantActionPreview, AssistantActionResult, AssistantAttachmentDto, UiMessage } from "@relay/shared"
+import { filterRenderablePendingActions, shouldRenderPendingAction } from "@relay/shared/utils/assistant-chat-path"
 
+import type { RelayActiveProjectState } from "../messaging/contracts"
 import { MiniMarkdown } from "../utils/mini-markdown"
+import { getActiveTab } from "../utils/browser"
 import { getRelaySession } from "../storage/session"
 import styles from "./extension-chat.module.css"
 import { useExtensionChat, type ExtChatSummary } from "./use-extension-chat"
@@ -40,6 +45,34 @@ import { VoiceRing } from "./voice-ring"
 
 const MUTATION_CHANNEL = "relay-mutations"
 const MIN_H = 200
+
+function isActiveProjectState(value: unknown): value is RelayActiveProjectState {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      "projectId" in value &&
+      Array.isArray((value as RelayActiveProjectState).projectOptions),
+  )
+}
+
+async function resolveChatProjectId(): Promise<string | null> {
+  try {
+    const tab = await getActiveTab()
+    if (tab?.id) {
+      const response = await chrome.runtime.sendMessage({
+        type: "RELAY_GET_ACTIVE_PROJECT_STATE",
+        payload: { tabId: tab.id },
+      })
+      if (isActiveProjectState(response) && response.projectId) {
+        return response.projectId
+      }
+    }
+  } catch {
+    // Fall through to the session snapshot.
+  }
+  const session = await getRelaySession()
+  return session.assumedProjectId || session.projectId || null
+}
 const TALL_HEIGHT_RATIO = 0.7
 
 // Two visible modes: tall (default, drag-resizable) and full
@@ -102,7 +135,53 @@ function toolLabelFor(tool: string): string {
   return map[tool] ?? `Running ${tool.replace(/_/g, " ")}`
 }
 
-function ActionCard({ r }: { r: AssistantActionResult }) {
+const LIFECYCLE_PILL: Record<
+  NonNullable<AssistantActionItem["lifecycle"]>,
+  { label: string; bg: string; fg: string }
+> = {
+  active: { label: "active", bg: "rgba(16,185,129,0.12)", fg: "#10b981" },
+  cooling: { label: "cooling", bg: "rgba(245,158,11,0.12)", fg: "#f59e0b" },
+  archived: { label: "archived", bg: "rgba(113,113,122,0.16)", fg: "#a1a1aa" },
+  forgotten: { label: "forgotten", bg: "rgba(244,63,94,0.12)", fg: "#f43f5e" },
+}
+
+function MemoryPreview({ preview }: { preview: AssistantActionPreview }) {
+  const render = (item: AssistantActionItem, deleted = false) => (
+    <div className={`${styles.memoryPreview} ${deleted ? styles.memoryPreviewDeleted : ""}`}>
+      <div className={styles.memoryPreviewMeta}>
+        {item.type ?? "memory"}{item.personalCategory ? ` · ${item.personalCategory}` : ""}
+      </div>
+      <div className={deleted ? styles.memoryPreviewStrike : ""}>{item.content ?? item.label}</div>
+    </div>
+  )
+  if (preview.before && preview.after) {
+    const same =
+      (preview.before.content ?? preview.before.label) ===
+        (preview.after.content ?? preview.after.label) &&
+      (preview.before.title ?? "") === (preview.after.title ?? "")
+    if (same) return render(preview.after)
+    return (
+      <div className={styles.memoryPreviewStack}>
+        {render(preview.before)}
+        <ArrowDown size={12} />
+        {render(preview.after)}
+      </div>
+    )
+  }
+  if (preview.before) return render(preview.before, true)
+  if (preview.after) return render(preview.after)
+  return null
+}
+
+function ActionCard({
+  r,
+  onUndo,
+}: {
+  r: AssistantActionResult
+  onUndo?: (r: AssistantActionResult) => Promise<boolean>
+}) {
+  const [undone, setUndone] = useState(false)
+  const [undoing, setUndoing] = useState(false)
   const ToolGlyph = toolIconFor(r.tool)
   const ActionGlyph =
     r.action === "deleted"
@@ -128,15 +207,46 @@ function ActionCard({ r }: { r: AssistantActionResult }) {
         </span>
         <ActionGlyph size={12} />
         <span>
-          {verb} {r.count} {r.entity}
-          {r.count === 1 ? "" : "s"}
+          {undone ? `${r.entity} (undone)` : `${verb} ${r.count} ${r.entity}${r.count === 1 ? "" : "s"}`}
         </span>
+        {r.undoRef && onUndo && !undone ? (
+          <button
+            type="button"
+            disabled={undoing}
+            onClick={async () => {
+              setUndoing(true)
+              const ok = await onUndo(r)
+              setUndoing(false)
+              if (ok) setUndone(true)
+            }}
+            style={{
+              marginLeft: "auto",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              background: "none",
+              border: "none",
+              cursor: undoing ? "default" : "pointer",
+              color: "var(--ec-muted)",
+              fontSize: 11,
+              padding: 0,
+            }}
+          >
+            <Undo2 size={12} />
+            {undoing ? "Undoing…" : "Undo"}
+          </button>
+        ) : r.irreversible && !undone ? (
+          <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--ec-muted)" }}>
+            Can&apos;t be undone
+          </span>
+        ) : null}
       </div>
       {r.items.length > 0 ? (
         <ul className={styles.actionItems}>
           {r.items.slice(0, 5).map((item, i) => {
             const isUrl =
               typeof item.id === "string" && /^https?:\/\//i.test(item.id)
+            const pill = item.lifecycle ? LIFECYCLE_PILL[item.lifecycle] : null
             return (
               <li key={item.id ?? i} className={styles.actionItem}>
                 <span style={{ color: "var(--ec-muted)" }}>—</span>
@@ -147,11 +257,29 @@ function ActionCard({ r }: { r: AssistantActionResult }) {
                 ) : (
                   <span>{item.label}</span>
                 )}
+                {pill ? (
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      borderRadius: 999,
+                      padding: "1px 6px",
+                      fontSize: 10,
+                      fontWeight: 500,
+                      background: pill.bg,
+                      color: pill.fg,
+                    }}
+                  >
+                    {pill.label}
+                  </span>
+                ) : null}
               </li>
             )
           })}
         </ul>
       ) : null}
+      {r.previews?.slice(0, 3).map((preview, index) => (
+        <MemoryPreview key={index} preview={preview} />
+      ))}
     </div>
   )
 }
@@ -316,22 +444,30 @@ function MessageRow({
   m,
   onEdit,
   onConfirm,
+  onDecline,
+  onConfirmAll,
+  onDeclineAll,
   onSelectBranch,
   onCopy,
   onFeedback,
   streaming,
   projectId,
-  onSaveAttachment
+  onSaveAttachment,
+  onUndo
 }: {
   m: UiMessage
   onEdit: (m: UiMessage, text: string) => void
   onConfirm: (a: NonNullable<UiMessage["pending"]>) => void
+  onDecline: (a: NonNullable<UiMessage["pending"]>) => void
+  onConfirmAll?: (msg: UiMessage) => void
+  onDeclineAll?: (msg: UiMessage) => void
   onSelectBranch: (parentId: string | null, siblingId: string) => void
   onCopy: (text: string) => void
   onFeedback: (id: string, value: "like" | "dislike" | null) => void
   streaming: boolean
   projectId: string | null
   onSaveAttachment: (id: string, projectId: string) => Promise<void>
+  onUndo?: (r: AssistantActionResult) => Promise<boolean>
 }) {
   const isUser = m.role === "user"
   const [editing, setEditing] = useState(false)
@@ -405,24 +541,97 @@ function MessageRow({
         )
       ) : null}
 
+      {m.toolSteps.length > 0 && !m.streaming ? (
+        <details className={styles.activityChain}>
+          <summary>Tool calls ({m.toolSteps.length})</summary>
+          <ol>
+            {m.toolSteps.map((step, index) => (
+              <li key={`${step.label}-${index}`}>
+                <span>{step.label}</span>
+                {step.durationMs !== undefined ? <small>{step.durationMs} ms</small> : null}
+              </li>
+            ))}
+          </ol>
+        </details>
+      ) : null}
+
       {m.actionResults.map((r, i) => (
-        <ActionCard key={i} r={r} />
+        <ActionCard key={i} r={r} onUndo={onUndo} />
       ))}
 
-      {m.pending ? (
-        <div className={styles.pending}>
-          Confirm to <strong>{m.pending.summary}</strong>?
-          <div>
-            <button
-              type="button"
-              className={styles.confirmBtn}
-              onClick={() => m.pending && onConfirm(m.pending)}
-            >
-              Confirm
-            </button>
-          </div>
-        </div>
-      ) : null}
+      {(() => {
+        const renderable = filterRenderablePendingActions(m.pendingActions ?? [])
+        const legacySingle = renderable.length === 0 && shouldRenderPendingAction(m.pending, m.actionResults)
+          ? m.pending
+          : null
+        const allPending = renderable.length > 0 ? renderable : legacySingle ? [legacySingle] : []
+        if (allPending.length === 0) return null
+        const awaitingApproval = allPending.filter((a) => !a.status || a.status === "pending")
+        return (
+          <>
+            {allPending.map((action) => (
+              <div
+                key={action.id}
+                className={`${styles.pending} ${action.status === "failed" ? styles.pendingFailed : ""} ${action.status === "succeeded" ? styles.pendingSucceeded ?? "" : ""}`}
+              >
+                {action.status === "succeeded"
+                  ? "Completed "
+                  : action.status === "failed"
+                    ? "Failed "
+                    : action.status === "running"
+                      ? "Running "
+                      : "Allow agent to "}
+                <strong>{action.summary}</strong>
+                {!action.status || action.status === "pending" ? "?" : ""}
+                {action.error ? <div className={styles.pendingError}>{action.error}</div> : null}
+                {action.previews && action.previews.length > 0 ? (
+                  <div className={styles.pendingPreviews}>
+                    {action.previews.slice(0, 3).map((preview, index) => (
+                      <MemoryPreview key={index} preview={preview} />
+                    ))}
+                  </div>
+                ) : null}
+                {!action.status || action.status === "pending" ? (
+                  <div className={styles.pendingActions}>
+                    <button
+                      type="button"
+                      className={styles.confirmBtn}
+                      onClick={() => onConfirm(action)}
+                    >
+                      Allow
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.declineBtn}
+                      onClick={() => onDecline(action)}
+                    >
+                      Decline
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+            {awaitingApproval.length > 1 && onConfirmAll && onDeclineAll ? (
+              <div className={styles.pendingBulkActions ?? styles.pendingActions}>
+                <button
+                  type="button"
+                  className={styles.confirmBtn}
+                  onClick={() => onConfirmAll(m)}
+                >
+                  Allow all ({awaitingApproval.length})
+                </button>
+                <button
+                  type="button"
+                  className={styles.declineBtn}
+                  onClick={() => onDeclineAll(m)}
+                >
+                  Decline all
+                </button>
+              </div>
+            ) : null}
+          </>
+        )
+      })()}
 
       {!editing && !m.streaming ? (
         <div className={styles.msgTools}>
@@ -501,6 +710,7 @@ function MessageRow({
 }
 
 export function ExtensionChat() {
+  const [hidden, setHidden] = useState(() => localStorage.getItem("relay:hideAskRelayExtension") === "true")
   const [collapsed, setCollapsed] = useState(true)
   const [mode, setMode] = useState<SizeMode>("tall")
   const [height, setHeight] = useState(() =>
@@ -524,22 +734,37 @@ export function ExtensionChat() {
 
   const voice = useVoiceInput((text) => setDraft((d) => (d ? `${d} ${text}` : text)))
 
+  useEffect(() => {
+    const handler = (e: StorageEvent) => {
+      if (e.key === "relay:hideAskRelayExtension") setHidden(e.newValue === "true")
+    }
+    window.addEventListener("storage", handler)
+    return () => window.removeEventListener("storage", handler)
+  }, [])
+
   // Reset dismissal whenever the user tries again, so a fresh failure surfaces
   // the pill again instead of silently leaving the user stuck.
   useEffect(() => {
     if (voice.status !== "denied") setVoiceDeniedDismissed(false)
   }, [voice.status])
 
-  const chat = useExtensionChat({
-    onMutation: () => {
+  const chat = useExtensionChat(projectId, {
+    onMutation: (result) => {
+      void (async () => {
+        const tab = await getActiveTab()
+        void chrome.runtime.sendMessage({
+          type: "RELAY_APPLY_AGENT_MEMORY_MUTATION",
+          payload: { projectId, result, tabId: tab?.id ?? null },
+        })
+      })()
       try {
         const bc = new BroadcastChannel(MUTATION_CHANNEL)
-        bc.postMessage({ type: "memory-mutated", at: Date.now() })
+        bc.postMessage({ type: "memory-mutated", result })
         bc.close()
       } catch {
         /* BroadcastChannel unavailable */
       }
-      window.dispatchEvent(new CustomEvent("relay:memory-mutated"))
+      window.dispatchEvent(new CustomEvent("relay:memory-mutated", { detail: result }))
     },
     onChatChanged: () => setHistoryRefreshTick((tick) => tick + 1)
   })
@@ -575,11 +800,49 @@ export function ExtensionChat() {
     setHeight(Math.max(MIN_H, Math.round(window.innerHeight * TALL_HEIGHT_RATIO)))
   }, [mode])
 
-  // Only enable Save-to-Sources when the target is unambiguous (exactly one
-  // project) — never silently route an attachment into projects[0].
+  // Mirror the control panel's selected project so Ask Relay defaults to it.
   useEffect(() => {
-    void chat.listProjects().then((p) => setProjectId(p.length === 1 ? p[0]!.id : null))
-  }, [chat])
+    const syncProject = () => {
+      void resolveChatProjectId().then((id) => setProjectId(id))
+    }
+    syncProject()
+
+    const handleRuntimeMessage = (message: unknown) => {
+      if (
+        !message ||
+        typeof message !== "object" ||
+        !("type" in message) ||
+        message.type !== "RELAY_ACTIVE_PROJECT_STATE_CHANGED" ||
+        !("payload" in message)
+      ) {
+        return
+      }
+      const payload = (message as { payload?: { state?: RelayActiveProjectState } }).payload
+      if (payload?.state?.projectId) {
+        setProjectId(payload.state.projectId)
+        return
+      }
+      syncProject()
+    }
+
+    let channel: BroadcastChannel | null = null
+    try {
+      channel = new BroadcastChannel(MUTATION_CHANNEL)
+      channel.onmessage = syncProject
+    } catch {
+      /* BroadcastChannel unavailable */
+    }
+
+    const onMutated = () => syncProject()
+    window.addEventListener("relay:memory-mutated", onMutated)
+    chrome.runtime.onMessage.addListener(handleRuntimeMessage)
+
+    return () => {
+      channel?.close()
+      window.removeEventListener("relay:memory-mutated", onMutated)
+      chrome.runtime.onMessage.removeListener(handleRuntimeMessage)
+    }
+  }, [])
 
   useEffect(() => {
     if (!historyOpen) return
@@ -662,6 +925,8 @@ export function ExtensionChat() {
       </button>
     )
   }
+
+  if (hidden) return null
 
   return (
     <div
@@ -842,6 +1107,27 @@ export function ExtensionChat() {
             </span>
             <span className={styles.emptyTitle}>Ask about your work</span>
             <span>Memory, sources, the open page, the web.</span>
+            <div className={styles.suggestions}>
+              {[
+                "What can you do?",
+                "What was I working on?",
+                "Summarize my project",
+                "Save a decision",
+                "What are my open tasks?",
+                "How do I use Relay?",
+              ].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className={styles.suggestionBtn}
+                  onClick={() => {
+                    chat.send(s, { webSearch })
+                  }}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           chat.messages.map((m) => (
@@ -851,17 +1137,49 @@ export function ExtensionChat() {
               streaming={chat.streaming}
               onEdit={chat.editMessage}
               onConfirm={chat.confirmAction}
+              onDecline={chat.declineAction}
+              onConfirmAll={chat.confirmAllActions}
+              onDeclineAll={chat.declineAllActions}
               onSelectBranch={chat.selectBranch}
               onCopy={(t) => navigator.clipboard?.writeText(t).catch(() => {})}
               onFeedback={chat.setFeedback}
               projectId={projectId}
               onSaveAttachment={chat.saveAttachmentToSources}
+              onUndo={chat.undo}
             />
           ))
         )}
         {chat.streaming ? <ThinkingChip tool={chat.activeTool} /> : null}
-        {chat.error ? <div className={styles.error}>{chat.error}</div> : null}
+        {chat.error ? (
+          <div className={styles.error}>
+            {typeof chat.error === "string" ? chat.error : chat.error.message}
+            {typeof chat.error !== "string" && chat.error.upgradeUrl ? (
+              <button
+                type="button"
+                className={styles.confirmBtn}
+                onClick={() => {
+                  if (chat.error && typeof chat.error !== "string" && chat.error.upgradeUrl) {
+                    void chrome.tabs.create({ url: chat.error.upgradeUrl })
+                  }
+                }}
+              >
+                Upgrade to keep going
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
+
+      {(() => {
+        const lastUsage = [...chat.messages].reverse().find((m) => m.usage)?.usage
+        if (!lastUsage) return null
+        const k = lastUsage.totalTokens >= 1000
+          ? `${(lastUsage.totalTokens / 1000).toFixed(1)}k`
+          : String(lastUsage.totalTokens)
+        const max = lastUsage.maxContextTokens ?? 1_000_000
+        const maxLabel = max >= 1_000_000 ? `${(max / 1_000_000).toFixed(max % 1_000_000 === 0 ? 0 : 1)}M` : `${Math.round(max / 1000)}k`
+        return <div className={styles.usageBadge}>{k} / {maxLabel} tokens · {lastUsage.model ?? "Gemini Flash"}</div>
+      })()}
 
       {voice.status === "denied" && !voiceDeniedDismissed ? (
         <div className={styles.deniedBar} role="alert">
@@ -966,6 +1284,17 @@ export function ExtensionChat() {
                 <Search size={13} />
                 <span>Web search</span>
                 <span className={`${styles.toggle} ${webSearch ? styles.toggleOn : ""}`} aria-hidden>
+                  <span />
+                </span>
+              </button>
+              <button
+                type="button"
+                className={`${styles.menuItem} ${chat.autoApprove ? styles.menuItemActive : ""}`}
+                onClick={() => chat.setAutoApprove((v) => !v)}
+              >
+                <Zap size={13} />
+                <span>Allow all actions</span>
+                <span className={`${styles.toggle} ${chat.autoApprove ? styles.toggleOn : ""}`} aria-hidden>
                   <span />
                 </span>
               </button>

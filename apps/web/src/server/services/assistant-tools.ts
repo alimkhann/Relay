@@ -21,7 +21,7 @@ export const ASSISTANT_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
   {
     name: "list_projects",
     description:
-      "List the user's Relay projects with id, name, memory count and recent activity. Call this first to get a projectId for other tools.",
+      "List the user's Relay projects with id, name, kind, memory count and recent activity. Use only for explicit cross-project discovery or when the requested project is ambiguous.",
     parameters: obj({})
   },
   {
@@ -30,7 +30,7 @@ export const ASSISTANT_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
       "Get a concise continuity briefing for a project: current objective, progress, and memory items matching a query. Best first call when the user asks 'what was I doing'.",
     parameters: obj(
       { projectId: str("Relay project id"), query: str("What to recall about") },
-      ["projectId", "query"]
+      ["query"]
     )
   },
   {
@@ -42,7 +42,7 @@ export const ASSISTANT_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
         query: str("Search query"),
         limit: { type: "number", description: "Max results (default 8)" }
       },
-      ["projectId", "query"]
+      ["query"]
     )
   },
   {
@@ -50,13 +50,13 @@ export const ASSISTANT_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
     description: "List recent continuity activity (captures, updates) for a project.",
     parameters: obj(
       { projectId: str("Relay project id"), limit: { type: "number", description: "Max items (default 10)" } },
-      ["projectId"]
+      []
     )
   },
   {
     name: "get_brief",
     description: "Generate or fetch the project's context brief (a resume-ready summary).",
-    parameters: obj({ projectId: str("Relay project id") }, ["projectId"])
+    parameters: obj({ projectId: str("Relay project id; omit to use the selected project") })
   },
   {
     name: "add_memory",
@@ -74,7 +74,7 @@ export const ASSISTANT_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
         title: str("Optional short title"),
         tags: { type: "array", items: { type: "string" }, description: "Optional tags" }
       },
-      ["projectId", "type", "content"]
+      ["type", "content"]
     )
   },
   {
@@ -83,11 +83,14 @@ export const ASSISTANT_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
       "Delete, archive, or update existing memory items. Destructive — only call when the user clearly asked to remove or change saved memory.",
     parameters: obj(
       {
-        action: { type: "string", enum: ["delete", "archive", "update"], description: "What to do" },
+        action: { type: "string", enum: ["delete", "archive", "update", "transfer"], description: "What to do" },
         memoryId: { type: "array", items: { type: "string" }, description: "Memory item id(s)" },
         content: str("New content (update only)"),
         title: str("New title (update only)"),
-        tags: { type: "array", items: { type: "string" }, description: "New tags (update only)" }
+        tags: { type: "array", items: { type: "string" }, description: "New tags (update only)" },
+        targetProjectId: str("Destination project id (transfer only)"),
+        type: str("Destination memory type (transfer/type-change only)"),
+        personalCategory: str("Destination Personal category (transfer only)")
       },
       ["action", "memoryId"]
     )
@@ -232,6 +235,61 @@ function summarizeForModel(value: unknown, max = 4000): Record<string, unknown> 
   return { result: text }
 }
 
+function actionItem(value: unknown, fallback: string) {
+  const item = (value ?? {}) as Record<string, unknown>
+  const content = typeof item.content === "string" ? item.content : undefined
+  const title = typeof item.title === "string" ? item.title : null
+  const metadata = (item.metadata ?? {}) as Record<string, unknown>
+  return {
+    id: typeof item.id === "string" ? item.id : fallback,
+    label: title || content?.slice(0, 120) || fallback,
+    title,
+    content,
+    type: typeof item.type === "string" ? item.type : undefined,
+    projectId: typeof item.projectId === "string" ? item.projectId : undefined,
+    personalCategory:
+      typeof metadata.personalCategory === "string" ? metadata.personalCategory : undefined,
+  }
+}
+
+async function getMemorySnapshot(client: RelayHttpMcpClient, id: string) {
+  if (typeof client.getMemory !== "function") return null
+  return client.getMemory(id).catch(() => null)
+}
+
+export async function previewAssistantTool(
+  client: RelayHttpMcpClient,
+  name: string,
+  args: Record<string, unknown>,
+) {
+  if (name !== "manage_memory") return []
+  const ids = Array.isArray(args.memoryId) ? (args.memoryId as string[]) : [String(args.memoryId)]
+  const before = await Promise.all(ids.slice(0, 5).map((id) => getMemorySnapshot(client, id)))
+  return ids.slice(0, 5).map((id, index) => {
+    const prior = actionItem(before[index], id)
+    if (args.action === "delete" || args.action === "archive") return { before: prior }
+    return {
+      before: prior,
+      after: {
+        ...prior,
+        content: typeof args.content === "string" ? args.content : prior.content,
+        label:
+          typeof args.title === "string"
+            ? args.title
+            : typeof args.content === "string"
+              ? args.content.slice(0, 120)
+              : prior.label,
+        title: typeof args.title === "string" ? args.title : prior.title,
+        type: typeof args.type === "string" ? args.type : prior.type,
+        projectId:
+          typeof args.targetProjectId === "string" ? args.targetProjectId : prior.projectId,
+        personalCategory:
+          typeof args.personalCategory === "string" ? args.personalCategory : prior.personalCategory,
+      },
+    }
+  })
+}
+
 // Stopwords that drag every doc to the same score; dropping them lets a
 // query like "how do I use the extension" actually rank /docs/extension.
 const KNOWLEDGE_STOPWORDS = new Set([
@@ -325,7 +383,8 @@ export async function executeAssistantTool(
       return { modelResponse: summarizeForModel(brief), actionResult: null }
     }
     case "add_memory": {
-      const created = (await client.addMemory(String(args.projectId), {
+      const projectId = String(args.projectId)
+      const created = (await client.addMemory(projectId, {
         type: String(args.type),
         content: String(args.content),
         title: args.title ? String(args.title) : undefined,
@@ -335,12 +394,14 @@ export async function executeAssistantTool(
         sourceSurface: "ask_relay"
       })) as { id?: string; title?: string | null; content?: string }
       const label = created.title || (created.content ?? String(args.content)).slice(0, 80)
+      const item = { ...actionItem(created, label), id: created.id, label, projectId }
       const actionResult: AssistantActionResult = {
         tool: "add_memory",
         action: "created",
         entity: "memory item",
         count: 1,
-        items: [{ id: created.id, label }],
+        items: [item],
+        previews: [{ after: item }],
         undoRef: created.id
           ? { tool: "manage_memory", args: { action: "delete", memoryId: [created.id] } }
           : undefined
@@ -352,13 +413,22 @@ export async function executeAssistantTool(
       const ids = Array.isArray(args.memoryId)
         ? (args.memoryId as string[])
         : [String(args.memoryId)]
+      let previews: Awaited<ReturnType<typeof previewAssistantTool>> = []
+      try {
+        previews = await previewAssistantTool(client, name, args)
+      } catch {
+        // preview fetch failed — proceed without before/after diff
+      }
       await client.manageMemory(args)
       const actionResult: AssistantActionResult = {
         tool: "manage_memory",
         action: action === "delete" ? "deleted" : "updated",
         entity: "memory item",
         count: ids.length,
-        items: ids.map((id) => ({ id, label: id })),
+        items: previews.map((preview, index) =>
+          actionItem(preview.after ?? preview.before, ids[index] ?? `item-${index}`),
+        ),
+        previews,
         // delete is a hard remove with no exposed inverse; be honest about it.
         irreversible: action === "delete"
       }
