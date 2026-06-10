@@ -162,6 +162,7 @@ chrome.runtime.onMessage.addListener(
                 "relay.routing.approvedAssociations",
                 "relay.routing.ignoredChatKeys",
                 "relay.routing.adjudications",
+                "relay.routing.manualOverrides",
               ]);
             }
             sendResponse({ ok: true });

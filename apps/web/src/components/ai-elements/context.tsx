@@ -15,6 +15,27 @@ import { getUsage } from "tokenlens";
 
 const PERCENT_MAX = 100;
 const ICON_RADIUS = 10;
+
+function clampUsedPercent(usedTokens: number, maxTokens: number) {
+  if (!Number.isFinite(maxTokens) || maxTokens <= 0) return 0;
+  const ratio = usedTokens / maxTokens;
+  if (!Number.isFinite(ratio)) return 0;
+  return Math.min(1, Math.max(0, ratio));
+}
+
+function toTokenlensUsage(usage: {
+  inputTokens?: number;
+  outputTokens?: number;
+  reasoningTokens?: number;
+  cachedInputTokens?: number;
+}) {
+  return {
+    prompt_tokens: usage.inputTokens ?? 0,
+    completion_tokens: usage.outputTokens ?? 0,
+    reasoning_tokens: usage.reasoningTokens,
+    cacheReads: usage.cachedInputTokens,
+  };
+}
 const ICON_VIEWBOX = 24;
 const ICON_CENTER = 12;
 const ICON_STROKE_WIDTH = 2;
@@ -64,7 +85,7 @@ export const Context = ({
 const ContextIcon = () => {
   const { usedTokens, maxTokens } = useContextValue();
   const circumference = 2 * Math.PI * ICON_RADIUS;
-  const usedPercent = usedTokens / maxTokens;
+  const usedPercent = clampUsedPercent(usedTokens, maxTokens);
   const dashOffset = circumference * (1 - usedPercent);
 
   return (
@@ -106,7 +127,7 @@ export type ContextTriggerProps = ComponentProps<typeof Button>;
 
 export const ContextTrigger = ({ children, ...props }: ContextTriggerProps) => {
   const { usedTokens, maxTokens } = useContextValue();
-  const usedPercent = usedTokens / maxTokens;
+  const usedPercent = clampUsedPercent(usedTokens, maxTokens);
   const renderedPercent = new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 1,
     style: "percent",
@@ -146,7 +167,7 @@ export const ContextContentHeader = ({
   ...props
 }: ContextContentHeaderProps) => {
   const { usedTokens, maxTokens } = useContextValue();
-  const usedPercent = usedTokens / maxTokens;
+  const usedPercent = clampUsedPercent(usedTokens, maxTokens);
   const displayPct = new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 1,
     style: "percent",
@@ -200,10 +221,10 @@ export const ContextContentFooter = ({
   const costUSD = modelId
     ? getUsage({
         modelId,
-        usage: {
-          input: usage?.inputTokens ?? 0,
-          output: usage?.outputTokens ?? 0,
-        },
+        usage: toTokenlensUsage({
+          inputTokens: usage?.inputTokens,
+          outputTokens: usage?.outputTokens,
+        }),
       }).costUSD?.totalUSD
     : undefined;
   const totalCost = new Intl.NumberFormat("en-US", {
@@ -269,7 +290,7 @@ export const ContextInputUsage = ({
   const inputCost = modelId
     ? getUsage({
         modelId,
-        usage: { input: inputTokens, output: 0 },
+        usage: toTokenlensUsage({ inputTokens, outputTokens: 0 }),
       }).costUSD?.totalUSD
     : undefined;
   const inputCostText = new Intl.NumberFormat("en-US", {
@@ -309,7 +330,7 @@ export const ContextOutputUsage = ({
   const outputCost = modelId
     ? getUsage({
         modelId,
-        usage: { input: 0, output: outputTokens },
+        usage: toTokenlensUsage({ inputTokens: 0, outputTokens }),
       }).costUSD?.totalUSD
     : undefined;
   const outputCostText = new Intl.NumberFormat("en-US", {
@@ -349,7 +370,7 @@ export const ContextReasoningUsage = ({
   const reasoningCost = modelId
     ? getUsage({
         modelId,
-        usage: { reasoningTokens },
+        usage: toTokenlensUsage({ reasoningTokens }),
       }).costUSD?.totalUSD
     : undefined;
   const reasoningCostText = new Intl.NumberFormat("en-US", {
@@ -389,7 +410,7 @@ export const ContextCacheUsage = ({
   const cacheCost = modelId
     ? getUsage({
         modelId,
-        usage: { cacheReads: cacheTokens, input: 0, output: 0 },
+        usage: toTokenlensUsage({ cachedInputTokens: cacheTokens }),
       }).costUSD?.totalUSD
     : undefined;
   const cacheCostText = new Intl.NumberFormat("en-US", {

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 // Deep import keeps the shared barrel (node:crypto via utils/hashing) out of
 // the extension bundle.
@@ -97,6 +97,22 @@ export function useExtensionChat(projectId: string | null, opts?: {
   const chatIdRef = useRef<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const autoApproveRef = useRef(false)
+
+  useEffect(() => {
+    abortRef.current?.abort()
+    abortRef.current = null
+    chatIdRef.current = null
+    setChatId(null)
+    setServerNodes([])
+    setOptimistic([])
+    setSelections({})
+    setBranchParentId(null)
+    setStreaming(false)
+    setActiveTool(null)
+    setError(null)
+    setAttachments([])
+    attachmentsRef.current = []
+  }, [projectId])
 
   const updateAttachments = useCallback((updater: (prev: ExtAttachment[]) => ExtAttachment[]) => {
     setAttachments((prev) => {

@@ -268,13 +268,14 @@ export function CaptureRulesMatrix({
       inlineChipPlatforms?: Partial<Record<SupportedPlatform, boolean>> | null
     },
   ) {
+    const previous = projects.find((project) => project.id === projectId)
     // Optimistic local update so the tri-state reflects immediately.
     setProjects((current) =>
       current.map((p) => (p.id === projectId ? { ...p, ...patch } : p)),
     )
     setBusy(true)
     try {
-      await relayClientFetch(`/api/projects/${projectId}/settings`, {
+      const response = await relayClientFetch(`/api/projects/${projectId}/settings`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         telemetry: {
@@ -285,6 +286,15 @@ export function CaptureRulesMatrix({
         },
         body: JSON.stringify(patch),
       })
+      if (!response.ok) {
+        throw new Error("Failed to save capture settings.")
+      }
+    } catch {
+      if (previous) {
+        setProjects((current) =>
+          current.map((p) => (p.id === projectId ? previous : p)),
+        )
+      }
     } finally {
       setBusy(false)
     }

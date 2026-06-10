@@ -145,7 +145,15 @@ export function createSyncController(deps: {
         }),
       }));
     }
-    await Promise.allSettled(updates);
+    const results = await Promise.allSettled(updates);
+    const bindingFailed = results.some(
+      (result) =>
+        result.status === "rejected" ||
+        (result.status === "fulfilled" && !result.value.ok),
+    );
+    if (bindingFailed) {
+      throw new Error("Failed to persist project bindings.");
+    }
     await setRelaySession({
       projectId,
       assumedProjectId: projectId,

@@ -247,7 +247,7 @@ export default function MachinePage() {
           ],
           [
             "Is Relay free?",
-            "Yes. Free plan supports 2 projects. Pro is $9/month for unlimited.",
+            "Yes. Free supports 2 projects (60 reads + 20 writes/month). Starter is $8/month for 5 projects. Pro is $12/month for 15 projects with higher limits.",
           ],
           [
             "Do I need to change how I work?",

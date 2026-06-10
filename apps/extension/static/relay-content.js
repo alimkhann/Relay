@@ -2031,6 +2031,8 @@
       expiresAt: toastState.expiresAt,
       digestStatus: toastState.digestStatus || null,
       reason: toastState.reason || null,
+      personalSaved: toastState.personalSaved ?? activeState.personalSaved ?? null,
+      personalUnsure: toastState.personalUnsure ?? activeState.personalUnsure ?? null,
     };
   }
 

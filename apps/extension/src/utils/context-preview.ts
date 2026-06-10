@@ -1,4 +1,8 @@
-import type { RelayContextPreview } from "../messaging/contracts"
+import type {
+  RelayContextNoteItem,
+  RelayContextPreview,
+  RelayContextPreviewItem,
+} from "../messaging/contracts"
 
 export function contextPreviewHasItems(preview: RelayContextPreview): boolean {
   return countContextPreviewItems(preview) > 0
@@ -14,24 +18,37 @@ export function countContextPreviewItems(preview: RelayContextPreview): number {
   )
 }
 
-function previewMemoryIds(preview: RelayContextPreview): Set<string> {
-  const ids = new Set<string>()
-  for (const item of preview.decisions) {
-    if (item.memoryId) ids.add(item.memoryId)
+function previewItemKey(
+  item: RelayContextPreviewItem | RelayContextNoteItem,
+): string {
+  if ("memoryId" in item && item.memoryId) return `id:${item.memoryId}`
+  if (item.key) return `key:${item.key}`
+  if ("text" in item && item.text) return `text:${item.text}`
+  return `local:${JSON.stringify(item)}`
+}
+
+function previewItemKeys(preview: RelayContextPreview): Set<string> {
+  const keys = new Set<string>()
+  for (const item of [
+    ...preview.decisions,
+    ...preview.constraints,
+    ...preview.tasks,
+    ...preview.notes,
+    ...preview.requirements,
+  ]) {
+    keys.add(previewItemKey(item))
   }
-  for (const item of preview.constraints) {
-    if (item.memoryId) ids.add(item.memoryId)
+  return keys
+}
+
+function previewsEqual(current: RelayContextPreview, next: RelayContextPreview): boolean {
+  const currentKeys = previewItemKeys(current)
+  const nextKeys = previewItemKeys(next)
+  if (currentKeys.size !== nextKeys.size) return false
+  for (const key of currentKeys) {
+    if (!nextKeys.has(key)) return false
   }
-  for (const item of preview.tasks) {
-    if (item.memoryId) ids.add(item.memoryId)
-  }
-  for (const item of preview.notes) {
-    ids.add(item.memoryId)
-  }
-  for (const item of preview.requirements) {
-    ids.add(item.memoryId)
-  }
-  return ids
+  return true
 }
 
 /**
@@ -52,7 +69,9 @@ export function preferContextPreviewOnSync(
   const nextCount = countContextPreviewItems(next)
 
   if (currentCount === nextCount) {
-    return contextPreviewHasItems(next) ? next : current
+    if (previewsEqual(current, next)) {
+      return contextPreviewHasItems(next) ? next : current
+    }
   }
 
   // Local has more items: a delete is ahead of the server — keep local.
@@ -60,36 +79,71 @@ export function preferContextPreviewOnSync(
     return current
   }
 
+  // Server payload is a strict superset — stale sync reintroduced locally deleted rows.
+  if (currentCount < nextCount) {
+    const currentIds = new Set(
+      [
+        ...current.decisions,
+        ...current.constraints,
+        ...current.tasks,
+        ...current.notes,
+        ...current.requirements,
+      ]
+        .map((item) => ("memoryId" in item ? item.memoryId : null))
+        .filter((id): id is string => Boolean(id)),
+    )
+    const nextIds = new Set(
+      [
+        ...next.decisions,
+        ...next.constraints,
+        ...next.tasks,
+        ...next.notes,
+        ...next.requirements,
+      ]
+        .map((item) => ("memoryId" in item ? item.memoryId : null))
+        .filter((id): id is string => Boolean(id)),
+    )
+    if (
+      currentIds.size > 0 &&
+      [...currentIds].every((id) => nextIds.has(id)) &&
+      nextIds.size > currentIds.size
+    ) {
+      return current
+    }
+  }
+
   // Server has more items or counts differ with cross-side changes.
   // Merge: server base + any current-only items (optimistic adds).
-  const currentIds = previewMemoryIds(current)
-  const nextIds = previewMemoryIds(next)
-  const onlyInCurrent = new Set([...currentIds].filter((id) => !nextIds.has(id)))
+  const currentKeys = previewItemKeys(current)
+  const nextKeys = previewItemKeys(next)
+  const onlyInCurrent = new Set([...currentKeys].filter((key) => !nextKeys.has(key)))
 
   if (onlyInCurrent.size === 0) {
-    // All local items already exist in server — take server directly.
     return next
   }
 
+  const keepLocal = (item: RelayContextPreviewItem | RelayContextNoteItem) =>
+    onlyInCurrent.has(previewItemKey(item))
+
   return {
     decisions: [
-      ...current.decisions.filter((i) => i.memoryId && onlyInCurrent.has(i.memoryId)),
+      ...current.decisions.filter(keepLocal),
       ...next.decisions,
     ],
     constraints: [
-      ...current.constraints.filter((i) => i.memoryId && onlyInCurrent.has(i.memoryId)),
+      ...current.constraints.filter(keepLocal),
       ...next.constraints,
     ],
     tasks: [
-      ...current.tasks.filter((i) => i.memoryId && onlyInCurrent.has(i.memoryId)),
+      ...current.tasks.filter(keepLocal),
       ...next.tasks,
     ],
     notes: [
-      ...current.notes.filter((i) => onlyInCurrent.has(i.memoryId)),
+      ...current.notes.filter(keepLocal),
       ...next.notes,
     ],
     requirements: [
-      ...current.requirements.filter((i) => onlyInCurrent.has(i.memoryId)),
+      ...current.requirements.filter(keepLocal),
       ...next.requirements,
     ],
   }

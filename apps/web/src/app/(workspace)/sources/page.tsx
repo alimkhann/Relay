@@ -22,10 +22,13 @@ export default async function SourcesPage({
   const { project: selectedProjectId } = await searchParams
   // Personal is selectable by explicit ?project=, but never the implicit default.
   const defaultProject = projects.find((project) => project.kind !== "personal") ?? projects[0]!
-  const currentProject =
-    (selectedProjectId
-      ? projects.find((project) => project.id === selectedProjectId)
-      : defaultProject) ?? defaultProject
+  const explicitProject = selectedProjectId
+    ? projects.find((project) => project.id === selectedProjectId) ?? null
+    : null
+  if (selectedProjectId && !explicitProject) {
+    redirect("/sources")
+  }
+  const currentProject = explicitProject ?? defaultProject
 
   return (
     <>

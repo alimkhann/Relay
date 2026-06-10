@@ -21,6 +21,7 @@ import {
 
 const DEFAULT_DRAIN_LIMIT = 2
 const DEFAULT_DRAIN_MAX_MS = 2_500
+const MAX_DRAIN_BUDGET_MS = 300_000
 const PERSONAL_STATE_DEBOUNCE_MS = 60_000
 const DAILY_HYGIENE_INTERVAL_MS = 24 * 60 * 60 * 1000
 
@@ -126,7 +127,7 @@ export async function drainMemoryPipelineJobs(input: {
   const startedAt = Date.now()
   const repositories = input.repositories ?? createRepositoryBundle(undefined, createWorkerRepositoryProvider())
   const limit = Math.min(Math.max(input.limit ?? DEFAULT_DRAIN_LIMIT, 1), 25)
-  const maxMs = Math.min(Math.max(input.maxMs ?? DEFAULT_DRAIN_MAX_MS, 250), 60_000)
+  const maxMs = Math.min(Math.max(input.maxMs ?? DEFAULT_DRAIN_MAX_MS, 250), MAX_DRAIN_BUDGET_MS)
   const lockedBy = `web-${process.pid}-${Date.now()}`
   const { providers, budget, fullExtraction } = createPipelineProviders()
   const results: Array<ProcessItemResult | { jobId: string; status: "done" | "failed"; error?: string }> = []
@@ -182,7 +183,7 @@ export async function drainDueProjectHygiene(input: {
   const startedAt = Date.now()
   const repositories = input.repositories ?? createRepositoryBundle(undefined, createWorkerRepositoryProvider())
   const limit = Math.min(Math.max(input.limit ?? 5, 1), 25)
-  const maxMs = Math.min(Math.max(input.maxMs ?? 15_000, 250), 60_000)
+  const maxMs = Math.min(Math.max(input.maxMs ?? 15_000, 250), MAX_DRAIN_BUDGET_MS)
   const projects = await repositories.projects.listDueForHygiene(limit)
   const projectIds = projects.map((project) => project.id)
   if (projectIds.length === 0) {

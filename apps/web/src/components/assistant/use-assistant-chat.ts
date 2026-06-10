@@ -824,7 +824,7 @@ export function useAssistantChat(
         },
         null,
         msg.parentId,
-        { replaceMessage: { ...msg, pendingActions: [], streaming: true } }
+        { replaceMessage: { ...msg, pending: undefined, pendingActions: [], streaming: true } }
       )
     },
     [leafId, runStream, streaming]

@@ -55,6 +55,7 @@ export async function scheduleAutoCapture(
   tabId: number,
   options: { immediate?: boolean } = {},
 ) {
+  if (!schedulerDeps) return;
   const state = getOrCreateTabState(tabId);
   const session = await getRelaySession();
   hydrateTabStateFromSession(state, session);
@@ -92,6 +93,9 @@ export async function scheduleAutoCapture(
         latestState.chatAssociation.status !== "none" ||
         !matchesPendingInsertedBrief(latestPendingInsertedBrief, latestState.page)
       ) {
+        latestState.capturePending = false;
+        latestState.capturePendingAt = null;
+        void schedulerDeps.broadcastActiveProjectState(tabId);
         return;
       }
 
@@ -121,7 +125,15 @@ export async function scheduleAutoCapture(
     void schedulerDeps.broadcastActiveProjectState(tabId);
     state.captureTimer = setTimeout(() => {
       state.captureTimer = null;
-      void schedulerDeps.captureObservedChange(tabId, state.chatAssociation.projectId ?? undefined, {
+      const latestState = getOrCreateTabState(tabId);
+      const projectId = latestState.chatAssociation.projectId;
+      if (!projectId) {
+        latestState.capturePending = false;
+        latestState.capturePendingAt = null;
+        void schedulerDeps.broadcastActiveProjectState(tabId);
+        return;
+      }
+      void schedulerDeps.captureObservedChange(tabId, projectId, {
         manualSelection: false,
         skipAssociationToast: true,
       });

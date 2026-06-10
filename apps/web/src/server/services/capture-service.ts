@@ -112,7 +112,7 @@ async function autoFanOutByRelevance(
     ).filter((id) => !exclude.has(id))
     if (relevantIds.length === 0) return
 
-    await repositories.sessions.linkToProjects(input.sessionId, relevantIds)
+    await repositories.sessions.linkToProjects(input.sessionId, relevantIds, userId)
     await fanOutSessionProjects(repositories, userId, {
       sessionId: input.sessionId,
       captureSignature: input.captureSignature,
@@ -228,10 +228,11 @@ export async function saveCapture(userId: string, input: unknown) {
   // Link the session to its origin (always) plus the extra targets, so the
   // read-union surfaces it everywhere. Origin link keeps the union consistent
   // with the backfill even when no extra targets are present.
-  await repositories.sessions.linkToProjects(session.id, [
-    normalizedInput.projectId,
-    ...extraProjectIds
-  ])
+  await repositories.sessions.linkToProjects(
+    session.id,
+    [normalizedInput.projectId, ...extraProjectIds],
+    userId,
+  )
   const shouldQueueDigest = latestComparable?.captureSignature !== normalizedInput.session.captureSignature
   let jobId: string | null = null
   let digestStrategy: "skip" | "ai" | "deferred" = "skip"
@@ -452,7 +453,7 @@ export async function linkSessionToProjects(
     return { linked: [], skipped }
   }
 
-  await repositories.sessions.linkToProjects(sessionId, newlyLinked)
+  await repositories.sessions.linkToProjects(sessionId, newlyLinked, userId)
 
   const personalProjectId = (await repositories.projects.getPersonalProject(userId))?.id ?? null
 

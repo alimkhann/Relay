@@ -285,7 +285,7 @@ export async function loadSessionData(force = false) {
       data,
       fetchedAt,
     };
-    void persistSessionData(session.userId, data, fetchedAt);
+    void persistSessionData(sessionPayload.userId, data, fetchedAt);
 
     return data;
   } catch (cause) {

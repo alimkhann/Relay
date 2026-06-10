@@ -51,7 +51,7 @@ export const Suggestion = ({
       variant={variant}
       {...props}
     >
-      {children || suggestion}
+      {children ?? suggestion}
     </Button>
   );
 };

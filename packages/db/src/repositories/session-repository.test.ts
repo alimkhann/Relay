@@ -3,13 +3,22 @@ import { describe, expect, it, vi } from "vitest"
 import type { DatabaseProvider } from "../store/provider"
 import { SessionRepository } from "./session-repository"
 
-function createProvider(rows: Array<Record<string, unknown>> = []): {
+function createProvider(
+  rows: Array<Record<string, unknown>> = [],
+  options: {
+    callsOverride?: Array<{ text: string; params: unknown[] }>
+    memberProjectIds?: string[]
+  } = {},
+): {
   provider: DatabaseProvider
   calls: Array<{ text: string; params: unknown[] }>
 } {
-  const calls: Array<{ text: string; params: unknown[] }> = []
+  const calls = options.callsOverride ?? []
   const query: DatabaseProvider["query"] = async (text, params) => {
     calls.push({ text, params: (params as unknown[]) ?? [] })
+    if (text.includes("project_members") && options.memberProjectIds) {
+      return options.memberProjectIds.map((project_id) => ({ project_id })) as never[]
+    }
     return rows as never[]
   }
   return {
@@ -54,6 +63,18 @@ describe("SessionRepository multi-project reads", () => {
 })
 
 describe("SessionRepository link methods", () => {
+  it("linkToProjects filters to member projects when userId is provided", async () => {
+    const calls: Array<{ text: string; params: unknown[] }> = []
+    const provider = createProvider([], { callsOverride: calls, memberProjectIds: ["p1"] }).provider
+    const repo = new SessionRepository(provider)
+
+    await repo.linkToProjects("session_1", ["p1", "p2"], "user-1")
+
+    expect(calls.some((call) => call.text.includes("project_members"))).toBe(true)
+    const insert = calls.find((call) => call.text.includes("session_projects"))
+    expect(insert?.params).toEqual(["session_1", ["p1"]])
+  })
+
   it("linkToProjects inserts deduped links and is a no-op for empty input", async () => {
     const { provider, calls } = createProvider()
     const repo = new SessionRepository(provider)

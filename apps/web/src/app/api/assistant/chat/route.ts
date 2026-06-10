@@ -32,19 +32,23 @@ export const POST = withApiAuth(async (request: Request) => {
   // (a confirmation resumes the turn and spends more tokens) before any work.
   await assertAssistantTokenBudget(viewer.userId)
 
-  // A confirmation continues an existing turn and is not a new billable message.
+  // Confirmations and declines resume an existing turn — not a new billable message.
+  const isTurnContinuation =
+    input.actionDecision?.decision === "allow" || input.actionDecision?.decision === "decline"
   if (
     input.message.trim().toLowerCase() !== "/compact" &&
     !input.confirmActionId &&
-    input.actionDecision?.decision !== "allow"
+    !isTurnContinuation
   ) {
     await consumeAssistantMessageQuota(viewer.userId)
   }
   const actionQuota = classifyAssistantActionQuota(input.message, input.actionDecision)
   const shouldChargeActionQuota =
     !input.confirmActionId && input.actionDecision?.decision !== "allow"
-  if (actionQuota && shouldChargeActionQuota) {
-    await consumeActionQuota(viewer.userId, actionQuota)
+  const actionCount =
+    input.actionDecision?.actionIds?.length ?? (input.actionDecision ? 1 : 0)
+  if (actionQuota && shouldChargeActionQuota && actionCount > 0) {
+    await consumeActionQuota(viewer.userId, actionQuota, actionCount)
   }
 
   captureServerEvent({

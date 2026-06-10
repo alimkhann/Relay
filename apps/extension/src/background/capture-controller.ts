@@ -174,7 +174,10 @@ export async function captureObservedChange(
     const personalIsDeliberate =
       Boolean(manualSelection) ||
       Boolean(explicitProjectId) ||
-      Boolean(manualOverrideProjectId);
+      Boolean(manualOverrideProjectId) ||
+      (activeProjectOption?.kind === "personal" &&
+        (session.projectId === effectiveActiveProjectId ||
+          session.assumedProjectId === effectiveActiveProjectId));
     if (activeProjectOption?.kind === "personal" && !personalIsDeliberate) {
       recordBackgroundTelemetry({
         level: "info",

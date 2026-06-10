@@ -21,12 +21,16 @@ export default async function BriefPage({
   }
 
   const { project: selectedProjectId } = await searchParams
+  const regularProjects = projects.filter((p) => p.kind !== "personal")
   // Personal is selectable by explicit ?project=, but never the implicit default.
-  const defaultProject = projects.find((p) => p.kind !== "personal") ?? projects[0]!
-  const currentProject =
-    (selectedProjectId
-      ? projects.find((p) => p.id === selectedProjectId)
-      : defaultProject) ?? defaultProject
+  const defaultProject = regularProjects[0] ?? projects[0]!
+  const explicitProject = selectedProjectId
+    ? projects.find((p) => p.id === selectedProjectId) ?? null
+    : null
+  if (selectedProjectId && !explicitProject) {
+    redirect("/brief")
+  }
+  const currentProject = explicitProject ?? defaultProject
 
   void fireUserMilestone(viewer.userId, "first_brief_viewed", {
     project_id: currentProject.id,

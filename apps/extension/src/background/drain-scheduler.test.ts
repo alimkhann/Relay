@@ -13,7 +13,7 @@ describe("scheduleDrain", () => {
   beforeEach(() => {
     vi.useFakeTimers()
     relayFetchMock.mockReset()
-    relayFetchMock.mockResolvedValue(undefined)
+    relayFetchMock.mockResolvedValue({ ok: true })
   })
   afterEach(() => {
     vi.runOnlyPendingTimers()

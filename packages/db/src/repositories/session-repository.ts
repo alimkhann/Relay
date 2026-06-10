@@ -2,6 +2,7 @@ import type { CapturePayload, SourceSessionRow } from "@relay/shared"
 
 import { toSessionRow } from "../mappers/session-mapper"
 import type { DatabaseProvider } from "../store/provider"
+import { MemberRepository } from "./member-repository"
 
 /** Raw result from grouped sessions query */
 export interface GroupedSessionResult {
@@ -141,9 +142,18 @@ export class SessionRepository {
    * re-linking an existing (session, project) pair is a no-op. The origin
    * project is normally already present from capture/backfill.
    */
-  async linkToProjects(sessionId: string, projectIds: string[]): Promise<void> {
-    const unique = Array.from(new Set(projectIds.filter(Boolean)))
+  async linkToProjects(
+    sessionId: string,
+    projectIds: string[],
+    userId?: string,
+  ): Promise<void> {
+    let unique = Array.from(new Set(projectIds.filter(Boolean)))
     if (unique.length === 0) return
+    if (userId) {
+      const members = new MemberRepository(this.provider)
+      unique = await members.filterMemberProjectIds(unique, userId)
+      if (unique.length === 0) return
+    }
     await this.provider.query(
       `insert into session_projects (session_id, project_id)
        select $1, unnest($2::uuid[])

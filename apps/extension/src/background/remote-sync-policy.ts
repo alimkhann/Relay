@@ -35,8 +35,7 @@ export function shouldSyncProjectDashboardOnly(input: {
     input.connected &&
     input.hasProjectId &&
     (input.remoteStatus === "unavailable" ||
-      input.remoteStatus === "loading" ||
-      !input.lastSuccessfulSyncAt ||
+      (!input.lastSuccessfulSyncAt && input.remoteStatus !== "loading") ||
       projectChanged)
   )
 }

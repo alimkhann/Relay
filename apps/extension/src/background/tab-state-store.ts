@@ -107,6 +107,12 @@ export function clearCaptureTimer(state: RelayTabState) {
   state.captureTimer = null;
 }
 
+export function abortInFlightCapture(state: RelayTabState) {
+  if (!state.captureAbortController) return;
+  state.captureAbortController.abort();
+  state.captureAbortController = undefined;
+}
+
 export function clearAssociationToastTimer(state: RelayTabState) {
   if (!state.associationToastTimer) return;
   clearTimeout(state.associationToastTimer);
@@ -248,6 +254,7 @@ export function updateTabPageState(tabId: number, page: RelayPageState) {
     clearAssociationToast(state);
   }
   if (routeChanged) {
+    abortInFlightCapture(state);
     state.lastError = null;
     state.capturePending = false;
     state.capturePendingAt = null;
@@ -271,6 +278,7 @@ export function updateTabPageState(tabId: number, page: RelayPageState) {
 export function clearTabState(tabId: number) {
   const state = tabStates.get(tabId);
   if (!state) return;
+  abortInFlightCapture(state);
   clearRetryTimer(state);
   clearCaptureTimer(state);
   clearAssociationToastTimer(state);

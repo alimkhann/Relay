@@ -200,9 +200,9 @@ export function snapshotToGraphData(snapshot: ProjectGraphSnapshot): GraphData {
             displayName: node.label,
             originalFileName: node.source.originalFileName ?? null,
             mimeType: node.source.mimeType ?? null,
-            byteSize: node.source.byteSize,
-            chunkCount: node.source.chunkCount,
-            tokenEstimate: node.source.tokenEstimate,
+            byteSize: node.source.byteSize ?? 0,
+            chunkCount: node.source.chunkCount ?? 0,
+            tokenEstimate: node.source.tokenEstimate ?? 0,
             previewText: node.content,
           }
         : undefined,
@@ -240,7 +240,8 @@ export function filterGraphData(data: GraphData, filters: GraphFilters): GraphDa
     if (node.kind === "memory" && filters.memoryTypes?.size && !filters.memoryTypes.has(node.type)) return false;
     if (filters.personalCategories?.size && node.kind === "memory") {
       const personalCategory = personalCategoryFromMetadata(node.metadata);
-      if (!personalCategory || !filters.personalCategories.has(personalCategory)) return false;
+      if (!personalCategory) return false;
+      if (!filters.personalCategories.has(personalCategory)) return false;
     }
     return true;
   });

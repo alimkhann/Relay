@@ -391,6 +391,10 @@
   border-color: color-mix(in srgb, #ef4444 48%, transparent);
   background: color-mix(in srgb, #ef4444 6%, var(--ec-soft));
 }
+.pendingSucceeded {
+  border-color: color-mix(in srgb, #16a34a 40%, transparent);
+  background: color-mix(in srgb, #16a34a 6%, var(--ec-soft));
+}
 .pendingError {
   margin-top: 4px;
   color: #ef4444;
@@ -1071,7 +1075,7 @@
 }
 .activityChain summary {
   cursor: pointer;
-  color: var(--ec-fg);
+  color: var(--ec-ink);
 }
 .activityChain ol {
   display: grid;

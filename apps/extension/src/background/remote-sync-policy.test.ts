@@ -89,7 +89,7 @@ describe("background remote sync policy", () => {
     ).toBe(true)
   })
 
-  it("syncs unsupported tabs while remote status is loading after a project switch", () => {
+  it("does not re-sync unsupported tabs while remote status is already loading", () => {
     expect(
       shouldSyncProjectDashboardOnly({
         pageSupported: false,
@@ -100,6 +100,6 @@ describe("background remote sync policy", () => {
         projectId: "project-b",
         lastSyncedProjectId: "project-b",
       }),
-    ).toBe(true)
+    ).toBe(false)
   })
 })

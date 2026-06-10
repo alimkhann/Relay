@@ -8,14 +8,23 @@ export interface PageController {
 }
 
 export function detectPlatformFromTabUrl(url: string): string | null {
-  if (/codex\.openai\.com/.test(url) || /chatgpt\.com\/codex|chat\.openai\.com\/codex/.test(url)) return "codex";
-  if (/chatgpt\.com|chat\.openai\.com/.test(url)) return "chatgpt";
-  if (/claude\.ai/.test(url)) return "claude";
-  if (/perplexity\.ai/.test(url)) return "perplexity";
-  if (/gemini\.google\.com|aistudio\.google\.com/.test(url)) return "gemini";
-  if (/grok\.com|x\.com\/i\/grok/.test(url)) return "grok";
-  if (/chat\.deepseek\.com/.test(url)) return "deepseek";
-  return null;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname;
+    const path = parsed.pathname;
+    if (host === "codex.openai.com" || (host.endsWith("openai.com") && path.includes("/codex"))) {
+      return "codex";
+    }
+    if (host === "chatgpt.com" || host === "chat.openai.com") return "chatgpt";
+    if (host === "claude.ai" || host.endsWith(".claude.ai")) return "claude";
+    if (host === "perplexity.ai" || host.endsWith(".perplexity.ai")) return "perplexity";
+    if (host === "gemini.google.com" || host === "aistudio.google.com") return "gemini";
+    if (host === "grok.com" || (host === "x.com" && path.startsWith("/i/grok"))) return "grok";
+    if (host === "chat.deepseek.com") return "deepseek";
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export function createPageController(deps: {

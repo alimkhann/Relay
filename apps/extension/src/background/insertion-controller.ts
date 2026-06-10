@@ -34,6 +34,7 @@ export function createInsertionController(deps: {
     explicitProjectId?: string,
     source: RelayInsertState["source"] = "sidebar",
   ) {
+    try {
     const state = getOrCreateTabState(tabId);
     const pageState = state.page.supported
       ? state.page
@@ -159,6 +160,20 @@ export function createInsertionController(deps: {
       context: { source, targetSurface: source, limitedMode, kind, actualModel: actualModel || null },
     });
     return { ok: true, limitedMode, stateStatus: generated.stateStatus ?? null };
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : "Insert project brief failed.";
+      recordBackgroundTelemetry({
+        level: "error",
+        surface: "extension-background",
+        area: "brief",
+        event: "brief_insert_failed",
+        flowId: createFlowId(),
+        message: reason,
+        tabId,
+        error: cause,
+      });
+      return { ok: false, reason };
+    }
   }
 
   return { insertProjectBrief };

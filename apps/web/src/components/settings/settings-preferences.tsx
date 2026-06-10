@@ -422,8 +422,21 @@ export function SettingsPreferences({
                 checked={!(settings.hideAskRelayDashboard ?? false)}
                 disabled={pending}
                 onChange={(on) => {
-                  update({ ...settings, hideAskRelayDashboard: !on }, `Ask Relay ${on ? "shown" : "hidden"}`)
-                  window.dispatchEvent(new CustomEvent<boolean>("relay:ask-relay-panel-changed", { detail: !on }))
+                  const nextSettings = { ...settings, hideAskRelayDashboard: !on }
+                  const previous = settings
+                  setSettings(nextSettings)
+                  startTransition(async () => {
+                    try {
+                      await save(nextSettings)
+                      showToast(`Ask Relay ${on ? "shown" : "hidden"}`)
+                      window.dispatchEvent(
+                        new CustomEvent<boolean>("relay:ask-relay-panel-changed", { detail: !on }),
+                      )
+                    } catch (error) {
+                      setSettings(previous)
+                      showToast(error instanceof Error ? error.message : "Save failed", 3000)
+                    }
+                  })
                 }}
               />
             </div>

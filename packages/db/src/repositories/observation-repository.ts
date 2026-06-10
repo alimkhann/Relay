@@ -129,7 +129,7 @@ export class ObservationRepository {
       limit?: number
     } = {},
   ): Promise<ObservationRow[]> {
-    const conditions = ["project_id = $1"]
+    const conditions = ["project_id IS NOT DISTINCT FROM $1::uuid"]
     const params: unknown[] = [projectId]
     let i = 2
 

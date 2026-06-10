@@ -39,14 +39,19 @@ export async function sendTabMessageWithTimeout<T>(
   timeoutMs: number,
   label: string,
 ): Promise<T> {
-  return await Promise.race([
-    chrome.tabs.sendMessage(tabId, message) as Promise<T>,
-    new Promise<T>((_, reject) => {
-      setTimeout(() => {
-        reject(new Error(`${label} timed out after ${timeoutMs}ms.`));
-      }, timeoutMs);
-    }),
-  ]);
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      chrome.tabs.sendMessage(tabId, message) as Promise<T>,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error(`${label} timed out after ${timeoutMs}ms.`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
 }
 
 export function createPendingOnboardingState(): RelayOnboardingState {
