@@ -705,23 +705,19 @@
   font: inherit;
 }
 
-/* Launcher button — prominent: accent surface, ink-on-accent text, theme-aware
- * via the data-theme attribute we set on the element. */
+/* Launcher — light surface in both themes; top edge stays visible against the
+ * panel chrome above (stronger hairline on light, softer on dark). */
 .reopen {
-  /* Light defaults, mirroring .root above. */
-  --ec-bg: #ffffff;
-  --ec-soft: #f4f4f5;
-  --ec-soft-hover: #e9e9eb;
-  --ec-ink: #0f0f0f;
-  --ec-muted: #71717a;
-  --ec-line: rgba(0, 0, 0, 0.08);
-  --ec-accent: #171717;
-  --ec-accent-ink: #fafafa;
+  --ec-launcher-surface: #fafafa;
+  --ec-launcher-hover: #f0f0f2;
+  --ec-launcher-ink: #171717;
+  --ec-launcher-muted: #52525b;
+  --ec-launcher-border: rgba(0, 0, 0, 0.14);
 
   border: 0;
-  border-top: 1px solid var(--ec-line);
-  background: var(--ec-accent);
-  color: var(--ec-accent-ink);
+  border-top: 1px solid var(--ec-launcher-border);
+  background: var(--ec-launcher-surface);
+  color: var(--ec-launcher-ink);
   font-size: 13px;
   font-weight: 600;
   padding: 12px;
@@ -732,21 +728,23 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  transition: filter 120ms ease, background 120ms ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.reopen svg {
+  color: var(--ec-launcher-muted);
 }
 .reopen:hover {
-  filter: brightness(1.08);
+  background: var(--ec-launcher-hover);
 }
 
 .reopen[data-theme="dark"] {
-  --ec-bg: #1a1a1c;
-  --ec-soft: #27272a;
-  --ec-soft-hover: #303033;
-  --ec-ink: #e4e4e7;
-  --ec-muted: #8b8b93;
-  --ec-line: rgba(255, 255, 255, 0.09);
-  --ec-accent: #e4e4e7;
-  --ec-accent-ink: #09090b;
+  --ec-launcher-surface: #f4f4f5;
+  --ec-launcher-hover: #e9e9eb;
+  --ec-launcher-ink: #18181b;
+  --ec-launcher-muted: #3f3f46;
+  --ec-launcher-border: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 /* Attachments. */

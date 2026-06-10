@@ -104,6 +104,7 @@ import type { RelayActiveProjectState, RelayProjectOption } from "../messaging/c
 import { preferContextPreviewOnSync } from "../utils/context-preview";
 import { LOCAL_PREVIEW_MUTATION_GUARD_MS } from "../utils/preview-mutation-guard";
 import { applyActionResultToContextPreview } from "../utils/context-preview-mutations";
+import { syncHideAskRelayExtension } from "../utils/ask-relay-visibility";
 import { getActiveTab } from "../utils/browser";
 import { relayFetch } from "../utils/api";
 import {
@@ -839,9 +840,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       setUserSettings(data.settings);
       // Sync the extension-only preference so ExtensionChat (a sibling component)
       // can read it without prop-drilling through sidepanel.tsx.
-      const shouldHide = Boolean(data.settings.hideAskRelayExtension);
-      localStorage.setItem("relay:hideAskRelayExtension", String(shouldHide));
-      window.dispatchEvent(new StorageEvent("storage", { key: "relay:hideAskRelayExtension", newValue: String(shouldHide) }));
+      syncHideAskRelayExtension(Boolean(data.settings.hideAskRelayExtension));
       userSettingsLoadedAt.current = Date.now();
       if (!walkthroughChecked.current) {
         walkthroughChecked.current = true;
@@ -3006,8 +3005,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 onChange={(e) => {
                   const hide = !e.target.checked;
                   void patchUserSettings({ hideAskRelayExtension: hide });
-                  localStorage.setItem("relay:hideAskRelayExtension", String(hide));
-                  window.dispatchEvent(new StorageEvent("storage", { key: "relay:hideAskRelayExtension", newValue: String(hide) }));
+                  syncHideAskRelayExtension(hide);
                 }}
               />
             </div>

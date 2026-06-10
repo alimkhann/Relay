@@ -35,6 +35,10 @@ import { filterRenderablePendingActions, shouldRenderPendingAction } from "@rela
 
 import type { RelayActiveProjectState } from "../messaging/contracts"
 import { MiniMarkdown } from "../utils/mini-markdown"
+import {
+  isAskRelayHidden,
+  subscribeHideAskRelayExtension
+} from "../utils/ask-relay-visibility"
 import { getActiveTab } from "../utils/browser"
 import { getRelaySession } from "../storage/session"
 import styles from "./extension-chat.module.css"
@@ -710,7 +714,7 @@ function MessageRow({
 }
 
 export function ExtensionChat() {
-  const [hidden, setHidden] = useState(() => localStorage.getItem("relay:hideAskRelayExtension") === "true")
+  const [hidden, setHidden] = useState(() => isAskRelayHidden())
   const [collapsed, setCollapsed] = useState(true)
   const [mode, setMode] = useState<SizeMode>("tall")
   const [height, setHeight] = useState(() =>
@@ -734,13 +738,7 @@ export function ExtensionChat() {
 
   const voice = useVoiceInput((text) => setDraft((d) => (d ? `${d} ${text}` : text)))
 
-  useEffect(() => {
-    const handler = (e: StorageEvent) => {
-      if (e.key === "relay:hideAskRelayExtension") setHidden(e.newValue === "true")
-    }
-    window.addEventListener("storage", handler)
-    return () => window.removeEventListener("storage", handler)
-  }, [])
+  useEffect(() => subscribeHideAskRelayExtension(setHidden), [])
 
   // Reset dismissal whenever the user tries again, so a fresh failure surfaces
   // the pill again instead of silently leaving the user stuck.
@@ -912,6 +910,8 @@ export function ExtensionChat() {
 
   const wrapperRef = useRef<HTMLDivElement>(null)
 
+  if (hidden) return null
+
   if (collapsed) {
     return (
       <button
@@ -925,8 +925,6 @@ export function ExtensionChat() {
       </button>
     )
   }
-
-  if (hidden) return null
 
   return (
     <div
