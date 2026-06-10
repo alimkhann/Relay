@@ -3,6 +3,7 @@
 Status: Draft for product/engineering review  
 Owner: Relay  
 Created: 2026-06-10  
+Updated: 2026-06-10 — corrected Folk reference to https://getfolk.app  
 Primary goal: turn Relay from an AI-chat memory utility into a cross-app personal/project memory layer with agentic actions and a conversion-focused onboarding funnel.
 
 ---
@@ -214,19 +215,33 @@ References:
 - https://developer.atlassian.com/cloud/jira/platform/webhooks/
 - https://developer.atlassian.com/cloud/jira/platform/oauth-2-3lo-apps/
 
-### 3.10 Folk / getfolk-style agent pattern
+### 3.10 Folk / getfolk.app agent pattern
 
-folk positions itself as a CRM that captures relationship context and uses AI assistants to automate work. It explicitly markets assistants that scan email and WhatsApp conversations, detect follow-up timing, generate recaps, scan emails/notes/meetings/WhatsApp/LinkedIn activity, and automate email outreach. It also uses a conversion-focused landing page with direct email capture, team-size segmentation, social proof, ratings, security trust badges, and a trial CTA.
+Correct reference: https://getfolk.app
+
+Folk is not the CRM at `folk.app`. The relevant product is a personal AI that lives inside text/chat surfaces. Its landing page positions it as “the AI in your texts that gets stuff done.” It says Folk can track flights, join meetings, research, coordinate with friends’ Folk agents, and keep going after being asked once. It emphasizes always-on execution, persistent memory, multiplayer/crew workflows, and chat-native access across iMessage, Telegram, Discord, and later Signal.
+
+Observed positioning patterns:
+
+- Chat-native distribution: the product lives where users already text.
+- Always-on promise: “text it once, it keeps going.”
+- Agent with a computer: it can browse, write code, manage email/calendar, send messages, run automations, and remember everything.
+- Persistent memory: every message, task, and preference becomes a private graph/wiki about the user.
+- Multiplayer delegation: one user’s agent can ask another user’s agent to do something, with approval and one-way privacy.
+- Conversion: 3-day free trial, Pro around $20/mo, Max around $100/mo, student/regional discounts, and concrete use-case testimonials.
 
 Implications for Relay:
 
-- Relay can adapt the pattern, but for “AI memory + personal/project context,” not just CRM.
-- The most powerful paid feature is not storage; it is proactive agentic value: follow-up suggestions, prep briefs, forgotten commitments, project next steps, and cross-app recall.
-- Landing should show concrete workflows and outcomes, not just “cool memory.”
+- Relay should not copy Folk as “another personal AI in texts.” Relay’s stronger wedge is memory infrastructure for AI tools plus integrations.
+- However, Relay should borrow Folk’s clarity: show concrete jobs the agent can keep doing, not just “context management.”
+- Relay’s Telegram bot should be a real product surface, not an afterthought. It can become the mobile-native personal memory/agent interface.
+- Relay Agent should be able to use connected integrations as tools, but with stronger source citations, scoped permissions, and personal/project memory separation.
+- Landing should show “text Relay / ask Relay / connect sources / it remembers and acts” with concrete workflows: follow-ups, meeting prep, project decisions, GitHub/Linear tasks, Gmail drafts, calendar planning.
+- Paid packaging can mirror the “always-on agent + better models + higher capacity” logic while staying differentiated through MCP, source-backed recall, and project memory.
 
-Reference:
+References:
 
-- https://www.folk.app/
+- https://getfolk.app
 
 ### 3.11 Anthropic Fable 5
 
@@ -308,8 +323,8 @@ Paid trigger: Gmail/Calendar/Telegram integrations, proactive follow-up and prep
 ### 6.3 Sales/relationship-heavy user
 
 Pain: forgets follow-ups, context scattered in Gmail/WhatsApp/LinkedIn/Calendar.  
-Value: folk-like personal relationship memory and follow-up agent.  
-Paid trigger: proactive follow-up assistant, CRM-like recaps, contact memory.
+Value: personal relationship memory and follow-up agent.  
+Paid trigger: proactive follow-up assistant, relationship recaps, contact memory.
 
 ### 6.4 Team/project user
 
