@@ -114,4 +114,17 @@ describe("isFreshChatKeyUpgrade", () => {
     const mod = await loadModule()
     expect(mod.isFreshChatKeyUpgrade("claude:conversation:abc", "claude:url:y")).toBe(false)
   })
+
+  it("treats a fingerprint-keyed chat gaining a conversation id as the same chat (migrate)", async () => {
+    const mod = await loadModule()
+    // ChatGPT: a fresh chat is keyed by page fingerprint until /c/{id} exists.
+    // The manual pick must survive the first answer or auto-capture misroutes.
+    expect(mod.isFreshChatKeyUpgrade("chatgpt:fingerprint:f1", "chatgpt:conversation:c1")).toBe(true)
+  })
+
+  it("does not migrate a fingerprint key into another fingerprint or pre-id key", async () => {
+    const mod = await loadModule()
+    expect(mod.isFreshChatKeyUpgrade("chatgpt:fingerprint:f1", "chatgpt:fingerprint:f2")).toBe(false)
+    expect(mod.isFreshChatKeyUpgrade("chatgpt:fingerprint:f1", "chatgpt:path:/")).toBe(false)
+  })
 })

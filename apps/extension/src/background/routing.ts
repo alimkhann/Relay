@@ -811,8 +811,22 @@ export function evaluateProjectRouting(input: EvaluateProjectRoutingInput): Rela
     }
   }
 
-  const confidence = resolveConfidence(top, runnerUp?.score ?? 0, input)
+  let confidence = resolveConfidence(top, runnerUp?.score ?? 0, input)
   const scoreGap = top.score - (runnerUp?.score ?? 0)
+
+  // Never silently auto-save into a project other than the user's current
+  // selection on content matching alone — a sibling project's name showing up
+  // in a chat is routine, not proof. Diverting requires either a previously
+  // approved association for this chat or the user's confirmation (hold).
+  if (
+    confidence === "high" &&
+    input.selectedProjectId &&
+    top.projectId !== input.selectedProjectId &&
+    !top.signalCategories.has("association")
+  ) {
+    confidence = "medium"
+    pushReason(top, "Held for confirmation because a different project is currently selected.")
+  }
 
   return {
     mode: confidence === "high" ? "auto-save" : confidence === "medium" ? "hold" : "ignore",

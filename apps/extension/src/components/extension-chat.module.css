@@ -346,6 +346,7 @@
   margin-top: 6px;
 }
 .memoryPreview {
+  position: relative;
   width: 100%;
   border: 1px solid var(--ec-line);
   background: var(--ec-surface);
@@ -353,6 +354,29 @@
   padding: 7px 8px;
   color: var(--ec-ink);
   white-space: pre-wrap;
+}
+/* Left type-color stripe + indented body so agent cards mirror the dashboard
+   memory cards (decision blue, task amber, constraint rose…). */
+.memoryAccent {
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+}
+.memoryPreviewBody {
+  margin-left: 7px;
+}
+.memoryLifecyclePill {
+  display: inline-block;
+  margin-left: 6px;
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
 }
 .memoryPreviewDeleted {
   border-color: color-mix(in srgb, #ef4444 48%, transparent);

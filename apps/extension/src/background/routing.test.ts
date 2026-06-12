@@ -750,4 +750,95 @@ describe("evaluateProjectRouting", () => {
     ).toBe(false)
   })
 
+  it("never auto-saves into a non-selected project without an approved association", () => {
+    const page = {
+      supported: true,
+      platform: "chatgpt" as const,
+      pathname: "/c/relay-work",
+      title: "Relay continuity sidebar work",
+      recentRoutingText:
+        "Relay continuity sidebar work\nuser: For Relay, refine the continuity sidebar capture and the quiet assistant rewrite for the Relay extension.",
+      recentUserTurnText:
+        "For Relay, refine the continuity sidebar capture and the quiet assistant rewrite for the Relay extension.",
+    }
+    const projects = [
+      {
+        id: "project_relay",
+        name: "Relay",
+        slug: "relay",
+        memoryCount: 10,
+        sessionCount: 5,
+        description: "AI memory extension with continuity sidebar and capture.",
+        routingContext: {
+          hasMeaningfulContext: true,
+          keywords: ["continuity", "sidebar", "capture", "assistant", "rewrite", "extension"],
+        },
+      },
+      {
+        id: "project_other",
+        name: "Sunnad",
+        slug: "sunnad",
+        memoryCount: 3,
+        sessionCount: 2,
+        routingContext: { hasMeaningfulContext: true, keywords: ["marketplace"] },
+      },
+    ]
+
+    // Strong content signals for Relay, but the user explicitly has Sunnad
+    // selected → must hold for confirmation, never silently divert the save.
+    const diverted = evaluateProjectRouting({
+      page,
+      projects,
+      selectedProjectId: "project_other",
+      lastTabProjectId: "project_other",
+      boundProject: null,
+      approvedAssociations: [],
+    })
+    expect(diverted.candidateProjectId).toBe("project_relay")
+    expect(diverted.mode).toBe("hold")
+
+    // Same signals with Relay itself selected → auto-save is still allowed.
+    const aligned = evaluateProjectRouting({
+      page,
+      projects,
+      selectedProjectId: "project_relay",
+      lastTabProjectId: "project_relay",
+      boundProject: { projectId: "project_relay", bindingKind: "tab" },
+      approvedAssociations: [],
+    })
+    expect(aligned.candidateProjectId).toBe("project_relay")
+    if (aligned.confidence === "high") {
+      expect(aligned.mode).toBe("auto-save")
+    }
+
+    // An approved association for this chat still wins over the selection gate.
+    const associated = evaluateProjectRouting({
+      page: { ...page, sourceConversationId: "relay-conv-1" },
+      projects,
+      selectedProjectId: "project_other",
+      lastTabProjectId: "project_other",
+      boundProject: null,
+      approvedAssociations: [
+        {
+          key: "chatgpt:conversation:relay-conv-1",
+          projectId: "project_relay",
+          projectName: "Relay",
+          projectSlug: "relay",
+          platform: "chatgpt",
+          domain: "chatgpt.com",
+          pathname: "/c/relay-work",
+          pageFingerprint: null,
+          sourceConversationId: "relay-conv-1",
+          url: null,
+          title: null,
+          recentUserTurnText: null,
+          sessionId: null,
+          approvedAt: new Date().toISOString(),
+        },
+      ],
+    })
+    expect(associated.candidateProjectId).toBe("project_relay")
+    expect(associated.mode).toBe("auto-save")
+  })
+
 })

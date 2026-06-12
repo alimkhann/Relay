@@ -128,7 +128,10 @@ export function createEmptyActiveProjectState(
     projectName: null,
     projectOptions: [],
     viewState: "unsupported",
-    showCue: true,
+    // Default OFF until effectiveInlineChip() is computed from real settings.
+    // A true default made the chip flash on page load for users who disabled
+    // auto-show, because the first broadcast races the async settings fetch.
+    showCue: false,
     status: "unavailable",
     message: "Open a supported AI chat to use Relay.",
     trustLine: "Built from recent chats and saved project context",

@@ -3010,10 +3010,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           })()}
 
           <div className={styles.settingsGroup}>
-            <span className={styles.settingsLabel}>Ask Relay</span>
+            <span className={styles.settingsLabel}>Relay agent</span>
             <div className={styles.settingsToggleRow}>
               <span className={styles.settingsToggleCopy}>
-                <span className={styles.settingsToggleTitle}>Show Ask Relay panel</span>
+                <span className={styles.settingsToggleTitle}>Show Relay agent panel</span>
                 <span className={styles.settingsToggleHint}>The chat panel at the bottom of the sidebar</span>
               </span>
               <input
@@ -3021,7 +3021,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
                 className={styles.settingsToggleInput}
                 checked={!(userSettings?.hideAskRelayExtension ?? false)}
                 disabled={userSettingsBusy || !userSettings}
-                aria-label="Show Ask Relay panel"
+                aria-label="Show Relay agent panel"
                 onChange={(e) => {
                   const hide = !e.target.checked;
                   void patchUserSettings({ hideAskRelayExtension: hide });
@@ -4574,7 +4574,7 @@ const SURFACE_LABELS: Record<string, string> = {
   mcp: "MCP",
   web: "Web",
   api: "API",
-  ask_relay: "Ask Relay",
+  ask_relay: "Relay agent",
   extension: "Extension",
   manual: "Manual",
 };
@@ -5086,7 +5086,7 @@ function UsageTable({
     { label: "Reads this month", used: n(u?.readsThisMonth), limit: l.readsMonthly, period: "mo" },
     { label: "Writes today", used: n(u?.writesToday), limit: l.writesDaily, period: "day" },
     { label: "Writes this month", used: n(u?.writesThisMonth), limit: l.writesMonthly, period: "mo" },
-    { label: "Ask Relay", used: n(u?.assistantMessagesThisMonth), limit: l.assistantMessagesMonthly, period: "mo" },
+    { label: "Agent messages", used: n(u?.assistantMessagesThisMonth), limit: l.assistantMessagesMonthly, period: "mo" },
     { label: "AI analyses", used: n(u?.aiAnalysesToday), limit: l.aiAnalysesPerUserDaily, period: "day" },
     { label: "Active projects", used: n(u?.activeProjects), limit: l.activeProjects, period: "" },
     { label: "External indexes", used: n(u?.externalSourceIndexesToday), limit: l.externalSourceIndexesDaily, period: "day" },
@@ -5095,8 +5095,8 @@ function UsageTable({
     { label: "Memory / project", limit: l.memoryItemsPerProject, period: "" },
     { label: "Uploaded sources / project", limit: l.sourcesPerProject, period: "" },
     { label: "External sources / project", limit: l.externalSourcesPerProject, period: "" },
-    { label: "Ask Relay tokens", limit: l.assistantTokensMonthly, period: "mo" },
-    { label: "Ask Relay steps / turn", limit: l.assistantMaxSteps, period: "" },
+    { label: "Agent tokens", limit: l.assistantTokensMonthly, period: "mo" },
+    { label: "Agent steps / turn", limit: l.assistantMaxSteps, period: "" },
   ];
   return (
     <div className={styles.usageTable}>

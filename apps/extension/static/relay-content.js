@@ -771,7 +771,9 @@
       projectName: "Checking project",
       projectOptions: [],
       viewState: "connected-loading",
-      showCue: true,
+      // Never show the cue from the fallback state: real settings haven't
+      // arrived yet, and users with auto-show disabled saw a flash otherwise.
+      showCue: false,
       status: "updating",
       message: "Checking this chat…",
       trustLine: "Built from recent chats and saved project context",
@@ -1869,11 +1871,29 @@
     return null;
   }
 
+  function isSiteModalOpen() {
+    // Site modals (announcements, settings dialogs…) must win over the chip.
+    // The chip's max z-index otherwise floats it above aria-modal overlays.
+    const candidates = document.querySelectorAll(
+      '[aria-modal="true"], [role="dialog"], dialog[open]',
+    );
+    for (const el of candidates) {
+      if (el.id === "relay-inline-chip" || el.closest("#relay-inline-chip")) continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 40 || rect.height < 40) continue;
+      const style = window.getComputedStyle(el);
+      if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") continue;
+      return true;
+    }
+    return false;
+  }
+
   function shouldRenderChip(activeState) {
     if (!isValidActiveProjectState(activeState)) return false;
     if (!activeState.page.supported) return false;
     if (!activeState.showCue && !relayChipState.forcedVisible) return false;
     if (relayChipState.dismissed && !relayChipState.forcedVisible) return false;
+    if (isSiteModalOpen()) return false;
 
     if (relayChipState.forcedVisible) return true;
 
@@ -2996,6 +3016,16 @@
     window.setInterval(() => {
       queuePageObservation(false);
     }, 1000);
+    // Re-evaluate chip visibility when a site modal opens/closes — page state
+    // doesn't change in that case, so the normal render triggers never fire.
+    let lastModalOpen = false;
+    window.setInterval(() => {
+      const modalOpen = isSiteModalOpen();
+      if (modalOpen !== lastModalOpen) {
+        lastModalOpen = modalOpen;
+        renderInlineChip();
+      }
+    }, 500);
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -3238,7 +3268,21 @@
     return false;
   });
 
+  // Only report errors that originate from THIS extension. The window "error"
+  // event also fires for the host site's own script errors (ChatGPT/Claude
+  // page bugs), which used to flood telemetry with thousands of blind events.
+  let inlineErrorBudget = 5;
+  function isRelayOriginError(event) {
+    const fromFile = typeof event.filename === "string" && event.filename.includes("extension://");
+    const fromStack =
+      event.error && typeof event.error.stack === "string" && event.error.stack.includes("extension://");
+    return fromFile || fromStack;
+  }
+
   window.addEventListener("error", (event) => {
+    if (!isRelayOriginError(event)) return;
+    if (inlineErrorBudget <= 0) return;
+    inlineErrorBudget -= 1;
     emitInlineTelemetry({
       level: "error",
       area: "runtime",
@@ -3250,16 +3294,26 @@
             stack: event.error.stack || null,
           }
         : { message: event.message || "Unhandled content-script error." },
+      context: { filename: event.filename || null, line: event.lineno || null },
     });
   });
 
   window.addEventListener("unhandledrejection", (event) => {
+    // Rejections from the page's own scripts can surface here too; only keep
+    // ones whose stack points at the extension, within the same budget.
+    const stack =
+      event.reason && typeof event.reason === "object" && typeof event.reason.stack === "string"
+        ? event.reason.stack
+        : "";
+    if (!stack.includes("extension://")) return;
+    if (inlineErrorBudget <= 0) return;
+    inlineErrorBudget -= 1;
     emitInlineTelemetry({
       level: "error",
       area: "runtime",
       event: "inline_chip.unhandled_rejection",
       message: "Unhandled content-script promise rejection.",
-      error: { message: String(event.reason) },
+      error: { message: String(event.reason), stack: stack || null },
     });
   });
 

@@ -149,14 +149,51 @@ const LIFECYCLE_PILL: Record<
   forgotten: { label: "forgotten", bg: "rgba(244,63,94,0.12)", fg: "#f43f5e" },
 }
 
+// Mirrors the dashboard memory card TYPE_ACCENT colors so action cards in the
+// extension read as the same decision/task/constraint objects.
+const TYPE_ACCENT_COLOR: Record<string, string> = {
+  decision: "var(--ec-accent)",
+  task: "#f59e0b",
+  constraint: "#f43f5e",
+  requirement: "#ef4444",
+  note: "#a1a1aa",
+  artifact: "#8b5cf6",
+}
+
+function accentColorFor(item: AssistantActionItem): string {
+  return TYPE_ACCENT_COLOR[item.type ?? ""] ?? "#a1a1aa"
+}
+
+function MemoryCardRow({ item, deleted = false }: { item: AssistantActionItem; deleted?: boolean }) {
+  const pill = item.lifecycle ? LIFECYCLE_PILL[item.lifecycle] : null
+  return (
+    <div className={`${styles.memoryPreview} ${deleted ? styles.memoryPreviewDeleted : ""}`}>
+      <span
+        aria-hidden="true"
+        className={styles.memoryAccent}
+        style={{ background: accentColorFor(item) }}
+      />
+      <div className={styles.memoryPreviewBody}>
+        <div className={styles.memoryPreviewMeta}>
+          {item.type ?? "memory"}{item.personalCategory ? ` · ${item.personalCategory}` : ""}
+          {pill ? (
+            <span
+              className={styles.memoryLifecyclePill}
+              style={{ background: pill.bg, color: pill.fg }}
+            >
+              {pill.label}
+            </span>
+          ) : null}
+        </div>
+        <div className={deleted ? styles.memoryPreviewStrike : ""}>{item.content ?? item.label}</div>
+      </div>
+    </div>
+  )
+}
+
 function MemoryPreview({ preview }: { preview: AssistantActionPreview }) {
   const render = (item: AssistantActionItem, deleted = false) => (
-    <div className={`${styles.memoryPreview} ${deleted ? styles.memoryPreviewDeleted : ""}`}>
-      <div className={styles.memoryPreviewMeta}>
-        {item.type ?? "memory"}{item.personalCategory ? ` · ${item.personalCategory}` : ""}
-      </div>
-      <div className={deleted ? styles.memoryPreviewStrike : ""}>{item.content ?? item.label}</div>
-    </div>
+    <MemoryCardRow item={item} deleted={deleted} />
   )
   if (preview.before && preview.after) {
     const same =
@@ -251,6 +288,17 @@ function ActionCard({
             const isUrl =
               typeof item.id === "string" && /^https?:\/\//i.test(item.id)
             const pill = item.lifecycle ? LIFECYCLE_PILL[item.lifecycle] : null
+            // Memory-bearing items render as memory-style cards (matching the
+            // dashboard); previews already do, so skip doubling up.
+            const memoryLike =
+              !r.previews?.length && !isUrl && Boolean(item.type || item.personalCategory || item.content)
+            if (memoryLike) {
+              return (
+                <li key={item.id ?? i} style={{ listStyle: "none" }}>
+                  <MemoryCardRow item={item} deleted={r.action === "deleted" && !undone} />
+                </li>
+              )
+            }
             return (
               <li key={item.id ?? i} className={styles.actionItem}>
                 <span style={{ color: "var(--ec-muted)" }}>—</span>
@@ -921,7 +969,7 @@ export function ExtensionChat() {
         onClick={() => setCollapsed(false)}
         aria-label="Open Relay chat"
       >
-        <Sparkles size={14} /> Ask Relay
+        <Sparkles size={14} /> Relay
       </button>
     )
   }

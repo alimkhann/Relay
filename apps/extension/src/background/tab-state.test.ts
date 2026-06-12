@@ -202,7 +202,10 @@ describe("shouldScheduleAutoCapture", () => {
           isStable: true,
           isStreaming: false,
           turns: 6,
-          captureSignature: "sig_2"
+          captureSignature: "sig_2",
+          recentUserTurnText: "Refine the continuity sidebar and keyboard dismiss flow.",
+          fullVisibleRoutingText:
+            "user: Refine the continuity sidebar and keyboard dismiss flow for the quiet assistant rewrite across surfaces."
         },
         capturePending: false,
         lastCapturedSignature: "sig_1",
@@ -219,7 +222,10 @@ describe("shouldScheduleAutoCapture", () => {
           isStable: false,
           isStreaming: false,
           turns: 6,
-          captureSignature: "sig_2"
+          captureSignature: "sig_2",
+          recentUserTurnText: "Refine the continuity sidebar and keyboard dismiss flow.",
+          fullVisibleRoutingText:
+            "user: Refine the continuity sidebar and keyboard dismiss flow for the quiet assistant rewrite across surfaces."
         },
         capturePending: false,
         lastCapturedSignature: "sig_1",
@@ -238,7 +244,10 @@ describe("shouldScheduleAutoCaptureRouting", () => {
       isStable: true,
       isStreaming: false,
       turns: 6,
-      captureSignature: "sig_2"
+      captureSignature: "sig_2",
+      recentUserTurnText: "Refine the continuity sidebar and keyboard dismiss flow.",
+      fullVisibleRoutingText:
+        "user: Refine the continuity sidebar and keyboard dismiss flow for the quiet assistant rewrite across surfaces."
     }
 
     expect(

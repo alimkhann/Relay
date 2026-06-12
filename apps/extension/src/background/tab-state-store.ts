@@ -46,7 +46,8 @@ export function createTabState(tabId: number): RelayTabState {
     chatAssociation: createEmptyChatAssociation(),
     routingReview: null,
     boundProject: null,
-    showCue: true,
+    // Hidden until settings resolve — see createEmptyActiveProjectState.
+    showCue: false,
     remoteStatus: "unavailable",
     lastSuccessfulSyncAt: null,
     lastError: null,

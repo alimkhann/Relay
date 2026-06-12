@@ -78,6 +78,12 @@ export function isFreshChatKeyUpgrade(oldKey: string, newKey: string): boolean {
   const oldPlatform = oldKey.split(":", 1)[0]
   const newPlatform = newKey.split(":", 1)[0]
   if (oldPlatform !== newPlatform) return false
+  // fingerprint → conversation is also the same chat gaining its real id
+  // (ChatGPT keys a fresh chat by page fingerprint until /c/{id} exists).
+  // Dropping the override here misrouted the very first auto-capture.
+  if (oldKey.includes(":fingerprint:")) {
+    return newKey.includes(":conversation:")
+  }
   const oldIsPreId = oldKey.includes(":path:") || oldKey.includes(":url:")
   const newIsStable = newKey.includes(":conversation:") || newKey.includes(":fingerprint:")
   return oldIsPreId && newIsStable
