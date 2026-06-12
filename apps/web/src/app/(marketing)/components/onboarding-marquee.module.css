@@ -1,0 +1,122 @@
+/* Copied from extension onboarding — icon theater + marquee rows */
+
+.iconTheater {
+  position: relative;
+  width: 100%;
+  height: 300px;
+  flex-shrink: 0;
+}
+
+.iconTheaterFullBleed {
+  position: relative;
+  width: 100%;
+  height: 340px;
+  flex-shrink: 0;
+}
+
+.marqueeWrap {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  padding: 16px 0;
+  -webkit-mask-image:
+    linear-gradient(to right, transparent 0%, black 28%, black 72%, transparent 100%),
+    linear-gradient(to bottom, transparent 0%, black 16%, black 84%, transparent 100%);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to right, transparent 0%, black 28%, black 72%, transparent 100%),
+    linear-gradient(to bottom, transparent 0%, black 16%, black 84%, transparent 100%);
+  mask-composite: intersect;
+}
+
+.theaterGlow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 280px;
+  height: 240px;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 255, 255, 0.16) 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    transparent 80%
+  );
+  pointer-events: none;
+  z-index: 2;
+}
+
+.marqueeRow {
+  overflow: hidden;
+  flex-shrink: 0;
+  height: 76px;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.marqueeRowWide {
+  overflow: hidden;
+  flex-shrink: 0;
+  height: 88px;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+@keyframes marqueeLeft {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-33.333%); }
+}
+
+@keyframes marqueeRight {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-33.333%); }
+}
+
+@keyframes marqueeLeftWide {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-12.5%); }
+}
+
+@keyframes marqueeRightWide {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-12.5%); }
+}
+
+.marqueeTrack {
+  display: flex;
+  gap: 16px;
+  width: max-content;
+  animation: marqueeLeft 14s linear infinite;
+  will-change: transform;
+}
+
+.marqueeTrackWide {
+  display: flex;
+  gap: 16px;
+  width: max-content;
+  animation: marqueeLeftWide 22s linear infinite;
+  will-change: transform;
+}
+
+.marqueeReverse {
+  animation-name: marqueeRight;
+  animation-duration: 14s;
+  animation-direction: reverse;
+}
+
+.marqueeReverseWide {
+  animation-name: marqueeRightWide;
+  animation-duration: 22s;
+  animation-direction: reverse;
+}
+
+.bgIconCell {
+  flex-shrink: 0;
+  opacity: 0.45;
+}

@@ -4,11 +4,11 @@ import { WebMcpBootstrap } from "@/components/webmcp/webmcp-bootstrap"
 
 export const metadata: Metadata = {
   metadataBase: new URL(APP_ORIGIN),
-  title: "Relay — Stop repeating yourself to every AI",
+  title: "Relay — Your AI tools finally remember your work",
   description:
     "Relay captures decisions, tasks, and constraints from your AI chats and keeps a living project brief synced across ChatGPT, Claude, Gemini, Cursor, Claude Code, and 20+ other tools via MCP.",
   openGraph: {
-    title: "Relay — Stop repeating yourself to every AI",
+    title: "Relay — Your AI tools finally remember your work",
     description:
       "Relay captures context from your AI chats and keeps a living project brief synced across ChatGPT, Claude, Cursor, Claude Code, and 20+ tools.",
     type: "website",
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Relay — Stop repeating yourself to every AI",
+    title: "Relay — Your AI tools finally remember your work",
     description:
       "Relay captures context from your AI chats and keeps a living project brief synced across ChatGPT, Claude, Cursor, Claude Code, and 20+ tools.",
     creator: "@onrelayapp",

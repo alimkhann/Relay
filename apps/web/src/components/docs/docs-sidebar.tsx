@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 
 import { cn } from "@/lib/cn"
+import { resolveDocsBackLink } from "@/components/docs/docs-back-link"
 
 export const sectionGroups = [
   {
@@ -40,6 +41,8 @@ export function DocsSidebar() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const project = searchParams.get("project")
+  const from = searchParams.get("from")
+  const back = resolveDocsBackLink(from, project)
 
   return (
     <nav className="sticky top-0 hidden h-screen w-56 shrink-0 overflow-y-auto border-r border-[var(--relay-line)] py-16 pl-4 pr-6 md:block">
@@ -84,10 +87,10 @@ export function DocsSidebar() {
       </div>
       <div className="mt-8 border-t border-[var(--relay-line)] pt-4">
         <Link
-          href={project ? `/dashboard?project=${encodeURIComponent(project)}` : "/dashboard"}
+          href={back.href}
           className="block text-[12px] text-[var(--relay-muted)] transition hover:text-[var(--relay-ink)]"
         >
-          &larr; Back to dashboard
+          &larr; {back.label}
         </Link>
       </div>
     </nav>

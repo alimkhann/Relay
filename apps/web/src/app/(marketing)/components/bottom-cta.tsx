@@ -7,12 +7,17 @@ import { useRef, useState } from "react"
 
 import { trackMarketingEvent } from "./analytics"
 import { pickOppositeLandingBackground, pickRandomLandingBackground } from "../background-images"
+import { LANDING_COPY } from "../landing-copy"
+import { useLandingCopyExperiment } from "@/lib/telemetry/use-landing-copy-experiment"
 
 const ease = [0.25, 0.1, 0.25, 1] as const
 
 export function BottomCta({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: "-80px" })
+  const variant = useLandingCopyExperiment()
+  const copy = LANDING_COPY[variant]
+  const isVariantHeadline = variant === "variant"
   const [backgroundSrc] = useState(() =>
     pickOppositeLandingBackground(pickRandomLandingBackground()),
   )
@@ -46,11 +51,20 @@ export function BottomCta({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
           transition={{ duration: 0.6, ease }}
           className="text-4xl md:text-6xl font-semibold tracking-tight text-white leading-[1.1]"
         >
-          Stop repeating yourself
-          <br />
-          to{" "}
+          {isVariantHeadline ? (
+            <>
+              {copy.line1}
+              <br />
+            </>
+          ) : (
+            <>
+              {copy.line1}
+              <br />
+              to{" "}
+            </>
+          )}
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-white via-[#f1f1f5] to-[#bfc0ca] [text-shadow:0_0_18px_rgba(255,255,255,0.14)]">
-            every AI
+            {copy.line2Gradient}
           </span>
         </motion.h2>
 
@@ -58,10 +72,9 @@ export function BottomCta({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
           initial={{ opacity: 0, y: 20 }}
           animate={inView ? { opacity: 1, y: 0 } : undefined}
           transition={{ duration: 0.6, delay: 0.1, ease }}
-          className="mt-6 text-base md:text-lg text-white/50 leading-relaxed max-w-xl mx-auto"
+          className="mt-6 text-base md:text-lg text-white/50 leading-relaxed max-w-xl mx-auto text-balance"
         >
-          Relay keeps your project context ready so every fresh chat starts
-          where you left off — across every tool you use.
+          {copy.subheadLine1} {copy.subheadLine2} {copy.subheadLine3}
         </motion.p>
 
         <motion.div

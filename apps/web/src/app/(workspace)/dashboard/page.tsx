@@ -180,7 +180,7 @@ export default async function DashboardPage({
               (!settings.settings.walkthrough?.dismissedAt &&
               onboarding.completedVia !== "extension")
             }
-            walkthroughInitialStep={walkthroughParam === "extension" ? 4 : 0}
+            walkthroughInitialStep={walkthroughParam === "extension" ? "extension" : 0}
           />
         </div>
       ) : null}

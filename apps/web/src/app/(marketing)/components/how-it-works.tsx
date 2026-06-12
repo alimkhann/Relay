@@ -1,8 +1,8 @@
 "use client"
 
 import Image from "next/image"
-import { motion, useInView } from "motion/react"
-import { useRef } from "react"
+import { motion, useInView, useReducedMotion } from "motion/react"
+import { useEffect, useRef, useState } from "react"
 import type { ReactNode } from "react"
 import OpenAI from "@lobehub/icons/es/OpenAI"
 import Claude from "@lobehub/icons/es/Claude"
@@ -14,10 +14,35 @@ import ClaudeCode from "@lobehub/icons/es/ClaudeCode"
 import Cursor from "@lobehub/icons/es/Cursor"
 import Codex from "@lobehub/icons/es/Codex"
 import Antigravity from "@lobehub/icons/es/Antigravity"
-import Windsurf from "@lobehub/icons/es/Windsurf"
 import GithubCopilot from "@lobehub/icons/es/GithubCopilot"
+import styles from "./how-it-works-orbit.module.css"
 
 const ease = [0.25, 0.1, 0.25, 1] as const
+const ORBIT_RADIUS_PX = 58
+const ORBIT_DURATION_MS = 22_000
+const BADGE_SIZE_PX = 48
+
+function useOrbitAngle(reverse: boolean, active: boolean) {
+  const [angle, setAngle] = useState(0)
+
+  useEffect(() => {
+    if (!active) return
+
+    let frame = 0
+    const startedAt = performance.now()
+
+    const tick = (now: number) => {
+      const progress = ((now - startedAt) % ORBIT_DURATION_MS) / ORBIT_DURATION_MS
+      setAngle((reverse ? -progress : progress) * 360)
+      frame = requestAnimationFrame(tick)
+    }
+
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  }, [reverse, active])
+
+  return angle
+}
 
 const STEPS = [
   {
@@ -40,94 +65,115 @@ const STEPS = [
   },
 ]
 
-interface TickerItem {
-  name: string
-  icon: ReactNode
-}
-
-const BROWSER_AIS: TickerItem[] = [
-  { name: "ChatGPT", icon: <OpenAI size={16} /> },
-  { name: "Claude", icon: <Claude size={16} /> },
-  { name: "Gemini", icon: <Gemini size={16} /> },
-  { name: "Grok", icon: <Grok size={16} /> },
-  { name: "Perplexity", icon: <Perplexity size={16} /> },
-  { name: "DeepSeek", icon: <DeepSeek size={16} /> },
+const BROWSER_ICONS: ReactNode[] = [
+  <OpenAI key="openai" size={18} />,
+  <Claude key="claude" size={18} />,
+  <Gemini key="gemini" size={18} />,
+  <Grok key="grok" size={18} />,
+  <Perplexity key="perplexity" size={18} />,
+  <DeepSeek key="deepseek" size={18} />,
 ]
 
-const IDE_AGENTS: TickerItem[] = [
-  { name: "Claude Code", icon: <ClaudeCode size={16} /> },
-  { name: "Cursor", icon: <Cursor size={16} /> },
-  { name: "Codex", icon: <Codex size={16} /> },
-  { name: "Antigravity", icon: <Antigravity size={16} /> },
-  { name: "Windsurf", icon: <Windsurf size={16} /> },
-  { name: "Copilot", icon: <GithubCopilot size={16} /> },
+const IDE_ICONS: ReactNode[] = [
+  <ClaudeCode key="claude-code" size={18} />,
+  <Cursor key="cursor" size={18} />,
+  <Codex key="codex" size={18} />,
+  <Antigravity key="antigravity" size={18} />,
+  <GithubCopilot key="copilot" size={18} />,
+  <Grok key="grok-ide" size={18} />,
 ]
 
-function DiagramTicker({
-  items,
-  direction = "left",
-  speed = "normal",
+function IconOrbit({
+  icons,
+  label,
+  reverse = false,
 }: {
-  items: TickerItem[]
-  direction?: "left" | "right"
-  speed?: "slow" | "normal"
+  icons: ReactNode[]
+  label: string
+  reverse?: boolean
 }) {
-  const duration = speed === "slow" ? "40s" : "25s"
+  const reducedMotion = useReducedMotion()
+  const orbitAngle = useOrbitAngle(reverse, !reducedMotion)
+  const step = 360 / icons.length
+  const badgeOffset = BADGE_SIZE_PX / 2
 
   return (
-    <div
-      className="relative max-w-[220px] overflow-hidden"
-      style={{
-        maskImage:
-          "linear-gradient(to right, transparent 0%, black 15%, black 85%, transparent 100%)",
-        WebkitMaskImage:
-          "linear-gradient(to right, transparent 0%, black 15%, black 85%, transparent 100%)",
-      }}
-    >
-      <div
-        className="flex w-max gap-2.5"
-        style={{
-          animation: `hiw-ticker ${duration} linear infinite ${direction === "right" ? "reverse" : ""}`,
-        }}
-      >
-        {[...items, ...items, ...items].map((item, i) => (
-          <div
-            key={i}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/[0.08] bg-white/[0.03] whitespace-nowrap"
-          >
-            <span className="w-4 h-4 flex-shrink-0 flex items-center justify-center">
-              {item.icon}
-            </span>
-            <span className="text-[11px] text-white/55 font-medium">
-              {item.name}
-            </span>
-          </div>
-        ))}
-      </div>
+    <div className="flex flex-col items-center gap-4">
+      <p className="text-sm font-medium text-white/70">{label}</p>
+      <div className={styles.orbitStage} aria-hidden>
+        {icons.map((icon, index) => {
+          const radians = ((step * index + orbitAngle) * Math.PI) / 180
+          const x = Math.sin(radians) * ORBIT_RADIUS_PX
+          const y = -Math.cos(radians) * ORBIT_RADIUS_PX
 
-      <style jsx>{`
-        @keyframes hiw-ticker {
-          0% {
-            transform: translateX(0);
-          }
-          100% {
-            transform: translateX(-33.333%);
-          }
-        }
-      `}</style>
+          return (
+            <div
+              key={index}
+              className={styles.orbitBadge}
+              style={{
+                left: `calc(50% + ${x}px - ${badgeOffset}px)`,
+                top: `calc(50% + ${y}px - ${badgeOffset}px)`,
+              }}
+            >
+              {icon}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
 
-function BidirectionalArrow() {
+function FlowConnector({ orientation }: { orientation: "horizontal" | "vertical" }) {
+  if (orientation === "vertical") {
+    return (
+      <svg className="h-14 w-8 shrink-0" viewBox="0 0 32 56" fill="none" aria-hidden>
+        <defs>
+          <linearGradient id="flow-v" x1="16" y1="4" x2="16" y2="52" gradientUnits="userSpaceOnUse">
+            <stop stopColor="rgba(255,255,255,0.22)" />
+            <stop offset="1" stopColor="rgba(255,255,255,0.06)" />
+          </linearGradient>
+        </defs>
+        <polygon points="16,6 10,16 22,16" fill="url(#flow-v)" />
+        <line x1="16" y1="16" x2="16" y2="40" stroke="url(#flow-v)" strokeWidth="1.5" strokeDasharray="5 5">
+          <animate attributeName="stroke-dashoffset" from="10" to="0" dur="1.2s" repeatCount="indefinite" />
+        </line>
+        <polygon points="16,50 10,40 22,40" fill="url(#flow-v)" />
+      </svg>
+    )
+  }
+
   return (
-    <svg className="w-full h-6" viewBox="0 0 120 24" fill="none">
-      <polygon points="4,12 12,6 12,18" fill="currentColor" className="text-white/15" />
-      <line x1="12" y1="12" x2="108" y2="12" stroke="currentColor" className="text-white/10" strokeWidth="1" strokeDasharray="4 4">
-        <animate attributeName="stroke-dashoffset" from="8" to="0" dur="1.5s" repeatCount="indefinite" />
+    <svg className="h-8 w-full min-w-[72px] max-w-[120px]" viewBox="0 0 120 32" fill="none" aria-hidden>
+      <defs>
+        <linearGradient id="flow-h" x1="4" y1="16" x2="116" y2="16" gradientUnits="userSpaceOnUse">
+          <stop stopColor="rgba(255,255,255,0.22)" />
+          <stop offset="1" stopColor="rgba(255,255,255,0.06)" />
+        </linearGradient>
+      </defs>
+      <polygon points="6,16 16,8 16,24" fill="url(#flow-h)" />
+      <line x1="16" y1="16" x2="104" y2="16" stroke="url(#flow-h)" strokeWidth="1.5" strokeDasharray="5 5">
+        <animate attributeName="stroke-dashoffset" from="10" to="0" dur="1.2s" repeatCount="indefinite" />
       </line>
-      <polygon points="116,12 108,6 108,18" fill="currentColor" className="text-white/15" />
+      <polygon points="114,16 104,8 104,24" fill="url(#flow-h)" />
     </svg>
+  )
+}
+
+function RelayHub() {
+  return (
+    <div className="flex flex-col items-center gap-3 px-2">
+      <Image
+        src="/images/relay_logo_white.png"
+        alt="Relay"
+        width={120}
+        height={36}
+        className="h-9 w-auto md:h-11"
+      />
+      <p className="max-w-[12rem] text-center text-[11px] leading-snug text-white/40">
+        Captures context from chats and syncs it to your agents
+      </p>
+    </div>
   )
 }
 
@@ -136,26 +182,24 @@ export function HowItWorks() {
   const inView = useInView(ref, { once: true, margin: "-80px" })
 
   return (
-    <section className="bg-[#0a0a0a] py-24 md:py-32 px-5" ref={ref}>
+    <section className="bg-[#0a0a0a] px-5 py-24 md:py-32" ref={ref}>
       <div className="mx-auto max-w-5xl">
-        {/* Section header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={inView ? { opacity: 1, y: 0 } : undefined}
           transition={{ duration: 0.5, ease }}
           className="mb-16"
         >
-          <p className="text-[10px] tracking-[0.2em] font-medium text-white/45 uppercase mb-4">
+          <p className="mb-4 text-[10px] font-medium uppercase tracking-[0.2em] text-white/45">
             How it works
           </p>
-          <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-white">
+          <h2 className="text-3xl font-semibold tracking-tight text-white md:text-4xl">
             A calmer loop than copy-pasting
             <br className="hidden sm:block" /> transcripts
           </h2>
         </motion.div>
 
-        {/* Steps */}
-        <div className="grid md:grid-cols-3 gap-8 md:gap-6">
+        <div className="grid gap-8 md:grid-cols-3 md:gap-6">
           {STEPS.map((step, i) => (
             <motion.div
               key={step.number}
@@ -163,75 +207,35 @@ export function HowItWorks() {
               animate={inView ? { opacity: 1, y: 0 } : undefined}
               transition={{ duration: 0.5, delay: 0.1 + i * 0.1, ease }}
             >
-              <span className="text-4xl md:text-5xl font-semibold text-white/[0.06] tabular-nums leading-none">
+              <span className="text-4xl font-semibold leading-none text-white/[0.06] tabular-nums md:text-5xl">
                 {step.number}
               </span>
-              <h3 className="mt-3 text-lg font-medium text-white/90">
-                {step.title}
-              </h3>
-              <p className="mt-2 text-sm text-white/45 leading-relaxed">
-                {step.description}
-              </p>
+              <h3 className="mt-3 text-lg font-medium text-white/90">{step.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-white/45">{step.description}</p>
             </motion.div>
           ))}
         </div>
 
-        {/* Flow diagram — 3-column ticker layout */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={inView ? { opacity: 1, y: 0 } : undefined}
           transition={{ duration: 0.8, delay: 0.5, ease }}
           className="mt-20"
         >
-          {/* Desktop: 3-column grid */}
-          <div className="hidden sm:grid grid-cols-[1fr_auto_1fr] gap-4 items-center">
-            {/* Browser Chats column */}
-            <div className="flex flex-col items-center gap-3">
-              <span className="text-sm font-medium text-white/70">
-                Browser Chats
-              </span>
-              <DiagramTicker items={BROWSER_AIS} direction="left" speed="slow" />
-            </div>
-
-            {/* Relay column — elevated */}
-            <div className="flex items-center gap-3 relative -top-3">
-              <div className="w-16 md:w-20">
-                <BidirectionalArrow />
-              </div>
-              <div className="flex flex-col items-center gap-2 px-4">
-                <Image src="/images/relay_logo_white.png" alt="Relay" width={80} height={24} className="h-6 w-auto" />
-                <p className="text-[11px] text-white/35 whitespace-nowrap">auto-captures &amp; syncs</p>
-              </div>
-              <div className="w-16 md:w-20">
-                <BidirectionalArrow />
-              </div>
-            </div>
-
-            {/* IDE Agents column */}
-            <div className="flex flex-col items-center gap-3">
-              <span className="text-sm font-medium text-white/70">
-                IDE Agents
-              </span>
-              <DiagramTicker items={IDE_AGENTS} direction="right" speed="normal" />
-            </div>
+          <div className="hidden items-center justify-center gap-6 lg:flex lg:gap-8">
+            <IconOrbit icons={BROWSER_ICONS} label="Browser chats" />
+            <FlowConnector orientation="horizontal" />
+            <RelayHub />
+            <FlowConnector orientation="horizontal" />
+            <IconOrbit icons={IDE_ICONS} label="IDE agents" reverse />
           </div>
 
-          {/* Mobile: vertical stack */}
-          <div className="flex sm:hidden flex-col items-center gap-4">
-            <div className="flex flex-col items-center gap-3">
-              <span className="text-sm font-medium text-white/70">Browser Chats</span>
-              <DiagramTicker items={BROWSER_AIS} direction="left" speed="slow" />
-            </div>
-            <span className="text-white/15 text-lg">↕</span>
-            <div className="flex flex-col items-center gap-2">
-              <Image src="/images/relay_logo_white.png" alt="Relay" width={67} height={20} className="h-5 w-auto" />
-              <p className="text-[11px] text-white/35">auto-captures &amp; syncs</p>
-            </div>
-            <span className="text-white/15 text-lg">↕</span>
-            <div className="flex flex-col items-center gap-3">
-              <span className="text-sm font-medium text-white/70">IDE Agents</span>
-              <DiagramTicker items={IDE_AGENTS} direction="right" speed="normal" />
-            </div>
+          <div className="flex flex-col items-center gap-5 lg:hidden">
+            <IconOrbit icons={BROWSER_ICONS} label="Browser chats" />
+            <FlowConnector orientation="vertical" />
+            <RelayHub />
+            <FlowConnector orientation="vertical" />
+            <IconOrbit icons={IDE_ICONS} label="IDE agents" reverse />
           </div>
         </motion.div>
       </div>

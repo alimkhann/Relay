@@ -7,6 +7,7 @@ import { ChevronDown } from "lucide-react"
 
 import { cn } from "@/lib/cn"
 import { sectionGroups } from "@/components/docs/docs-sidebar"
+import { resolveDocsBackLink } from "@/components/docs/docs-back-link"
 
 function withProject(href: string, project: string | null) {
   if (!project) return href
@@ -18,6 +19,8 @@ export function DocsMobileNav() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const project = searchParams.get("project")
+  const from = searchParams.get("from")
+  const back = resolveDocsBackLink(from, project)
   const [open, setOpen] = useState(false)
 
   let currentLabel = "Navigation"
@@ -79,11 +82,11 @@ export function DocsMobileNav() {
 
           <div className="mt-3 border-t border-[var(--relay-line)] pt-3">
             <Link
-              href={project ? `/dashboard?project=${encodeURIComponent(project)}` : "/dashboard"}
+              href={back.href}
               onClick={() => setOpen(false)}
               className="block text-[12px] text-[var(--relay-muted)] transition hover:text-[var(--relay-ink)]"
             >
-              &larr; Back to dashboard
+              &larr; {back.label}
             </Link>
           </div>
         </nav>

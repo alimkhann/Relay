@@ -6,6 +6,7 @@ import Link from "next/link"
 import { Check } from "lucide-react"
 import { PRICING } from "../pricing.config"
 import { cn } from "@/lib/cn"
+import { BillingIntervalToggle } from "@/components/billing/billing-interval-toggle"
 import { trackMarketingEvent } from "./analytics"
 
 const ease = [0.25, 0.1, 0.25, 1] as const
@@ -107,7 +108,7 @@ function PricingCard({
 export function PricingSection() {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: "-80px" })
-  const [yearly, setYearly] = useState(false)
+  const [yearly, setYearly] = useState(true)
 
   useEffect(() => {
     if (!inView) return
@@ -138,42 +139,23 @@ export function PricingSection() {
           </p>
         </motion.div>
 
-        {/* Billing toggle */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={inView ? { opacity: 1, y: 0 } : undefined}
           transition={{ duration: 0.4, delay: 0.1, ease }}
-          className="relative flex items-center justify-center gap-3 mb-10"
+          className="mb-10"
         >
-          <span className={cn("text-sm transition-colors", !yearly ? "text-white/80" : "text-white/35")}>
-            Monthly
-          </span>
-          <button
-            onClick={() => {
+          <BillingIntervalToggle
+            variant="marketing"
+            interval={yearly ? "year" : "month"}
+            onChange={(next) => setYearly(next === "year")}
+            onToggle={(next) => {
               trackMarketingEvent("pricing_interval_toggled", {
                 source: "pricing_section",
-                interval: yearly ? "month" : "year",
+                interval: next,
               })
-              setYearly(!yearly)
             }}
-            className={cn(
-              "relative w-11 h-6 rounded-full transition-colors duration-200",
-              yearly ? "bg-white/20" : "bg-white/10"
-            )}
-          >
-            <div
-              className={cn(
-                "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform duration-200",
-                yearly ? "translate-x-[22px]" : "translate-x-0.5"
-              )}
-            />
-          </button>
-          <span className={cn("text-sm transition-colors", yearly ? "text-white/80" : "text-white/35")}>
-            Yearly
-          </span>
-          <span className={cn("absolute left-[calc(50%+84px)] pl-2 text-[11px] font-medium transition-opacity whitespace-nowrap", yearly ? "text-emerald-400/60 opacity-100" : "opacity-0")}>
-            Save 17%
-          </span>
+          />
         </motion.div>
 
         {/* Cards */}

@@ -12,17 +12,22 @@ import {
   useSpring,
   useTransform,
 } from "motion/react"
-import { ArrowRight, Menu, X } from "lucide-react"
+import { ArrowRight, ArrowUpRight, Menu, X } from "lucide-react"
+import { usePathname } from "next/navigation"
 import { ChromeWebstoreBadge } from "@/components/chrome-webstore-badge"
+import { docsHref } from "@/components/docs/docs-back-link"
 
 const NAV_LINKS = [
-  { label: "Home", href: "#top" },
-  { label: "MCP", href: "#mcp" },
-  { label: "Pricing", href: "#pricing" },
-  { label: "Docs", href: "/docs", external: true },
+  { label: "Home", href: "#top", homeAware: true },
+  { label: "MCP", href: "/mcp" },
+  { label: "Pricing", href: "/pricing" },
+  { label: "Blog", href: "/blog" },
+  { label: "Docs", href: docsHref("landing"), external: true },
 ]
 
 export function Nav({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
+  const pathname = usePathname()
+  const onMarketingHome = pathname === "/"
   const [shaped, setShaped] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [isDesktop, setIsDesktop] = useState(false)
@@ -107,23 +112,63 @@ export function Nav({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
 
           {/* Desktop nav links — absolute centered */}
           <div className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center justify-center gap-7">
-            {NAV_LINKS.map((link) => (
-              <a
-                key={link.label}
-                href={link.href}
-                onClick={() => {
-                  if (link.label === "Docs") {
-                    trackMarketingEvent("docs_clicked", { source: "nav_desktop" })
-                  }
-                }}
-                {...(link.external
-                  ? { target: "_blank", rel: "noopener noreferrer" }
-                  : {})}
-                className="text-[13px] text-white/45 hover:text-white/90 transition-colors duration-200"
-              >
-                {link.label}
-              </a>
-            ))}
+            {NAV_LINKS.map((link) => {
+              const href =
+                link.homeAware && !onMarketingHome
+                  ? "/"
+                  : link.href.startsWith("/")
+                    ? link.href
+                    : onMarketingHome
+                      ? link.href
+                      : `/${link.href}`
+              const useLink = href.startsWith("/")
+              const className = cn(
+                "group inline-flex items-center gap-0.5 text-[13px] text-white/45 transition-colors duration-200 hover:text-white/90",
+                link.external && "gap-1",
+              )
+              const onDocsClick = () => {
+                if (link.label === "Docs") {
+                  trackMarketingEvent("docs_clicked", { source: "nav_desktop" })
+                }
+              }
+              return useLink ? (
+                <Link
+                  key={link.label}
+                  href={href}
+                  onClick={onDocsClick}
+                  {...(link.external
+                    ? { target: "_blank", rel: "noopener noreferrer" }
+                    : {})}
+                  className={className}
+                >
+                  {link.label}
+                  {link.external ? (
+                    <ArrowUpRight
+                      size={11}
+                      className="opacity-0 transition-opacity duration-200 group-hover:opacity-60"
+                    />
+                  ) : null}
+                </Link>
+              ) : (
+                <a
+                  key={link.label}
+                  href={href}
+                  onClick={onDocsClick}
+                  {...(link.external
+                    ? { target: "_blank", rel: "noopener noreferrer" }
+                    : {})}
+                  className={className}
+                >
+                  {link.label}
+                  {link.external ? (
+                    <ArrowUpRight
+                      size={11}
+                      className="opacity-0 transition-opacity duration-200 group-hover:opacity-60"
+                    />
+                  ) : null}
+                </a>
+              )
+            })}
           </div>
 
           {/* Desktop CTA cluster */}
@@ -178,24 +223,62 @@ export function Nav({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
             className="fixed inset-x-0 top-[68px] z-40 bg-[#0a0a0a]/98 backdrop-blur-xl border-y border-white/[0.06] shadow-[0_18px_50px_rgba(0,0,0,0.45)] md:hidden"
           >
             <div className="px-5 pt-7 pb-6 flex flex-col gap-6">
-              {NAV_LINKS.map((link) => (
-                <a
-                  key={link.label}
-                  href={link.href}
-                  onClick={() => {
-                    if (link.label === "Docs") {
-                      trackMarketingEvent("docs_clicked", { source: "nav_mobile" })
-                    }
-                    setMobileOpen(false)
-                  }}
-                  {...(link.external
-                    ? { target: "_blank", rel: "noopener noreferrer" }
-                    : {})}
-                  className="text-base text-white/60 hover:text-white transition-colors py-0.5"
-                >
-                  {link.label}
-                </a>
-              ))}
+              {NAV_LINKS.map((link) => {
+                const href =
+                  link.homeAware && !onMarketingHome
+                    ? "/"
+                    : link.href.startsWith("/")
+                      ? link.href
+                      : onMarketingHome
+                        ? link.href
+                        : `/${link.href}`
+                const useLink = href.startsWith("/")
+                const mobileClass =
+                  "group inline-flex items-center gap-1 text-base text-white/60 transition-colors hover:text-white py-0.5"
+                const onNavClick = () => {
+                  if (link.label === "Docs") {
+                    trackMarketingEvent("docs_clicked", { source: "nav_mobile" })
+                  }
+                  setMobileOpen(false)
+                }
+                return useLink ? (
+                  <Link
+                    key={link.label}
+                    href={href}
+                    onClick={onNavClick}
+                    {...(link.external
+                      ? { target: "_blank", rel: "noopener noreferrer" }
+                      : {})}
+                    className={mobileClass}
+                  >
+                    {link.label}
+                    {link.external ? (
+                      <ArrowUpRight
+                        size={12}
+                        className="opacity-50 transition-opacity group-hover:opacity-80"
+                      />
+                    ) : null}
+                  </Link>
+                ) : (
+                  <a
+                    key={link.label}
+                    href={href}
+                    onClick={onNavClick}
+                    {...(link.external
+                      ? { target: "_blank", rel: "noopener noreferrer" }
+                      : {})}
+                    className={mobileClass}
+                  >
+                    {link.label}
+                    {link.external ? (
+                      <ArrowUpRight
+                        size={12}
+                        className="opacity-50 transition-opacity group-hover:opacity-80"
+                      />
+                    ) : null}
+                  </a>
+                )
+              })}
               <ChromeWebstoreBadge
                 source="nav_mobile"
                 onClick={() => {

@@ -3,7 +3,7 @@
 import Image from "next/image"
 import { motion, useInView } from "motion/react"
 import { useCallback, useEffect, useRef, useState } from "react"
-import type { KeyboardEvent, RefObject } from "react"
+import type { KeyboardEvent } from "react"
 import {
   Zap,
   FileText,
@@ -17,13 +17,6 @@ import { trackMarketingEvent } from "./analytics"
 import type { LucideIcon } from "lucide-react"
 
 const ease = [0.25, 0.1, 0.25, 1] as const
-
-const LAUNCH_VIDEO = {
-  href: "https://youtu.be/15aqzManX-0",
-  poster: "/images/video-posters/relay-launch.webp",
-  previewMp4: "/videos/relay-launch-preview.mp4",
-  previewWebm: "/videos/relay-launch-preview.webm",
-}
 
 const FEATURES = [
   {
@@ -67,37 +60,6 @@ const FEATURES = [
     poster: "/images/video-posters/cross-surface-sync.webp",
   },
 ]
-
-function useElementSeen(ref: RefObject<Element | null>, rootMargin = "160px") {
-  const [seen, setSeen] = useState(false)
-
-  useEffect(() => {
-    const element = ref.current
-    if (!element || seen) return
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry?.isIntersecting) {
-          setSeen(true)
-          observer.disconnect()
-        }
-      },
-      { rootMargin, threshold: 0.01 },
-    )
-
-    observer.observe(element)
-
-    return () => {
-      observer.disconnect()
-    }
-  }, [ref, rootMargin, seen])
-
-  return seen
-}
-
-/* ------------------------------------------------------------------ */
-/*  Feature Card — video-first layout with hover-play + modal         */
-/* ------------------------------------------------------------------ */
 
 interface FeatureCardProps {
   feature: {
@@ -249,87 +211,6 @@ function FeatureCard({ feature, inView, index }: FeatureCardProps) {
   )
 }
 
-function LaunchVideoCard() {
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const cardRef = useRef<HTMLAnchorElement>(null)
-  const shouldLoadPreview = useElementSeen(cardRef, "240px")
-
-  useEffect(() => {
-    const video = videoRef.current
-    if (!video || !shouldLoadPreview) return
-
-    void video.play().catch(() => {})
-  }, [shouldLoadPreview])
-
-  return (
-    <a
-      ref={cardRef}
-      href={LAUNCH_VIDEO.href}
-      target="_blank"
-      rel="noopener noreferrer"
-      onClick={() =>
-        trackMarketingEvent("launch_video_clicked", {
-          source: "features_section",
-        })
-      }
-      className="block relative group rounded-2xl overflow-hidden border border-white/[0.07] hover:border-white/[0.14] transition-colors duration-300 aspect-video"
-    >
-      <Image
-        src={LAUNCH_VIDEO.poster}
-        alt=""
-        fill
-        className="object-cover transition-transform duration-500 group-hover:scale-[1.01]"
-        sizes="(min-width: 1024px) 1024px, 100vw"
-      />
-      {shouldLoadPreview ? (
-        <video
-          ref={videoRef}
-          className="absolute inset-0 h-full w-full object-cover"
-          poster={LAUNCH_VIDEO.poster}
-          muted
-          loop
-          playsInline
-          preload="none"
-          aria-hidden="true"
-          tabIndex={-1}
-        >
-          <source src={LAUNCH_VIDEO.previewWebm} type="video/webm" />
-          <source src={LAUNCH_VIDEO.previewMp4} type="video/mp4" />
-        </video>
-      ) : null}
-
-      {/* Gradient overlay for depth */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/10 pointer-events-none" />
-
-      {/* Play button — visible before the teaser loads and on coarse pointers */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div
-          className={`w-16 h-16 md:w-20 md:h-20 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center transition-opacity duration-300 shadow-[0_0_40px_rgba(255,255,255,0.1)] ${
-            shouldLoadPreview ? "opacity-0 group-hover:opacity-100" : "opacity-100"
-          }`}
-        >
-          <Play
-            size={28}
-            className="text-white ml-1"
-            fill="currentColor"
-          />
-        </div>
-      </div>
-
-      {/* Bottom label */}
-      <div className="absolute bottom-4 left-4 pointer-events-none">
-        <span className="text-xs font-medium text-white/60 group-hover:text-white/80 transition-colors">
-          Watch the launch video
-        </span>
-      </div>
-    </a>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/*  Features Section                                                   */
-/* ------------------------------------------------------------------ */
-
 export function FeaturesSection() {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: "-80px" })
@@ -350,16 +231,6 @@ export function FeaturesSection() {
           <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-white">
             Context that moves with you
           </h2>
-        </motion.div>
-
-        {/* Launch teaser loads only when the section is viewed on capable devices. */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={inView ? { opacity: 1, y: 0 } : undefined}
-          transition={{ duration: 0.5, delay: 0.05, ease }}
-          className="mb-10"
-        >
-          <LaunchVideoCard />
         </motion.div>
 
         {/* Card grid */}

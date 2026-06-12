@@ -28,7 +28,10 @@ import { DashboardActivityCard } from "@/features/projects/dashboard-activity-ca
 import { DashboardGovernanceSummary } from "@/features/projects/dashboard-governance-summary";
 import { MemoryGraphContainer } from "@/features/graph/memory-graph-container";
 import { MIN_GRAPH_ITEMS } from "@/features/graph/memory-graph-utils";
-import { WalkthroughModal } from "@/components/onboarding/walkthrough-modal";
+import {
+  WalkthroughModal,
+  type WalkthroughMode,
+} from "@/components/onboarding/walkthrough-modal";
 import { logClientEvent } from "@/lib/telemetry/client";
 import { relayClientFetch } from "@/lib/telemetry/fetch";
 
@@ -90,7 +93,7 @@ function groupSessionsByConversation(
 interface DashboardContentProps {
   project: { id: string; name: string; description?: string | null; projectUrl?: string | null; kind?: "project" | "personal" };
   walkthroughInitiallyOpen?: boolean;
-  walkthroughInitialStep?: number;
+  walkthroughInitialStep?: number | "extension";
 }
 
 export function DashboardContent({ project, walkthroughInitiallyOpen = false, walkthroughInitialStep = 0 }: DashboardContentProps) {
@@ -103,6 +106,9 @@ export function DashboardContent({ project, walkthroughInitiallyOpen = false, wa
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [walkthroughOpen, setWalkthroughOpen] = useState(walkthroughInitiallyOpen);
+  const [walkthroughMode, setWalkthroughMode] = useState<WalkthroughMode>(
+    walkthroughInitiallyOpen ? "onboarding" : "guide",
+  );
   const [scanPending, setScanPending] = useState(false);
   const [projectNameDraft, setProjectNameDraft] = useState(project.name);
   const [projectDescriptionDraft, setProjectDescriptionDraft] = useState(
@@ -156,37 +162,53 @@ export function DashboardContent({ project, walkthroughInitiallyOpen = false, wa
     });
   }, [project.id]);
 
+  const walkthrough = (
+    <WalkthroughModal
+      open={walkthroughOpen}
+      onOpenChange={setWalkthroughOpen}
+      surface="web"
+      mode={walkthroughMode}
+      initialStep={walkthroughInitialStep}
+    />
+  );
+
   if (!dashboard) {
     if (isPending) {
       return (
-        <div className="space-y-6">
-          <div className="flex items-start justify-between gap-3">
-            <div className="space-y-2">
-              <Skeleton className="h-7 w-56" />
-              <Skeleton className="h-4 w-80" />
+        <>
+          <div className="space-y-6">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-2">
+                <Skeleton className="h-7 w-56" />
+                <Skeleton className="h-4 w-80" />
+              </div>
+              <Skeleton className="h-7 w-20" />
             </div>
-            <Skeleton className="h-7 w-20" />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Skeleton className="h-24 w-full rounded-[var(--relay-radius)]" />
+              <Skeleton className="h-24 w-full rounded-[var(--relay-radius)]" />
+              <Skeleton className="h-24 w-full rounded-[var(--relay-radius)]" />
+            </div>
+            <Skeleton className="h-12 w-full rounded-[var(--relay-radius)]" />
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              <Skeleton className="h-40 w-full rounded-[var(--relay-radius)]" />
+              <Skeleton className="h-40 w-full rounded-[var(--relay-radius)]" />
+            </div>
+            <Skeleton className="h-48 w-full rounded-[var(--relay-radius)]" />
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Skeleton className="h-24 w-full rounded-[var(--relay-radius)]" />
-            <Skeleton className="h-24 w-full rounded-[var(--relay-radius)]" />
-            <Skeleton className="h-24 w-full rounded-[var(--relay-radius)]" />
-          </div>
-          <Skeleton className="h-12 w-full rounded-[var(--relay-radius)]" />
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <Skeleton className="h-40 w-full rounded-[var(--relay-radius)]" />
-            <Skeleton className="h-40 w-full rounded-[var(--relay-radius)]" />
-          </div>
-          <Skeleton className="h-48 w-full rounded-[var(--relay-radius)]" />
-        </div>
+          {walkthrough}
+        </>
       );
     }
     return (
-      <EmptyState
-        title="No data yet"
-        description="Your dashboard fills in after your first chat capture."
-        className="py-12"
-      />
+      <>
+        <EmptyState
+          title="No data yet"
+          description="Your dashboard fills in after your first chat capture."
+          className="py-12"
+        />
+        {walkthrough}
+      </>
     );
   }
 
@@ -359,7 +381,10 @@ export function DashboardContent({ project, walkthroughInitiallyOpen = false, wa
                 size="sm"
                 aria-label="Open guide"
                 className="h-7 w-7 p-0 text-[var(--relay-muted)] hover:text-[var(--relay-ink)]"
-                onClick={() => setWalkthroughOpen(true)}
+                onClick={() => {
+                  setWalkthroughMode("guide");
+                  setWalkthroughOpen(true);
+                }}
               >
                 <HelpCircle className="h-4 w-4" />
               </Button>
@@ -631,12 +656,7 @@ export function DashboardContent({ project, walkthroughInitiallyOpen = false, wa
         </div>
       )}
 
-      <WalkthroughModal
-        open={walkthroughOpen}
-        onOpenChange={setWalkthroughOpen}
-        surface="web"
-        initialStep={walkthroughInitialStep}
-      />
+      {walkthrough}
     </div>
   );
 }

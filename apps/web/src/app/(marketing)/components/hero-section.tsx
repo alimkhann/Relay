@@ -10,6 +10,8 @@ import { ChevronDown } from "lucide-react"
 import { usePreloaderReady } from "./use-preloader-ready"
 import { pickRandomLandingBackground } from "../background-images"
 import { ChromeWebstoreBadge } from "@/components/chrome-webstore-badge"
+import { LANDING_COPY } from "../landing-copy"
+import { useLandingCopyExperiment } from "@/lib/telemetry/use-landing-copy-experiment"
 
 const ease = [0.25, 0.1, 0.25, 1] as const
 
@@ -24,7 +26,10 @@ const fadeUp = {
 
 export function HeroSection({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
   const ready = usePreloaderReady()
+  const variant = useLandingCopyExperiment()
+  const copy = LANDING_COPY[variant]
   const [backgroundSrc] = useState(() => pickRandomLandingBackground())
+  const isVariantHeadline = variant === "variant"
 
   return (
     <section id="top" className="relative min-h-screen flex flex-col">
@@ -74,26 +79,36 @@ export function HeroSection({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
             animate={ready ? "visible" : "hidden"}
             className="text-[2.15rem] sm:text-5xl md:text-7xl font-semibold tracking-tight leading-[1.02] text-white text-balance max-w-[11ch] sm:max-w-none mx-auto"
           >
-            Stop repeating yourself
-            <br className="hidden md:block" />
-            <span className="md:hidden"> </span>
-            to{" "}
+            {isVariantHeadline ? (
+              <>
+                {copy.line1}
+                <br className="hidden md:block" />
+                <span className="md:hidden"> </span>
+              </>
+            ) : (
+              <>
+                {copy.line1}
+                <br className="hidden md:block" />
+                <span className="md:hidden"> </span>
+                to{" "}
+              </>
+            )}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-white via-[#f1f1f5] to-[#bfc0ca] [text-shadow:0_0_18px_rgba(255,255,255,0.14)]">
-              every AI
+              {copy.line2Gradient}
             </span>
           </motion.h1>
 
-          {/* Subheadline — 2 lines desktop, 3 mobile */}
-          <motion.p
+          <motion.div
             custom={0.2}
             variants={fadeUp}
             initial="hidden"
             animate={ready ? "visible" : "hidden"}
-            className="mt-6 text-[14px] sm:text-base md:text-lg text-white/60 leading-relaxed max-w-[46rem] mx-auto px-2 sm:px-0"
+            className="mt-6 mx-auto max-w-[36rem] md:max-w-[46rem] px-2 sm:px-0 text-[14px] sm:text-base md:text-lg text-white/60 leading-relaxed text-balance space-y-1"
           >
-            Relay captures what matters from your AI chats and keeps a living project brief ready
-            <br className="hidden md:block" /> — so every fresh conversation starts where you left off.
-          </motion.p>
+            <p>{copy.subheadLine1}</p>
+            <p>{copy.subheadLine2}</p>
+            <p>{copy.subheadLine3}</p>
+          </motion.div>
 
           {/* CTAs */}
           <motion.div
@@ -101,21 +116,21 @@ export function HeroSection({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
             variants={fadeUp}
             initial="hidden"
             animate={ready ? "visible" : "hidden"}
-            className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3"
+            className="mt-10 flex flex-row flex-wrap items-center justify-center gap-2 max-[380px]:gap-1.5"
           >
             <ChromeWebstoreBadge
               source="hero_primary"
+              compact
               onClick={() => {
                 trackMarketingEvent("add_to_chrome_clicked", { source: "hero_primary" })
               }}
-              className="pl-4 pr-7 py-3"
             />
             <Link
               href={isLoggedIn ? "/dashboard" : "/get-started"}
               onClick={() => {
                 trackMarketingEvent("get_started_clicked", { source: "hero_primary" })
               }}
-              className="inline-flex items-center gap-2 rounded-full bg-white text-[#0a0a0a] shadow-[0_2px_12px_rgba(255,255,255,0.08)] px-7 py-3 text-sm font-semibold transition-all duration-300 ease-out hover:-translate-y-px hover:shadow-[0_4px_20px_rgba(255,255,255,0.14)]"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white text-[#0a0a0a] shadow-[0_2px_12px_rgba(255,255,255,0.08)] px-4 py-2 text-xs font-semibold transition-all duration-300 ease-out hover:-translate-y-px hover:shadow-[0_4px_20px_rgba(255,255,255,0.14)] md:px-5 md:py-2.5 md:text-sm"
             >
               {isLoggedIn ? "Dashboard" : "Get Started"}
               <span className="text-xs">→</span>
@@ -135,7 +150,7 @@ export function HeroSection({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
               target="_blank"
               rel="noopener noreferrer"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+              { }
               <img
                 alt="Relay - Stop repeating yourself to every AI | Product Hunt"
                 src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1126723&theme=dark&t=1779707024093"
@@ -148,7 +163,7 @@ export function HeroSection({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
               target="_blank"
               rel="noreferrer"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+              { }
               <img
                 src="https://peerlist.io/api/v1/projects/embed/PRJHNN7EKKAB8LBPNCOG6R9GR8LL68?showUpvote=true&theme=dark"
                 alt="Relay — AI Memory & Context Sync"

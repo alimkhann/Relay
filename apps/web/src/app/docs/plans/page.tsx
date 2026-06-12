@@ -127,19 +127,19 @@ export default function PlansDocsPage() {
                 ...PLAN_TABLE_ROWS,
                 ...SOURCE_LIMIT_ROWS,
                 {
-                  label: "Ask Relay AI assistant",
+                  label: "Relay agent",
                   free: `${FREE_LIMITS.assistantMessagesMonthly} / month`,
                   starter: `${STARTER_LIMITS.assistantMessagesMonthly} / month · ${STARTER_LIMITS.assistantMessagesDaily} / day`,
                   pro: `${PRO_LIMITS.assistantMessagesMonthly} / month · ${PRO_LIMITS.assistantMessagesDaily} / day`,
                 },
                 {
-                  label: "Ask Relay token safety cap / month",
+                  label: "Agent token safety cap / month",
                   free: FREE_LIMITS.assistantTokensMonthly.toLocaleString("en-US"),
                   starter: STARTER_LIMITS.assistantTokensMonthly.toLocaleString("en-US"),
                   pro: PRO_LIMITS.assistantTokensMonthly.toLocaleString("en-US"),
                 },
                 {
-                  label: "Ask Relay max steps / turn",
+                  label: "Agent max steps / turn",
                   free: FREE_LIMITS.assistantMaxSteps.toLocaleString("en-US"),
                   starter: STARTER_LIMITS.assistantMaxSteps.toLocaleString("en-US"),
                   pro: PRO_LIMITS.assistantMaxSteps.toLocaleString("en-US"),
@@ -159,7 +159,7 @@ export default function PlansDocsPage() {
           </div>
         </div>
         <p className="text-[13px] text-[var(--relay-muted)]">
-          Reads and writes are account-level action limits shared across Relay surfaces. Passive dashboard loading, cache refreshes, background sync, and internal Ask Relay tool calls do not consume them.
+          Reads and writes are account-level action limits shared across Relay surfaces. Passive dashboard loading, cache refreshes, background sync, and internal Relay agent tool calls do not consume them.
         </p>
       </section>
 

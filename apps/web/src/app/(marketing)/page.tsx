@@ -1,8 +1,10 @@
 import { Nav } from "./components/nav"
 import { HeroSection } from "./components/hero-section"
+import { LaunchVideoSection } from "./components/launch-video-section"
 import { HeroVisual } from "./components/hero-visual"
-import { FeaturesSection } from "./components/features-section"
+import { PainSection } from "./components/pain-section"
 import { HowItWorks } from "./components/how-it-works"
+import { FeaturesSection } from "./components/features-section"
 import { McpSection } from "./components/mcp-section"
 import { PricingSection } from "./components/pricing-section"
 import { Faq } from "./components/faq"
@@ -28,9 +30,11 @@ export default async function LandingPage() {
       />
       <Nav isLoggedIn={isLoggedIn} />
       <HeroSection isLoggedIn={isLoggedIn} />
+      <LaunchVideoSection />
       <HeroVisual />
-      <FeaturesSection />
+      <PainSection />
       <HowItWorks />
+      <FeaturesSection />
       <McpSection />
       <PricingSection />
       <Faq />
