@@ -4,7 +4,8 @@ import { NextResponse } from "next/server"
 // Vercel Hobby caps serverless maxDuration at 60s; keep each sweep under that.
 export const maxDuration = 60
 
-import { createRepositoryBundle, createWorkerRepositoryBundle } from "@relay/db"
+import type { createRepositoryBundle} from "@relay/db";
+import { createWorkerRepositoryBundle } from "@relay/db"
 
 import {
   EMBEDDING_MODEL,

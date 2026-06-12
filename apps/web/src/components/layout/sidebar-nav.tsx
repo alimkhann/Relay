@@ -48,8 +48,8 @@ export function SidebarNav({
     ? `/chat?project=${currentProjectId}`
     : "/chat";
   const docsHref = currentProjectId
-    ? `/docs?project=${currentProjectId}`
-    : "/docs";
+    ? `/docs?from=dashboard&project=${encodeURIComponent(currentProjectId)}`
+    : "/docs?from=dashboard";
 
   const navItems: NavItem[] = [
     {

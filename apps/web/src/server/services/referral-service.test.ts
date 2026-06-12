@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
 
+import { PRICING } from "@/app/(marketing)/pricing.config"
+
 import {
   getReferralRefereeDiscountBasisPoints,
   getReferralRewardBasisPoints,
@@ -71,8 +73,11 @@ describe("referral reward policy", () => {
   })
 
   it("caps referrer reward value to a monthly-equivalent credit", () => {
-    expect(getReferralRewardValueCents("starter", 2500)).toBe(150)
-    expect(getReferralRewardValueCents("starter", 10000)).toBe(600)
-    expect(getReferralRewardValueCents("pro", 5000)).toBe(600)
+    // Derived from live PRICING so a price change can't silently break this.
+    const starterMonthlyCents = PRICING.starter.monthlyPrice * 100
+    const proMonthlyCents = PRICING.pro.monthlyPrice * 100
+    expect(getReferralRewardValueCents("starter", 2500)).toBe(Math.round(starterMonthlyCents * 0.25))
+    expect(getReferralRewardValueCents("starter", 10000)).toBe(starterMonthlyCents)
+    expect(getReferralRewardValueCents("pro", 5000)).toBe(Math.round(proMonthlyCents * 0.5))
   })
 })

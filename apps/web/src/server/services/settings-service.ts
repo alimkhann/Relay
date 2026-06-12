@@ -50,6 +50,7 @@ function normalizeSettings(input: Partial<UserSettingsRow["settings"]> | null | 
     ...(input?.walkthrough !== undefined
       ? { walkthrough: input.walkthrough }
       : {}),
+    ...(input?.persona !== undefined ? { persona: input.persona } : {}),
   }
 }
 

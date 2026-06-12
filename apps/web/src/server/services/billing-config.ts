@@ -131,32 +131,33 @@ export const PLAN_LIMIT_ROWS = [
   { label: "External source searches / day", key: "externalSourceSearchesDaily" },
 ] as const
 
+// Cards sell OUTCOMES, not quota tables — exact limits live on /docs/plans.
 export const PLAN_MARKETING_COPY = {
   free: {
     features: [
-      `Up to ${FREE_LIMITS.activeProjects} projects to keep your work organized`,
-      `${formatNumber(FREE_LIMITS.readsMonthly)} reads / month`,
-      `${formatNumber(FREE_LIMITS.writesMonthly)} writes / month`,
-      "Try Relay across your browser and connected AI tools",
+      "Try Relay memory with your AI chats",
+      `${FREE_LIMITS.activeProjects} projects to keep your work organized`,
       "One-click capture from ChatGPT, Claude & more",
+      "MCP for Claude Code, Cursor & coding agents",
+      "Enough reads & writes to feel the difference",
     ],
   },
   starter: {
     features: [
-      `Up to ${STARTER_LIMITS.activeProjects} projects to keep your work organized`,
-      `${formatNumber(STARTER_LIMITS.readsMonthly)} reads / month`,
-      `${formatNumber(STARTER_LIMITS.writesMonthly)} writes / month`,
-      "Relay keeps your project context up to date automatically",
+      "Never re-explain a project to your AI again",
+      `${STARTER_LIMITS.activeProjects} projects with long-term memory`,
+      "Context updates itself as you work — automatically",
       "Richer briefs that carry continuity between sessions",
+      "Enough usage for daily AI work, every day",
     ],
   },
   pro: {
     features: [
-      `Up to ${PRO_LIMITS.activeProjects} projects to keep your work organized`,
-      `${formatNumber(PRO_LIMITS.readsMonthly)} reads / month`,
-      `${formatNumber(PRO_LIMITS.writesMonthly)} writes / month`,
-      "Highest-quality AI model for summaries and reflections",
-      "Most proactive context updates with conflict resolution",
+      "Everything in Starter, with the most headroom",
+      `${PRO_LIMITS.activeProjects} projects, highest limits everywhere`,
+      "Highest-quality AI model for summaries and briefs",
+      "Most proactive updates with conflict resolution",
+      "Relay agent without thinking about quotas",
     ],
   },
 } as const
@@ -173,7 +174,7 @@ export const PLAN_GLOSSARY = [
   {
     term: "Reads",
     plain:
-      "Explicit requests that retrieve saved Relay context, including MCP calls and Ask Relay retrieval turns.",
+      "Explicit requests that retrieve saved Relay context, including MCP calls and Relay agent retrieval turns.",
   },
   {
     term: "Sources",

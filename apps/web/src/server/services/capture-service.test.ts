@@ -82,7 +82,7 @@ describe("linkSessionToProjects", () => {
     const result = await linkSessionToProjects("user", SESSION, [PROJECT_B])
 
     expect(result.linked).toEqual([PROJECT_B])
-    expect(linkToProjectsMock).toHaveBeenCalledWith(SESSION, [PROJECT_B])
+    expect(linkToProjectsMock).toHaveBeenCalledWith(SESSION, [PROJECT_B], "user")
     expect(enqueueDigestJobMock).toHaveBeenCalledTimes(1)
     expect(enqueueDigestJobMock).toHaveBeenCalledWith(
       "user",
@@ -99,7 +99,7 @@ describe("linkSessionToProjects", () => {
     const result = await linkSessionToProjects("user", SESSION, [PERSONAL])
 
     expect(result.linked).toEqual([PERSONAL])
-    expect(linkToProjectsMock).toHaveBeenCalledWith(SESSION, [PERSONAL])
+    expect(linkToProjectsMock).toHaveBeenCalledWith(SESSION, [PERSONAL], "user")
     // CRITICAL: Personal must NOT get a project session_digest...
     expect(enqueueDigestJobMock).not.toHaveBeenCalled()
     // ...it gets durable user facts via the salience router instead.

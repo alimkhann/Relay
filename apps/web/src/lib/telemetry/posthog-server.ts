@@ -20,6 +20,8 @@ interface CaptureServerEventInput {
   event: string
   distinctId: string
   properties: Record<string, PosthogScalar>
+  /** Person properties to set on the distinct id (PostHog $set). */
+  set?: Record<string, PosthogScalar>
   timestamp?: string | null
   uuid?: string | null
 }
@@ -44,6 +46,7 @@ export function captureServerEvent(input: CaptureServerEventInput) {
         environment: getServerEnvironment(),
         release: getServerRelease(),
         ...input.properties,
+        ...(input.set ? { $set: input.set } : {}),
       },
     }),
   }).catch(() => {})
@@ -92,8 +95,11 @@ export function captureServerException(
 
   captureServerEvent({
     event: "$exception",
-    distinctId: context.distinctId ?? `anon-${crypto.randomUUID()}`,
+    // Stable personless id for anonymous exceptions — random per-event ids
+    // were creating a new PostHog person per exception.
+    distinctId: context.distinctId ?? "relay-server-anon",
     properties: {
+      ...(context.distinctId ? {} : { $process_person_profile: false }),
       ...context.properties,
       path: context.path ?? context.properties?.path ?? null,
       method: context.method ?? context.properties?.method ?? null,

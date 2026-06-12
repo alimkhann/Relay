@@ -63,7 +63,10 @@ const SAFE_CONTEXT_KEYS = new Set([
   "payingActiveUsers",
   "payingUserCostSharePct",
   "path",
+  "paywallReason",
+  "paywall_reason",
   "period",
+  "persona",
   "plan",
   "platform",
   "provider",
@@ -197,6 +200,16 @@ export function buildPosthogExceptionProperties(input: TelemetryEventInput) {
   }
 }
 
+function getErrorMessage(error: unknown) {
+  if (!error) return null
+  if (typeof error === "string") return error.slice(0, 300)
+  if (typeof error === "object") {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === "string" && message.length > 0) return message.slice(0, 300)
+  }
+  return null
+}
+
 export function buildPosthogEvent(input: TelemetryEventInput) {
   const projectId = input.projectId ?? getStringContextValue(input.context, "projectId")
 
@@ -211,6 +224,10 @@ export function buildPosthogEvent(input: TelemetryEventInput) {
       project_id: projectId ?? null,
       session_id: input.sessionId ?? null,
       tab_id: input.tabId ?? null,
+      // Without these, error events were undiagnosable in PostHog (thousands
+      // of inline_chip_error rows carrying no message at all).
+      message: typeof input.message === "string" ? input.message.slice(0, 300) : null,
+      error_message: getErrorMessage(input.error),
       ...pickSafeContext(input.context),
     },
   }

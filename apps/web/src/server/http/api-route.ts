@@ -78,8 +78,12 @@ export function withApiRoute<TArgs extends [Request, ...unknown[]]>(
         }
 
         if (isValidationError(error)) {
+          // Unauthenticated validation failures are bot/stale-client noise
+          // (e.g. logged-out extensions polling /api/extension/bindings) —
+          // keep them out of PostHog. Debug level logs to console only.
+          const hasAuth = Boolean(request.headers.get("authorization"))
           await logServerEvent({
-            level: "warn",
+            level: hasAuth ? "warn" : "debug",
             surface: "web-api",
             area: "validation",
             event: "api.validation_failed",

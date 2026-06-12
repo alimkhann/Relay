@@ -491,6 +491,11 @@ export interface UserSettingsRow {
       dismissedAt: string | null
       completedVia: "web" | "extension" | null
     }
+    /** Onboarding persona — tailors walkthrough order, paywall copy, analytics. */
+    persona?: {
+      kind: "project_work" | "personal" | "relationships" | "team" | "research" | "content" | null
+      contextSources: string[]
+    }
     /** @deprecated compatibility alias for dashboard visibility */
     hideAskRelayPanel?: boolean
     hideAskRelayDashboard?: boolean

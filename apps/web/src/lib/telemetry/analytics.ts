@@ -286,9 +286,16 @@ export function buildRelayAnalyticsPayload(
     properties.is_fatal = getContextBoolean(contextScalars, "is_fatal", "isFatal") ?? true
   }
 
+  // Anonymous server events get a STABLE distinct id + personless processing.
+  // Per-event random anon ids created a new PostHog person for every event
+  // (13k+ junk persons/month from unauthenticated extension traffic alone).
+  if (!userId) {
+    properties["$process_person_profile"] = false
+  }
+
   return {
     event: canonicalEvent,
-    distinctId: userId ?? `anon-${crypto.randomUUID()}`,
+    distinctId: userId ?? "relay-server-anon",
     properties,
   }
 }

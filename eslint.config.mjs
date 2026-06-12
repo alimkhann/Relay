@@ -20,7 +20,8 @@ export default defineConfig([
     },
     plugins: {
       "@typescript-eslint": tsPlugin,
-      next: nextPlugin,
+      // Standard namespace so `eslint-disable @next/next/...` comments resolve.
+      "@next/next": nextPlugin,
       import: importPlugin,
       "unused-imports": unusedImports
     },

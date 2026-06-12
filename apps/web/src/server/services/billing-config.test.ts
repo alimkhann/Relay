@@ -50,8 +50,10 @@ describe("billing plan limits", () => {
   })
 
   it("derives plan marketing copy from the runtime limits", () => {
-    expect(PLAN_MARKETING_COPY.free.features[0]).toContain(String(FREE_LIMITS.activeProjects))
-    expect(PLAN_MARKETING_COPY.starter.features[1]).toContain(STARTER_LIMITS.readsMonthly.toLocaleString("en-US"))
-    expect(PLAN_MARKETING_COPY.pro.features[2]).toContain(PRO_LIMITS.writesMonthly.toLocaleString("en-US"))
+    // Cards sell outcomes (quota detail lives on /docs/plans); the project
+    // count is the one limit still shown and stays derived, not hardcoded.
+    expect(PLAN_MARKETING_COPY.free.features.join(" ")).toContain(String(FREE_LIMITS.activeProjects))
+    expect(PLAN_MARKETING_COPY.starter.features.join(" ")).toContain(String(STARTER_LIMITS.activeProjects))
+    expect(PLAN_MARKETING_COPY.pro.features.join(" ")).toContain(String(PRO_LIMITS.activeProjects))
   })
 })

@@ -16,16 +16,17 @@ Use this skill when you are resuming work, switching projects, or deciding wheth
 
 1. Start with `get_brief`.
 2. Only if Relay reports project ambiguity or the wrong project, call `list_projects` and then `set_current_project`.
-3. Use `search_context` or `recall_context` before major architecture, product, or process decisions when local context may be incomplete.
+3. Use `recall` before major architecture, product, or process decisions when local context may be incomplete.
 4. Save back deliberately:
-   - `add_memory` only for clearly confirmed durable facts
-   - After an empty recall/search, save confirmed durable facts discovered by local investigation, not the empty search attempt
-   - `checkpoint_context` before compaction risk, task switches, or explicit milestones
-   - `save_context` when wrapping a meaningful unit of work
+   - `save` action `add_memory` only for clearly confirmed durable facts
+   - After an empty recall, save confirmed durable facts discovered by local investigation, not the empty recall attempt
+   - `save` action `manage_memory` or `set_state` when context is stale, completed, contradicted, or superseded
+   - `save` action `checkpoint` before compaction risk, task switches, or explicit milestones
+   - `save` action `save_session` when wrapping a meaningful unit of work
 
 ## What to avoid
 
 - Do not read Relay repeatedly when the current local conversation already has enough context.
 - Do not write after every turn.
 - Do not save speculative brainstorming until it is clearly confirmed.
-- Do not call `save_context` just to restate work that is still in progress.
+- Do not call `save` just to restate work that is still in progress.
