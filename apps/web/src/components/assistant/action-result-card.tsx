@@ -4,6 +4,7 @@ import { motion } from "motion/react"
 import { ArrowDown, CheckCircle2, PencilLine, Trash2, Undo2 } from "lucide-react"
 
 import type { AssistantActionItem, AssistantActionPreview, AssistantActionResult } from "@relay/shared"
+import { PERSONAL_CATEGORY_META } from "@relay/shared/constants/memory-taxonomy"
 
 import { cn } from "@/lib/cn"
 
@@ -31,6 +32,24 @@ const LIFECYCLE_PILL: Record<
   },
 }
 
+// Mirrors TYPE_ACCENT in memory-item-card.tsx so agent action cards read as the
+// same objects the user sees on the memory board (decision blue, task amber…).
+const TYPE_ACCENT: Record<string, string> = {
+  decision: "bg-[var(--relay-accent-blue)]",
+  task: "bg-amber-500",
+  constraint: "bg-rose-500",
+  requirement: "bg-red-500",
+  note: "bg-zinc-400 dark:bg-zinc-500",
+  artifact: "bg-violet-500",
+}
+
+function personalMetaFor(category?: string | null) {
+  if (!category) return null
+  return (
+    (PERSONAL_CATEGORY_META as Record<string, { label: string; color: string }>)[category] ?? null
+  )
+}
+
 const ACTION_META: Record<
   AssistantActionResult["action"],
   { Icon: typeof CheckCircle2; tone: string; verb: string }
@@ -45,6 +64,8 @@ const ACTION_META: Record<
   read: { Icon: CheckCircle2, tone: "text-[var(--relay-muted)]", verb: "Read" }
 }
 
+/** Memory-card-styled row: left type-color stripe + type label + lifecycle
+ * pill + content, matching MemoryItemCard's visual language. */
 function PreviewItem({
   item,
   deleted = false,
@@ -53,31 +74,53 @@ function PreviewItem({
   deleted?: boolean
 }) {
   const lifecycle = item.lifecycle ? LIFECYCLE_PILL[item.lifecycle] : null
+  const personalMeta = personalMetaFor(item.personalCategory)
+  const accent = personalMeta ? null : TYPE_ACCENT[item.type ?? ""] ?? "bg-zinc-400"
 
   return (
     <div
       className={cn(
-        "rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] px-3 py-2",
+        "relative rounded-[var(--relay-radius)] border border-[var(--relay-line)] bg-[var(--relay-surface)] px-3 py-2",
         deleted && "border-[var(--relay-danger)]/50 bg-[var(--relay-danger)]/5",
       )}
     >
-      <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-[var(--relay-muted)]">
-        {item.type ? <span>{item.type}</span> : null}
-        {item.personalCategory ? <span>· {item.personalCategory}</span> : null}
-        {lifecycle ? (
-          <span className={cn("rounded-full px-1.5 py-0.5 font-medium normal-case tracking-normal", lifecycle.classes)}>
-            {lifecycle.label}
-          </span>
+      <span
+        aria-hidden="true"
+        className={cn("absolute inset-y-2 left-0 w-1 rounded-r-sm", accent)}
+        style={personalMeta ? { backgroundColor: personalMeta.color } : undefined}
+      />
+      <div className="ml-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-[var(--relay-faint)]">
+          {personalMeta ? (
+            <span className="inline-flex items-center gap-1.5 text-[var(--relay-muted)]">
+              <span
+                aria-hidden="true"
+                className="size-2 rounded-full"
+                style={{ backgroundColor: personalMeta.color }}
+              />
+              {personalMeta.label}
+            </span>
+          ) : item.type ? (
+            <span className="capitalize text-[var(--relay-muted)]">{item.type}</span>
+          ) : null}
+          {lifecycle ? (
+            <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", lifecycle.classes)}>
+              {lifecycle.label}
+            </span>
+          ) : null}
+        </div>
+        {item.title ? (
+          <p className="mt-1 text-[13px] font-medium text-[var(--relay-ink)]">{item.title}</p>
         ) : null}
+        <p
+          className={cn(
+            "mt-1 whitespace-pre-wrap text-xs leading-relaxed text-[var(--relay-ink-secondary)]",
+            deleted && "text-[var(--relay-muted)] line-through",
+          )}
+        >
+          {item.content ?? item.label}
+        </p>
       </div>
-      <p
-        className={cn(
-          "mt-1 whitespace-pre-wrap text-xs text-[var(--relay-ink)]",
-          deleted && "text-[var(--relay-muted)] line-through",
-        )}
-      >
-        {item.content ?? item.label}
-      </p>
     </div>
   )
 }
@@ -123,6 +166,9 @@ export function ActionResultCard({
   const meta = ACTION_META[result.action] ?? ACTION_META.read
   const { Icon } = meta
   const ToolGlyph = toolIcon(result.tool)
+  // Memory-bearing items render as full memory-style cards; bare references
+  // (web citations, id-only rows) keep the compact line format.
+  const hasPreviews = Boolean(result.previews && result.previews.length > 0)
 
   return (
     <motion.div
@@ -156,13 +202,23 @@ export function ActionResultCard({
         ) : null}
       </div>
       {result.items.length > 0 ? (
-        <ul className="mt-2 space-y-1">
+        <ul className="mt-2 space-y-1.5">
           {result.items.slice(0, 5).map((item, i) => {
             // web_search items carry the cited URL in `id`; render those as
             // external links so users can verify what the agent grounded on.
             const isUrl =
               typeof item.id === "string" && /^https?:\/\//i.test(item.id)
             const pill = item.lifecycle ? LIFECYCLE_PILL[item.lifecycle] : null
+            // Previews already render the full memory card; avoid doubling up.
+            const memoryLike =
+              !hasPreviews && !isUrl && Boolean(item.type || item.personalCategory || item.content)
+            if (memoryLike) {
+              return (
+                <li key={item.id ?? i}>
+                  <PreviewItem item={item} deleted={result.action === "deleted"} />
+                </li>
+              )
+            }
             return (
               <li
                 key={item.id ?? i}

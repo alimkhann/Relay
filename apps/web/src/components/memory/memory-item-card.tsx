@@ -41,7 +41,7 @@ const ORIGIN_META: Record<
   SourceSurface,
   { label: string; Icon: typeof Sparkles }
 > = {
-  ask_relay: { label: "Ask Relay", Icon: Sparkles },
+  ask_relay: { label: "Relay agent", Icon: Sparkles },
   extension: { label: "Extension", Icon: Plug },
   chatgpt: { label: "ChatGPT", Icon: MessageSquare },
   claude: { label: "Claude", Icon: MessageSquare },

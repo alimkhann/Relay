@@ -30,7 +30,7 @@ import { syncDashboardFromActionResult } from "@/lib/query/memory-cache-sync"
 import { useVoiceInput } from "@/hooks/use-voice-input"
 
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning"
-import { Context, ContextContent, ContextContentBody, ContextContentFooter, ContextContentHeader, ContextTrigger } from "@/components/ai-elements/context"
+import { Context, ContextContent, ContextContentFooter, ContextContentHeader, ContextTrigger } from "@/components/ai-elements/context"
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion"
 import { AskRelayHistory } from "./ask-relay-history"
 import { ChatMessage } from "./chat-message"
@@ -408,17 +408,26 @@ export function ChatView({
           </AnimatePresence>
 
           {error ? (
-            <div className="rounded-[var(--relay-radius-lg)] border border-[var(--relay-danger)]/30 bg-[var(--relay-danger-soft)] p-3 text-sm text-[var(--relay-ink)]">
-              <p>{error.message}</p>
-              {error.upgradeUrl ? (
+            error.upgradeUrl ? (
+              // Quota/limit reached → upsell card, not an error banner. Same
+              // visual language as the rest of the assistant surface.
+              <div className="rounded-[var(--relay-radius-lg)] border border-[var(--relay-accent-blue)]/30 bg-[var(--relay-accent-blue-soft)] p-3 text-sm text-[var(--relay-ink)]">
+                <div className="flex items-start gap-2">
+                  <Sparkles className="mt-0.5 size-4 shrink-0 text-[var(--relay-accent-blue)]" />
+                  <p>{error.message}</p>
+                </div>
                 <a
                   href={error.upgradeUrl}
                   className="mt-2 inline-block rounded-[var(--relay-radius-sm)] bg-[var(--relay-accent-blue)] px-3 py-1.5 text-xs font-semibold text-[var(--relay-accent-blue-ink)] hover:bg-[var(--relay-accent-blue-hover)]"
                 >
                   Upgrade to keep going
                 </a>
-              ) : null}
-            </div>
+              </div>
+            ) : (
+              <div className="rounded-[var(--relay-radius-lg)] border border-[var(--relay-danger)]/30 bg-[var(--relay-danger-soft)] p-3 text-sm text-[var(--relay-ink)]">
+                <p>{error.message}</p>
+              </div>
+            )
           ) : null}
         </div>
       </div>

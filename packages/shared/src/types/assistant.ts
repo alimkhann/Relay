@@ -1,4 +1,4 @@
-export type AssistantSurface = "dashboard" | "docs" | "settings" | "extension"
+export type AssistantSurface = "dashboard" | "docs" | "settings" | "extension" | "telegram"
 
 export type AssistantMessageRole = "user" | "assistant" | "tool" | "system"
 
@@ -166,4 +166,15 @@ export type AssistantStreamEvent =
   | { type: "pending_continuation"; reason: "step_limit"; assistantMessageId?: string }
   | { type: "usage"; totalTokens: number; maxContextTokens?: number; model?: string }
   | { type: "done"; messageId: string }
-  | { type: "error"; message: string; upgradeUrl?: string; plan?: string }
+  | { type: "error"; message: string; code?: AssistantErrorCode; upgradeUrl?: string; plan?: string }
+
+/** Stable reason taxonomy for assistant turn failures (telemetry + UI copy). */
+export type AssistantErrorCode =
+  | "model_unavailable"
+  | "model_busy"
+  | "tool_failed"
+  | "web_search_failed"
+  | "empty_response"
+  | "already_confirmed"
+  | "quota_exceeded"
+  | "internal"

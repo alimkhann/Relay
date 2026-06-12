@@ -41,7 +41,6 @@ vi.mock("./assistant-tools", async (importActual) => {
   return { ...actual, executeAssistantTool: mocks.executeAssistantTool }
 })
 
-import { GeminiRequestError } from "./gemini-service"
 import { classifyAssistantActionQuota, runAssistantTurn } from "./assistant-agent-service"
 
 const viewer = { userId: "u1" } as unknown as Viewer
@@ -60,6 +59,9 @@ function repoBundle() {
     },
     assistantAttachments: {
       listByIds: vi.fn(async () => [])
+    },
+    projects: {
+      getPersonalProject: vi.fn(async () => null)
     }
   }
 }
@@ -305,6 +307,9 @@ describe("runAssistantTurn confirmation guard (A2 regression)", () => {
         listByChat: vi.fn(async () => [pendingMessage]),
         create: vi.fn(async () => ({ id: "m1" })),
         markToolPayloadConsumed: markConsumed
+      },
+      projects: {
+        getPersonalProject: vi.fn(async () => null)
       }
     })
 
@@ -362,7 +367,8 @@ describe("runAssistantTurn confirmation guard (A2 regression)", () => {
         create: createMessage,
         updateToolPayload
       },
-      assistantAttachments: { listByIds: vi.fn(async () => []) }
+      assistantAttachments: { listByIds: vi.fn(async () => []) },
+      projects: { getPersonalProject: vi.fn(async () => null) }
     })
 
     const events = await collect({
@@ -530,7 +536,8 @@ describe("runAssistantTurn confirmation guard (A2 regression)", () => {
         create: vi.fn(async () => ({ id: "action-1" })),
         updateToolPayload: vi.fn(async () => {})
       },
-      assistantAttachments: { listByIds: vi.fn(async () => []) }
+      assistantAttachments: { listByIds: vi.fn(async () => []) },
+      projects: { getPersonalProject: vi.fn(async () => null) }
     })
     mocks.runGeminiAgentStep
       .mockResolvedValueOnce({
@@ -602,14 +609,34 @@ describe("runAssistantTurn web search", () => {
     mocks.runGeminiAgentStep.mockReset()
   })
 
-  it("runs grounding when paid users explicitly enable web search", async () => {
-    mocks.runGeminiAgentStep.mockResolvedValueOnce({
-      text: "Alimkhan Yergebayev is associated with Relay.",
-      functionCalls: [],
-      groundingUris: ["https://example.com/alimkhan"],
-      groundingChunks: [{ uri: "https://example.com/alimkhan", title: "Alimkhan profile" }],
-      finishReason: "STOP",
-      tokenUsage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 }
+  it("injects a web-search hint when the user enables the toggle and runs the tool the model calls", async () => {
+    // Step 1: model decides to call web_search; step 2: final text answer.
+    mocks.runGeminiAgentStep
+      .mockResolvedValueOnce({
+        text: "",
+        functionCalls: [{ name: "web_search", args: { query: "Alimkhan Yergebayev" } }],
+        groundingUris: [],
+        groundingChunks: [],
+        finishReason: null,
+        tokenUsage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 }
+      })
+      .mockResolvedValueOnce({
+        text: "Alimkhan Yergebayev is associated with Relay.",
+        functionCalls: [],
+        groundingUris: [],
+        groundingChunks: [],
+        finishReason: "STOP",
+        tokenUsage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 }
+      })
+    mocks.executeAssistantTool.mockResolvedValueOnce({
+      modelResponse: { result: "grounded summary" },
+      actionResult: {
+        tool: "web_search",
+        action: "read",
+        entity: "web",
+        count: 1,
+        items: [{ id: "https://example.com/alimkhan", label: "Alimkhan profile" }]
+      }
     })
 
     const events = await collect({
@@ -620,87 +647,24 @@ describe("runAssistantTurn web search", () => {
       webSearch: true
     } as SendAssistantMessageInput)
 
-    expect(mocks.runGeminiAgentStep).toHaveBeenCalledTimes(1)
-    expect(mocks.runGeminiAgentStep).toHaveBeenLastCalledWith(
-      expect.objectContaining({ tools: [], webSearch: true })
+    // The toggle becomes a hint in the conversation, not a separate pass.
+    const firstCall = mocks.runGeminiAgentStep.mock.calls[0]![0] as {
+      contents: Array<{ parts: Array<{ text?: string }> }>
+      tools: unknown[]
+    }
+    expect(JSON.stringify(firstCall.contents)).toContain("enabled web search")
+    expect(firstCall.tools.length).toBeGreaterThan(0)
+    expect(mocks.executeAssistantTool).toHaveBeenCalledWith(
+      expect.anything(),
+      "web_search",
+      expect.objectContaining({ query: "Alimkhan Yergebayev" }),
+      expect.anything()
     )
-    expect(events.some((e) => e.type === "tool_start" && e.tool === "web_search")).toBe(true)
-    expect(events.some((e) => e.type === "tool_result" && e.result.tool === "web_search")).toBe(true)
-    expect(events.filter((e) => e.type === "text").map((e) => e.delta).join("")).toContain("Sources")
-  })
-
-  it("falls back when the assistant model fails before explicit web grounding", async () => {
-    mocks.runGeminiAgentStep
-      .mockRejectedValueOnce(new GeminiRequestError("primary unavailable", 403, true, "generate"))
-      .mockResolvedValueOnce({
-        text: "A grounded answer.",
-        functionCalls: [],
-        groundingUris: ["https://example.com/source"],
-        groundingChunks: [{ uri: "https://example.com/source", title: "Source" }],
-        finishReason: "STOP",
-        tokenUsage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 }
-      })
-
-    const events = await collect({
-      message: "try again, i enabled web search for you",
-      surface: "dashboard",
-      parentId: null,
-      projectId: null,
-      webSearch: true
-    } as SendAssistantMessageInput)
-
-    expect(mocks.runGeminiAgentStep).toHaveBeenCalledTimes(2)
-    expect(events.some((e) => e.type === "error")).toBe(false)
     expect(events.some((e) => e.type === "tool_result" && e.result.tool === "web_search")).toBe(true)
   })
 
-  it("treats who's as web-search intent for paid users", async () => {
-    mocks.runGeminiAgentStep.mockResolvedValueOnce({
-      text: "Alimkhan Yergebayev is a founder.",
-      functionCalls: [],
-      groundingUris: ["https://example.com/profile"],
-      groundingChunks: [{ uri: "https://example.com/profile", title: "Profile" }],
-      finishReason: "STOP",
-      tokenUsage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 }
-    })
 
-    await collect({
-      message: "who's Alimkhan Yergebayev?",
-      surface: "dashboard",
-      parentId: null,
-      projectId: null
-    } as SendAssistantMessageInput)
 
-    expect(mocks.runGeminiAgentStep).toHaveBeenCalledTimes(1)
-    expect(mocks.runGeminiAgentStep).toHaveBeenLastCalledWith(
-      expect.objectContaining({ tools: [], webSearch: true })
-    )
-  })
-
-  it("bypasses Relay tools when the user asks for only web search", async () => {
-    mocks.runGeminiAgentStep.mockResolvedValueOnce({
-      text: "Alimkhan Yergebayev is associated with Relay.",
-      functionCalls: [],
-      groundingUris: ["https://example.com/alimkhan"],
-      groundingChunks: [{ uri: "https://example.com/alimkhan", title: "Alimkhan profile" }],
-      finishReason: "STOP",
-      tokenUsage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 }
-    })
-
-    const events = await collect({
-      message: "only web search: who's Alimkhan Yergebayev?",
-      surface: "dashboard",
-      parentId: null,
-      projectId: null
-    } as SendAssistantMessageInput)
-
-    expect(mocks.runGeminiAgentStep).toHaveBeenCalledTimes(1)
-    expect(mocks.runGeminiAgentStep).toHaveBeenCalledWith(
-      expect.objectContaining({ tools: [], webSearch: true })
-    )
-    expect(mocks.executeAssistantTool).not.toHaveBeenCalled()
-    expect(events.some((e) => e.type === "tool_start" && e.tool === "web_search")).toBe(true)
-  })
 
   it("persists attachment ids on the user message and sends image data to Gemini", async () => {
     const bundle = repoBundle()
@@ -747,7 +711,6 @@ describe("runAssistantTurn web search", () => {
     )
     expect(mocks.runGeminiAgentStep).toHaveBeenCalledWith(
       expect.objectContaining({
-        tools: [],
         contents: expect.arrayContaining([
           expect.objectContaining({
             parts: expect.arrayContaining([
@@ -761,7 +724,7 @@ describe("runAssistantTurn web search", () => {
     )
   })
 
-  it("answers simple prompts without Relay tools", async () => {
+  it("answers simple prompts as a plain chatbot turn (tools offered, none used)", async () => {
     mocks.runGeminiAgentStep.mockResolvedValueOnce({
       text: "Hello.",
       functionCalls: [],
@@ -771,16 +734,20 @@ describe("runAssistantTurn web search", () => {
       tokenUsage: { inputTokens: 2, outputTokens: 2, totalTokens: 4 }
     })
 
-    await collect({
+    const events = await collect({
       message: "say hello",
       surface: "dashboard",
       parentId: null,
       projectId: null
     } as SendAssistantMessageInput)
 
+    // v2: every turn runs the agent model with the FULL tool set; small talk
+    // simply produces a text answer with no tool calls.
     expect(mocks.runGeminiAgentStep).toHaveBeenCalledWith(
-      expect.objectContaining({ model: "gemini-3.1-flash-lite", tools: [] })
+      expect.objectContaining({ model: "gemini-3-flash-preview" })
     )
+    expect(mocks.executeAssistantTool).not.toHaveBeenCalled()
+    expect(events.filter((e) => e.type === "text").map((e) => e.delta).join("")).toBe("Hello.")
   })
 
   it("does not charge broad casual words as Relay reads", () => {
@@ -873,6 +840,9 @@ describe("runAssistantTurn web search", () => {
 
     const text = events.filter((event) => event.type === "text").map((event) => event.delta).join("")
     expect(text).not.toBe("Done.")
-    expect(events.some((event) => event.type === "error")).toBe(true)
+    // Empty answers now stream a readable fallback message (not an error
+    // banner) and the turn ends cleanly; telemetry records the failure.
+    expect(text).toContain("couldn't produce a reliable response")
+    expect(events.some((event) => event.type === "done")).toBe(true)
   })
 })

@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-export const assistantSurfaceSchema = z.enum(["dashboard", "docs", "settings", "extension"])
+export const assistantSurfaceSchema = z.enum(["dashboard", "docs", "settings", "extension", "telegram"])
 
 export const createAssistantChatSchema = z.object({
   surface: assistantSurfaceSchema.default("dashboard"),

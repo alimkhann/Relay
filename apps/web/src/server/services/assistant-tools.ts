@@ -6,8 +6,16 @@ import type { GeminiFunctionDeclaration } from "@/server/services/gemini-service
 
 export type AssistantPlan = "free" | "starter" | "pro"
 
-/** Tools whose effects are not safely reversible — require explicit confirmation. */
-export const DESTRUCTIVE_TOOLS = new Set(["manage_memory", "set_project_state"])
+/** Tools whose effects are not safely reversible — require explicit confirmation.
+ * Outward-facing writes (calendar mutations, sending email) always confirm. */
+export const DESTRUCTIVE_TOOLS = new Set([
+  "manage_memory",
+  "set_project_state",
+  "create_calendar_event",
+  "update_calendar_event",
+  "delete_calendar_event",
+  "send_gmail"
+])
 
 const obj = (properties: Record<string, unknown>, required: string[] = []) => ({
   type: "object",
@@ -224,6 +232,126 @@ export const ASSISTANT_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
   }
 ]
 
+/** Live web search — the model invokes this whenever it needs current or
+ * external facts. Executed as a dedicated grounding pass (never combined with
+ * function declarations in one request — Gemini drops one of them). */
+export const WEB_SEARCH_TOOL_DECLARATION: GeminiFunctionDeclaration = {
+  name: "web_search",
+  description:
+    "Search the live web for current or external information (news, prices, releases, docs, anything outside the user's Relay data). Returns a grounded answer with source URLs. Use whenever fresh facts are needed — do not guess about recent events.",
+  parameters: obj({ query: str("What to search the web for") }, ["query"])
+}
+
+/** Google tools — only offered when the user has connected Google. */
+export const GOOGLE_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
+  {
+    name: "list_calendar_events",
+    description:
+      "List upcoming events from the user's Google Calendar. Use for 'what's on my calendar', meeting prep, or availability questions.",
+    parameters: obj({
+      timeMin: str("ISO datetime lower bound (default: now)"),
+      timeMax: str("ISO datetime upper bound"),
+      query: str("Optional free-text filter"),
+      maxResults: { type: "number", description: "Max events (default 10)" }
+    })
+  },
+  {
+    name: "create_calendar_event",
+    description:
+      "Create an event on the user's Google Calendar. Requires user confirmation before it runs.",
+    parameters: obj(
+      {
+        summary: str("Event title"),
+        description: str("Optional details"),
+        location: str("Optional location"),
+        startIso: str("Start as ISO datetime, e.g. 2026-06-13T15:00:00+05:00"),
+        endIso: str("End as ISO datetime"),
+        timeZone: str("Optional IANA time zone, e.g. Asia/Almaty"),
+        attendees: { type: "array", items: { type: "string" }, description: "Attendee emails" }
+      },
+      ["summary", "startIso", "endIso"]
+    )
+  },
+  {
+    name: "update_calendar_event",
+    description: "Update an existing Google Calendar event (find its id via list_calendar_events first). Requires user confirmation.",
+    parameters: obj(
+      {
+        eventId: str("Calendar event id"),
+        summary: str("New title"),
+        description: str("New details"),
+        location: str("New location"),
+        startIso: str("New start ISO datetime"),
+        endIso: str("New end ISO datetime"),
+        timeZone: str("Optional IANA time zone")
+      },
+      ["eventId"]
+    )
+  },
+  {
+    name: "delete_calendar_event",
+    description: "Delete a Google Calendar event (find its id via list_calendar_events first). Requires user confirmation.",
+    parameters: obj({ eventId: str("Calendar event id") }, ["eventId"])
+  },
+  {
+    name: "search_gmail",
+    description:
+      "Search the user's Gmail. Supports Gmail query syntax (from:, subject:, newer_than:7d, is:unread...). Returns sender, subject, date, snippet, threadId.",
+    parameters: obj(
+      {
+        query: str("Gmail search query"),
+        maxResults: { type: "number", description: "Max messages (default 8)" }
+      },
+      ["query"]
+    )
+  },
+  {
+    name: "read_gmail_thread",
+    description: "Read a full Gmail thread (find threadId via search_gmail first).",
+    parameters: obj({ threadId: str("Gmail thread id") }, ["threadId"])
+  },
+  {
+    name: "draft_gmail",
+    description:
+      "Create a DRAFT email in the user's Gmail (not sent). Safe default for composing — the user reviews it in Gmail or asks you to send it.",
+    parameters: obj(
+      {
+        to: str("Recipient email"),
+        subject: str("Subject line"),
+        body: str("Plain-text body"),
+        threadId: str("Optional thread id when replying")
+      },
+      ["to", "subject", "body"]
+    )
+  },
+  {
+    name: "send_gmail",
+    description:
+      "SEND an email from the user's Gmail. Requires user confirmation before it runs. Only call when the user explicitly asked to send.",
+    parameters: obj(
+      {
+        to: str("Recipient email"),
+        subject: str("Subject line"),
+        body: str("Plain-text body"),
+        threadId: str("Optional thread id when replying")
+      },
+      ["to", "subject", "body"]
+    )
+  }
+]
+
+/** Assemble the per-turn tool set: base Relay tools + web search + any
+ * connected-provider tools. Single source of truth for every surface. */
+export function buildAssistantToolDeclarations(input: {
+  providers: ReadonlySet<string>
+}): GeminiFunctionDeclaration[] {
+  return [
+    ...ASSISTANT_TOOL_DECLARATIONS,
+    WEB_SEARCH_TOOL_DECLARATION,
+    ...(input.providers.has("google") ? GOOGLE_TOOL_DECLARATIONS : [])
+  ]
+}
+
 function summarizeForModel(value: unknown, max = 4000): Record<string, unknown> {
   let text: string
   try {
@@ -338,6 +466,141 @@ export interface ToolExecutionResult {
   actionResult: AssistantActionResult | null
 }
 
+const GOOGLE_TOOL_NAMES = new Set(GOOGLE_TOOL_DECLARATIONS.map((tool) => tool.name))
+
+function formatEventLabel(event: { summary: string; start: string }) {
+  const when = event.start ? new Date(event.start).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : ""
+  return when ? `${event.summary} — ${when}` : event.summary
+}
+
+/** Google Calendar / Gmail tools. Returns null for non-google tool names. */
+async function executeGoogleTool(
+  name: string,
+  args: Record<string, unknown>,
+  options: { userId?: string }
+): Promise<ToolExecutionResult | null> {
+  if (!GOOGLE_TOOL_NAMES.has(name)) return null
+  const userId = options.userId
+  if (!userId) {
+    return { modelResponse: { error: "Google tools need a signed-in user context." }, actionResult: null }
+  }
+  const google = await import("@/server/services/integrations/google-service")
+
+  switch (name) {
+    case "list_calendar_events": {
+      const events = await google.listCalendarEvents(userId, {
+        timeMin: typeof args.timeMin === "string" ? args.timeMin : undefined,
+        timeMax: typeof args.timeMax === "string" ? args.timeMax : undefined,
+        query: typeof args.query === "string" ? args.query : undefined,
+        maxResults: typeof args.maxResults === "number" ? args.maxResults : undefined
+      })
+      return { modelResponse: summarizeForModel(events, 6000), actionResult: null }
+    }
+    case "create_calendar_event": {
+      const event = await google.createCalendarEvent(userId, {
+        summary: String(args.summary),
+        description: typeof args.description === "string" ? args.description : undefined,
+        location: typeof args.location === "string" ? args.location : undefined,
+        startIso: String(args.startIso),
+        endIso: String(args.endIso),
+        timeZone: typeof args.timeZone === "string" ? args.timeZone : undefined,
+        attendees: Array.isArray(args.attendees) ? (args.attendees as string[]) : undefined
+      })
+      const actionResult: AssistantActionResult = {
+        tool: "create_calendar_event",
+        action: "created",
+        entity: "calendar event",
+        count: 1,
+        items: [{ id: event.htmlLink ?? event.id, label: formatEventLabel(event) }]
+      }
+      return {
+        modelResponse: { result: `Event created: ${formatEventLabel(event)}`, link: event.htmlLink },
+        actionResult
+      }
+    }
+    case "update_calendar_event": {
+      const event = await google.updateCalendarEvent(userId, {
+        eventId: String(args.eventId),
+        summary: typeof args.summary === "string" ? args.summary : undefined,
+        description: typeof args.description === "string" ? args.description : undefined,
+        location: typeof args.location === "string" ? args.location : undefined,
+        startIso: typeof args.startIso === "string" ? args.startIso : undefined,
+        endIso: typeof args.endIso === "string" ? args.endIso : undefined,
+        timeZone: typeof args.timeZone === "string" ? args.timeZone : undefined
+      })
+      const actionResult: AssistantActionResult = {
+        tool: "update_calendar_event",
+        action: "updated",
+        entity: "calendar event",
+        count: 1,
+        items: [{ id: event.htmlLink ?? event.id, label: formatEventLabel(event) }]
+      }
+      return { modelResponse: { result: `Event updated: ${formatEventLabel(event)}` }, actionResult }
+    }
+    case "delete_calendar_event": {
+      await google.deleteCalendarEvent(userId, String(args.eventId))
+      const actionResult: AssistantActionResult = {
+        tool: "delete_calendar_event",
+        action: "deleted",
+        entity: "calendar event",
+        count: 1,
+        items: [{ id: String(args.eventId), label: "Calendar event" }],
+        irreversible: true
+      }
+      return { modelResponse: { result: "Event deleted." }, actionResult }
+    }
+    case "search_gmail": {
+      const messages = await google.searchGmail(userId, {
+        query: String(args.query),
+        maxResults: typeof args.maxResults === "number" ? args.maxResults : undefined
+      })
+      return { modelResponse: summarizeForModel(messages, 6000), actionResult: null }
+    }
+    case "read_gmail_thread": {
+      const thread = await google.readGmailThread(userId, String(args.threadId))
+      return { modelResponse: summarizeForModel(thread, 8000), actionResult: null }
+    }
+    case "draft_gmail": {
+      const draft = await google.createGmailDraft(userId, {
+        to: String(args.to),
+        subject: String(args.subject),
+        body: String(args.body),
+        threadId: typeof args.threadId === "string" ? args.threadId : undefined
+      })
+      const actionResult: AssistantActionResult = {
+        tool: "draft_gmail",
+        action: "created",
+        entity: "email draft",
+        count: 1,
+        items: [{ id: draft.draftId, label: `Draft to ${String(args.to)}: ${String(args.subject)}` }]
+      }
+      return {
+        modelResponse: { result: `Draft created in Gmail (to ${String(args.to)}).` },
+        actionResult
+      }
+    }
+    case "send_gmail": {
+      const sent = await google.sendGmail(userId, {
+        to: String(args.to),
+        subject: String(args.subject),
+        body: String(args.body),
+        threadId: typeof args.threadId === "string" ? args.threadId : undefined
+      })
+      const actionResult: AssistantActionResult = {
+        tool: "send_gmail",
+        action: "created",
+        entity: "sent email",
+        count: 1,
+        items: [{ id: sent.messageId, label: `To ${String(args.to)}: ${String(args.subject)}` }],
+        irreversible: true
+      }
+      return { modelResponse: { result: `Email sent to ${String(args.to)}.` }, actionResult }
+    }
+    default:
+      return null
+  }
+}
+
 /**
  * Execute a tool against the viewer-scoped MCP client. Free plan cannot run
  * destructive tools (kept safe and cheap for the taste tier).
@@ -346,7 +609,17 @@ export async function executeAssistantTool(
   client: RelayHttpMcpClient,
   name: string,
   args: Record<string, unknown>,
-  options: { plan: AssistantPlan; chatId?: string }
+  options: {
+    plan: AssistantPlan
+    chatId?: string
+    userId?: string
+    /** Grounded web answer runner — injected by the agent service so the
+     * grounding pass stays a dedicated Gemini call. */
+    runWebSearch?: (query: string) => Promise<{
+      text: string
+      citations: Array<{ uri: string; title?: string }>
+    }>
+  }
 ): Promise<ToolExecutionResult> {
   if (DESTRUCTIVE_TOOLS.has(name) && options.plan === "free") {
     return {
@@ -356,6 +629,38 @@ export async function executeAssistantTool(
       actionResult: null
     }
   }
+
+  if (name === "web_search") {
+    if (options.plan === "free") {
+      return {
+        modelResponse: {
+          error: "Web search is available on paid Relay plans. Answer from what you know and mention the upgrade."
+        },
+        actionResult: null
+      }
+    }
+    if (!options.runWebSearch) {
+      return { modelResponse: { error: "Web search is unavailable right now." }, actionResult: null }
+    }
+    const grounded = await options.runWebSearch(String(args.query ?? ""))
+    const actionResult: AssistantActionResult = {
+      tool: "web_search",
+      action: "read",
+      entity: "web",
+      count: grounded.citations.length,
+      items: grounded.citations.slice(0, 8).map((c) => ({ id: c.uri, label: c.title ?? c.uri }))
+    }
+    return {
+      modelResponse: {
+        result: grounded.text,
+        sources: grounded.citations.slice(0, 5).map((c) => c.uri).join(" ")
+      },
+      actionResult: grounded.citations.length > 0 ? actionResult : null
+    }
+  }
+
+  const googleResult = await executeGoogleTool(name, args, options)
+  if (googleResult) return googleResult
 
   switch (name) {
     case "list_projects": {

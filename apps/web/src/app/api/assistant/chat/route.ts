@@ -69,6 +69,20 @@ export const POST = withApiAuth(async (request: Request) => {
       let totalTokens = 0
       const send = (event: AssistantStreamEvent) => {
         if (event.type === "usage") totalTokens = event.totalTokens
+        if (event.type === "error") {
+          // Stable failure taxonomy so prod errors are diagnosable in PostHog
+          // (the old generic banner left no trace of WHY turns failed).
+          captureServerEvent({
+            event: "assistant_turn_failed",
+            distinctId: viewer.userId,
+            properties: {
+              surface: input.surface,
+              plan,
+              code: event.code ?? "internal",
+              message: event.message.slice(0, 200)
+            }
+          })
+        }
         const outgoing =
           event.type === "usage"
             ? {
@@ -89,6 +103,7 @@ export const POST = withApiAuth(async (request: Request) => {
       } catch (error) {
         send({
           type: "error",
+          code: "internal",
           message: error instanceof Error ? error.message : "The assistant failed to respond."
         })
       } finally {

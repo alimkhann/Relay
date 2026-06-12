@@ -52,7 +52,7 @@ const surfaceMap: Record<SourceSurface, SurfaceMeta> = {
     classes: "bg-amber-500/10 text-amber-600",
   },
   ask_relay: {
-    label: "Ask Relay",
+    label: "Relay agent",
     classes: "bg-sky-500/10 text-sky-600",
   },
   extension: {
