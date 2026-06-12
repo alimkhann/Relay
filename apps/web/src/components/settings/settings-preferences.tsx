@@ -19,6 +19,8 @@ import { createClientFlowId } from "@/lib/telemetry/client"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
 import { ChromeWebstoreBadge } from "@/components/chrome-webstore-badge"
 import { CaptureRulesMatrix, type CaptureProjectSettings } from "@/components/settings/capture-rules-matrix"
+import { TelegramIntegrationCard } from "@/components/settings/telegram-integration-card"
+import { GoogleIntegrationCard } from "@/components/settings/google-integration-card"
 
 interface SettingsPreferencesProps {
   initialSettings: UserSettingsRow["settings"]
@@ -29,7 +31,7 @@ interface SettingsPreferencesProps {
   captureProjects?: CaptureProjectSettings[]
 }
 
-const EXTENSION_VERSION = "0.3.0"
+const EXTENSION_VERSION = "0.4.0"
 
 const platformOptions = [
   { key: "chatgpt", label: "ChatGPT", icon: OpenAIIcon },
@@ -412,10 +414,10 @@ export function SettingsPreferences({
           </FadeIn>
 
           <FadeIn delay={0.2}>
-          <SettingsSection title="Ask Relay" description="Control visibility of the Ask Relay chat assistant.">
+          <SettingsSection title="Relay agent" description="Control visibility of the Relay agent chat.">
             <div className="flex items-center justify-between gap-4 px-5 py-3.5">
               <div>
-                <p className="text-[15px] font-medium text-[var(--relay-ink)]">Show Ask Relay button</p>
+                <p className="text-[15px] font-medium text-[var(--relay-ink)]">Show Relay agent button</p>
                 <p className="mt-0.5 text-sm text-[var(--relay-muted)]">Floating chat launcher on the dashboard.</p>
               </div>
               <Toggle
@@ -428,7 +430,7 @@ export function SettingsPreferences({
                   startTransition(async () => {
                     try {
                       await save(nextSettings)
-                      showToast(`Ask Relay ${on ? "shown" : "hidden"}`)
+                      showToast(`Relay agent ${on ? "shown" : "hidden"}`)
                       window.dispatchEvent(
                         new CustomEvent<boolean>("relay:ask-relay-panel-changed", { detail: !on }),
                       )
@@ -478,6 +480,14 @@ export function SettingsPreferences({
               </div>
             </div>
           </SettingsSection>
+          </FadeIn>
+
+          <FadeIn delay={0.03}>
+            <TelegramIntegrationCard />
+          </FadeIn>
+
+          <FadeIn delay={0.04}>
+            <GoogleIntegrationCard />
           </FadeIn>
 
           <FadeIn delay={0.05}>

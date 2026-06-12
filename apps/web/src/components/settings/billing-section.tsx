@@ -8,6 +8,7 @@ import { AlertCircle, Check, Loader2 } from "lucide-react"
 import type { BillingStatusDto } from "@relay/shared"
 
 import { PRICING } from "../../app/(marketing)/pricing.config"
+import { BillingIntervalToggle } from "@/components/billing/billing-interval-toggle"
 import { FadeIn } from "@/components/ui/fade-in"
 import { cn } from "@/lib/cn"
 import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client"
@@ -153,7 +154,7 @@ const CHECKOUT_SYNC_INTERVAL_MS = 5_000
 export function BillingSection({ billing, checkoutSuccess, referralProgram }: BillingSectionProps) {
   const router = useRouter()
   const { entitlements, subscription, usage } = billing
-  const [yearly, setYearly] = useState(false)
+  const [yearly, setYearly] = useState(true)
   const [loading, setLoading] = useState<"month" | "year" | "portal" | "resync" | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showSuccess, setShowSuccess] = useState(true)
@@ -200,11 +201,11 @@ export function BillingSection({ billing, checkoutSuccess, referralProgram }: Bi
         upgradeCopy: `unlock more monthly writes`,
       },
       {
-        label: "Ask Relay messages",
+        label: "Agent messages",
         used: usage.assistantMessagesThisMonth,
         limit: entitlements.limits.assistantMessagesMonthly,
         periodLabel: "/ month",
-        upgradeCopy: `unlock more Ask Relay messages`,
+        upgradeCopy: `unlock more agent messages`,
       },
       {
         label: "AI analyses",
@@ -640,25 +641,12 @@ export function BillingSection({ billing, checkoutSuccess, referralProgram }: Bi
         </div>
 
         <div className="border-t border-[var(--relay-line)] px-5 py-5">
-          {/* Monthly / Yearly toggle */}
           {entitlements.plan !== "pro" ? (
-            <div className="flex items-center justify-center gap-3 mb-5">
-              <span className={cn("text-[13px] font-medium transition-colors", !yearly ? "text-[var(--relay-ink)]" : "text-[var(--relay-muted)]")}>Monthly</span>
-              <button
-                type="button"
-                onClick={() => setYearly(!yearly)}
-                className={cn(
-                  "relative h-6 w-10 shrink-0 rounded-full transition-colors",
-                  yearly ? "bg-emerald-500" : "bg-[var(--relay-line-strong)]",
-                )}
-              >
-                <span className={cn(
-                  "absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
-                  yearly ? "translate-x-4" : "translate-x-0",
-                )} />
-              </button>
-              <span className={cn("text-[13px] font-medium transition-colors", yearly ? "text-[var(--relay-ink)]" : "text-[var(--relay-muted)]")}>Yearly</span>
-            </div>
+            <BillingIntervalToggle
+              className="mb-5"
+              interval={yearly ? "year" : "month"}
+              onChange={(next) => setYearly(next === "year")}
+            />
           ) : null}
 
           <div className="grid gap-3 lg:grid-cols-3">
@@ -835,9 +823,9 @@ export function BillingSection({ billing, checkoutSuccess, referralProgram }: Bi
               ["Uploaded sources / project", entitlements.limits.sourcesPerProject.toLocaleString()],
               ["External sources / project", entitlements.limits.externalSourcesPerProject.toLocaleString()],
               ["Source storage", `${Math.round(entitlements.limits.sourceStorageBytes / 1024 / 1024)} MB`],
-              ["Ask Relay / day", entitlements.limits.assistantMessagesDaily.toLocaleString()],
-              ["Ask Relay tokens / month", entitlements.limits.assistantTokensMonthly.toLocaleString()],
-              ["Ask Relay max steps / turn", entitlements.limits.assistantMaxSteps.toLocaleString()],
+              ["Agent messages / day", entitlements.limits.assistantMessagesDaily.toLocaleString()],
+              ["Agent tokens / month", entitlements.limits.assistantTokensMonthly.toLocaleString()],
+              ["Agent max steps / turn", entitlements.limits.assistantMaxSteps.toLocaleString()],
             ].map(([label, value]) => (
               <div key={label} className="flex items-center justify-between gap-3 rounded-[var(--relay-radius-sm)] bg-[var(--relay-soft)] px-3 py-2 text-[12px]">
                 <span className="text-[var(--relay-muted)]">{label}</span>
