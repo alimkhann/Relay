@@ -8,6 +8,7 @@ import { runContinuityMaintenanceForUser } from "@/server/services/continuity-ma
 import { emitDailyCostSnapshots } from "@/server/services/cost-snapshot-service"
 import { drainDigestJobs } from "@/server/services/digest-service"
 import { drainDueProjectHygiene, drainMemoryPipelineJobs } from "@/server/services/memory-pipeline-scheduler"
+import { drainLifecycleEmails } from "@/server/services/lifecycle-email-service"
 import { sweepStaleProcessingSources } from "@/server/services/source-service"
 
 // The cron is invoked frequently (external scheduler tick, see
@@ -100,5 +101,13 @@ export async function GET(request: Request) {
       }))
     : { skipped: "work budget exhausted" }
 
-  return NextResponse.json({ processed: results.length, results, costSnapshots, staleSources, memoryPipeline, memoryHygiene })
+  // Lifecycle/reactivation emails (dark unless RELAY_LIFECYCLE_EMAILS=true).
+  // Runs on the cron's existing compute — no extra DB wake-ups.
+  const lifecycleEmails = Date.now() - startedAt < MAX_WORK_MS
+    ? await drainLifecycleEmails({ maxMs: 10_000 }).catch((error) => ({
+        error: error instanceof Error ? error.message : "Unknown error",
+      }))
+    : { skipped: "work budget exhausted" }
+
+  return NextResponse.json({ processed: results.length, results, costSnapshots, staleSources, memoryPipeline, memoryHygiene, lifecycleEmails })
 }

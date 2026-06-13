@@ -8,6 +8,103 @@ function getResend(): Resend | null {
   return resend
 }
 
+const SETTINGS_URL = "https://www.onrelay.app/settings?section=account"
+
+/**
+ * Shared wrapper for lifecycle/reactivation emails: consistent container, a
+ * visible preferences link, and a List-Unsubscribe header so these never look
+ * like unsolicited blasts. `bodyHtml` is the inner content (heading + copy +
+ * CTA). Returns silently when Resend isn't configured.
+ */
+async function sendLifecycleEmail(input: { to: string; subject: string; bodyHtml: string }) {
+  const client = getResend()
+  if (!client) return
+
+  await client.emails.send({
+    from: "Relay <noreply@onrelay.app>",
+    to: input.to,
+    subject: input.subject,
+    headers: {
+      "List-Unsubscribe": `<${SETTINGS_URL}>`,
+    },
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 20px;">
+        ${input.bodyHtml}
+        <p style="font-size: 13px; color: #9ca3af; margin-top: 28px;">
+          Reply any time — a real person (me) reads everything.
+          <br />
+          <a href="${SETTINGS_URL}" style="color: #9ca3af;">Manage email preferences</a>
+        </p>
+      </div>
+    `,
+  })
+}
+
+function ctaButton(href: string, label: string) {
+  return `<div style="margin: 24px 0;"><a href="${href}" style="display: inline-block; background: #182017; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">${label}</a></div>`
+}
+
+/** Day 1: captured something but never inserted a brief into a chat. */
+export async function sendBriefSuperpowerEmail(to: string, name: string | null) {
+  const greeting = name ? `Hi ${name}` : "Hi there"
+  await sendLifecycleEmail({
+    to,
+    subject: "The one Relay habit that pays off",
+    bodyHtml: `
+      <h1 style="font-size: 22px; font-weight: 600; margin-bottom: 16px;">${greeting},</h1>
+      <p style="font-size: 16px; line-height: 1.5; color: #374151;">Relay has already started remembering your work. The payoff is one habit: when you open a fresh AI chat, click <strong>Insert Brief</strong> in the extension.</p>
+      <p style="font-size: 16px; line-height: 1.5; color: #374151;">Your full project context drops into the chat instantly — no re-explaining what you're building, what you decided, or where you left off.</p>
+      ${ctaButton("https://www.onrelay.app/dashboard", "Open Relay")}
+    `,
+  })
+}
+
+/** Day 3: hasn't connected an MCP coding agent yet. */
+export async function sendConnectAgentEmail(to: string, name: string | null) {
+  const greeting = name ? `Hi ${name}` : "Hi there"
+  await sendLifecycleEmail({
+    to,
+    subject: "Give your coding agent your project memory",
+    bodyHtml: `
+      <h1 style="font-size: 22px; font-weight: 600; margin-bottom: 16px;">${greeting},</h1>
+      <p style="font-size: 16px; line-height: 1.5; color: #374151;">If you build with Cursor, Claude Code, or another MCP agent, Relay can feed it your live project context — and write new decisions back — so you stop re-briefing it every session.</p>
+      <p style="font-size: 16px; line-height: 1.5; color: #374151;">One command sets it up:</p>
+      <div style="margin: 16px 0; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 18px;"><code style="font-family: monospace; font-size: 14px; color: #182017;">npx @onrelay/wizard</code></div>
+      ${ctaButton("https://www.onrelay.app/docs/getting-started", "See the guide")}
+    `,
+  })
+}
+
+/** Day 7: recap — point back to what Relay has remembered. */
+export async function sendMemoryRecapEmail(to: string, name: string | null) {
+  const greeting = name ? `Hi ${name}` : "Hi there"
+  await sendLifecycleEmail({
+    to,
+    subject: "Here's what Relay has been remembering for you",
+    bodyHtml: `
+      <h1 style="font-size: 22px; font-weight: 600; margin-bottom: 16px;">${greeting},</h1>
+      <p style="font-size: 16px; line-height: 1.5; color: #374151;">It's been about a week. Relay has been quietly building a living brief of your work — decisions, tasks, and context — across the AI tools you use.</p>
+      <p style="font-size: 16px; line-height: 1.5; color: #374151;">Take a look at your project brief, then insert it into your next chat and feel the difference.</p>
+      ${ctaButton("https://www.onrelay.app/dashboard", "See your brief")}
+    `,
+  })
+}
+
+/** Reactivation: was active, then went quiet. */
+export async function sendReactivationEmail(to: string, name: string | null) {
+  const greeting = name ? `Hi ${name}` : "Hi there"
+  await sendLifecycleEmail({
+    to,
+    subject: "Your saved context is still here",
+    bodyHtml: `
+      <h1 style="font-size: 22px; font-weight: 600; margin-bottom: 16px;">${greeting},</h1>
+      <p style="font-size: 16px; line-height: 1.5; color: #374151;">You built up real project memory in Relay, then things went quiet. It's all still here, waiting — nothing was lost.</p>
+      <p style="font-size: 16px; line-height: 1.5; color: #374151;">Next time you start an AI chat, insert your brief and pick up exactly where you left off.</p>
+      ${ctaButton("https://www.onrelay.app/dashboard", "Pick up where you left off")}
+    `,
+  })
+}
+
 export async function sendWelcomeEmail(to: string, name: string | null) {
   const client = getResend()
   if (!client) return
