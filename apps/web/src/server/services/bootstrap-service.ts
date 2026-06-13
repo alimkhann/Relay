@@ -1421,6 +1421,18 @@ export async function generateBootstrapForProject(userId: string, projectId: str
     kind: parsed.kind,
   }).catch(() => {})
 
+  // The real activation moment is a brief landing in a live chat, not a
+  // dashboard brief-page view (which most users never reach). The extension
+  // sets forInsertion on Insert Brief, so record first_brief_viewed here too.
+  if (parsed.forInsertion) {
+    await fireUserMilestone(userId, "first_brief_viewed", {
+      project_id: projectId,
+      profile_key: profile.key ?? null,
+      kind: parsed.kind,
+      via: "insertion",
+    }).catch(() => {})
+  }
+
   if (rawState) {
     await repositories.projectState.markBootstrapped(projectId)
   }
