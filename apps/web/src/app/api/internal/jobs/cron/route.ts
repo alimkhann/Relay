@@ -10,8 +10,13 @@ import { drainDigestJobs } from "@/server/services/digest-service"
 import { drainDueProjectHygiene, drainMemoryPipelineJobs } from "@/server/services/memory-pipeline-scheduler"
 import { sweepStaleProcessingSources } from "@/server/services/source-service"
 
-const MAX_USERS_PER_INVOCATION = 1
-const MAX_DIGEST_JOBS_PER_USER = 1
+// The cron is invoked frequently (external scheduler tick, see
+// .github/workflows/drain.yml) so each run drains a batch of users until the
+// time budget is hit rather than a single user/job. This is what keeps session
+// digests from backlogging — captures must become searchable memory within
+// minutes, not days.
+const MAX_USERS_PER_INVOCATION = 8
+const MAX_DIGEST_JOBS_PER_USER = 4
 const MAX_WORK_MS = 45_000
 
 export const maxDuration = 60
@@ -34,10 +39,13 @@ export async function GET(request: Request) {
   // Cross-tenant scan to find all users with pending jobs — runs under the
   // worker role (bypassrls).
   const repositories = createWorkerRepositoryBundle()
+  // Oldest backlog first so stuck users get unblocked fairly across ticks.
   const rows = await repositories.provider.query(
-    `select distinct created_by
+    `select created_by
      from ai_job_runs
      where status in ('pending', 'timed_out', 'deferred')
+     group by created_by
+     order by min(created_at) asc
      limit $1`,
     [MAX_USERS_PER_INVOCATION]
   )
