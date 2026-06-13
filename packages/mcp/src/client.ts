@@ -72,6 +72,7 @@ export class RelayClient {
   private workSessionDisabled = false
   private refreshPromise: Promise<void> | null = null
   private refreshFailed = false
+  private readonly refreshable: boolean
   private readonly analytics?: RelayMcpAnalytics
 
   private readonly fallbackToken?: string
@@ -82,9 +83,29 @@ export class RelayClient {
     this.fallbackToken = config.fallbackToken
     this.refreshToken = config.refreshToken
     this.accessTokenExpiresAt = config.accessTokenExpiresAt
+    // A client that was given a refresh token can recover from a 401 (refresh /
+    // re-read rotated disk creds). A static-token client cannot, so its 401s
+    // should surface the real server error rather than "run the wizard".
+    this.refreshable = Boolean(config.refreshToken)
     this.projectId = config.projectId
     this.analytics = analytics
     this.registerShutdownHooks()
+  }
+
+  /**
+   * Another MCP process (or the wizard) may have rotated and persisted fresh
+   * tokens on disk — refresh tokens are single-use, so the instance that didn't
+   * win the rotation holds a now-dead token even though disk is healthy. Adopt
+   * the disk creds if they differ from what we hold. Returns true if adopted.
+   */
+  private async tryAdoptDiskConfig(): Promise<boolean> {
+    const disk = await loadConfig().catch(() => null)
+    if (!disk?.token || disk.token === this.token) return false
+    this.token = disk.token
+    this.refreshToken = disk.refreshToken
+    this.accessTokenExpiresAt = disk.accessTokenExpiresAt
+    this.refreshFailed = false
+    return true
   }
 
   async get<T>(path: string): Promise<T> {
@@ -468,11 +489,21 @@ export class RelayClient {
           this.accessTokenExpiresAt = undefined
           return this.request(method, path, body, 1)
         }
-        if (this.refreshFailed || !this.refreshToken) {
+        if (this.refreshToken && !this.refreshFailed) {
+          await this.refreshAccessToken()
+          return this.request(method, path, body, 0)
+        }
+        // Refresh isn't currently possible (no/lost refresh token, or a prior
+        // refresh failed). Before giving up, adopt any rotated creds another MCP
+        // process persisted to disk — this is the common "reads worked, then a
+        // write 401'd" case where a sibling instance consumed the refresh token.
+        if (_attempt < 2 && (await this.tryAdoptDiskConfig())) {
+          return this.request(method, path, body, _attempt + 1)
+        }
+        if (this.refreshable) {
           throw new Error("Relay authentication expired. Run 'npx @onrelay/wizard' to re-authenticate.")
         }
-        await this.refreshAccessToken()
-        return this.request(method, path, body, 0)
+        // Static-token client: surface the real server error (handled below).
       }
 
       if (response.status === 429) {
@@ -543,6 +574,9 @@ export class RelayClient {
         this.accessTokenExpiresAt = undefined
         return
       }
+      // A prior refresh failed, but another MCP process may have since written
+      // fresh tokens to disk — adopt them rather than forcing a re-auth.
+      if (await this.tryAdoptDiskConfig()) return
       throw new Error("Relay authentication expired. Run 'npx @onrelay/wizard' to re-authenticate.")
     }
 
@@ -654,9 +688,16 @@ export class RelayClient {
           this.accessTokenExpiresAt = undefined
           return
         }
-        this.refreshFailed = true
-        this.refreshToken = undefined
-        throw new Error("Relay authentication expired. Run 'npx @onrelay/wizard' to re-authenticate.")
+        // Only latch as permanently-expired when the refresh token itself is
+        // rejected (401/403). Transient failures (5xx, rate limits, network)
+        // must NOT brick the client for the rest of the session — leaving
+        // refreshFailed/refreshToken intact lets the next request retry.
+        if (response.status === 401 || response.status === 403) {
+          this.refreshFailed = true
+          this.refreshToken = undefined
+          throw new Error("Relay authentication expired. Run 'npx @onrelay/wizard' to re-authenticate.")
+        }
+        throw new Error(`Relay token refresh failed (${response.status}).${text ? ` ${text}` : ""}`)
       }
 
       const data = await response.json() as {

@@ -6,9 +6,15 @@ export default defineConfig({
     jsx: "automatic"
   },
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "apps/web/src")
-    }
+    alias: [
+      { find: "@", replacement: path.resolve(__dirname, "apps/web/src") },
+      // Exact-match only: the bare "@relay/shared" specifier fails Vite's
+      // import-analysis when a package source file (e.g. mcp/src/client.ts) is
+      // reached as a near-entry rather than transitively. Point it straight at
+      // the workspace source — the same target as the package's "." export —
+      // without affecting subpath imports like "@relay/shared/utils/*".
+      { find: /^@relay\/shared$/, replacement: path.resolve(__dirname, "packages/shared/src/index.ts") },
+    ]
   },
   test: {
     include: [

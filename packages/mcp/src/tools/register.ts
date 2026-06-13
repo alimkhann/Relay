@@ -181,7 +181,11 @@ export function registerTools(server: McpServer, ctx: ToolRegistrationContext) {
 - tracePhrase → trace provenance of a phrase
 - filters → filter memory listing by type/tags/pinned/archived
 
-If a query returns no useful memory, investigate locally and save only confirmed durable findings, not the empty recall attempt.
+When to recall (not only at session start):
+- Before any architecture, product, or process decision — check what was already decided here and why, instead of re-deciding from scratch.
+- When resuming a task or entering an unfamiliar part of the project, before asking the user to re-explain.
+- When the user references past work ("the thing we did", "like before") or says something that contradicts the brief.
+Recall searches durable memory plus recent captured work, so a thin result usually means the topic is genuinely new — proceed and save what you confirm (do not record the empty recall itself).
 If returned context is stale, completed, contradicted, or superseded, clean it up with save action: "manage_memory" or correct project state with save action: "set_state".`,
     recallSchema.shape,
     async (args) => {
@@ -230,6 +234,10 @@ Pass action-specific fields in payload. Examples:
 - { action: "checkpoint", payload: { summary: "Auth implementation done" } }
 - { action: "manage_memory", payload: { action: "archive", memoryId: "..." } }
 - { action: "archive_session", payload: { sessionId: "...", archived: true } }
+
+When to save (as you work, not only when wrapping up):
+- The moment a durable decision, constraint, requirement, or task is confirmed — save it then, while the reasoning is fresh, rather than batching at the end.
+- When a saved fact is contradicted or completed — update or archive it via manage_memory rather than leaving the obsolete one active.
 
 Use manage_memory whenever get_brief or recall shows stale, completed, contradicted, or superseded context. Prefer archiving old facts over adding corrections that leave obsolete memory active.
 
