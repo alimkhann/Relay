@@ -2874,7 +2874,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       {shouldShowAutoCapturePrompt ? (
         <div className={styles.warningBanner}>
           <div className={styles.warningContent}>
-            <span className={styles.warningTitle}>Auto-capture is off by default.</span>
+            <span className={styles.warningTitle}>Auto-capture is off for this account.</span>
             <button
               className={styles.warningPrimaryButton}
               disabled={busy}

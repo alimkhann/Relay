@@ -138,7 +138,11 @@ function WalkthroughShell({
                 type="button"
                 onClick={onDismiss}
                 aria-label="Close guide"
-                className="absolute -right-1 -top-1 z-20 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--relay-line)] bg-[var(--relay-soft)]/80 text-[var(--relay-muted)] backdrop-blur-sm transition-colors hover:border-[var(--relay-line-strong)] hover:text-[var(--relay-ink)] sm:-right-2 sm:-top-2"
+                // Positioned INSIDE the content box: the parent scales 1.25× and
+                // has overflow-y-auto (which makes overflow-x compute to auto
+                // too), so a negative-offset corner button gets clipped. Keep it
+                // within the padding box so it stays fully visible and tappable.
+                className="absolute right-2 top-2 z-20 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--relay-line)] bg-[var(--relay-soft)]/80 text-[var(--relay-muted)] backdrop-blur-sm transition-colors hover:border-[var(--relay-line-strong)] hover:text-[var(--relay-ink)]"
               >
                 <X size={16} />
               </button>
