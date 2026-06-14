@@ -1046,3 +1046,17 @@
   margin: 0 auto;
   text-align: center;
 }
+
+/* ── Carded shell (steps from Auth onward) — dashboard-onboarding placement:
+   a centered, elevated card on the dark page. Defined after .step so its
+   single-class overrides win. ── */
+.stepCarded {
+  max-width: 600px;
+  margin: auto;
+  padding: 36px 32px 40px;
+  background: #0f0f0f;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 22px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+  max-height: calc(100vh - 56px);
+}

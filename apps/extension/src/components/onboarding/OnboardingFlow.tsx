@@ -450,7 +450,7 @@ export function OnboardingFlow() {
           <StepWelcome onNext={next} />
         </div>
       ) : (
-        <div className={`${styles.step} ${stepClass}`}>
+        <div className={`${styles.step} ${stepClass} ${step >= 2 ? styles.stepCarded : ""}`}>
           {step === 1 && <StepFeatures onOpenVideo={setModalVideo} />}
           {step === 2 && (
             <StepAuth
