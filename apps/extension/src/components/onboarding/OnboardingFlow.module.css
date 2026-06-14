@@ -985,3 +985,64 @@
 }
 .slideDotActive   { width: 18px; background: rgba(255,255,255,0.7); }
 .slideDotInactive { width: 5px; background: rgba(255,255,255,0.15); }
+
+/* ── Persona step ── */
+.personaGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+  max-width: 460px;
+}
+.personaCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  text-align: left;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: #111;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.personaCard:hover {
+  border-color: rgba(255,255,255,0.28);
+  background: #161616;
+}
+.personaCardLabel { font-size: 14px; font-weight: 600; color: #fafafa; }
+.personaCardHint { font-size: 12px; color: rgba(255,255,255,0.5); }
+.personaChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  max-width: 460px;
+}
+.personaChip {
+  padding: 7px 14px;
+  font-size: 13px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: #111;
+  color: rgba(255,255,255,0.75);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.personaChip:hover { border-color: rgba(255,255,255,0.28); }
+.personaChipOn {
+  background: #fff;
+  color: #0a0a0a;
+  border-color: #fff;
+}
+
+/* ── Paywall step ── */
+.paywallStep {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  text-align: center;
+}
