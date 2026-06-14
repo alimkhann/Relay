@@ -21,19 +21,21 @@ import {
 import { getRelaySession } from "../../storage/session"
 import { relayFetch } from "../../utils/api"
 import { PaywallCards } from "../paywall-cards"
+import {
+  TOTAL_STEPS,
+  STEP_CREATE_PROJECT,
+  STEP_PERSONA,
+  STEP_VIDEOS,
+  STEP_PAYWALL,
+  STEP_SHORTCUTS,
+  STEP_PIN,
+  resolveOnboardingStep,
+} from "./steps"
 import styles from "./OnboardingFlow.module.css"
 
 const BASE_URL = "https://onrelay.app"
 const STEP_KEY = "relay.onboarding.htmlStep"
 const META_KEY = "relay.onboarding.htmlMeta"
-// 0:Welcome 1:Features 2:Auth 3:CreateProject 4:Persona 5:Videos 6:Paywall 7:Shortcuts 8:Pin
-const TOTAL_STEPS = 9
-const STEP_CREATE_PROJECT = 3
-const STEP_PERSONA = 4
-const STEP_VIDEOS = 5
-const STEP_PAYWALL = 6
-const STEP_SHORTCUTS = 7
-const STEP_PIN = 8
 
 const isMac = typeof navigator !== "undefined" && navigator.userAgent.includes("Mac")
 const altKey = isMac ? "⌥" : "Alt"
@@ -253,9 +255,11 @@ export function OnboardingFlow() {
         // Signed in but parked on/before auth → advance into the first
         // applicable setup step.
         if (session.connected && restored <= 2) {
-          restored = canSetup ? STEP_CREATE_PROJECT : STEP_PERSONA
-          if (restored === STEP_PERSONA && skip.personaSet) restored = STEP_VIDEOS
-          if (restored === STEP_VIDEOS && skip.videosSeen) restored = STEP_PAYWALL
+          restored = resolveOnboardingStep(STEP_CREATE_PROJECT, {
+            canSetup,
+            personaSet: skip.personaSet,
+            videosSeen: skip.videosSeen,
+          })
         }
         setStep(restored)
         if (restored !== saved) chrome.storage.local.set({ [STEP_KEY]: restored })
@@ -265,18 +269,12 @@ export function OnboardingFlow() {
     return () => { cancelled = true }
   }, [])
 
-  // Resolve a target step, skipping setup steps already satisfied: CreateProject
-  // when a project exists, Persona when set (in dashboard or here), Videos when
-  // already seen. Paywall (6) always shows — a deliberate "second chance".
-  function resolveStep(target: number): number {
-    let s = Math.max(0, Math.min(target, TOTAL_STEPS - 1))
-    if (s === STEP_CREATE_PROJECT && !canUseSetupFlow) s = STEP_PERSONA
-    if (s === STEP_PERSONA && personaSet) s = STEP_VIDEOS
-    if (s === STEP_VIDEOS && videosSeen) s = STEP_PAYWALL
-    return s
-  }
   function goTo(target: number) {
-    navTo(resolveStep(target), setStep, setVisible)
+    navTo(
+      resolveOnboardingStep(target, { canSetup: canUseSetupFlow, personaSet, videosSeen }),
+      setStep,
+      setVisible,
+    )
   }
   function next() { goTo(step + 1) }
 
@@ -328,10 +326,12 @@ export function OnboardingFlow() {
     const needsProjectSetup = !hasCompletedOnboarding(stored)
     setCanUseSetupFlow(needsProjectSetup)
     const skip = await loadSkipState()
-    // Compute the first applicable step from fresh values (setState is async).
-    let target = needsProjectSetup ? STEP_CREATE_PROJECT : STEP_PERSONA
-    if (target === STEP_PERSONA && skip.personaSet) target = STEP_VIDEOS
-    if (target === STEP_VIDEOS && skip.videosSeen) target = STEP_PAYWALL
+    // Resolve from fresh values (setState is async), starting at CreateProject.
+    const target = resolveOnboardingStep(STEP_CREATE_PROJECT, {
+      canSetup: needsProjectSetup,
+      personaSet: skip.personaSet,
+      videosSeen: skip.videosSeen,
+    })
     navTo(target, setStep, setVisible)
   }
 
