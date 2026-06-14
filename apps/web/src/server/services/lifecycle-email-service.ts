@@ -172,14 +172,15 @@ export async function drainLifecycleEmails(
     const key = decideDueLifecycleEmail(signals, nowMs)
     if (!key) continue
 
-    const claimed = await claimEmailSend(provider, signals.userId, key)
-    if (!claimed) continue
-
     try {
+      // Claim the send first (idempotent), then send. Both are inside the
+      // try so one bad row (e.g. an auth user without a profiles FK row, or a
+      // transient DB/Resend error) can never abort the whole batch.
+      const claimed = await claimEmailSend(provider, signals.userId, key)
+      if (!claimed) continue
       await sendForKey(key, signals)
       sent++
     } catch (error) {
-      // Never let one send failure abort the batch.
       await logServerEvent({
         level: "warn",
         surface: "web-api",
