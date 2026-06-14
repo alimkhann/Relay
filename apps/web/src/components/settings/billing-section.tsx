@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AlertCircle, Check, Loader2 } from "lucide-react"
 
@@ -153,6 +153,7 @@ const CHECKOUT_SYNC_INTERVAL_MS = 5_000
 
 export function BillingSection({ billing, checkoutSuccess, referralProgram }: BillingSectionProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { entitlements, subscription, usage } = billing
   const [yearly, setYearly] = useState(true)
   const [loading, setLoading] = useState<"month" | "year" | "portal" | "resync" | null>(null)
@@ -162,6 +163,23 @@ export function BillingSection({ billing, checkoutSuccess, referralProgram }: Bi
     checkoutSuccess && !entitlements.isPaid ? "syncing" : "idle",
   )
   const syncAttemptsRef = useRef(0)
+  const autoCheckoutFiredRef = useRef(false)
+
+  // The extension paywall deep-links here with ?plan=&interval= when a user
+  // picks a plan in onboarding. Auto-start checkout once so the CTA is one click,
+  // not "land on billing, click again". Strip the params so refresh/back can't
+  // re-trigger it.
+  useEffect(() => {
+    if (autoCheckoutFiredRef.current) return
+    const planParam = searchParams.get("plan")
+    const intervalParam = searchParams.get("interval")
+    if (planParam !== "starter" && planParam !== "pro") return
+    if (intervalParam !== "month" && intervalParam !== "year") return
+    if (entitlements.isPaid) return
+    autoCheckoutFiredRef.current = true
+    router.replace("/settings?section=billing")
+    void handleCheckout(intervalParam, planParam)
+  }, [])
 
   const usageItems = useMemo<UsageItem[]>(
     () => [

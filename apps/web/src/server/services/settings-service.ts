@@ -20,9 +20,14 @@ function buildNewUserSettings(): UserSettingsRow["settings"] {
   return {
     ...defaultSettings,
     enabledPlatforms: ["chatgpt", "perplexity", "claude", "codex", "gemini", "grok", "deepseek"],
-    autoCapture: false,
+    // Auto-capture ON from the first install: the extension only captures on
+    // supported AI-chat domains and always shows the visible chip, so there's no
+    // silent surveillance — but defaulting OFF behind an orange "turn it on"
+    // prompt starved the value moment (users never reached a brief). Every
+    // retained user relies on capture; make it work without a toggle.
+    autoCapture: true,
     autoCapturePrompt: {
-      eligible: true,
+      eligible: false,
       dismissedAt: null,
       activatedAt: null
     }

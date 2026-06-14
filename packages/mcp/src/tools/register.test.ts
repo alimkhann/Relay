@@ -39,7 +39,7 @@ describe("registerTools analytics wrapper", () => {
 
     const recall = harness.registrations.find((tool) => tool.name === "recall")
 
-    expect(recall?.description).toContain("If a query returns no useful memory")
+    expect(recall?.description).toContain("save what you confirm")
     expect(recall?.description).toContain("stale, completed, contradicted, or superseded")
   })
 

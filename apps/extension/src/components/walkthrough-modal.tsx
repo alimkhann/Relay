@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react"
+
+import { PaywallCards } from "./paywall-cards"
 import styles from "./walkthrough-modal.module.css"
 
 const BASE_URL = "https://onrelay.app"
@@ -9,6 +11,7 @@ interface Step {
   video?: { mp4: string; webm?: string; poster: string }
   image?: { src: string; alt: string }
   cta?: { href: string; label: string }
+  paywall?: boolean
 }
 
 const EXTENSION_STEPS: Step[] = [
@@ -47,6 +50,11 @@ const EXTENSION_STEPS: Step[] = [
       alt: "Relay dashboard",
     },
     cta: { href: `${BASE_URL}/dashboard`, label: "Open dashboard →" },
+  },
+  {
+    title: "Choose your plan",
+    body: "Start free, or unlock long-term memory and higher limits.",
+    paywall: true,
   },
 ]
 
@@ -88,42 +96,52 @@ export function WalkthroughModal({ onDismiss }: WalkthroughModalProps) {
       </div>
 
       <div className={styles.body}>
-        {current.video ? (
-          <div className={styles.media}>
-            <video
-              ref={videoRef}
-              poster={current.video.poster}
-              autoPlay
-              loop
-              muted
-              playsInline
-              preload="metadata"
-            >
-              {current.video.webm ? <source src={current.video.webm} type="video/webm" /> : null}
-              <source src={current.video.mp4} type="video/mp4" />
-            </video>
-          </div>
-        ) : current.image ? (
-          <div className={styles.media}>
-            <img src={current.image.src} alt={current.image.alt} />
-          </div>
-        ) : null}
+        {current.paywall ? (
+          <>
+            <p className={styles.title}>{current.title}</p>
+            <p className={styles.description}>{current.body}</p>
+            <PaywallCards compact onContinueFree={onDismiss} />
+          </>
+        ) : (
+          <>
+            {current.video ? (
+              <div className={styles.media}>
+                <video
+                  ref={videoRef}
+                  poster={current.video.poster}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  preload="metadata"
+                >
+                  {current.video.webm ? <source src={current.video.webm} type="video/webm" /> : null}
+                  <source src={current.video.mp4} type="video/mp4" />
+                </video>
+              </div>
+            ) : current.image ? (
+              <div className={styles.media}>
+                <img src={current.image.src} alt={current.image.alt} />
+              </div>
+            ) : null}
 
-        <p className={styles.title}>{current.title}</p>
-        <p className={styles.description}>{current.body}</p>
+            <p className={styles.title}>{current.title}</p>
+            <p className={styles.description}>{current.body}</p>
 
-        {current.cta ? (
-          <div className={styles.cta}>
-            <a
-              href={current.cta.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={styles.ctaLink}
-            >
-              {current.cta.label}
-            </a>
-          </div>
-        ) : null}
+            {current.cta ? (
+              <div className={styles.cta}>
+                <a
+                  href={current.cta.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.ctaLink}
+                >
+                  {current.cta.label}
+                </a>
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
 
       <div className={styles.footer}>
@@ -144,7 +162,7 @@ export function WalkthroughModal({ onDismiss }: WalkthroughModalProps) {
             />
           ))}
         </div>
-        <div className={styles.buttons}>
+        <div className={styles.buttons} style={current.paywall ? { display: "none" } : undefined}>
           {!isLast && (
             <button type="button" className={styles.skipBtn} onClick={onDismiss}>
               Skip

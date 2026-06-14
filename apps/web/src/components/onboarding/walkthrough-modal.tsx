@@ -6,7 +6,8 @@ import * as Dialog from "@radix-ui/react-dialog"
 import { ArrowLeft, X } from "lucide-react"
 import { motion, AnimatePresence } from "motion/react"
 
-import { ONBOARDING_SOURCES } from "@/app/(marketing)/marketing-integrations"
+import { ONBOARDING_SOURCES, PERSONA_OPTIONS } from "@relay/shared/constants/onboarding"
+
 import { ChromeWebstoreBadge } from "@/components/chrome-webstore-badge"
 import { PaywallPlanCards } from "@/components/billing/paywall-plan-cards"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
@@ -26,15 +27,6 @@ interface Step {
 }
 
 export type PersonaKind = keyof typeof ONBOARDING_SOURCES
-
-const PERSONA_OPTIONS: Array<{ kind: PersonaKind; label: string; hint: string }> = [
-  { kind: "project_work", label: "My AI & coding work", hint: "Projects, decisions, code context" },
-  { kind: "personal", label: "My personal life", hint: "Commitments, ideas, things I tell AI" },
-  { kind: "relationships", label: "People & follow-ups", hint: "Contacts, promises, conversations" },
-  { kind: "team", label: "Team decisions", hint: "Shared projects and why we chose things" },
-  { kind: "research", label: "Research & learning", hint: "Papers, notes, things you're figuring out" },
-  { kind: "content", label: "Writing & content", hint: "Drafts, posts, scripts, creative work" },
-]
 
 const DASHBOARD_STEPS: Step[] = [
   {
@@ -138,7 +130,11 @@ function WalkthroughShell({
                 type="button"
                 onClick={onDismiss}
                 aria-label="Close guide"
-                className="absolute -right-1 -top-1 z-20 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--relay-line)] bg-[var(--relay-soft)]/80 text-[var(--relay-muted)] backdrop-blur-sm transition-colors hover:border-[var(--relay-line-strong)] hover:text-[var(--relay-ink)] sm:-right-2 sm:-top-2"
+                // Positioned INSIDE the content box: the parent scales 1.25× and
+                // has overflow-y-auto (which makes overflow-x compute to auto
+                // too), so a negative-offset corner button gets clipped. Keep it
+                // within the padding box so it stays fully visible and tappable.
+                className="absolute right-2 top-2 z-20 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--relay-line)] bg-[var(--relay-soft)]/80 text-[var(--relay-muted)] backdrop-blur-sm transition-colors hover:border-[var(--relay-line-strong)] hover:text-[var(--relay-ink)]"
               >
                 <X size={16} />
               </button>

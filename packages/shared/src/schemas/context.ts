@@ -23,5 +23,11 @@ export const bootstrapRequestSchema = z.object({
   packetMode: z.enum(["chat_new", "chat_continue", "chat_smart_delta", "agent_quick_continuity", "agent_full_bootstrap"]).optional(),
   deep: z.boolean().optional(),
   since: isoDatetime.optional(),
+  /**
+   * Set by the extension's "Insert Brief" action so the server can record the
+   * real activation moment (brief inserted into a live chat) rather than only
+   * counting dashboard brief-page views.
+   */
+  forInsertion: z.boolean().optional(),
   syncSurface: z.enum(["mcp", "cli", "chatgpt", "claude", "codex", "opencode", "gemini", "cursor", "warp", "windsurf", "antigravity", "grok", "perplexity", "deepseek"]).optional()
 })

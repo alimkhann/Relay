@@ -12,14 +12,30 @@ import Codex from "@lobehub/icons/es/Codex"
 import Antigravity from "@lobehub/icons/es/Antigravity"
 import Windsurf from "@lobehub/icons/es/Windsurf"
 import GithubCopilot from "@lobehub/icons/es/GithubCopilot"
+import {
+  ONBOARDING_SOURCES,
+  PERSONA_OPTIONS,
+  type OnboardingPersonaKind,
+} from "@relay/shared/constants/onboarding"
+
 import { getRelaySession } from "../../storage/session"
 import { relayFetch } from "../../utils/api"
+import { PaywallCards } from "../paywall-cards"
+import {
+  TOTAL_STEPS,
+  STEP_CREATE_PROJECT,
+  STEP_PERSONA,
+  STEP_VIDEOS,
+  STEP_PAYWALL,
+  STEP_SHORTCUTS,
+  STEP_PIN,
+  resolveOnboardingStep,
+} from "./steps"
 import styles from "./OnboardingFlow.module.css"
 
 const BASE_URL = "https://onrelay.app"
 const STEP_KEY = "relay.onboarding.htmlStep"
 const META_KEY = "relay.onboarding.htmlMeta"
-const TOTAL_STEPS = 7 // 0:Welcome 1:Features 2:Auth 3:CreateProject 4:Walkthrough 5:Shortcuts 6:Pin
 
 const isMac = typeof navigator !== "undefined" && navigator.userAgent.includes("Mac")
 const altKey = isMac ? "⌥" : "Alt"
@@ -209,6 +225,12 @@ export function OnboardingFlow() {
   const [projectError, setProjectError] = useState<string | null>(null)
   const [modalVideo, setModalVideo] = useState<string | null>(null)
   const [referralCode, setReferralCode] = useState("")
+  // Skip-state: persona/videos may already be done in the dashboard onboarding.
+  const [personaSet, setPersonaSet] = useState(false)
+  const [videosSeen, setVideosSeen] = useState(false)
+  const [personaKind, setPersonaKind] = useState<OnboardingPersonaKind | null>(null)
+  const [personaSources, setPersonaSources] = useState<string[]>([])
+  const [personaBusy, setPersonaBusy] = useState(false)
 
   useEffect(() => {
     document.title = "Welcome to Relay — Let's Get Started"
@@ -219,33 +241,75 @@ export function OnboardingFlow() {
         resolve(typeof saved === "number" && saved >= 0 && saved < TOTAL_STEPS ? saved : null)
       })
     })
-    void Promise.all([getRelaySession(), savedStep]).then(([session, saved]) => {
+    void Promise.all([getRelaySession(), savedStep]).then(async ([session, saved]) => {
       if (cancelled) return
       const canSetup = session.connected && !hasCompletedOnboarding(session as unknown as Record<string, unknown>)
       setIsSignedIn(session.connected)
       setCanUseSetupFlow(canSetup)
+      const skip = session.connected
+        ? await loadSkipState()
+        : { personaSet: false, videosSeen: false }
+      if (cancelled) return
       if (saved !== null) {
-        const restoredStep =
-          session.connected && saved === 2
-            ? (canSetup ? 3 : 5)
-            : !canSetup && saved === 3
-              ? (session.connected ? 5 : 2)
-              : saved
-        setStep(restoredStep)
-        if (restoredStep !== saved) chrome.storage.local.set({ [STEP_KEY]: restoredStep })
+        let restored = Math.min(saved, TOTAL_STEPS - 1)
+        // Signed in but parked on/before auth → advance into the first
+        // applicable setup step.
+        if (session.connected && restored <= 2) {
+          restored = resolveOnboardingStep(STEP_CREATE_PROJECT, {
+            canSetup,
+            personaSet: skip.personaSet,
+            videosSeen: skip.videosSeen,
+          })
+        }
+        setStep(restored)
+        if (restored !== saved) chrome.storage.local.set({ [STEP_KEY]: restored })
       }
     })
     setTimeout(() => setVisible(true), 50)
     return () => { cancelled = true }
   }, [])
 
-  // Step 3 (CreateProject) requires auth + no completed onboarding.
-  // Steps 4-5 (Walkthrough, Shortcuts) are always navigable.
-  function goTo(next: number) {
-    if (!canUseSetupFlow && next === 3) return
-    navTo(next, setStep, setVisible)
+  function goTo(target: number) {
+    navTo(
+      resolveOnboardingStep(target, { canSetup: canUseSetupFlow, personaSet, videosSeen }),
+      setStep,
+      setVisible,
+    )
   }
   function next() { goTo(step + 1) }
+
+  // Persona/videos may already be done in the dashboard; load that so we can
+  // skip those steps here.
+  async function loadSkipState(): Promise<{ personaSet: boolean; videosSeen: boolean }> {
+    try {
+      const res = await relayFetch("/api/settings")
+      if (!res.ok) return { personaSet: false, videosSeen: false }
+      const data = (await res.json()) as {
+        settings?: { persona?: unknown; walkthrough?: { dismissedAt?: string | null } | null }
+      }
+      const hasPersona = Boolean(data.settings?.persona)
+      const hasVideos = Boolean(data.settings?.walkthrough?.dismissedAt)
+      if (hasPersona) setPersonaSet(true)
+      if (hasVideos) setVideosSeen(true)
+      return { personaSet: hasPersona, videosSeen: hasVideos }
+    } catch {
+      return { personaSet: false, videosSeen: false }
+    }
+  }
+
+  async function commitPersona() {
+    if (!personaKind || personaSources.length === 0) { goTo(STEP_VIDEOS); return }
+    setPersonaBusy(true)
+    try {
+      await relayFetch("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ persona: { kind: personaKind, contextSources: personaSources } }),
+      })
+      setPersonaSet(true)
+    } catch { /* best-effort */ }
+    finally { setPersonaBusy(false) }
+    goTo(STEP_VIDEOS)
+  }
 
   async function dismissWalkthrough() {
     try { await relayFetch("/api/settings", { method: "PATCH", body: JSON.stringify({ walkthrough: { dismissedAt: new Date().toISOString() } }) }) }
@@ -261,7 +325,13 @@ export function OnboardingFlow() {
     const stored = await getSessionData()
     const needsProjectSetup = !hasCompletedOnboarding(stored)
     setCanUseSetupFlow(needsProjectSetup)
-    const target = needsProjectSetup ? 3 : 5
+    const skip = await loadSkipState()
+    // Resolve from fresh values (setState is async), starting at CreateProject.
+    const target = resolveOnboardingStep(STEP_CREATE_PROJECT, {
+      canSetup: needsProjectSetup,
+      personaSet: skip.personaSet,
+      videosSeen: skip.videosSeen,
+    })
     navTo(target, setStep, setVisible)
   }
 
@@ -354,7 +424,7 @@ export function OnboardingFlow() {
           projectUrl: normalizeUrl(scanUrl) || undefined,
         },
       }) as { ok: boolean; reason?: string } | undefined
-      if (result?.ok) { navTo(4, setStep, setVisible) }
+      if (result?.ok) { goTo(STEP_PERSONA) }
       else setProjectError(result?.reason ?? "Could not create project. Try again.")
     } catch { setProjectError("Could not create project. Try again.") }
     finally { setProjectBusy(false) }
@@ -380,7 +450,7 @@ export function OnboardingFlow() {
           <StepWelcome onNext={next} />
         </div>
       ) : (
-        <div className={`${styles.step} ${stepClass}`}>
+        <div className={`${styles.step} ${stepClass} ${step >= 2 ? styles.stepCarded : ""}`}>
           {step === 1 && <StepFeatures onOpenVideo={setModalVideo} />}
           {step === 2 && (
             <StepAuth
@@ -394,7 +464,7 @@ export function OnboardingFlow() {
               onIntentToggle={() => { setIntent((v) => v === "sign-in" ? "sign-up" : "sign-in"); setAuthError(null); setOtpRequired(false); setOtp(""); setReferralCode("") }}
               onOtpChange={setOtp}
               onReferralCodeChange={setReferralCode}
-              onSkip={() => navTo(5, setStep, setVisible)}
+              onSkip={() => navTo(STEP_SHORTCUTS, setStep, setVisible)}
             />
           )}
           {step === 3 && (
@@ -405,12 +475,36 @@ export function OnboardingFlow() {
               onNameChange={setProjectName} onDescChange={setProjectDesc}
               onScanUrlChange={setScanUrl} onScan={handleScanUrl}
               onCreate={handleCreateProject}
-              onSkip={() => navTo(5, setStep, setVisible)}
+              onSkip={() => goTo(STEP_PERSONA)}
             />
           )}
-          {step === 4 && <StepWalkthrough onNext={() => navTo(5, setStep, setVisible)} />}
-          {step === 5 && <StepShortcuts onNext={next} />}
-          {step === 6 && <StepPin isSignedIn={isSignedIn} onOpenRelay={handleOpenRelay} />}
+          {step === STEP_PERSONA && (
+            <StepPersona
+              personaKind={personaKind}
+              personaSources={personaSources}
+              busy={personaBusy}
+              onChooseKind={(kind) => { setPersonaKind(kind); setPersonaSources([]) }}
+              onToggleSource={(source) =>
+                setPersonaSources((prev) =>
+                  prev.includes(source) ? prev.filter((s) => s !== source) : [...prev, source],
+                )
+              }
+              onContinue={() => void commitPersona()}
+              onSkip={() => goTo(STEP_VIDEOS)}
+            />
+          )}
+          {step === STEP_VIDEOS && <StepWalkthrough onNext={() => goTo(STEP_PAYWALL)} />}
+          {step === STEP_PAYWALL && (
+            <div className={styles.paywallStep}>
+              <h1 className={styles.heading} style={{ fontSize: 30, marginBottom: 6 }}>Choose your plan</h1>
+              <p className={styles.subheading} style={{ marginBottom: 28 }}>
+                Start free, or unlock long-term memory and higher limits.
+              </p>
+              <PaywallCards onContinueFree={() => goTo(STEP_SHORTCUTS)} />
+            </div>
+          )}
+          {step === STEP_SHORTCUTS && <StepShortcuts onNext={next} />}
+          {step === STEP_PIN && <StepPin isSignedIn={isSignedIn} onOpenRelay={handleOpenRelay} />}
         </div>
       )}
 
@@ -669,7 +763,74 @@ function StepCreateProject({
   )
 }
 
-// ── Step 4: Walkthrough (4 slides) ───────────────────────────────────────────
+// ── Step 4: Persona ───────────────────────────────────────────────────────────
+
+function StepPersona({
+  personaKind, personaSources, busy, onChooseKind, onToggleSource, onContinue, onSkip,
+}: {
+  personaKind: OnboardingPersonaKind | null
+  personaSources: string[]
+  busy: boolean
+  onChooseKind: (kind: OnboardingPersonaKind) => void
+  onToggleSource: (source: string) => void
+  onContinue: () => void
+  onSkip: () => void
+}) {
+  const sourcesReady = personaSources.length > 0
+  return (
+    <div className={styles.authStep}>
+      <h1 className={styles.heading} style={{ fontSize: 32, marginBottom: 8 }}>
+        What should Relay remember?
+      </h1>
+      <p className={styles.subheading} style={{ marginBottom: 28 }}>
+        {personaKind
+          ? "Where does your work and context live today?"
+          : "Pick what matters most — Relay tailors the setup to it."}
+      </p>
+
+      {!personaKind ? (
+        <div className={styles.personaGrid}>
+          {PERSONA_OPTIONS.map((o) => (
+            <button key={o.kind} type="button" className={styles.personaCard} onClick={() => onChooseKind(o.kind)}>
+              <span className={styles.personaCardLabel}>{o.label}</span>
+              <span className={styles.personaCardHint}>{o.hint}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <>
+          <div className={styles.personaChips}>
+            {ONBOARDING_SOURCES[personaKind].map((s) => {
+              const selected = personaSources.includes(s)
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => onToggleSource(s)}
+                  className={`${styles.personaChip} ${selected ? styles.personaChipOn : ""}`}
+                >
+                  {s}
+                </button>
+              )
+            })}
+          </div>
+          <button
+            className={styles.primaryBtn}
+            style={{ width: "100%", maxWidth: 460, marginTop: 24 }}
+            onClick={onContinue}
+            disabled={busy || !sourcesReady}
+          >
+            {busy ? "Saving…" : "Continue"}
+          </button>
+        </>
+      )}
+
+      <button className={styles.skipLink} onClick={onSkip} style={{ marginTop: 16 }}>Skip</button>
+    </div>
+  )
+}
+
+// ── Step 5: Walkthrough (4 slides) ───────────────────────────────────────────
 
 function StepWalkthrough({ onNext }: { onNext: () => void }) {
   const [slide, setSlide] = useState(0)
@@ -831,8 +992,8 @@ function StepPin({ isSignedIn, onOpenRelay }: { isSignedIn: boolean; onOpenRelay
         <div className={styles.pinExtRow}>
           <div className={styles.pinExtLeft}>
             <div className={styles.puzzleIconWrap}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19.439 7.85c-.049.322.059.648.289.878l1.568 1.568c.47.47.47 1.234 0 1.704l-1.704 1.704a.999.999 0 0 1-.848.287c-.31-.05-.611.102-.784.352l-.65.923a.998.998 0 0 0 .158 1.306l.123.099a1 1 0 0 1-.307 1.699l-2.422.808a1 1 0 0 1-1.263-.616L13.5 17H11l-.389 1.563a1 1 0 0 1-1.263.616l-2.421-.808a1 1 0 0 1-.308-1.699l.046-.036a1 1 0 0 0 .152-1.41l-.65-.924a1 1 0 0 0-.784-.352 1 1 0 0 1-.848-.287l-1.704-1.704a1.202 1.202 0 0 1 0-1.704l1.568-1.568a1 1 0 0 0 .29-.878l-.238-1.43A1 1 0 0 1 6.68 5H8V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v1h1.32a1 1 0 0 1 .98 1.21l-.238 1.43z"/>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/>
               </svg>
             </div>
             <div>

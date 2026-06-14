@@ -23,6 +23,7 @@ import { resolveProjectAiBudget } from "./ai-budget-service"
 import { emitAiRequestCompleted } from "./ai-analytics-service"
 import { logServerEvent } from "@/server/logging/logger"
 import { invalidateProjectCache } from "@/server/cache/invalidation"
+import { runAfterResponse } from "@/server/http/after"
 
 interface DigestModelShape extends SessionDigestShape {
   confidence?: number
@@ -1444,14 +1445,25 @@ export function scheduleDigestDrainForProject(userId: string, projectId: string,
   const lastFinishedAt = lastProjectDrainFinishedAt.get(key) ?? 0
   if (Date.now() - lastFinishedAt < PROJECT_DRAIN_COOLDOWN_MS) return
 
-  const promise = drainDigestJobsForProject(userId, projectId, limit, { includeDeferred: false })
-    .catch(() => {})
-    .finally(() => {
+  // Mark in-flight synchronously so a second capture in the same invocation
+  // doesn't double-schedule.
+  activeProjectDrains.set(key, Promise.resolve())
+
+  // Run the drain AFTER the HTTP response, on the same already-awake compute.
+  // A bare fire-and-forget promise here was frozen the instant the response
+  // returned (Vercel serverless freezes the function), so deferred/fallback
+  // digest jobs never finished — the root cause of the digest backlog and of
+  // `recall` finding nothing for recent work. `runAfterResponse` (Next
+  // `after()`) keeps the function alive to finish the work without any extra
+  // DB wake-ups or a cron.
+  runAfterResponse(async () => {
+    try {
+      await drainDigestJobsForProject(userId, projectId, limit, { includeDeferred: false })
+    } finally {
       activeProjectDrains.delete(key)
       lastProjectDrainFinishedAt.set(key, Date.now())
-    })
-
-  activeProjectDrains.set(key, promise)
+    }
+  })
 }
 
 export async function listProjectDigestsForUser(userId: string, projectId: string) {

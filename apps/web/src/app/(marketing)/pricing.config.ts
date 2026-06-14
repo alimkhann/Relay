@@ -1,3 +1,5 @@
+import { PLAN_PRICES } from "@relay/shared/constants/pricing"
+
 import { PLAN_MARKETING_COPY } from "@/server/services/billing-config"
 
 export const PRICING = {
@@ -12,8 +14,8 @@ export const PRICING = {
   },
   starter: {
     name: "Starter",
-    monthlyPrice: 8,
-    yearlyPrice: 80,
+    monthlyPrice: PLAN_PRICES.starter.monthly,
+    yearlyPrice: PLAN_PRICES.starter.yearly,
     description: "For people who use AI tools every day",
     badge: "Most Popular",
     cta: "Get Starter",
@@ -22,8 +24,8 @@ export const PRICING = {
   },
   pro: {
     name: "Pro",
-    monthlyPrice: 12,
-    yearlyPrice: 120,
+    monthlyPrice: PLAN_PRICES.pro.monthly,
+    yearlyPrice: PLAN_PRICES.pro.yearly,
     description: "For heavy users who want the most automation",
     badge: null,
     cta: "Get Pro",

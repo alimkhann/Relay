@@ -14,6 +14,27 @@ import {
 } from "./tab-state-store";
 import { recordBackgroundTelemetry } from "./telemetry";
 
+const FIRST_BRIEF_INSERTED_KEY = "relay.firstBriefInsertedAt";
+
+/**
+ * Records the first-ever successful brief insertion (local, one-time). Returns
+ * true only the first time, so the panel can surface a one-time "this is your
+ * brief" moment — the real activation aha now happens at insertion, not on a
+ * dashboard the user rarely opens.
+ */
+async function markFirstBriefInsertion(): Promise<boolean> {
+  const area = typeof chrome !== "undefined" ? chrome.storage?.local : null;
+  if (!area) return false;
+  try {
+    const existing = await area.get(FIRST_BRIEF_INSERTED_KEY);
+    if (existing[FIRST_BRIEF_INSERTED_KEY]) return false;
+    await area.set({ [FIRST_BRIEF_INSERTED_KEY]: new Date().toISOString() });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function createInsertionController(deps: {
   requestPageStateFromTab(tabId: number): Promise<RelayPageState>;
   syncTabRemoteState(
@@ -79,6 +100,7 @@ export function createInsertionController(deps: {
         kind,
         packetMode: "chat_smart_delta",
         deep: false,
+        forInsertion: true,
         syncSurface: pageState.platform ?? undefined,
       }),
     });
@@ -134,16 +156,22 @@ export function createInsertionController(deps: {
     invalidateProjectCache(projectId);
     const actualModel = String(generated.packet.generationMetadata?.actual_model ?? "");
     const limitedMode = actualModel === "deterministic";
+    const isFirstInsert = await markFirstBriefInsertion();
+    const insertedMessage = limitedMode
+      ? "Inserted a limited project brief."
+      : isFirstInsert
+        ? "Your project brief is in the chat — you'll never re-explain this project again."
+        : "Inserted the project brief.";
     await setRelaySession({
       limitedMode,
-      lastStatus: limitedMode ? "Inserted a limited project brief." : "Inserted the project brief.",
+      lastStatus: insertedMessage,
       assumedProjectId: projectId,
       assumedProjectName: state.projectName ?? "",
     });
     setInsertState(state, {
       status: "inserted",
       source,
-      message: limitedMode ? "Inserted a limited project brief." : "Inserted the project brief.",
+      message: insertedMessage,
     });
     await deps.broadcastActiveProjectState(tabId);
     deps.scheduleInsertStateReset(tabId);
