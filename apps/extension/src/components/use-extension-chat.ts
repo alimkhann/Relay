@@ -64,6 +64,17 @@ let seq = 0
 const tmp = () => `xtmp-${(seq += 1)}`
 const keyOf = (parentId: string | null) => parentId ?? "root"
 
+// One-time signal for the activation tour: the user has used the Relay agent.
+function markFirstAgentMessage() {
+  const area = typeof chrome !== "undefined" ? chrome.storage?.local : null
+  if (!area) return
+  area.get("relay.firstAgentMessageAt", (r: Record<string, unknown>) => {
+    if (!r["relay.firstAgentMessageAt"]) {
+      void area.set({ "relay.firstAgentMessageAt": new Date().toISOString() })
+    }
+  })
+}
+
 async function api(path: string, init?: RequestInit) {
   const session = await getRelaySession()
   return fetch(`${session.apiBase}${path}`, {
@@ -411,6 +422,7 @@ export function useExtensionChat(projectId: string | null, opts?: {
   const send = useCallback(
     (text: string, options?: ExtSendOptions) => {
       if (!text.trim() || streaming || hasUploadingAttachments) return
+      markFirstAgentMessage()
       void runStream(
         {
           message: text.trim(),

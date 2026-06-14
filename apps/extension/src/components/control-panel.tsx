@@ -105,6 +105,7 @@ import { preferContextPreviewOnSync } from "../utils/context-preview";
 import { LOCAL_PREVIEW_MUTATION_GUARD_MS } from "../utils/preview-mutation-guard";
 import { applyActionResultToContextPreview } from "../utils/context-preview-mutations";
 import { syncHideAskRelayExtension } from "../utils/ask-relay-visibility";
+import { ActivationTour } from "./activation-tour";
 import { getActiveTab } from "../utils/browser";
 import { relayFetch } from "../utils/api";
 import {
@@ -2895,6 +2896,8 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
           </button>
         </div>
       ) : null}
+
+      {panelMode !== "settings" && session?.connected ? <ActivationTour /> : null}
 
       {panelMode === "settings" && session?.connected ? (
         <section className={styles.panel}>

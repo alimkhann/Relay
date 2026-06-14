@@ -1,0 +1,116 @@
+.card {
+  margin: 10px 12px 0;
+  padding: 12px 12px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg));
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.title {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.progress {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.dismiss:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 6px 4px;
+  border-radius: 8px;
+}
+
+.stepActive {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.check {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: var(--bg);
+}
+
+.stepDone .check {
+  color: var(--accent-text);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.stepActive .check {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.stepText {
+  min-width: 0;
+}
+
+.stepTitle {
+  margin: 1px 0 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.stepDone .stepTitle {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.stepHint {
+  margin: 3px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
