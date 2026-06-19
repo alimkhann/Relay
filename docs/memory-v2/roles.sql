@@ -73,6 +73,29 @@ begin
   end loop;
 end $$;
 
+-- neon_auth schema grants. Google sign-in (google-auth-service.ts) provisions
+-- identity rows directly into the Neon-Auth-managed better-auth tables
+-- (neon_auth."user" / neon_auth.account / neon_auth.session) via the service
+-- role when the Neon Auth SDK social path is unavailable, and account deletion
+-- removes them. The schema is owned by the `neon_auth` role, so the public-only
+-- grants above do NOT cover it — without this block the relay_* roles hit
+-- "permission denied for schema neon_auth" and the extension/web Google login
+-- 500s. Issued as a member of `neon_auth` (e.g. neondb_owner). Re-run if a Neon
+-- Auth re-provision resets these grants.
+do $$
+declare
+  r text;
+begin
+  foreach r in array array['relay_app', 'relay_worker', 'relay_service']
+  loop
+    execute format('grant usage on schema neon_auth to %I', r);
+    execute format('grant select, insert, update, delete on all tables in schema neon_auth to %I', r);
+    execute format('grant usage, select on all sequences in schema neon_auth to %I', r);
+    execute format('alter default privileges for role neon_auth in schema neon_auth grant select, insert, update, delete on tables to %I', r);
+    execute format('alter default privileges for role neon_auth in schema neon_auth grant usage, select on sequences to %I', r);
+  end loop;
+end $$;
+
 -- Then, in the Neon console (cannot be done from SQL here):
 --   relay_worker  → enable Bypass RLS
 --   relay_service → enable Bypass RLS
