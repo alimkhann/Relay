@@ -5,7 +5,13 @@ export const addMemorySchema = z.object({
   projectId: z.string().optional().describe("Project ID. Auto-detected if not provided. Personal memory is just a kind='personal' project — pass its id to write there."),
   type: z
     .enum(["note", "decision", "constraint", "requirement", "task", "artifact"])
-    .describe("Memory item type"),
+    .describe("Memory item type (used by regular projects)"),
+  personalCategory: z
+    .enum(["person", "company", "concept", "event", "meeting", "signals", "note"])
+    .optional()
+    .describe(
+      "Personal-memory Folk category. REQUIRED when writing to the Personal (kind='personal') project so the item appears in the right column — choose the best fit (person/company/concept/event/meeting/signals/note). Ignored for regular projects.",
+    ),
   content: z.string().describe("Memory item content"),
   title: z.string().optional().describe("Optional title for the memory item"),
   pinned: z.boolean().optional().describe("Whether to pin this memory item"),
@@ -42,7 +48,10 @@ export async function addMemory(
         source: "mcp",
         authority: "work_session",
         durability: args.type === "decision" || args.type === "constraint" ? "durable" : "working",
-        validationState: "inferred"
+        validationState: "inferred",
+        // Personal projects bucket by metadata.personalCategory (not the type
+        // enum); set it so the item lands in the right column.
+        ...(args.personalCategory ? { personalCategory: args.personalCategory } : {})
       },
       // Source provenance: mark as MCP-sourced
       sourceSurface: "mcp",

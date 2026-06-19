@@ -46,7 +46,7 @@ import {
 import { resolveProjectSources } from "@/server/services/source-resolver-service"
 import { getSyncMarkForUser, recordSyncMarkForUser } from "@/server/services/sync-mark-service"
 import { flushWorkSession } from "@/server/services/work-session-flush-service"
-import { transferMemoryItem } from "@/server/services/memory-service"
+import { createMemoryItem, deleteMemoryItem, transferMemoryItem, updateMemoryItem } from "@/server/services/memory-service"
 
 /**
  * Server-side MCP client that calls repositories and services directly
@@ -288,16 +288,21 @@ export class RelayHttpMcpClient {
       content: string
       title?: string
       tags?: string[]
+      personalCategory?: string | null
       sourceSurface?: SourceSurface | null
     }
   ) {
-    const repositories = createRepositoryBundle(this.viewer.userId)
-    return repositories.memory.create(this.viewer.userId, {
+    // Route through the service (not the repo) so personal projects get their
+    // "About you" state regenerated and an uncategorized personal write gets the
+    // salience-classifier fallback — same path the MCP HTTP route takes.
+    return createMemoryItem(this.viewer.userId, {
       projectId,
       type: input.type as "decision" | "constraint" | "task" | "note" | "artifact" | "requirement",
       content: input.content,
       title: input.title ?? null,
       tags: input.tags ?? [],
+      // Personal projects bucket by metadata.personalCategory, not the type enum.
+      ...(input.personalCategory ? { metadata: { personalCategory: input.personalCategory } } : {}),
       sourceSurface: input.sourceSurface ?? null,
     })
   }
@@ -406,7 +411,6 @@ export class RelayHttpMcpClient {
   }
 
   async manageMemory(args: Record<string, unknown>) {
-    const repositories = createRepositoryBundle(this.viewer.userId)
     const rawIds = args.memoryId
     const memoryIds = (Array.isArray(rawIds) ? rawIds : [rawIds]).filter(
       (id): id is string => typeof id === "string" && id.length > 0,
@@ -421,36 +425,39 @@ export class RelayHttpMcpClient {
         : this.viewer.mode === "mcp"
           ? this.viewer.projectId
           : null
+    // MCP tokens are project-scoped; the agent (non-mcp) is not. Pass the scope
+    // guard to the service only when running as MCP.
+    const scopeProjectId = this.viewer.mode === "mcp" ? this.viewer.projectId ?? undefined : undefined
 
     if (action === "delete") {
       for (const memoryId of memoryIds) {
-        await repositories.memory.remove(memoryId)
+        // Route through the service so personal "About you" state regenerates.
+        await deleteMemoryItem(this.viewer.userId, memoryId, scopeProjectId)
       }
     } else if (action === "archive") {
       for (const memoryId of memoryIds) {
-        await repositories.memory.update(memoryId, { isArchived: true })
+        await updateMemoryItem(this.viewer.userId, memoryId, { isArchived: true }, scopeProjectId)
       }
     } else if (action === "update") {
+      const type =
+        args.type === undefined
+          ? undefined
+          : createMemoryItemSchema.shape.type.parse(args.type)
       for (const memoryId of memoryIds) {
-        const existing = await repositories.memory.getById(memoryId)
-        const metadata =
-          args.personalCategory === undefined
-            ? undefined
-            : {
-                ...(existing?.metadata ?? {}),
-                personalCategory: String(args.personalCategory),
-              }
-        const type =
-          args.type === undefined
-            ? undefined
-            : createMemoryItemSchema.shape.type.parse(args.type)
-        await repositories.memory.update(memoryId, {
-          content: args.content as string | undefined,
-          title: args.title as string | undefined,
-          tags: args.tags as string[] | undefined,
-          type,
-          metadata,
-        })
+        // updateMemoryItem merges personalCategory into metadata and regenerates
+        // personal state when the item lives in the Personal project.
+        await updateMemoryItem(
+          this.viewer.userId,
+          memoryId,
+          {
+            content: args.content as string | undefined,
+            title: args.title as string | undefined,
+            tags: args.tags as string[] | undefined,
+            type,
+            personalCategory: args.personalCategory as string | null | undefined,
+          },
+          scopeProjectId,
+        )
       }
     } else if (action === "transfer") {
       const transferInput = transferMemoryItemSchema.parse({

@@ -79,6 +79,19 @@ export function personalCategoryFromMetadata(
   return isPersonalCategory(raw) ? raw : null
 }
 
+/**
+ * Resolve the personal category for display/bucketing, defaulting uncategorized
+ * items to "note" so a personal item is NEVER silently dropped from the board or
+ * the extension panel. Items written by MCP / the in-app agent only set the
+ * memory_items.type enum; this fallback surfaces them under Note until the
+ * salience classifier (or a manual recategorize) assigns a real Folk category.
+ */
+export function resolvePersonalCategory(
+  metadata: Record<string, unknown> | null | undefined,
+): PersonalCategory {
+  return personalCategoryFromMetadata(metadata) ?? "note"
+}
+
 /** Minimal shape a personal item needs to participate in fill/recency sorting. */
 export interface PersonalSortableItem {
   metadata?: Record<string, unknown> | null
@@ -100,8 +113,7 @@ export function sortPersonalCategoriesByFill(
   for (const category of categories) stats.set(category, { count: 0, recent: 0 })
 
   for (const item of items) {
-    const category = personalCategoryFromMetadata(item.metadata)
-    if (!category) continue
+    const category = resolvePersonalCategory(item.metadata)
     const stat = stats.get(category)
     if (!stat) continue
     stat.count += 1

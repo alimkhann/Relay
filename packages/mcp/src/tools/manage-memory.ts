@@ -28,6 +28,13 @@ export const manageMemorySchema = z.object({
     .enum(["note", "decision", "constraint", "requirement", "task", "artifact"])
     .optional()
     .describe("Updated type (for update action)"),
+  personalCategory: z
+    .enum(["person", "company", "concept", "event", "meeting", "signals", "note"])
+    .nullable()
+    .optional()
+    .describe(
+      "Recategorize a Personal-memory item into a Folk category (for update action; null clears it). Use when moving a personal item to the right column.",
+    ),
   pinned: z.boolean().optional().describe("Whether to pin/unpin (for update action)"),
   tags: z.array(z.string()).optional().describe("Updated tags (for update action)"),
   confirm: z
@@ -175,6 +182,7 @@ export async function manageMemory(
   if (args.content !== undefined) updates.content = args.content
   if (args.title !== undefined) updates.title = args.title
   if (args.type !== undefined) updates.type = args.type
+  if (args.personalCategory !== undefined) updates.personalCategory = args.personalCategory
   if (args.pinned !== undefined) updates.pinned = args.pinned
   if (args.tags !== undefined) updates.tags = args.tags
 

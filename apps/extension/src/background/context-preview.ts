@@ -1,4 +1,4 @@
-import { personalCategoryFromMetadata } from "@relay/shared/constants/memory-taxonomy";
+import { resolvePersonalCategory } from "@relay/shared/constants/memory-taxonomy";
 import { buildProjectContextPreview, getProjectContextCounts } from "@relay/shared/utils/project-context";
 
 import type {
@@ -78,13 +78,17 @@ export function buildDashboardContextPreview(
       hostname,
       sourceSurface: item.sourceSurface,
       capturedAt: item.capturedAt ?? item.updatedAt,
-      personalCategory: personalCategoryFromMetadata(item.metadata),
+      // Uncategorized personal items fall back to the Note column (never dropped).
+      personalCategory: isPersonal ? resolvePersonalCategory(item.metadata) : null,
     };
   };
 
+  // Personal memory surfaces ALL items by Folk category regardless of their
+  // memory_items.type (the agent/MCP may write artifact/decision/etc.); regular
+  // projects keep the compact pinned-notes preview.
   const notes = byCapturedDesc(
     (dashboard.memory ?? []).filter(
-      (item) => item.type === "note" && (isPersonal || item.pinned),
+      (item) => (isPersonal ? true : item.type === "note" && item.pinned),
     ),
   )
     .slice(0, isPersonal ? 200 : 5)

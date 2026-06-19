@@ -7,7 +7,7 @@ import { getProjectContextCounts } from "@relay/shared/utils/project-context";
 import {
   PERSONAL_CATEGORY_META,
   personalCategories,
-  personalCategoryFromMetadata,
+  resolvePersonalCategory,
   type PersonalCategory,
 } from "@relay/shared/constants/memory-taxonomy";
 import type { MemoryItemDto } from "@relay/shared";
@@ -119,8 +119,9 @@ export function MemoryPageContent({
       person: [], company: [], concept: [], event: [], meeting: [], signals: [], note: [],
     };
     for (const item of dashboard?.memory ?? []) {
-      const cat = personalCategoryFromMetadata(item.metadata);
-      if (cat) buckets[cat].push(item);
+      // Mirror the board: uncategorized items fall back to the Note bucket so
+      // the tab counts match what the board actually renders.
+      buckets[resolvePersonalCategory(item.metadata)].push(item);
     }
     return buckets;
   }, [dashboard?.memory]);

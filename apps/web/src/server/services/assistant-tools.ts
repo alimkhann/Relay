@@ -69,14 +69,20 @@ export const ASSISTANT_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
   {
     name: "add_memory",
     description:
-      "Save a new memory item to a project. Use when the user asks to remember a decision, constraint, task, or note.",
+      "Save a new memory item. Use whenever a durable fact, decision, constraint, task, or artifact is worth remembering. For the Personal project, ALSO set personalCategory so it lands in the right column.",
     parameters: obj(
       {
         projectId: str("Relay project id"),
         type: {
           type: "string",
           enum: ["decision", "constraint", "task", "note", "requirement", "artifact"],
-          description: "Memory item type"
+          description: "Memory item type (used by regular projects)"
+        },
+        personalCategory: {
+          type: "string",
+          enum: ["person", "company", "concept", "event", "meeting", "signals", "note"],
+          description:
+            "Personal-memory Folk category. Set this when saving to the Personal project — pick the best fit (a person → person, an idea/trait/goal → concept, a dated milestone → event, etc.). Omit for regular projects."
         },
         content: str("The memory content"),
         title: str("Optional short title"),
@@ -98,7 +104,7 @@ export const ASSISTANT_TOOL_DECLARATIONS: GeminiFunctionDeclaration[] = [
         tags: { type: "array", items: { type: "string" }, description: "New tags (update only)" },
         targetProjectId: str("Destination project id (transfer only)"),
         type: str("Destination memory type (transfer/type-change only)"),
-        personalCategory: str("Destination Personal category (transfer only)")
+        personalCategory: str("Personal Folk category to set (update or transfer); recategorizes a personal item into the right column")
       },
       ["action", "memoryId"]
     )
@@ -694,6 +700,8 @@ export async function executeAssistantTool(
         content: String(args.content),
         title: args.title ? String(args.title) : undefined,
         tags: Array.isArray(args.tags) ? (args.tags as string[]) : undefined,
+        // Personal projects bucket by Folk category, not the type enum.
+        personalCategory: args.personalCategory ? String(args.personalCategory) : undefined,
         // Attribute in-app assistant ("Ask Relay") captures so the memory
         // list can show provenance.
         sourceSurface: "ask_relay"
