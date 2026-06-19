@@ -37,14 +37,27 @@ import type { AssistantActionResult } from "@relay/shared";
 
 import { buildDashboardContextPreview, buildTrustMetadata } from "./context-preview";
 import { applyActionResultToDashboardCache } from "../utils/context-preview-mutations";
-import { DASHBOARD_CACHE_TTL_MS, SESSION_CACHE_TTL_MS } from "./remote-sync-policy";
-import { authGrace, dashboardCache, dashboardCacheBypass, sessionCache } from "./state";
+import {
+  DASHBOARD_CACHE_TTL_MS,
+  SESSION_CACHE_TTL_MS,
+  SESSION_REFRESH_FAILURE_BACKOFF_MS,
+  SESSION_REFRESH_FAILURE_LOG_THROTTLE_MS,
+} from "./remote-sync-policy";
+import {
+  authGrace,
+  dashboardCache,
+  dashboardCacheBypass,
+  resetSessionRefreshGuards,
+  sessionCache,
+  sessionRefresh,
+} from "./state";
 import { createEmptyTrustMetadata } from "./tab-state";
 import { identifyExtensionUser, recordBackgroundTelemetry } from "./telemetry";
 
 export async function resetStoredSession(reason: string) {
   const session = await getRelaySession();
   sessionCache.current = null;
+  resetSessionRefreshGuards();
   dashboardCache.clear();
   await clearPersistedBackgroundCache(session.userId || undefined);
   await clearRelaySession();
@@ -66,6 +79,7 @@ export async function storeAuthenticatedExtensionSession(
   lastStatus: string,
 ) {
   sessionCache.current = null;
+  resetSessionRefreshGuards();
   await setRelaySession({
     apiBase: payload.apiBase,
     token: payload.token,
@@ -134,6 +148,46 @@ export async function loadSessionData(force = false) {
     }
   }
 
+  // Post-failure cooldown: skip the network even when force=true so a
+  // persistently-failing API cannot be hammered (see sessionRefresh in state.ts).
+  // Serve the freshest cache we have, otherwise a last-known snapshot from the
+  // stored session — never spin.
+  if (Date.now() < sessionRefresh.cooldownUntil) {
+    if (sessionCache.current && sessionCache.current.token === session.token) {
+      return sessionCache.current.data;
+    }
+    return sessionFallbackFromStore(session);
+  }
+
+  // Coalesce concurrent refreshes onto a single in-flight request so a burst of
+  // triggers (tab events, panel polling, broadcasts) does not stampede.
+  if (sessionRefresh.inFlight) {
+    return sessionRefresh.inFlight;
+  }
+  const run = refreshSessionFromNetwork(session);
+  sessionRefresh.inFlight = run;
+  try {
+    return await run;
+  } finally {
+    if (sessionRefresh.inFlight === run) {
+      sessionRefresh.inFlight = null;
+    }
+  }
+}
+
+function sessionFallbackFromStore(session: Awaited<ReturnType<typeof getRelaySession>>) {
+  return {
+    connected: session.connected,
+    projects: session.projectOptions,
+    settings: null as RemoteSettingsPayload | null,
+    onboarding: session.onboarding ?? createPendingOnboardingState(),
+    entitlements: null as UserEntitlementsDto | null,
+  };
+}
+
+async function refreshSessionFromNetwork(
+  session: Awaited<ReturnType<typeof getRelaySession>>,
+) {
   try {
     const sessionResponse = await retryRemote(() => relayFetch("/api/extension/session"));
 
@@ -287,16 +341,37 @@ export async function loadSessionData(force = false) {
     };
     void persistSessionData(sessionPayload.userId, data, fetchedAt);
 
+    // A good refresh clears the failure backoff.
+    sessionRefresh.failureStreak = 0;
+    sessionRefresh.cooldownUntil = 0;
+
     return data;
   } catch (cause) {
-    recordBackgroundTelemetry({
-      level: "error",
-      surface: "extension-background",
-      area: "session",
-      event: "session.refresh_failed",
-      message: "Failed to refresh extension session data from the Relay API.",
-      error: cause,
-    });
+    // Back off so the next refresh (even a forced one) waits before touching the
+    // network again — this is what stops the runaway loop when the API is down.
+    sessionRefresh.failureStreak += 1;
+    const backoffIndex = Math.min(
+      sessionRefresh.failureStreak - 1,
+      SESSION_REFRESH_FAILURE_BACKOFF_MS.length - 1,
+    );
+    sessionRefresh.cooldownUntil =
+      Date.now() + (SESSION_REFRESH_FAILURE_BACKOFF_MS[backoffIndex] ?? 300_000);
+
+    // Throttle the failure telemetry so a loop cannot flood PostHog.
+    if (
+      Date.now() - sessionRefresh.lastFailureLogAt >=
+      SESSION_REFRESH_FAILURE_LOG_THROTTLE_MS
+    ) {
+      sessionRefresh.lastFailureLogAt = Date.now();
+      recordBackgroundTelemetry({
+        level: "error",
+        surface: "extension-background",
+        area: "session",
+        event: "session.refresh_failed",
+        message: "Failed to refresh extension session data from the Relay API.",
+        error: cause,
+      });
+    }
     if (sessionCache.current && sessionCache.current.token === session.token) {
       return sessionCache.current.data;
     }

@@ -47,9 +47,11 @@ import {
   invalidateProjectCache,
   loadSessionData,
   patchProjectDashboardCache,
+  resetStoredSession,
   resolveDashboardForSync,
 } from "./session-cache"
-import { dashboardCache, dashboardCacheBypass, sessionCache } from "./state"
+import { dashboardCache, dashboardCacheBypass, sessionCache, sessionRefresh } from "./state"
+import { recordBackgroundTelemetry } from "./telemetry"
 
 describe("loadSessionData", () => {
   beforeEach(() => {
@@ -106,6 +108,94 @@ describe("loadSessionData", () => {
     await loadSessionData(true)
 
     expect(relayFetchMock).toHaveBeenCalledWith("/api/extension/session")
+  })
+})
+
+describe("loadSessionData runaway-loop guards", () => {
+  const refreshFailedCalls = () =>
+    vi.mocked(recordBackgroundTelemetry).mock.calls.filter(
+      ([event]) => event.event === "session.refresh_failed",
+    ).length
+
+  const connectedSession = {
+    token: "tok",
+    connected: true,
+    projectOptions: [{ id: "p1", name: "Relay" }],
+    onboarding: { status: "completed" },
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    sessionCache.current = null
+    sessionRefresh.inFlight = null
+    sessionRefresh.cooldownUntil = 0
+    sessionRefresh.failureStreak = 0
+    sessionRefresh.lastFailureLogAt = 0
+  })
+
+  // A non-ok response throws past retryRemote without its retry/backoff loop, so
+  // these stay fast while still exercising the failure path.
+  const failingResponse = { ok: false, status: 500, text: async () => "boom" }
+
+  it("backs off after a failure and skips the network on the next forced refresh", async () => {
+    getRelaySessionMock.mockResolvedValue(connectedSession)
+    sessionCache.current = { token: "tok", data: { connected: true } as never, fetchedAt: 0 }
+    relayFetchMock.mockResolvedValue(failingResponse)
+
+    await loadSessionData(true)
+    expect(relayFetchMock).toHaveBeenCalledTimes(1)
+    expect(sessionRefresh.cooldownUntil).toBeGreaterThan(Date.now())
+
+    relayFetchMock.mockClear()
+    const data = await loadSessionData(true)
+
+    expect(relayFetchMock).not.toHaveBeenCalled()
+    expect(data.connected).toBe(true)
+  })
+
+  it("coalesces concurrent forced refreshes onto a single network request", async () => {
+    getRelaySessionMock.mockResolvedValue({ token: "tok", userId: "u1" })
+    relayFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        userId: "u1",
+        projects: [],
+        settings: { settings: { autoCapture: true, defaultTargetProfileKey: "" } },
+        onboarding: { status: "completed" },
+      }),
+    })
+
+    await Promise.all([loadSessionData(true), loadSessionData(true), loadSessionData(true)])
+
+    expect(relayFetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("throttles the failure telemetry so a loop cannot flood PostHog", async () => {
+    getRelaySessionMock.mockResolvedValue(connectedSession)
+    sessionCache.current = { token: "tok", data: { connected: true } as never, fetchedAt: 0 }
+    relayFetchMock.mockResolvedValue(failingResponse)
+
+    await loadSessionData(true)
+    expect(refreshFailedCalls()).toBe(1)
+
+    // Simulate the cooldown elapsing but within the telemetry-throttle window.
+    sessionRefresh.cooldownUntil = 0
+    await loadSessionData(true)
+
+    expect(relayFetchMock).toHaveBeenCalledTimes(2)
+    expect(refreshFailedCalls()).toBe(1)
+  })
+
+  it("clears the cooldown on session reset so the next refresh hits the network", async () => {
+    getRelaySessionMock.mockResolvedValue(connectedSession)
+    sessionRefresh.cooldownUntil = Date.now() + 300_000
+    sessionRefresh.failureStreak = 5
+
+    await resetStoredSession("signed_out")
+
+    expect(sessionRefresh.cooldownUntil).toBe(0)
+    expect(sessionRefresh.failureStreak).toBe(0)
+    expect(sessionRefresh.inFlight).toBeNull()
   })
 })
 
