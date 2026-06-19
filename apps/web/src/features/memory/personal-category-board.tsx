@@ -6,7 +6,7 @@ import type { MemoryItemDto, MemoryMutationEnvelope, PersonalCategory } from "@r
 import {
   PERSONAL_CATEGORY_META,
   personalCategories,
-  personalCategoryFromMetadata,
+  resolvePersonalCategory,
   sortPersonalCategoriesByFill,
 } from "@relay/shared/constants/memory-taxonomy";
 
@@ -139,8 +139,10 @@ export function PersonalCategoryBoard({
 
   const columns: BoardColumn[] = orderedCategories.map((category) => {
     const meta = PERSONAL_CATEGORY_META[category];
+    // Uncategorized items (agent/MCP writes that set only `type`) fall back to
+    // the Note column so they're never silently dropped from the board.
     const columnItems = items.filter(
-      (item) => personalCategoryFromMetadata(item.metadata) === category,
+      (item) => resolvePersonalCategory(item.metadata) === category,
     );
     return {
       key: category,

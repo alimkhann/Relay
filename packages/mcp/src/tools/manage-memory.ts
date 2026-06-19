@@ -1,5 +1,10 @@
 import { z } from "zod"
+import { personalCategories } from "@relay/shared"
 import type { RelayClient } from "../client.js"
+
+/** Folk personal categories, sourced from the shared taxonomy (single source of
+ * truth shared with add-memory + the dashboard/extension). */
+const personalCategoryEnum = z.enum(personalCategories)
 
 export const manageMemorySchema = z.object({
   action: z
@@ -28,6 +33,12 @@ export const manageMemorySchema = z.object({
     .enum(["note", "decision", "constraint", "requirement", "task", "artifact"])
     .optional()
     .describe("Updated type (for update action)"),
+  personalCategory: personalCategoryEnum
+    .nullable()
+    .optional()
+    .describe(
+      "Recategorize a Personal-memory item into a Folk category (for update action; null clears it). Use when moving a personal item to the right column.",
+    ),
   pinned: z.boolean().optional().describe("Whether to pin/unpin (for update action)"),
   tags: z.array(z.string()).optional().describe("Updated tags (for update action)"),
   confirm: z
@@ -175,6 +186,7 @@ export async function manageMemory(
   if (args.content !== undefined) updates.content = args.content
   if (args.title !== undefined) updates.title = args.title
   if (args.type !== undefined) updates.type = args.type
+  if (args.personalCategory !== undefined) updates.personalCategory = args.personalCategory
   if (args.pinned !== undefined) updates.pinned = args.pinned
   if (args.tags !== undefined) updates.tags = args.tags
 

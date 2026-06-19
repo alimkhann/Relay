@@ -182,6 +182,72 @@ export async function classifyPersonalSalience(
   }
 }
 
+/**
+ * Server-side fallback for the "agent picks the category" flow: when a personal
+ * item is written WITHOUT a personalCategory (e.g. the model forgot, or an MCP
+ * client only set `type`), classify its content and stamp the best-fit Folk
+ * category into metadata so it lands in the right board column instead of
+ * sitting under the Note fallback forever. Best-effort and idempotent — a no-op
+ * when the item already has a category or the classifier returns nothing.
+ */
+export async function refinePersonalCategory(
+  userId: string,
+  item: { id: string; content: string; metadata?: Record<string, unknown> | null },
+  deps: ClassifyDeps = {},
+): Promise<boolean> {
+  if (personalCategoryFromMetadata(item.metadata)) return false
+  const content = item.content?.trim()
+  if (!content) return false
+  try {
+    const facts = await classifyPersonalSalience(content, deps)
+    const category = facts[0]?.category
+    if (!category) return false
+    const repositories = createRepositoryBundle(userId)
+    const existing = await repositories.memory.getById(item.id)
+    if (!existing || personalCategoryFromMetadata(existing.metadata)) return false
+    await repositories.memory.update(item.id, {
+      metadata: { ...(existing.metadata ?? {}), personalCategory: category },
+    })
+    invalidateProjectMemoryCache(userId, existing.projectId)
+    return true
+  } catch (error) {
+    console.warn(
+      "[personal-memory] refinePersonalCategory failed:",
+      error instanceof Error ? error.message : error,
+    )
+    return false
+  }
+}
+
+/**
+ * One-time backfill: stamp a Folk category onto existing personal items that
+ * were written before the agent/MCP could set personalCategory (or that the
+ * classifier still hasn't reached), then regenerate the "About you" summary.
+ * Idempotent — already-categorized items are skipped. Runs against the caller's
+ * own personal project only.
+ */
+export async function backfillPersonalCategories(
+  userId: string,
+  opts: { limit?: number } = {},
+): Promise<{ scanned: number; categorized: number }> {
+  const repositories = createRepositoryBundle(userId)
+  const personal = await repositories.projects.getPersonalProject(userId).catch(() => null)
+  if (!personal) return { scanned: 0, categorized: 0 }
+  const rows = await repositories.memory.listByProject(personal.id, { limit: opts.limit ?? 500 })
+  const uncategorized = rows.filter((row) => !personalCategoryFromMetadata(row.metadata))
+  let categorized = 0
+  for (const row of uncategorized) {
+    const did = await refinePersonalCategory(userId, {
+      id: row.id,
+      content: row.content,
+      metadata: row.metadata,
+    })
+    if (did) categorized += 1
+  }
+  await regeneratePersonalState(userId)
+  return { scanned: uncategorized.length, categorized }
+}
+
 export type PersonalCrudVerb = "add" | "noop"
 
 /**
@@ -445,8 +511,10 @@ export async function regeneratePersonalState(
     const personal = await repositories.projects.getPersonalProject(userId)
     if (!personal) return
 
+    // Every item in the personal project is a durable user fact regardless of
+    // its memory_items.type (MCP / the agent may write artifact/decision/etc.),
+    // so summarize them all — not just type='note'.
     const rows = await repositories.memory.listByProject(personal.id, {
-      types: ["note"],
       limit: 200,
     })
     const facts = rows

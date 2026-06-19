@@ -6,6 +6,7 @@ import {
   createMemoryItemSchema,
   DECAY_VISIBILITY_THRESHOLD,
   LIFECYCLE_HALF_LIFE_DAYS,
+  personalCategoryFromMetadata,
   updateMemoryItemSchema,
   transferMemoryItemSchema,
 } from "@relay/shared"
@@ -16,8 +17,10 @@ import { extractAndLinkEntities } from "./entity-extraction-service"
 import {
   drainTinyMemoryPipelineBatch,
   enqueueMemoryPipelineJob,
+  enqueuePersonalStateRegeneration,
   markProjectHygieneDue,
 } from "./memory-pipeline-scheduler"
+import { refinePersonalCategory } from "./personal-memory-service"
 import { decomposeQuery } from "./query-decomposition-service"
 import { buildCurrentPreviousHint, buildReasoningEvidenceTable, buildTemporalResolutionHint } from "./reasoning-assembly-service"
 import { conditionalRerank } from "./reranker-service"
@@ -112,6 +115,29 @@ export async function listProjectMemory(userId: string, projectId: string) {
   return repositories.memory.listByProject(projectId)
 }
 
+/**
+ * Personal projects (kind='personal') have no digest pipeline, so the "About
+ * you" summary is regenerated from their memory items. Any write path (MCP, the
+ * in-app agent, the dashboard board) that touches a personal project must call
+ * this so the summary stays current. No-op for regular projects.
+ */
+async function maybeRegeneratePersonalState(
+  userId: string,
+  projectId: string | null | undefined,
+  repositories: RepositoryBundle,
+): Promise<boolean> {
+  if (!projectId) return false
+  try {
+    const project = await repositories.projects.getById(projectId)
+    if (project?.kind !== "personal") return false
+    await enqueuePersonalStateRegeneration(userId, projectId, repositories)
+    return true
+  } catch (error) {
+    console.warn("[memory-service] personal-state regen enqueue failed:", error instanceof Error ? error.message : error)
+    return false
+  }
+}
+
 export async function createMemoryItem(userId: string, input: unknown) {
   const repositories = createRepositoryBundle(userId)
   const parsed = createMemoryItemSchema.parse(input)
@@ -159,6 +185,15 @@ export async function createMemoryItem(userId: string, input: unknown) {
   } catch (error) {
     console.warn("[memory-service] enqueue enrichment failed:", error instanceof Error ? error.message : error)
   }
+  // Personal project: refresh "About you" and backfill a Folk category when the
+  // write didn't carry one (agent/MCP may set only `type`). Fire-and-forget so
+  // the write stays fast; the display layer falls back to the Note column until
+  // the classifier lands a real category.
+  const isPersonal = await maybeRegeneratePersonalState(userId, item.projectId, repositories)
+  if (isPersonal && !personalCategoryFromMetadata(item.metadata)) {
+    void refinePersonalCategory(userId, { id: item.id, content: item.content, metadata: item.metadata })
+  }
+
   if (item.projectId) invalidateProjectMemoryCache(userId, item.projectId)
 
   return item
@@ -392,8 +427,18 @@ export async function updateMemoryItem(userId: string, memoryId: string, input: 
   // One atomic UPDATE. The repo handles every column (legacy + v2 lifecycle)
   // in a single statement, so a partial patch can't leave content and the
   // event log disagreeing. The trigger from migration 0041 keeps is_archived
-  // in sync with lifecycle_state. `confirm` is control-only — not persisted.
-  const { confirm: _confirm, ...patch } = parsed
+  // in sync with lifecycle_state. `confirm` and `personalCategory` are
+  // control-only — not raw columns.
+  const { confirm: _confirm, personalCategory, ...patch } = parsed
+  // personalCategory lives inside metadata; the repo REPLACES metadata wholesale,
+  // so merge it onto the existing blob (null clears it) rather than clobbering
+  // provenance fields like source/authority.
+  if (personalCategory !== undefined) {
+    const merged: Record<string, unknown> = { ...(existing?.metadata ?? {}), ...(patch.metadata ?? {}) }
+    if (personalCategory === null) delete merged.personalCategory
+    else merged.personalCategory = personalCategory
+    patch.metadata = merged
+  }
   const item = await repositories.memory.update(memoryId, {
     ...patch,
     nullContent: isForgetting,
@@ -469,6 +514,7 @@ export async function updateMemoryItem(userId: string, memoryId: string, input: 
     await markProjectHygieneDue(item.projectId, undefined, repositories).catch(() => {})
     invalidateProjectMemoryCache(userId, item.projectId)
   }
+  await maybeRegeneratePersonalState(userId, item.projectId, repositories)
 
   return item
 }
@@ -492,6 +538,7 @@ export async function deleteMemoryItem(userId: string, memoryId: string, project
     })
     await markProjectHygieneDue(existing.projectId, undefined, repositories).catch(() => {})
     invalidateProjectMemoryCache(userId, existing.projectId)
+    await maybeRegeneratePersonalState(userId, existing.projectId, repositories)
   }
 }
 

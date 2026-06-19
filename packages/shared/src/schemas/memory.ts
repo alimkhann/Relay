@@ -1,5 +1,13 @@
 import { z } from "zod"
 
+import { personalCategories } from "../constants/memory-taxonomy"
+
+/** Folk personal categories (person/company/concept/event/meeting/signals/note),
+ * stored in metadata.personalCategory. Reused by MCP + agent memory tools. */
+export const personalCategoryEnum = z.enum(
+  personalCategories as unknown as [string, ...string[]],
+)
+
 /** Valid source surfaces where memory can be captured from */
 export const sourceSurfaceSchema = z.enum([
   "chatgpt",
@@ -46,6 +54,11 @@ export const updateMemoryItemSchema = z.object({
   tags: z.array(z.string().max(50)).max(10).optional(),
   isArchived: z.boolean().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * Recategorize a personal-memory item. Merged into metadata.personalCategory
+   * by updateMemoryItem (null clears it). Control-only — not a raw column.
+   */
+  personalCategory: personalCategoryEnum.nullable().optional(),
   sourceConversationId: z.string().nullable().optional(),
   sourceUrl: z.string().url().nullable().optional(),
   capturedAt: z.string().datetime().nullable().optional(),
