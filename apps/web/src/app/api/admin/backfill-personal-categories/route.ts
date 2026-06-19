@@ -13,10 +13,13 @@ export const POST = withApiAuth(async (request: Request) => {
   const viewer = await resolveViewer(request.headers.get("authorization"))
   rejectMcpViewer(viewer)
 
+  // Each item costs one (serial) classifier call, so keep a request well under
+  // the serverless function timeout. Re-run until the response reports
+  // `categorized: 0` to drain a larger backlog.
   const body = (await request.json().catch(() => ({}))) as { limit?: number }
-  const limit = Math.min(body.limit ?? 500, 1000)
+  const limit = Math.min(Math.max(body.limit ?? 50, 1), 200)
 
   const result = await backfillPersonalCategories(viewer.userId, { limit })
 
-  return NextResponse.json(result)
+  return NextResponse.json({ ...result, limit })
 })
