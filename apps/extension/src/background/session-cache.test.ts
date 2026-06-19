@@ -47,6 +47,7 @@ import {
   invalidateProjectCache,
   loadSessionData,
   patchProjectDashboardCache,
+  resetStoredSession,
   resolveDashboardForSync,
 } from "./session-cache"
 import { dashboardCache, dashboardCacheBypass, sessionCache, sessionRefresh } from "./state"
@@ -183,6 +184,18 @@ describe("loadSessionData runaway-loop guards", () => {
 
     expect(relayFetchMock).toHaveBeenCalledTimes(2)
     expect(refreshFailedCalls()).toBe(1)
+  })
+
+  it("clears the cooldown on session reset so the next refresh hits the network", async () => {
+    getRelaySessionMock.mockResolvedValue(connectedSession)
+    sessionRefresh.cooldownUntil = Date.now() + 300_000
+    sessionRefresh.failureStreak = 5
+
+    await resetStoredSession("signed_out")
+
+    expect(sessionRefresh.cooldownUntil).toBe(0)
+    expect(sessionRefresh.failureStreak).toBe(0)
+    expect(sessionRefresh.inFlight).toBeNull()
   })
 })
 

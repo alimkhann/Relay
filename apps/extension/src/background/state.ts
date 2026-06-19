@@ -57,6 +57,17 @@ export const sessionRefresh: {
   lastFailureLogAt: number;
 } = { inFlight: null, cooldownUntil: 0, failureStreak: 0, lastFailureLogAt: 0 };
 
+// Clear the refresh guards on any session change (sign-in/out/reset). Otherwise a
+// cooldown left over from a failure storm would keep a freshly re-authenticated
+// session from refreshing for up to the backoff cap, and a stale in-flight
+// promise from the previous token could resolve into the new session.
+export function resetSessionRefreshGuards() {
+  sessionRefresh.inFlight = null;
+  sessionRefresh.cooldownUntil = 0;
+  sessionRefresh.failureStreak = 0;
+  sessionRefresh.lastFailureLogAt = 0;
+}
+
 export const authGrace = { until: 0 };
 
 // In-memory cache of persisted capture signatures, loaded from

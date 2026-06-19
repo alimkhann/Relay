@@ -43,13 +43,21 @@ import {
   SESSION_REFRESH_FAILURE_BACKOFF_MS,
   SESSION_REFRESH_FAILURE_LOG_THROTTLE_MS,
 } from "./remote-sync-policy";
-import { authGrace, dashboardCache, dashboardCacheBypass, sessionCache, sessionRefresh } from "./state";
+import {
+  authGrace,
+  dashboardCache,
+  dashboardCacheBypass,
+  resetSessionRefreshGuards,
+  sessionCache,
+  sessionRefresh,
+} from "./state";
 import { createEmptyTrustMetadata } from "./tab-state";
 import { identifyExtensionUser, recordBackgroundTelemetry } from "./telemetry";
 
 export async function resetStoredSession(reason: string) {
   const session = await getRelaySession();
   sessionCache.current = null;
+  resetSessionRefreshGuards();
   dashboardCache.clear();
   await clearPersistedBackgroundCache(session.userId || undefined);
   await clearRelaySession();
@@ -71,6 +79,7 @@ export async function storeAuthenticatedExtensionSession(
   lastStatus: string,
 ) {
   sessionCache.current = null;
+  resetSessionRefreshGuards();
   await setRelaySession({
     apiBase: payload.apiBase,
     token: payload.token,
