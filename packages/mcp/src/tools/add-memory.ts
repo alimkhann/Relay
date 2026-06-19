@@ -1,13 +1,17 @@
 import { z } from "zod"
+import { personalCategories } from "@relay/shared"
 import type { RelayClient } from "../client.js"
+
+/** Folk personal categories, sourced from the shared taxonomy so the MCP tools
+ * never drift from the dashboard/extension. */
+const personalCategoryEnum = z.enum(personalCategories)
 
 export const addMemorySchema = z.object({
   projectId: z.string().optional().describe("Project ID. Auto-detected if not provided. Personal memory is just a kind='personal' project — pass its id to write there."),
   type: z
     .enum(["note", "decision", "constraint", "requirement", "task", "artifact"])
     .describe("Memory item type (used by regular projects)"),
-  personalCategory: z
-    .enum(["person", "company", "concept", "event", "meeting", "signals", "note"])
+  personalCategory: personalCategoryEnum
     .optional()
     .describe(
       "Personal-memory Folk category. REQUIRED when writing to the Personal (kind='personal') project so the item appears in the right column — choose the best fit (person/company/concept/event/meeting/signals/note). Ignored for regular projects.",

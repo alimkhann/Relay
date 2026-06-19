@@ -1,5 +1,10 @@
 import { z } from "zod"
+import { personalCategories } from "@relay/shared"
 import type { RelayClient } from "../client.js"
+
+/** Folk personal categories, sourced from the shared taxonomy (single source of
+ * truth shared with add-memory + the dashboard/extension). */
+const personalCategoryEnum = z.enum(personalCategories)
 
 export const manageMemorySchema = z.object({
   action: z
@@ -28,8 +33,7 @@ export const manageMemorySchema = z.object({
     .enum(["note", "decision", "constraint", "requirement", "task", "artifact"])
     .optional()
     .describe("Updated type (for update action)"),
-  personalCategory: z
-    .enum(["person", "company", "concept", "event", "meeting", "signals", "note"])
+  personalCategory: personalCategoryEnum
     .nullable()
     .optional()
     .describe(
