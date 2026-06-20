@@ -1,4 +1,4 @@
-import { createRepositoryBundle, getProjectSummaries } from "@relay/db"
+import { buildProjectSummary, createRepositoryBundle } from "@relay/db"
 import { bindingInputSchema, bindingResolveSchema } from "@relay/shared"
 
 import { logServerEvent } from "@/server/logging/logger"
@@ -47,25 +47,17 @@ export async function resolveBoundProject(userId: string, input: unknown) {
     return null
   }
 
-  const [project, summaries] = await Promise.all([
-    repositories.projects.getById(binding.projectId),
-    getProjectSummaries(repositories, userId)
-  ])
+  const project = await repositories.projects.getById(binding.projectId)
 
   if (!project) {
     return null
   }
 
-  const summary =
-    summaries.find((candidate) => candidate.id === binding.projectId) ?? {
-      id: project.id,
-      name: project.name,
-      slug: project.slug,
-      description: project.description,
-      memoryCount: 0,
-      sessionCount: 0,
-      updatedAt: project.updatedAt
-    }
+  // Only the bound project's summary is needed here. Compose it directly from
+  // the project we already loaded instead of fanning out summaries across every
+  // project the user owns — this endpoint is polled per-tab on a short interval,
+  // so the per-owner fan-out dominated its cost.
+  const summary = await buildProjectSummary(repositories, project)
 
   return {
     binding: {

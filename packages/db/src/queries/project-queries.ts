@@ -1,4 +1,4 @@
-import { normalizeText, type ProjectSettingsRow, type ProjectSummaryDto } from "@relay/shared"
+import { normalizeText, type ProjectRow, type ProjectSettingsRow, type ProjectSummaryDto } from "@relay/shared"
 
 import type { RepositoryBundle } from "./repository-bundle"
 
@@ -59,6 +59,62 @@ function extractRoutingKeywords(values: Array<string | null | undefined>) {
   return keywords
 }
 
+/**
+ * Compose the summary DTO for a single project. Extracted so callers that
+ * already hold one project (e.g. extension binding resolution) can avoid the
+ * full per-owner fan-out in {@link getProjectSummaries}, which runs 5 queries
+ * per project across every project the user owns.
+ */
+export async function buildProjectSummary(
+  repositories: RepositoryBundle,
+  project: ProjectRow,
+): Promise<ProjectSummaryDto> {
+  const [memoryCount, memorySamples, projectState, conversationCount, projectSettings] = await Promise.all([
+    repositories.memory.countByProject(project.id),
+    repositories.memory.listRoutingSamplesByProject(project.id, 3),
+    repositories.projectState.getByProject(project.id),
+    repositories.sessions.countDistinctConversations(project.id, { includeArchived: false }),
+    repositories.projectSettings.getByProject(project.id)
+  ])
+  const settings = projectSettings?.settings as
+    | ProjectSettingsRow["settings"]
+    | undefined
+  const routingKeywords = extractRoutingKeywords([
+    project.name,
+    project.slug,
+    project.description,
+    project.projectUrl,
+    projectState?.projectOverview ?? null,
+    projectState?.currentObjective ?? null,
+    projectState?.recentProgress ?? null,
+    ...(projectState?.decisions ?? []).slice(0, 3),
+    ...(projectState?.constraints ?? []).slice(0, 3),
+    ...(projectState?.openTasks ?? []).slice(0, 3),
+    ...(projectState?.relevantTools ?? []).slice(0, 3),
+    ...memorySamples.flatMap((item) => [item.title, item.content.slice(0, 240)])
+  ])
+
+  return {
+    id: project.id,
+    name: project.name,
+    slug: project.slug,
+    description: project.description,
+    projectUrl: project.projectUrl,
+    memoryCount,
+    sessionCount: conversationCount,
+    routingContext: {
+      hasMeaningfulContext: memoryCount > 0 || conversationCount > 0,
+      keywords: routingKeywords
+    },
+    updatedAt: project.updatedAt,
+    kind: project.kind,
+    autoCapture: settings?.autoCapture,
+    autoCapturePlatforms: settings?.autoCapturePlatforms,
+    inlineChip: settings?.inlineChip,
+    inlineChipPlatforms: settings?.inlineChipPlatforms
+  }
+}
+
 export async function getProjectSummaries(
   repositories: RepositoryBundle,
   ownerId: string,
@@ -68,52 +124,5 @@ export async function getProjectSummaries(
     includePersonal: options.includePersonal,
   })
 
-  return Promise.all(
-    projects.map(async (project) => {
-      const [memoryCount, memorySamples, projectState, conversationCount, projectSettings] = await Promise.all([
-        repositories.memory.countByProject(project.id),
-        repositories.memory.listRoutingSamplesByProject(project.id, 3),
-        repositories.projectState.getByProject(project.id),
-        repositories.sessions.countDistinctConversations(project.id, { includeArchived: false }),
-        repositories.projectSettings.getByProject(project.id)
-      ])
-      const settings = projectSettings?.settings as
-        | ProjectSettingsRow["settings"]
-        | undefined
-      const routingKeywords = extractRoutingKeywords([
-        project.name,
-        project.slug,
-        project.description,
-        project.projectUrl,
-        projectState?.projectOverview ?? null,
-        projectState?.currentObjective ?? null,
-        projectState?.recentProgress ?? null,
-        ...(projectState?.decisions ?? []).slice(0, 3),
-        ...(projectState?.constraints ?? []).slice(0, 3),
-        ...(projectState?.openTasks ?? []).slice(0, 3),
-        ...(projectState?.relevantTools ?? []).slice(0, 3),
-        ...memorySamples.flatMap((item) => [item.title, item.content.slice(0, 240)])
-      ])
-
-      return {
-        id: project.id,
-        name: project.name,
-        slug: project.slug,
-        description: project.description,
-        projectUrl: project.projectUrl,
-        memoryCount,
-        sessionCount: conversationCount,
-        routingContext: {
-          hasMeaningfulContext: memoryCount > 0 || conversationCount > 0,
-          keywords: routingKeywords
-        },
-        updatedAt: project.updatedAt,
-        kind: project.kind,
-        autoCapture: settings?.autoCapture,
-        autoCapturePlatforms: settings?.autoCapturePlatforms,
-        inlineChip: settings?.inlineChip,
-        inlineChipPlatforms: settings?.inlineChipPlatforms
-      }
-    })
-  )
+  return Promise.all(projects.map((project) => buildProjectSummary(repositories, project)))
 }
