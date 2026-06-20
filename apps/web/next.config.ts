@@ -52,8 +52,13 @@ const nextConfig: NextConfig = {
   }
 }
 
+// Opt-in: the PostHog sourcemap upload talks to NEXT_PUBLIC_POSTHOG_HOST
+// (t.onrelay.app). If that host is unreachable the plugin fails the whole
+// production build, so it must be explicitly enabled (and only once the proxy
+// subdomain resolves). Set POSTHOG_SOURCEMAPS=true to re-enable.
 const sourcemapUploadEnabled = Boolean(
-  process.env.VERCEL_ENV === "production" &&
+  process.env.POSTHOG_SOURCEMAPS === "true" &&
+    process.env.VERCEL_ENV === "production" &&
     process.env.POSTHOG_API_KEY &&
     process.env.POSTHOG_PROJECT_ID
 )
