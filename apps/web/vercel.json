@@ -1,4 +1,5 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "pnpm --filter @relay/web build",
   "fluid": false,
   "ignoreCommand": "bash ../../scripts/vercel-ignore-build.sh",
@@ -7,5 +8,11 @@
       "path": "/api/internal/jobs/cron",
       "schedule": "0 0 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "src/app/api/extension/**/*": {
+      "memory": 512,
+      "maxDuration": 10
+    }
+  }
 }
