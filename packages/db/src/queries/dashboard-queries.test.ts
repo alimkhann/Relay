@@ -49,6 +49,7 @@ describe("getProjectDashboard", () => {
       contextPackets: { listByProject: async () => [] },
       targetProfiles: { listAll: async () => [] },
       projectState: { getByProject: async () => null },
+      projectSettings: { getByProject: async () => null },
       projectStateOverrides: { getByProject: async () => null },
       sessionDigests: { listByProject: async () => [] },
       aiJobs: { listByProject: async () => [] },

@@ -1,5 +1,6 @@
 import { Pool as NeonPool } from "@neondatabase/serverless"
-import { Pool as PostgresPool } from "pg"
+import { createRequire } from "node:module"
+import type { Pool as PostgresPool } from "pg"
 
 export type DatabaseMode = "neon" | "local"
 export type DatabaseRow = Record<string, unknown>
@@ -131,10 +132,18 @@ function getNeonPool(connectionString: string) {
   return pool
 }
 
+// pg is loaded lazily, only in local mode, so the Neon/serverless path never
+// imports it. The Cloudflare Workers runtime (OpenNext full offload) can't run
+// pg's TCP stack; prod always uses the Neon HTTP driver, so require("pg") is
+// never reached there and esbuild never bundles it into the worker.
+let postgresPoolCtor: typeof PostgresPool | undefined
 function getPostgresPool(connectionString: string) {
   let pool = postgresPools.get(connectionString)
   if (!pool) {
-    pool = new PostgresPool({ connectionString, max: 4 })
+    if (!postgresPoolCtor) {
+      postgresPoolCtor = createRequire(import.meta.url)("pg").Pool as typeof PostgresPool
+    }
+    pool = new postgresPoolCtor({ connectionString, max: 4 })
     postgresPools.set(connectionString, pool)
   }
   return pool
