@@ -1,0 +1,19 @@
+# Relay sync worker — offloads GET /api/extension/bindings from Vercel (Active CPU relief).
+# Deployed separately to Cloudflare; NOT part of the pnpm workspace or the Vercel build.
+name = "relay-sync-worker"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Non-secret vars. Set VERCEL_ORIGIN to a Vercel origin that is NOT behind the
+# Cloudflare route (otherwise the non-GET proxy loops). Use the project's stable
+# *.vercel.app production alias, e.g. https://relay-<hash>.vercel.app or the
+# project production domain relay.vercel.app.
+[vars]
+VERCEL_ORIGIN = "https://relay.vercel.app"
+
+# Secrets — set with:
+#   wrangler secret put DATABASE_URL
+# DATABASE_URL: Neon Postgres connection string. Prefer a service/pooled role
+# (the binding resolve query is already scoped by user_id, so RLS GUC is not
+# required here). Use the SERVICE_DATABASE_URL value if you have one.

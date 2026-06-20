@@ -1,0 +1,21 @@
+{
+  "name": "relay-sync-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare Worker that offloads the high-volume GET /api/extension/bindings endpoint from Vercel. Intentionally outside the pnpm workspace so it never touches the web app's lockfile / build.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "tail": "wrangler tail"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.2"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240909.0",
+    "typescript": "^5.6.0",
+    "wrangler": "^3.78.0"
+  }
+}
