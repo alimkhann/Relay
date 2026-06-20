@@ -1,2 +1,6 @@
 .vercel
 .env*.local
+
+# OpenNext / Cloudflare full-offload build output (parachute; see cloudflare/RUNBOOK.md)
+.open-next
+.wrangler
