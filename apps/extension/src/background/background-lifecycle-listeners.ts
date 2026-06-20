@@ -235,31 +235,24 @@ chrome.tabs.onRemoved.addListener((tabId: number) => {
   deps.clearTabState(tabId);
 });
 
-// Recovery tick. The MV3 service worker suspends after ~30s idle, which drops
-// every pending `setTimeout` retry — and because the freshness check is keyed
-// on an absolute `lastSuccessfulSyncAt`, a tab that was "ready" before the SW
-// slept never re-syncs on wake even though its cache has long expired. The
-// result the user sees is empty/stale data until they reload the extension.
-// A periodic alarm survives suspension (Chrome wakes the SW to fire it) and
-// re-syncs the active tab. `syncTabRemoteState` does its own cache-age skip, so
-// this is a no-op (no network/DB call) whenever the cache is still fresh.
-// 2 min keeps SW wake cost low; cache TTL is 5–10 min so finer granularity
-// would only burn wake-ups without surfacing data any sooner.
-const RESYNC_ALARM = "relay-resync-active-tab";
-try {
-  chrome.alarms?.create(RESYNC_ALARM, { periodInMinutes: 2 });
-} catch (cause) {
-  console.warn("[relay] alarms.create failed", cause);
-}
-
-chrome.alarms?.onAlarm.addListener((alarm: { name: string }) => {
-  if (alarm.name !== RESYNC_ALARM) return;
+// Freshness is driven by real user activity, not a background timer. A periodic
+// alarm (previously every 2 min) re-syncs even when the user is idle — e.g. tabs
+// left open overnight — which keeps the backend and the Neon database awake 24/7
+// and never lets it scale to zero. Instead we re-sync on the events that mean
+// the user is actually looking at the data: navigation (onUpdated), tab switch
+// (onActivated), and returning focus to the browser window (onFocusChanged).
+// `refreshPageStateAndSyncIfMissing` does its own cache-age skip, so a refocus
+// with fresh cache is a no-op. Idle tabs make no requests, so the DB sleeps.
+chrome.windows?.onFocusChanged?.addListener((windowId: number) => {
+  if (windowId === chrome.windows.WINDOW_ID_NONE) return;
   void (async () => {
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab?.id) await deps.syncTabRemoteState(tab.id, { reason: "alarm_resync" });
+      const [tab] = await chrome.tabs.query({ active: true, windowId });
+      if (tab?.id) {
+        await deps.refreshPageStateAndSyncIfMissing(tab.id, "window_focus");
+      }
     } catch (cause) {
-      console.warn("[relay] resync alarm failed", cause);
+      console.warn("[relay] focus resync failed", cause);
     }
   })();
 });
