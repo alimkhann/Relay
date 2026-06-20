@@ -79,16 +79,40 @@ Part C.
 
 ## Part B — Full offload to Cloudflare (the parachute)
 
-Fire this only if Vercel pauses the whole project. Next.js is **16.1.6** →
-supported by `@opennextjs/cloudflare` (1.0 GA). Everything below is staged here so
-it never touches the live Vercel build until you run it.
+Fire this only if Vercel pauses the whole project.
+
+**Status: build validated on branch `chore/opennext-parachute`.**
+`npx opennextjs-cloudflare build` completes green there (output `.open-next/worker.js`).
+The branch holds everything below so main/live is untouched. To fire it:
+
+```bash
+git checkout chore/opennext-parachute
+cd apps/web
+pnpm install
+npx opennextjs-cloudflare build      # already green; re-run to be sure
+npx wrangler deploy                  # needs `wrangler login` + secrets (B5)
+```
+
+**Caveats before you rely on it:**
+- *Build green ≠ runtime-verified.* `pg` / `pdf-parse` / auth / RLS on the real
+  Workers runtime are unproven — smoke-test every critical path after deploy.
+- *Next version.* 16.1.6 is below OpenNext's official peer range
+  (`>=15.5.18 <16 || >=16.2.6`). It builds, but **bump Next to ≥16.2.6** before
+  trusting this in production.
+- *One code change is already applied on the branch:* `opengraph-image.tsx`
+  runtime `edge → nodejs` (OpenNext can't bundle edge functions). It's kept OFF
+  main on purpose — edge routes don't bill Vercel GB-Hrs, nodejs ones do.
+
+The remaining subsections (B0–B6) document the why and the env/deploy details.
 
 ### B0. Known blockers (fix before/while building)
 
-1. **`pg` top-level import breaks on Workers.** `packages/db/src/store/provider.ts`
-   does `import { Pool as PostgresPool } from "pg"` at module top. `pg` needs TCP
-   sockets and crashes the Workers runtime even though prod only uses the Neon
-   HTTP driver. **Fix:** make the `pg` import lazy so it loads only in local mode:
+1. **`pg` top-level import — build OK, runtime unverified.** `packages/db/src/store/provider.ts`
+   does `import { Pool as PostgresPool } from "pg"` at module top. The OpenNext
+   build **bundles it fine** under `nodejs_compat` (the validated branch did not
+   need any patch). The remaining risk is *runtime*: prod only ever uses the Neon
+   HTTP driver, so `pg`'s code path is never executed — but if module-load alone
+   throws on Workers, make the import lazy so it loads only in local mode:
 
    ```ts
    // provider.ts — replace the top-level pg import with a lazy loader.
