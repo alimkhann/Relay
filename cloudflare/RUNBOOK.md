@@ -5,12 +5,23 @@ overview, then jump to the part you need.
 
 ## Why this exists
 
-Vercel Hobby caps **Active CPU at 4 CPU-hrs/month** (per *account*, not project).
-`GET /api/extension/bindings` — polled per-tab by the extension — was burning
-~20 CPU-min / 12h (≈20+ CPU-hrs/month, 5× the whole cap). Commit `c0bb538` (A1)
-cut that endpoint from 5×N DB queries to 5 per call, which should keep you under
-the cap on its own. Provisioned Memory (360 GB-hr) and Invocations (1M) are at
-~4% and ~22% — not constraints.
+This project is on Vercel's **classic** billing model (Fluid off). The binding cap
+is **Function Duration = 100 GB-Hrs/month** (GB-Hrs = memory × wall-clock time,
+summed across all functions). As of this writing usage is **107.8 / 100 GB-Hrs —
+already over** — so Vercel can pause the project at any time, and reducing usage
+will not un-trip it until the monthly reset (1st of the month). That is why the
+Cloudflare move below is the real safety net, not just an optimization.
+
+Two levers cut GB-Hrs directly:
+- **less memory** per function (linear) — see `apps/web/vercel.json` `functions`
+  (commit `aa48551` lowered the extension routes to 512 MB);
+- **less wall-clock time** per call — commit `c0bb538` (A1) cut
+  `GET /api/extension/bindings` (the extension's per-tab poll, the single biggest
+  consumer) from 5×N DB queries to 5.
+
+These slow the bleed and help next month, but once you are over the cap the
+durable fix is to move load off Vercel (Parts A/B). Invocations (1M) and any
+Active-CPU/Provisioned-Memory figures are not the binding constraint here.
 
 | Option | What it does | Fire when |
 |---|---|---|
