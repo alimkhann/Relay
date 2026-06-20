@@ -21,6 +21,21 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
+# next build reads .env from the project root, not from .vercel/, so load the
+# pulled env into the build environment to bake NEXT_PUBLIC_* into the client.
+echo "==> Loading build env from $ENV_FILE"
+set -a; . "$ENV_FILE"; set +a
+# Don't trigger the Vercel-only PostHog sourcemap upload during a Cloudflare build.
+unset VERCEL_ENV VERCEL_URL VERCEL
+
+echo "==> Building (OpenNext)"
+npx opennextjs-cloudflare build
+
+# Worker must exist before `wrangler secret put`, so deploy first (the app will
+# 500 until secrets land — that's fine, no traffic is pointed at it yet).
+echo "==> Deploying worker (relay-web) — first pass"
+npx wrangler deploy
+
 echo "==> Pushing runtime secrets from $ENV_FILE"
 # Skip Vercel/build-system vars and NEXT_PUBLIC_* (inlined at build time, not
 # runtime secrets). Everything else becomes a Worker secret.
@@ -36,12 +51,6 @@ while IFS= read -r line || [[ -n "$line" ]]; do
   printf '%s' "$val" | npx wrangler secret put "$key" >/dev/null
   echo "    secret set: $key"
 done < "$ENV_FILE"
-
-echo "==> Building (OpenNext)"
-npx opennextjs-cloudflare build
-
-echo "==> Deploying worker (relay-web)"
-npx wrangler deploy
 
 cat <<'NEXT'
 
