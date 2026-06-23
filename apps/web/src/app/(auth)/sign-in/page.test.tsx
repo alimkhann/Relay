@@ -40,6 +40,12 @@ vi.mock("@/components/auth/google-sign-in-button", () => ({
   )
 }))
 
+vi.mock("@/components/auth/sign-in-session-gate", () => ({
+  SignInSessionGate: ({ nextPath, provider }: { nextPath: string; provider?: string }) => (
+    <div data-testid="sign-in-session-gate" data-next-path={nextPath} data-provider={provider} />
+  )
+}))
+
 vi.mock("@/components/telemetry/page-telemetry", () => ({
   PageTelemetry: () => null
 }))
@@ -77,6 +83,10 @@ describe("SignInPage", () => {
     expect(screen.getByTestId("google-sign-in-button").getAttribute("data-next-path")).toBe(
       "/projects/project-1"
     )
+    expect(screen.getByTestId("sign-in-session-gate").getAttribute("data-next-path")).toBe(
+      "/projects/project-1"
+    )
+    expect(screen.getByTestId("sign-in-session-gate").getAttribute("data-provider")).toBe("neon")
   })
 
   it("passes signup intent to the Google button", async () => {

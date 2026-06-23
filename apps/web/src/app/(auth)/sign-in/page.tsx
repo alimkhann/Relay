@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { InAppBrowserBanner } from "@/components/auth/in-app-browser-banner";
 import { SignInAuthPanel } from "@/components/auth/sign-in-auth-panel";
+import { SignInSessionGate } from "@/components/auth/sign-in-session-gate";
 import { PostHogIdentity } from "@/components/telemetry/posthog-identity";
 import { SignInAnimatedItem } from "@/components/auth/sign-in-animated";
 import { getAuthProvider } from "@/lib/auth/provider";
@@ -55,6 +56,7 @@ export default async function SignInPage({
         pageGroup="auth"
         message="Rendered the sign-in page."
       />
+      <SignInSessionGate nextPath={nextPath} provider={authProvider} />
 
       {/* Left column — hero */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">

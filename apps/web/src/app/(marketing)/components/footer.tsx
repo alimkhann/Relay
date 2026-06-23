@@ -111,7 +111,7 @@ export function Footer() {
                 href={social.href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-white/30 transition-colors hover:text-white/60"
+                className="group text-white/30 transition-colors hover:text-white/60"
                 aria-label={social.label}
               >
                 {"imageSrc" in social ? (
@@ -120,7 +120,7 @@ export function Footer() {
                     alt=""
                     width={16}
                     height={16}
-                    className="h-4 w-4 brightness-0 invert opacity-100"
+                    className="h-4 w-4 brightness-0 invert opacity-30 transition-opacity group-hover:opacity-60"
                   />
                 ) : (
                   social.icon

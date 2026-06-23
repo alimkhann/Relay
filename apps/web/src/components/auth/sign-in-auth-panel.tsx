@@ -82,7 +82,7 @@ export function SignInAuthPanel({
             <div className="space-y-4">
               {googleAuthConfigured ? (
                 <>
-                  <GoogleSignInButton nextPath={nextPath} intent={intent} />
+                  <GoogleSignInButton nextPath={nextPath} intent={activeMode} />
                   <div className="flex items-center gap-4 py-1">
                     <div className="h-px flex-1 bg-[var(--relay-line)]" />
                     <span className="text-sm text-[var(--relay-muted)]">Or continue locally</span>
@@ -96,7 +96,7 @@ export function SignInAuthPanel({
             <div className="space-y-4">
               {emailOtpActive ? null : (
                 <>
-                  <GoogleSignInButton nextPath={nextPath} intent={intent} />
+                  <GoogleSignInButton nextPath={nextPath} intent={activeMode} />
                   <div className="flex items-center gap-4 py-1">
                     <div className="h-px flex-1 bg-[var(--relay-line)]" />
                     <span className="text-sm text-[var(--relay-muted)]">Or continue with email</span>

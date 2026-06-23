@@ -60,6 +60,12 @@ describe("GoogleSignInButton", () => {
   })
 
   it("uses standard sign-in options outside signup intent", async () => {
+    const assignMock = vi.fn()
+    vi.spyOn(window, "location", "get").mockReturnValue({
+      ...window.location,
+      assign: assignMock
+    })
+
     render(<GoogleSignInButton nextPath="/settings" intent="sign-in" />)
 
     fireEvent.click(screen.getByRole("button", { name: "Continue with Google" }))
@@ -70,8 +76,73 @@ describe("GoogleSignInButton", () => {
         callbackURL: "/settings?auth_callback=1&auth_method=google&auth_intent=sign-in",
         newUserCallbackURL: "/settings?auth_callback=1&auth_method=google&auth_intent=sign-in",
         requestSignUp: false,
-        disableRedirect: false
+        disableRedirect: true
       })
+    })
+
+    expect(assignMock).toHaveBeenCalledWith(
+      "https://accounts.google.com/o/oauth2/v2/auth?client_id=relay&prompt=select_account"
+    )
+  })
+
+  it("ignores repeat clicks while the Google redirect is being prepared", async () => {
+    let resolveSignIn!: (value: { data: { redirect: boolean; url: string } }) => void
+    signInSocialMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSignIn = resolve
+        }),
+    )
+    const assignMock = vi.fn()
+    vi.spyOn(window, "location", "get").mockReturnValue({
+      ...window.location,
+      assign: assignMock
+    })
+
+    render(<GoogleSignInButton nextPath="/dashboard" intent="sign-in" />)
+
+    const button = screen.getByRole("button", { name: "Continue with Google" })
+    fireEvent.click(button)
+    fireEvent.click(button)
+    fireEvent.click(button)
+
+    await waitFor(() => {
+      expect(signInSocialMock).toHaveBeenCalledTimes(1)
+    })
+    expect(screen.getByRole("button", { name: "Opening Google…" }).hasAttribute("disabled")).toBe(true)
+
+    resolveSignIn({
+      data: {
+        redirect: true,
+        url: "https://accounts.google.com/o/oauth2/v2/auth?client_id=relay",
+      },
+    })
+
+    await waitFor(() => {
+      expect(assignMock).toHaveBeenCalledWith(
+        "https://accounts.google.com/o/oauth2/v2/auth?client_id=relay&prompt=select_account"
+      )
+    })
+  })
+
+  it("logs when the browser is handed to Google's OAuth URL", async () => {
+    const assignMock = vi.fn()
+    vi.spyOn(window, "location", "get").mockReturnValue({
+      ...window.location,
+      assign: assignMock
+    })
+
+    render(<GoogleSignInButton nextPath="/dashboard" intent="sign-in" />)
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue with Google" }))
+
+    await waitFor(() => {
+      expect(logClientEventMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "google_sign_in.redirecting",
+          flowId: "flow-1",
+        }),
+      )
     })
   })
 })

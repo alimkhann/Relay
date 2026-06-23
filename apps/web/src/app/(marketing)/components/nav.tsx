@@ -186,7 +186,7 @@ export function Nav({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
                 trackMarketingEvent("get_started_clicked", { source: "nav_desktop" })
               }}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-sm font-semibold whitespace-nowrap shrink-0",
+                "inline-flex items-center gap-1.5 rounded-full px-5 py-2.5 text-sm font-semibold whitespace-nowrap shrink-0",
                 "bg-white text-[#0a0a0a] shadow-[0_2px_12px_rgba(255,255,255,0.08)]",
                 "transition-all duration-300 ease-out hover:-translate-y-px hover:shadow-[0_4px_20px_rgba(255,255,255,0.14)]"
               )}
