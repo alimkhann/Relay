@@ -65,7 +65,7 @@ async function resolveChatProjectId(): Promise<string | null> {
     if (tab?.id) {
       const response = await chrome.runtime.sendMessage({
         type: "RELAY_GET_ACTIVE_PROJECT_STATE",
-        payload: { tabId: tab.id },
+        payload: { tabId: tab.id, source: "extension_chat" },
       })
       if (isActiveProjectState(response) && response.projectId) {
         return response.projectId

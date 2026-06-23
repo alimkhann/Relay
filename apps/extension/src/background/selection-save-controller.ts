@@ -2,6 +2,7 @@ import { createFlowId } from "@relay/shared/utils/telemetry";
 
 import type { RelayMessage, RelayPageState } from "../messaging/contracts";
 import { getRelaySession } from "../storage/session";
+import { markMeaningfulActivity } from "../storage/dormancy";
 import { relayFetch } from "../utils/api";
 import { readErrorResponse } from "./bg-utils";
 import { invalidateProjectCache } from "./session-cache";
@@ -91,6 +92,7 @@ export function createSelectionSaveController(deps: {
   ): Promise<SaveSelectionResult> {
     const trimmed = params.selectionText.trim();
     const flowId = createFlowId("ext-save");
+    await markMeaningfulActivity("save_selection");
     if (!trimmed) {
       await showFailureToastInTab(params.tabId, "Select text on the page first.");
       return { ok: false, reason: "Select text in the page first." };

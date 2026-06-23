@@ -19,6 +19,7 @@ import {
   resolveRelayApiBase,
   setRelaySession,
 } from "../storage/session";
+import { markMeaningfulActivity } from "../storage/dormancy";
 import { relayFetch } from "../utils/api";
 import type {
   ExtensionAuthSessionPayload,
@@ -80,6 +81,7 @@ export async function storeAuthenticatedExtensionSession(
 ) {
   sessionCache.current = null;
   resetSessionRefreshGuards();
+  await markMeaningfulActivity("onboarding_action");
   await setRelaySession({
     apiBase: payload.apiBase,
     token: payload.token,

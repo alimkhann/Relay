@@ -1,13 +1,13 @@
 {
   "name": "@relay/extension",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "plasmo dev",
     "build": "plasmo build",
-    "build:prod": "plasmo build --tag prod && node scripts/verify-prod-build.mjs",
-    "zip": "plasmo build --tag prod && node scripts/verify-prod-build.mjs && plasmo package --tag prod && mkdir -p releases && rm -f releases/*.zip && mv build/chrome-mv3-prod.zip releases/relay-$npm_package_version.zip",
+    "build:prod": "PLASMO_PUBLIC_RELAY_API_BASE=https://www.onrelay.app PLASMO_PUBLIC_POSTHOG_HOST=https://eu.i.posthog.com plasmo build --tag prod && node scripts/verify-prod-build.mjs",
+    "zip": "PLASMO_PUBLIC_RELAY_API_BASE=https://www.onrelay.app PLASMO_PUBLIC_POSTHOG_HOST=https://eu.i.posthog.com plasmo build --tag prod && node scripts/verify-prod-build.mjs && plasmo package --tag prod && mkdir -p releases && rm -f releases/*.zip && mv build/chrome-mv3-prod.zip releases/relay-$npm_package_version.zip",
     "lint": "eslint . --ext .ts,.tsx",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -31,8 +31,7 @@
       "sidePanel",
       "identity",
       "scripting",
-      "contextMenus",
-      "alarms"
+      "contextMenus"
     ],
     "optional_permissions": [
       "audioCapture"

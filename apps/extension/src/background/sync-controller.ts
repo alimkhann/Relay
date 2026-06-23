@@ -4,6 +4,11 @@ import type { SupportedPlatform } from "@relay/shared";
 import type { RelayPageState } from "../messaging/contracts";
 import { readApprovedAssociations } from "../storage/routing";
 import { getRelaySession, setRelaySession } from "../storage/session";
+import {
+  readDormancySnapshot,
+  shouldSkipRemoteSyncForDormancy,
+  type RelayActivitySource,
+} from "../storage/dormancy";
 import { relayFetch } from "../utils/api";
 import { buildSavedAssociationFromMemory } from "./association-workflow";
 import { buildSavedChatAssociation, getRetargetableAssociationProject, hydrateTabStateFromSession, reconcileManualOverride } from "./association";
@@ -28,6 +33,8 @@ export function createSyncController(deps: {
   broadcastActiveProjectState(tabId: number): Promise<void>;
   scheduleAutoCapture(tabId: number, options?: { immediate?: boolean }): Promise<void>;
 }) {
+  type SyncOptions = { force?: boolean; reason?: string; source?: RelayActivitySource };
+
   async function resolveBoundProject(tabId: number, pageState: RelayPageState) {
     if (!pageState.supported) return null;
     const query = new URLSearchParams();
@@ -177,9 +184,20 @@ export function createSyncController(deps: {
 
   async function syncProjectDashboardOnly(
     tabId: number,
-    options: { force?: boolean; reason?: string } = {},
+    options: SyncOptions = {},
   ) {
     const state = getOrCreateTabState(tabId);
+    const reason = options.reason ?? "";
+    const dormancy = await readDormancySnapshot();
+    if (
+      shouldSkipRemoteSyncForDormancy({
+        dormant: dormancy.dormant,
+        reason,
+        source: options.source,
+      })
+    ) {
+      return;
+    }
     const session = await getRelaySession();
     hydrateTabStateFromSession(state, session);
 
@@ -203,7 +221,6 @@ export function createSyncController(deps: {
     }
 
     const requestKey = `project-only|${projectId}`;
-    const reason = options.reason ?? "";
     const projectChanged = Boolean(
       state.lastSyncedProjectId && projectId !== state.lastSyncedProjectId,
     );
@@ -303,16 +320,26 @@ export function createSyncController(deps: {
 
   async function syncTabRemoteState(
     tabId: number,
-    options: { force?: boolean; reason?: string } = {},
+    options: SyncOptions = {},
   ) {
     const state = getOrCreateTabState(tabId);
+    const reason = options.reason ?? "";
+    const dormancy = await readDormancySnapshot();
+    if (
+      shouldSkipRemoteSyncForDormancy({
+        dormant: dormancy.dormant,
+        reason,
+        source: options.source,
+      })
+    ) {
+      return;
+    }
     if (!state.page.supported) {
       await syncProjectDashboardOnly(tabId, options);
       return;
     }
     const session = await getRelaySession();
     hydrateTabStateFromSession(state, session);
-    const reason = options.reason ?? "";
     const requestKey = `${state.page.url ?? ""}|${state.page.captureSignature ?? ""}|${state.page.turns ?? 0}`;
     if (!session.token) {
       state.remoteStatus = "unavailable";

@@ -1011,7 +1011,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       // refresh carries the freshly-written override (not a stale snapshot).
       await chrome.runtime.sendMessage({
         type: "RELAY_REFRESH_SESSION",
-        payload: { force: true },
+        payload: { force: true, source: "sidepanel" },
       });
     });
   }
@@ -1064,6 +1064,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
     try {
       const result = (await chrome.runtime.sendMessage({
         type: "RELAY_REFRESH_SESSION",
+        payload: { source: "sidepanel" },
       })) as {
         ok?: boolean;
         error?: string;
@@ -1169,7 +1170,7 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
       activeStateRequestInFlight.current = true;
       const response = await chrome.runtime.sendMessage({
         type: "RELAY_GET_ACTIVE_PROJECT_STATE",
-        payload: { tabId: tab.id },
+        payload: { tabId: tab.id, source: "sidepanel" },
       });
 
       if (!isRelayActiveProjectState(response)) {
@@ -1200,7 +1201,10 @@ export function ControlPanel({ compact = false }: ControlPanelProps) {
   }
 
   async function openUpgradePage() {
-    void chrome.runtime.sendMessage({ type: "RELAY_REFRESH_SESSION" });
+    void chrome.runtime.sendMessage({
+      type: "RELAY_REFRESH_SESSION",
+      payload: { source: "sidepanel" },
+    });
     await chrome.tabs.create({ url: BILLING_UPGRADE_URL, active: true });
   }
 

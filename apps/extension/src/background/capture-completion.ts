@@ -4,6 +4,7 @@ import type { RelayAssociationToastPayload, RelayPageState } from "../messaging/
 import { rememberApprovedAssociation } from "../storage/routing";
 import { persistTabSignature } from "../storage/capture-signatures";
 import { setRelaySession } from "../storage/session";
+import { markMeaningfulActivity } from "../storage/dormancy";
 import type { getRelaySession } from "../storage/session";
 import { resolveTargetProfile } from "../utils/target-profile";
 import { buildDoneToast, resolveAssociationProjectName } from "./association-workflow";
@@ -137,6 +138,10 @@ export async function applySuccessfulCaptureResult(params: {
       sessionId: result.sessionId ?? null,
       approvedAt: new Date().toISOString(),
     });
+  }
+
+  if (autoCapture) {
+    await markMeaningfulActivity("auto_capture_completed").catch(() => undefined);
   }
 
   await syncTabRemoteState(tabId, {

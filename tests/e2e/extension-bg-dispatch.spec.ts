@@ -51,7 +51,7 @@ test.describe("Relay background SW message dispatch", () => {
       await serviceWorker.evaluate(async () => {
         await chrome.storage.local.set({
           "relay.connected": true,
-          "relay.apiBase": "http://localhost:3000",
+          "relay.apiBase": "https://www.onrelay.app",
           "relay.authToken": "test-token",
           "relay.projectId": "project-1",
           "relay.assumedProjectId": "project-1",
@@ -60,7 +60,7 @@ test.describe("Relay background SW message dispatch", () => {
       })
 
       let sessionFetchCount = 0
-      await context.route("http://localhost:3000/api/extension/session", async (route) => {
+      await context.route("https://www.onrelay.app/api/extension/session", async (route) => {
         sessionFetchCount += 1
         await route.fulfill({
           status: 200,
@@ -81,7 +81,7 @@ test.describe("Relay background SW message dispatch", () => {
       // 1. RELAY_REFRESH_SESSION → exercises loadSessionData (session-cache module)
       //    end-to-end through the SW, and proves the async handler's sendResponse
       //    arrives (return-true port stays open).
-      const refresh = await send({ type: "RELAY_REFRESH_SESSION", payload: { force: true } })
+      const refresh = await send({ type: "RELAY_REFRESH_SESSION", payload: { force: true, source: "sidepanel" } })
       expect(refresh.ok).toBe(true)
       expect(refresh.connected).toBe(true)
       expect(refresh.projects.map((p: any) => p.id)).toContain("personal-1")
@@ -89,7 +89,7 @@ test.describe("Relay background SW message dispatch", () => {
       expect(sessionFetchCount).toBeGreaterThanOrEqual(1)
 
       // 2. A second forced refresh re-fetches (force bypasses the 30-min cache).
-      const refresh2 = await send({ type: "RELAY_REFRESH_SESSION", payload: { force: true } })
+      const refresh2 = await send({ type: "RELAY_REFRESH_SESSION", payload: { force: true, source: "sidepanel" } })
       expect(refresh2.ok).toBe(true)
       expect(sessionFetchCount).toBeGreaterThanOrEqual(2)
 
@@ -100,7 +100,7 @@ test.describe("Relay background SW message dispatch", () => {
       //    30-min persisted-cache behavior, now living in session-cache.ts —
       //    verified at runtime, not just unit-mocked.
       const before = sessionFetchCount
-      const refresh3 = await send({ type: "RELAY_REFRESH_SESSION", payload: {} })
+      const refresh3 = await send({ type: "RELAY_REFRESH_SESSION", payload: { source: "sidepanel" } })
       expect(refresh3.ok).toBe(true)
       expect(refresh3.projects.map((p: any) => p.id)).toContain("project-1")
       expect(sessionFetchCount).toBe(before)
