@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 
 import { createClientFlowId, logClientEvent } from "@/lib/telemetry/client";
-import { authClient } from "@/lib/auth/client";
 import { withAuthCallbackParams } from "@/lib/auth/auth-callback";
 import { Button } from "@/components/ui/button";
 import type { WebAuthIntent } from "@/server/policies/viewer";
@@ -70,22 +69,9 @@ export function GoogleSignInButton({
         intent,
       });
 
-      const signInResult = await authClient.signIn.social({
-        provider: "google",
-        callbackURL: callbackPath,
-        newUserCallbackURL: callbackPath,
-        requestSignUp: intent === "sign-up",
-        disableRedirect: true,
-      });
-
-      const authUrl = (signInResult.data as { url?: string } | null)?.url;
-
-      if (!authUrl) {
-        throw new Error("Google sign-in did not return an authorization URL.");
-      }
-
-      const url = new URL(authUrl);
-      url.searchParams.set("prompt", "select_account");
+      const url = new URL("/api/auth/google/start", window.location.origin);
+      url.searchParams.set("next", callbackPath);
+      url.searchParams.set("intent", intent);
 
       logClientEvent({
         level: "info",
