@@ -1,6 +1,7 @@
 import { flushBackgroundTelemetry, recordBackgroundTelemetry } from "./telemetry";
 import { tabStates } from "./state";
 import type { SaveSelectionParams, SaveSelectionResult } from "./selection-save-controller";
+import { markMeaningfulActivity } from "../storage/dormancy";
 
 let sidePanelToolbarClickConfigured = false;
 
@@ -12,10 +13,12 @@ async function openRelaySidePanel(tab: { id?: number; windowId?: number }) {
       enabled: true,
     });
     await chrome.sidePanel.open({ tabId: tab.id });
+    void markMeaningfulActivity("sidepanel_opened");
     return;
   }
   if (tab.windowId) {
     await chrome.sidePanel.open({ windowId: tab.windowId });
+    void markMeaningfulActivity("sidepanel_opened");
   }
 }
 
@@ -262,7 +265,11 @@ chrome.commands?.onCommand.addListener((command: string) => {
     void (async () => {
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       const windowId = tabs[0]?.windowId;
-      if (windowId) chrome.sidePanel.open({ windowId }).catch(() => undefined);
+      if (windowId) {
+        chrome.sidePanel.open({ windowId })
+          .then(() => markMeaningfulActivity("sidepanel_opened"))
+          .catch(() => undefined);
+      }
     })();
     return;
   }

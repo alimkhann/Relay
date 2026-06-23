@@ -1,4 +1,8 @@
 import type { RelayPageState } from "../messaging/contracts";
+import {
+  readDormancySnapshot,
+  shouldSkipRemoteSyncForDormancy,
+} from "../storage/dormancy";
 import { shouldSyncMissingRemoteState } from "./remote-sync-policy";
 import { getOrCreateTabState, updateTabPageState } from "./tab-state-store";
 
@@ -99,11 +103,16 @@ export function createPageController(deps: {
   async function refreshPageStateAndSyncIfMissing(tabId: number, reason: string) {
     await requestPageStateFromTab(tabId);
     const state = getOrCreateTabState(tabId);
+    const dormancy = await readDormancySnapshot();
     if (
       shouldSyncMissingRemoteState({
         pageSupported: state.page.supported,
         remoteStatus: state.remoteStatus,
         lastSuccessfulSyncAt: state.lastSuccessfulSyncAt,
+      }) &&
+      !shouldSkipRemoteSyncForDormancy({
+        dormant: dormancy.dormant,
+        reason,
       })
     ) {
       await deps.syncTabRemoteState(tabId, { reason });

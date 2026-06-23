@@ -27,6 +27,9 @@ const problems = []
 if (raw.includes("localhost")) {
   problems.push(`manifest contains "localhost" — prod build picked up a dev/local env (stray .env.prod.local or wrong --tag).`)
 }
+if (raw.includes("$PLASMO_PUBLIC_")) {
+  problems.push(`manifest contains unresolved PLASMO_PUBLIC placeholders — prod build did not receive required public env values.`)
+}
 if (!raw.includes(PROD_ORIGIN)) {
   problems.push(`manifest is missing "${PROD_ORIGIN}" — PLASMO_PUBLIC_RELAY_API_BASE was not the prod origin at build time.`)
 }

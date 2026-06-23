@@ -3083,7 +3083,10 @@
               : "fresh_chat_bootstrap",
         },
       });
-      void sendRuntimeMessage({ type: "RELAY_GET_ACTIVE_PROJECT_STATE" }).then(
+      void sendRuntimeMessage({
+        type: "RELAY_GET_ACTIVE_PROJECT_STATE",
+        payload: { source: "content_script" },
+      }).then(
         (state) => {
           if (isValidActiveProjectState(state)) {
             relayChipState.currentState = state;
@@ -3153,6 +3156,7 @@
         renderInlineChip();
         void sendRuntimeMessage({
           type: "RELAY_GET_ACTIVE_PROJECT_STATE",
+          payload: { source: "shortcut" },
         }).then((state) => {
           if (isValidActiveProjectState(state)) {
             relayChipState.currentState = state;
@@ -3175,7 +3179,10 @@
         message: "Shortcut opened the inline chip in quick continuity mode.",
       });
       renderInlineChip();
-      void sendRuntimeMessage({ type: "RELAY_GET_ACTIVE_PROJECT_STATE" }).then(
+      void sendRuntimeMessage({
+        type: "RELAY_GET_ACTIVE_PROJECT_STATE",
+        payload: { source: "shortcut" },
+      }).then(
         (state) => {
           if (isValidActiveProjectState(state)) {
             relayChipState.currentState = state;

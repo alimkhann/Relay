@@ -4,6 +4,14 @@ import type { RelayActiveProjectState, RelayMessage, RelayPageState } from "../m
 import { applyMemoryMutationToContextPreview } from "../utils/context-preview-mutations";
 import { rememberManualOverride } from "../storage/routing";
 import { clearRelaySession, getRelaySession, resolveRelayApiBase, setRelaySession } from "../storage/session";
+import {
+  isExplicitActivitySource,
+  markMeaningfulActivity,
+  readDormancySnapshot,
+  shouldSkipRemoteSyncForDormancy,
+  trustedDormancySourceFromMessage,
+  type RelayActivitySource,
+} from "../storage/dormancy";
 import { relayFetch } from "../utils/api";
 import { buildActiveProjectState } from "./active-project";
 import { getRetargetableAssociationProject, hydrateTabStateFromSession } from "./association";
@@ -27,6 +35,23 @@ import type { SaveSelectionParams, SaveSelectionResult } from "./selection-save-
 import { handleAuthMessage } from "./auth-message-handlers";
 import { handleProjectMessage } from "./project-message-handlers";
 
+async function markSourceActivity(source: RelayActivitySource | undefined) {
+  if (!isExplicitActivitySource(source)) return;
+  await markMeaningfulActivity(
+    source === "extension_chat" ? "ask_relay_used" : "sidepanel_opened",
+  );
+}
+
+function sessionPayloadFromStore(session: Awaited<ReturnType<typeof getRelaySession>>) {
+  return {
+    connected: session.connected,
+    projects: session.projectOptions,
+    settings: null,
+    onboarding: session.onboarding,
+    entitlements: null,
+  };
+}
+
 export function registerInternalMessageListener(deps: {
   archiveChatAssociation(tabId: number, projectId: string, sessionId: string, archived: boolean): Promise<void>;
   broadcastActiveProjectState(tabId: number): Promise<void>;
@@ -39,12 +64,12 @@ export function registerInternalMessageListener(deps: {
   resolveAssociationToast(tabId: number, payload: { action: "approve" | "cancel"; mode: "saving" | "ask"; projectId: string }): Promise<unknown>;
   retargetAssociation(tabId: number, projectId: string, source?: "toast" | "inline_chip" | "sidebar"): Promise<unknown>;
   scheduleAutoCapture(tabId: number, options?: { immediate?: boolean }): Promise<void>;
-  syncTabRemoteState(tabId: number, options?: { force?: boolean; reason?: string }): Promise<void>;
+  syncTabRemoteState(tabId: number, options?: { force?: boolean; reason?: string; source?: RelayActivitySource }): Promise<void>;
 }) {
 chrome.runtime.onMessage.addListener(
   (
     message: RelayMessage,
-    sender: { tab?: { id?: number } },
+    sender: { tab?: { id?: number }; url?: string },
     sendResponse: (response?: unknown) => void,
   ) => {
     void (async () => {
@@ -53,6 +78,7 @@ chrome.runtime.onMessage.addListener(
           const tabId = sender.tab?.id;
           if (tabId) {
             await chrome.sidePanel.open({ tabId });
+            void markMeaningfulActivity("sidepanel_opened");
           }
           sendResponse({ ok: true });
           return;
@@ -96,6 +122,19 @@ chrome.runtime.onMessage.addListener(
 
         if (message.type === "RELAY_REFRESH_SESSION") {
           const force = message.payload?.force === true;
+          const source = trustedDormancySourceFromMessage(message.payload?.source, sender);
+          await markSourceActivity(source);
+          const dormancy = await readDormancySnapshot();
+          if (
+            shouldSkipRemoteSyncForDormancy({
+              dormant: dormancy.dormant,
+              reason: "refresh_session",
+              source,
+            })
+          ) {
+            sendResponse({ ok: true, ...sessionPayloadFromStore(await getRelaySession()) });
+            return;
+          }
           sessionCache.current = null;
           const payload = await loadSessionData(force);
           sendResponse({ ok: true, ...payload });
@@ -197,10 +236,16 @@ chrome.runtime.onMessage.addListener(
               pageSupported: state.page.supported,
               remoteStatus: state.remoteStatus,
               lastSuccessfulSyncAt: state.lastSuccessfulSyncAt,
+            }) &&
+            !shouldSkipRemoteSyncForDormancy({
+              dormant: (await readDormancySnapshot()).dormant,
+              reason: "page_state_update",
+              source: "content_script",
             })
           ) {
             void deps.syncTabRemoteState(sender.tab.id, {
               reason: "page_state_update",
+              source: "content_script",
             });
           }
           void deps.scheduleAutoCapture(sender.tab.id);
@@ -209,6 +254,8 @@ chrome.runtime.onMessage.addListener(
         }
 
         if (message.type === "RELAY_GET_ACTIVE_PROJECT_STATE") {
+          const source = trustedDormancySourceFromMessage(message.payload?.source, sender);
+          await markSourceActivity(source);
           const tabId = message.payload?.tabId ?? sender.tab?.id;
           if (!tabId) {
             sendResponse(
@@ -226,10 +273,23 @@ chrome.runtime.onMessage.addListener(
           const state = getOrCreateTabState(tabId);
           const session = await getRelaySession();
           hydrateTabStateFromSession(state, session);
+          const dormancy = await readDormancySnapshot();
+          const activeStateSyncBlockedByDormancy = shouldSkipRemoteSyncForDormancy({
+            dormant: dormancy.dormant,
+            reason: "active_state_request",
+            source,
+          });
+          const projectDashboardSyncBlockedByDormancy = shouldSkipRemoteSyncForDormancy({
+            dormant: dormancy.dormant,
+            reason: "project_dashboard_request",
+            source,
+          });
           if (
             state.page.supported &&
             session.connected &&
-            (state.remoteStatus === "unavailable" || !state.lastSuccessfulSyncAt)
+            (state.remoteStatus === "unavailable" || !state.lastSuccessfulSyncAt) &&
+            !activeStateSyncBlockedByDormancy &&
+            !projectDashboardSyncBlockedByDormancy
           ) {
             state.remoteStatus =
               session.projectOptions.length > 0 || session.assumedProjectId
@@ -244,11 +304,13 @@ chrome.runtime.onMessage.addListener(
               pageSupported: state.page.supported,
               remoteStatus: state.remoteStatus,
               lastSuccessfulSyncAt: state.lastSuccessfulSyncAt,
-            })
+            }) &&
+            !activeStateSyncBlockedByDormancy
           ) {
             void deps.syncTabRemoteState(tabId, {
               force: true,
               reason: "active_state_request",
+              source,
             });
           } else if (
             shouldSyncProjectDashboardOnly({
@@ -262,17 +324,20 @@ chrome.runtime.onMessage.addListener(
               projectId:
                 state.manualProjectId ?? session.assumedProjectId ?? session.projectId ?? null,
               lastSyncedProjectId: state.lastSyncedProjectId,
-            })
+            }) &&
+            !projectDashboardSyncBlockedByDormancy
           ) {
             void deps.syncTabRemoteState(tabId, {
               force: true,
               reason: "project_dashboard_request",
+              source,
             });
           }
           return;
         }
 
         if (message.type === "RELAY_SET_ACTIVE_PROJECT") {
+          await markMeaningfulActivity("project_selected");
           const tabId = message.payload.tabId ?? sender.tab?.id ?? null;
           const state = tabId !== null ? getOrCreateTabState(tabId) : null;
           const pageState = state?.page?.supported
@@ -428,6 +493,7 @@ chrome.runtime.onMessage.addListener(
         }
 
         if (message.type === "RELAY_INSERT_PROJECT_BRIEF") {
+          await markMeaningfulActivity("insert_brief");
           const tabId = message.payload?.tabId ?? sender.tab?.id;
           if (!tabId) {
             sendResponse({
@@ -498,6 +564,7 @@ chrome.runtime.onMessage.addListener(
         }
 
         if (message.type === "RELAY_CAPTURE_VISIBLE") {
+          await markMeaningfulActivity("manual_capture");
           const tabId = message.payload.tabId ?? sender.tab?.id;
           if (!tabId) {
             sendResponse({

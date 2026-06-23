@@ -35,6 +35,7 @@ export async function captureObservedChange(
     manualSelection?: boolean;
     skipAssociationToast?: boolean;
     autoCapture?: boolean;
+    skipAssociationAdjudication?: boolean;
     // Multi-project capture: link the captured session to these extra projects
     // (incl. personal) so each runs its own digest. Membership is re-checked
     // server-side.
@@ -390,6 +391,7 @@ export async function captureObservedChange(
           tabId,
           state,
           approvedAssociations,
+          { skipAdjudication: Boolean(options.skipAssociationAdjudication) },
         );
 
         state.routingReview = {

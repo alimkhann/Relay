@@ -33,6 +33,13 @@ export interface RelayProjectOption {
 
 export type RelayRemoteStatus = "loading" | "ready" | "stale" | "unavailable";
 export type RelayInsertKind = "fresh_chat_bootstrap" | "quick_continuity";
+export type RelayMessageSource =
+  | "background"
+  | "content_script"
+  | "extension_chat"
+  | "inline_chip"
+  | "shortcut"
+  | "sidepanel";
 export type RelaySidebarViewState =
   | "connected-loading"
   | "connected-ready"
@@ -216,7 +223,10 @@ export type RelayMessage =
         deep?: boolean;
       };
     }
-  | { type: "RELAY_GET_ACTIVE_PROJECT_STATE"; payload?: { tabId?: number } }
+  | {
+      type: "RELAY_GET_ACTIVE_PROJECT_STATE";
+      payload?: { tabId?: number; source?: RelayMessageSource };
+    }
   | {
       type: "RELAY_INSERT_PROJECT_BRIEF";
       payload?: {
@@ -255,7 +265,10 @@ export type RelayMessage =
         source?: "toast" | "inline_chip" | "sidebar";
       };
     }
-  | { type: "RELAY_REFRESH_SESSION"; payload?: { force?: boolean } }
+  | {
+      type: "RELAY_REFRESH_SESSION";
+      payload?: { force?: boolean; source?: RelayMessageSource };
+    }
   | {
       type: "RELAY_INVALIDATE_PROJECT_CACHE";
       payload?: { projectId?: string; sync?: boolean };

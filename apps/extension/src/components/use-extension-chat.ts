@@ -17,6 +17,7 @@ import type {
 } from "@relay/shared"
 
 import { getRelaySession } from "../storage/session"
+import { markMeaningfulActivity } from "../storage/dormancy"
 import { getActiveTab } from "../utils/browser"
 
 export interface ExtAttachment {
@@ -164,6 +165,7 @@ export function useExtensionChat(projectId: string | null, opts?: {
       parentForOptimistic: string | null,
       opts?: { replaceMessage?: UiMessage }
     ) => {
+      await markMeaningfulActivity("ask_relay_used")
       setError(null)
       setStreaming(true)
       const replaceMessage = opts?.replaceMessage

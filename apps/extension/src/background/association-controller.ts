@@ -407,6 +407,7 @@ export async function resolveAutoCaptureRouting(
   tabId: number,
   state: RelayTabState,
   approvedAssociationsInput?: Awaited<ReturnType<typeof readApprovedAssociations>>,
+  options: { skipAdjudication?: boolean } = {},
 ): Promise<RelayRoutingDecision> {
   const chatKey = buildAssociationKey(state.page);
   if (await isIgnoredChatKey(chatKey)) {
@@ -442,7 +443,7 @@ export async function resolveAutoCaptureRouting(
 
   logRoutingDecision("heuristic", state, heuristicDecision);
 
-  if (!shouldRequestAssociationAdjudication(heuristicDecision)) {
+  if (options.skipAdjudication || !shouldRequestAssociationAdjudication(heuristicDecision)) {
     return heuristicDecision;
   }
 
