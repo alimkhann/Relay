@@ -2,13 +2,19 @@
 
 import { useEffect, useRef, useState } from "react"
 import Image from "next/image"
+import { useRouter } from "next/navigation"
 import * as Dialog from "@radix-ui/react-dialog"
 import { ArrowLeft, X } from "lucide-react"
 import { motion, AnimatePresence } from "motion/react"
 
+import { slugify } from "@relay/shared/utils/text"
+
 import { ONBOARDING_SOURCES } from "@/app/(marketing)/marketing-integrations"
 import { ChromeWebstoreBadge } from "@/components/chrome-webstore-badge"
 import { PaywallPlanCards } from "@/components/billing/paywall-plan-cards"
+import { CopyCommandButton } from "@/components/ui/copy-command-button"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
 
 const ease = [0.25, 0.1, 0.25, 1] as const
@@ -21,6 +27,7 @@ interface Step {
   image?: { src: string; alt: string }
   cta?: React.ReactNode
   planPicker?: boolean
+  projectCreator?: boolean
   personaPicker?: "kind" | "sources"
   wizardCommand?: boolean
 }
@@ -46,6 +53,11 @@ const DASHBOARD_STEPS: Step[] = [
     title: "Where is your context today?",
     body: "Select everywhere your work and decisions currently live.",
     personaPicker: "sources",
+  },
+  {
+    title: "Add a project",
+    body: "Optional. Relay already created Personal for your own memory. Add a project only if you want separate context for a product, class, client, or repo.",
+    projectCreator: true,
   },
   {
     title: "Auto-capture",
@@ -92,7 +104,7 @@ const DASHBOARD_STEPS: Step[] = [
 ]
 
 /** Auto-capture — first guide step when reopened from the dashboard help icon. */
-export const GUIDE_START_STEP = 2
+export const GUIDE_START_STEP = 3
 
 export type WalkthroughMode = "onboarding" | "guide"
 
@@ -138,11 +150,14 @@ function WalkthroughShell({
                 type="button"
                 onClick={onDismiss}
                 aria-label="Close guide"
-                className="absolute -right-1 -top-1 z-20 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--relay-line)] bg-[var(--relay-soft)]/80 text-[var(--relay-muted)] backdrop-blur-sm transition-colors hover:border-[var(--relay-line-strong)] hover:text-[var(--relay-ink)] sm:-right-2 sm:-top-2"
+                className="absolute right-2 top-2 z-30 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--relay-line)] bg-[var(--relay-soft)]/90 text-[var(--relay-muted)] backdrop-blur-sm transition-colors hover:border-[var(--relay-line-strong)] hover:text-[var(--relay-ink)] sm:right-3 sm:top-3"
               >
                 <X size={16} />
               </button>
             ) : null}
+            <Dialog.Description className="sr-only">
+              Relay onboarding and setup guide.
+            </Dialog.Description>
             {children}
           </Dialog.Content>
         </div>
@@ -201,12 +216,17 @@ export function WalkthroughModal({
   initialStep = 0,
   mode = "onboarding",
 }: WalkthroughModalProps) {
+  const router = useRouter()
   const isGuide = mode === "guide"
   const minStep = isGuide ? GUIDE_START_STEP : 0
   const resolvedInitial = isGuide ? GUIDE_START_STEP : resolveInitialStep(initialStep)
   const [step, setStep] = useState(resolvedInitial)
   const [personaKind, setPersonaKind] = useState<PersonaKind | null>(null)
   const [personaSources, setPersonaSources] = useState<string[]>([])
+  const [projectName, setProjectName] = useState("")
+  const [projectDescription, setProjectDescription] = useState("")
+  const [projectPending, setProjectPending] = useState(false)
+  const [projectStatus, setProjectStatus] = useState("")
   const videoRef = useRef<HTMLVideoElement>(null)
   const steps = DASHBOARD_STEPS
   const current = steps[step]!
@@ -295,11 +315,68 @@ export function WalkthroughModal({
     next()
   }
 
+  async function createProject() {
+    const trimmedName = projectName.trim()
+    if (trimmedName.length < 2) {
+      setProjectStatus("Project name must be at least 2 characters.")
+      return
+    }
+
+    const slug = slugify(trimmedName).slice(0, 80)
+    if (slug.length < 2) {
+      setProjectStatus("Project name needs at least two letters or numbers.")
+      return
+    }
+
+    setProjectPending(true)
+    setProjectStatus("Creating project...")
+
+    try {
+      const response = await relayClientFetch("/api/projects", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        telemetry: {
+          surface: "web-dashboard",
+          area: "onboarding",
+          event: "onboarding_project_create.submit",
+          context: {
+            source: "walkthrough_modal",
+            nameLength: trimmedName.length,
+          },
+          logSuccess: true,
+        },
+        body: JSON.stringify({
+          name: trimmedName,
+          slug,
+          description: projectDescription.trim() || null,
+          projectUrl: null,
+        }),
+      })
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string }
+        throw new Error(payload.error ?? "Project creation failed.")
+      }
+
+      const result = (await response.json()) as { project: { id: string } }
+      router.push(`/dashboard?project=${result.project.id}`)
+      router.refresh()
+      setProjectStatus("")
+      next()
+    } catch (cause) {
+      setProjectStatus(cause instanceof Error ? cause.message : "Project creation failed.")
+    } finally {
+      setProjectPending(false)
+    }
+  }
+
   if (!open) return null
 
   const showFooterBack = step > minStep && !isPlanStep
   const showFooterNext =
-    !isPlanStep && current.personaPicker !== "kind"
+    !isPlanStep && current.personaPicker !== "kind" && !current.projectCreator
   const footerNextLabel = isLast ? "Done" : "Next"
   const footerNextAction =
     current.personaPicker === "sources" ? commitPersona : next
@@ -418,6 +495,79 @@ export function WalkthroughModal({
                   nextDisabled={footerNextDisabled}
                 />
               </div>
+            ) : current.projectCreator ? (
+              <div>
+                <div className="space-y-1.5 text-center">
+                  <Dialog.Title className="text-xl font-semibold tracking-tight text-[var(--relay-ink)]">
+                    {current.title}
+                  </Dialog.Title>
+                  <p className="mx-auto max-w-lg text-[14px] leading-relaxed text-[var(--relay-muted)]">
+                    {current.body}
+                  </p>
+                </div>
+
+                <div className="mx-auto mt-6 max-w-lg space-y-4 rounded-xl border border-[var(--relay-line)] bg-[var(--relay-soft)]/35 p-4 text-left">
+                  <label className="block space-y-2">
+                    <span className="text-sm font-medium text-[var(--relay-ink)]">Project name</span>
+                    <Input
+                      value={projectName}
+                      onChange={(event) => setProjectName(event.target.value)}
+                      placeholder="E.g., Relay, school, client work"
+                      disabled={projectPending}
+                    />
+                  </label>
+
+                  <label className="block space-y-2">
+                    <span className="flex items-baseline gap-2 text-sm font-medium">
+                      <span className="text-[var(--relay-ink)]">Description</span>
+                      <span className="text-xs font-normal text-[var(--relay-muted)]">Optional</span>
+                    </span>
+                    <Textarea
+                      className="min-h-20 resize-y"
+                      value={projectDescription}
+                      onChange={(event) => setProjectDescription(event.target.value)}
+                      placeholder="A short boundary so Relay knows what belongs here."
+                      disabled={projectPending}
+                      maxLength={200}
+                    />
+                  </label>
+                </div>
+
+                <div className="mx-auto mt-5 flex max-w-lg items-center gap-3">
+                  {showFooterBack ? (
+                    <button
+                      type="button"
+                      onClick={back}
+                      aria-label="Back"
+                      disabled={projectPending}
+                      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--relay-line)] text-[var(--relay-muted)] transition-colors hover:border-[var(--relay-line-strong)] hover:text-[var(--relay-ink)] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <ArrowLeft size={16} />
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={next}
+                    disabled={projectPending}
+                    className="inline-flex flex-1 items-center justify-center rounded-full border border-[var(--relay-line)] bg-[var(--relay-surface)] px-5 py-2.5 text-sm font-semibold text-[var(--relay-ink)] transition-colors hover:bg-[var(--relay-soft)] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Skip for now
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void createProject()}
+                    disabled={projectPending || projectName.trim().length < 2}
+                    className="inline-flex flex-1 items-center justify-center rounded-full bg-[var(--relay-accent)] px-5 py-2.5 text-sm font-semibold text-[var(--relay-accent-text)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {projectPending ? "Creating..." : "Create project"}
+                  </button>
+                </div>
+                {projectStatus ? (
+                  <p className="mt-3 text-center text-xs text-[var(--relay-muted)]">
+                    {projectStatus}
+                  </p>
+                ) : null}
+              </div>
             ) : (
               <div>
                 {current.video ? (
@@ -460,10 +610,13 @@ export function WalkthroughModal({
                   </p>
                   {current.wizardCommand ? (
                     <div className="mx-auto mt-3 max-w-md rounded-lg border border-[var(--relay-line)] bg-[var(--relay-soft)]/40 px-4 py-3 text-left">
-                      <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--relay-muted)]">
-                        One-command setup
-                      </p>
-                      <code className="mt-1.5 block font-mono text-sm text-[var(--relay-ink)]">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--relay-muted)]">
+                          One-command setup
+                        </p>
+                        <CopyCommandButton value={WIZARD_COMMAND} className="shrink-0" />
+                      </div>
+                      <code className="mt-2 block overflow-x-auto font-mono text-sm text-[var(--relay-ink)]">
                         {WIZARD_COMMAND}
                       </code>
                     </div>

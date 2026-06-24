@@ -14,7 +14,11 @@ import PerplexityIcon from "@lobehub/icons/es/Perplexity"
 import { FadeIn } from "@/components/ui/fade-in"
 import { useTheme } from "@/components/theme-provider"
 import { cn } from "@/lib/cn"
-import { signOutFromBrowser } from "@/lib/auth/sign-out-client"
+import {
+  finishGoogleLogoutInBrowser,
+  openGoogleLogoutWindow,
+  signOutFromBrowser,
+} from "@/lib/auth/sign-out-client"
 import { syncUserSettingsToExtension } from "@/lib/extension-settings-bridge"
 import { createClientFlowId } from "@/lib/telemetry/client"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
@@ -218,6 +222,7 @@ export function SettingsPreferences({
     if (deletePending) return
 
     setDeletePending(true)
+    const googleLogoutWindow = openGoogleLogoutWindow()
     try {
       const flowId = createClientFlowId("account-delete")
       const response = await relayClientFetch("/api/account/delete", {
@@ -236,8 +241,14 @@ export function SettingsPreferences({
         throw new Error(data.error ?? "Could not delete account")
       }
 
-      window.location.replace("/get-started")
+      const data = (await response.json().catch(() => ({}))) as { googleLogoutUrl?: unknown }
+      finishGoogleLogoutInBrowser(
+        typeof data.googleLogoutUrl === "string" ? data.googleLogoutUrl : undefined,
+        googleLogoutWindow,
+        "/get-started",
+      )
     } catch (error) {
+      googleLogoutWindow?.close()
       setDeletePending(false)
       showToast(error instanceof Error ? error.message : "Could not delete account", 4000)
     }

@@ -9,7 +9,10 @@ import { DashboardContent } from "@/features/projects/dashboard-content"
 import { logServerEvent } from "@/server/logging/logger"
 import { requirePageViewer } from "@/server/policies/viewer"
 import { getDefaultEntitlements } from "@/server/services/billing-config"
-import { getResolvedOnboardingStateForUser } from "@/server/services/onboarding-service"
+import {
+  completeOnboardingForUser,
+  getResolvedOnboardingStateForUser
+} from "@/server/services/onboarding-service"
 import { listProjectsForUser } from "@/server/services/project-service"
 import { resolveViewerEntitlements } from "@/server/services/entitlement-service"
 import { defaultSettings, getUserSettings, normalizeSettings } from "@/server/services/settings-service"
@@ -27,7 +30,8 @@ export default async function DashboardPage({
   // is never the implicit current project and must not count as "has projects").
   const allProjects = await listProjectsForUser(viewer.userId, { includePersonal: true })
   const projects = allProjects.filter((p) => p.kind !== "personal")
-  const [onboarding, settings] = await Promise.all([
+  const personalProject = allProjects.find((p) => p.kind === "personal") ?? null
+  const [resolvedOnboarding, settings] = await Promise.all([
     getResolvedOnboardingStateForUser(viewer.userId, { projects }).catch((error) => {
       void logServerEvent({
         level: "warn",
@@ -70,6 +74,30 @@ export default async function DashboardPage({
       }
     }),
   ])
+  let onboarding = resolvedOnboarding
+
+  if (onboarding.status === "pending" && personalProject) {
+    onboarding = await completeOnboardingForUser(viewer.userId, personalProject.id, "web", {
+      onboardingStep: "personal_project_selected",
+    }).catch((error) => {
+      void logServerEvent({
+        level: "warn",
+        surface: "web-dashboard",
+        area: "onboarding",
+        event: "dashboard.personal_onboarding_fallback",
+        message: "Dashboard rendered with personal project after onboarding completion failed.",
+        userId: viewer.userId,
+        projectId: personalProject.id,
+        context: { reason: error instanceof Error ? error.message : "unknown" }
+      })
+      return {
+        status: "completed" as const,
+        completedProjectId: personalProject.id,
+        completedVia: "web" as const,
+        completedAt: new Date().toISOString()
+      }
+    })
+  }
 
   const repositories = createRepositoryBundle(viewer.userId)
   const refereeReferral = await repositories.referrals.getByRefereeId(viewer.userId).catch(() => null)
@@ -129,6 +157,10 @@ export default async function DashboardPage({
       ? allProjects.find((p) => p.id === selectedProjectId)
       : projects.find((p) => p.id === onboarding.completedProjectId)) ??
     projects[0] ??
+    (onboarding.completedProjectId
+      ? allProjects.find((p) => p.id === onboarding.completedProjectId)
+      : null) ??
+    personalProject ??
     null
 
   // Canonicalize URL so sidebar and dashboard always agree on project

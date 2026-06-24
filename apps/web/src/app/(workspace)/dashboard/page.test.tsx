@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   getResolvedOnboardingStateForUserMock,
+  listProjectsForUserMock,
+  createRepositoryBundleMock,
   requirePageViewerMock,
   syncViewerProfileMock,
 } =
@@ -19,6 +21,26 @@ const {
       email: "user@example.com",
       name: "Relay User",
       image: null,
+    })),
+    listProjectsForUserMock: vi.fn(async () => [
+      {
+        id: "project-1",
+        name: "Relay MVP",
+        slug: "relay-mvp",
+        description: "Browser-first project memory sidecar.",
+        memoryCount: 3,
+        sessionCount: 1,
+        routingContext: {
+          hasMeaningfulContext: true,
+          keywords: ["browser", "memory", "sidecar", "relay"],
+        },
+        updatedAt: new Date().toISOString(),
+      },
+    ]),
+    createRepositoryBundleMock: vi.fn(() => ({
+      referrals: {
+        getByRefereeId: vi.fn(async () => null),
+      },
     })),
     syncViewerProfileMock: vi.fn(async () => undefined),
   }));
@@ -39,12 +61,26 @@ vi.mock("motion/react", () => ({
   AnimatePresence: ({ children }: any) => <>{children}</>,
 }));
 
+vi.mock("@/features/projects/dashboard-content", () => ({
+  DashboardContent: ({ project }: any) => (
+    <div>
+      <h1>{project.name}</h1>
+      <p>{project.description}</p>
+      <span>Ready</span>
+    </div>
+  ),
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: vi.fn(),
     refresh: vi.fn(),
   }),
   redirect: vi.fn(),
+}));
+
+vi.mock("@relay/db", () => ({
+  createRepositoryBundle: createRepositoryBundleMock,
 }));
 
 vi.mock("@/server/policies/viewer", () => {
@@ -56,21 +92,7 @@ vi.mock("@/server/policies/viewer", () => {
 });
 
 vi.mock("@/server/services/project-service", () => ({
-  listProjectsForUser: vi.fn(async () => [
-    {
-      id: "project-1",
-      name: "Relay MVP",
-      slug: "relay-mvp",
-      description: "Browser-first project memory sidecar.",
-      memoryCount: 3,
-      sessionCount: 1,
-      routingContext: {
-        hasMeaningfulContext: true,
-        keywords: ["browser", "memory", "sidecar", "relay"],
-      },
-      updatedAt: new Date().toISOString(),
-    },
-  ]),
+  listProjectsForUser: listProjectsForUserMock,
   getProjectDashboardForUser: vi.fn(async () => ({
     project: {
       id: "project-1",
@@ -164,6 +186,12 @@ vi.mock("@/server/services/project-service", () => ({
 }));
 
 vi.mock("@/server/services/onboarding-service", () => ({
+  completeOnboardingForUser: vi.fn(async (_userId: string, projectId: string) => ({
+    status: "completed",
+    completedProjectId: projectId,
+    completedVia: "web",
+    completedAt: new Date().toISOString(),
+  })),
   getResolvedOnboardingStateForUser: getResolvedOnboardingStateForUserMock,
 }));
 
@@ -174,6 +202,28 @@ describe("DashboardPage", () => {
     requirePageViewerMock.mockClear();
     syncViewerProfileMock.mockReset();
     syncViewerProfileMock.mockResolvedValue(undefined);
+    createRepositoryBundleMock.mockReset();
+    createRepositoryBundleMock.mockReturnValue({
+      referrals: {
+        getByRefereeId: vi.fn(async () => null),
+      },
+    });
+    listProjectsForUserMock.mockReset();
+    listProjectsForUserMock.mockResolvedValue([
+      {
+        id: "project-1",
+        name: "Relay MVP",
+        slug: "relay-mvp",
+        description: "Browser-first project memory sidecar.",
+        memoryCount: 3,
+        sessionCount: 1,
+        routingContext: {
+          hasMeaningfulContext: true,
+          keywords: ["browser", "memory", "sidecar", "relay"],
+        },
+        updatedAt: new Date().toISOString(),
+      },
+    ]);
     getResolvedOnboardingStateForUserMock.mockReset();
     getResolvedOnboardingStateForUserMock.mockResolvedValue({
       status: "completed",
@@ -215,7 +265,36 @@ describe("DashboardPage", () => {
 
     render(await DashboardPage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByText("Welcome to Relay")).toBeTruthy();
+    expect(screen.getByText("Create a project")).toBeTruthy();
     expect(screen.getByText("Create")).toBeTruthy();
+  });
+
+  it("falls back to the personal project when onboarding has no regular project", async () => {
+    listProjectsForUserMock.mockResolvedValueOnce([
+      {
+        id: "personal-1",
+        name: "Personal",
+        slug: "personal",
+        kind: "personal",
+        description: "",
+        memoryCount: 0,
+        sessionCount: 0,
+        routingContext: {
+          hasMeaningfulContext: false,
+          keywords: [],
+        },
+        updatedAt: new Date().toISOString(),
+      },
+    ] as any);
+    getResolvedOnboardingStateForUserMock.mockResolvedValueOnce({
+      status: "pending",
+      completedProjectId: null,
+      completedVia: null,
+      completedAt: null,
+    } as any);
+
+    render(await DashboardPage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByText("Personal")).toBeTruthy();
   });
 });

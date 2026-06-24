@@ -3,6 +3,9 @@ import { RELAY_MCP_CLIENT_CATALOG } from "@relay/shared"
 
 import { PageTelemetry } from "@/components/telemetry/page-telemetry"
 import { DocsFooterNav } from "@/components/docs/docs-footer-nav"
+import { CopyCommandButton } from "@/components/ui/copy-command-button"
+
+const WIZARD_COMMAND = "npx @onrelay/wizard"
 
 export default function McpDocsPage() {
   return (
@@ -28,9 +31,14 @@ export default function McpDocsPage() {
           <p className="text-[15px] text-[var(--relay-muted)]">
             Run the setup wizard to authenticate, install Relay MCP using local stdio, and auto-install native behavior bridges for supported clients. Relay uses instructions, rules, hooks, or skills only where the target tool has a real standards-based surface.
           </p>
-          <pre className="rounded-md bg-[var(--relay-soft)] border border-[var(--relay-line)] px-4 py-3 font-mono text-[13px] text-[var(--relay-ink)]">
-            npx @onrelay/wizard
-          </pre>
+          <div className="rounded-md bg-[var(--relay-soft)] border border-[var(--relay-line)] px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <pre className="overflow-x-auto font-mono text-[13px] text-[var(--relay-ink)]">
+                {WIZARD_COMMAND}
+              </pre>
+              <CopyCommandButton value={WIZARD_COMMAND} className="shrink-0" />
+            </div>
+          </div>
           <p className="text-[13px] text-[var(--relay-muted)]">
             The default install path is local stdio. The wizard focuses on two surfaces only: the browser extension and MCP-connected coding agents.
           </p>

@@ -7,7 +7,7 @@ interface SignOutPayload {
   googleLogoutUrl?: unknown
 }
 
-function openGoogleLogoutWindow() {
+export function openGoogleLogoutWindow() {
   const width = 520
   const height = 640
   const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2)
@@ -32,6 +32,31 @@ function navigateAfterSignOut(redirectTo: string) {
   window.location.assign(redirectTo)
 }
 
+export function finishGoogleLogoutInBrowser(
+  googleLogoutUrl: string | undefined,
+  googleLogoutWindow: Window | null,
+  redirectTo: string,
+) {
+  if (googleLogoutUrl) {
+    if (googleLogoutWindow && !googleLogoutWindow.closed) {
+      googleLogoutWindow.location.href = googleLogoutUrl
+      window.setTimeout(() => {
+        googleLogoutWindow.close()
+        navigateAfterSignOut(redirectTo)
+      }, 1200)
+      return
+    }
+
+    const image = new Image()
+    image.referrerPolicy = "no-referrer"
+    image.src = googleLogoutUrl
+  } else {
+    googleLogoutWindow?.close()
+  }
+
+  navigateAfterSignOut(redirectTo)
+}
+
 export async function signOutFromBrowser() {
   const googleLogoutWindow = openGoogleLogoutWindow()
 
@@ -54,25 +79,11 @@ export async function signOutFromBrowser() {
 
     const payload = (await response.json().catch(() => ({}))) as SignOutPayload
     const redirectTo = typeof payload.redirectTo === "string" ? payload.redirectTo : "/get-started"
-
-    if (typeof payload.googleLogoutUrl === "string") {
-      if (googleLogoutWindow && !googleLogoutWindow.closed) {
-        googleLogoutWindow.location.href = payload.googleLogoutUrl
-        window.setTimeout(() => {
-          googleLogoutWindow.close()
-          navigateAfterSignOut(redirectTo)
-        }, 900)
-        return
-      }
-
-      const image = new Image()
-      image.referrerPolicy = "no-referrer"
-      image.src = payload.googleLogoutUrl
-    } else {
-      googleLogoutWindow?.close()
-    }
-
-    navigateAfterSignOut(redirectTo)
+    finishGoogleLogoutInBrowser(
+      typeof payload.googleLogoutUrl === "string" ? payload.googleLogoutUrl : undefined,
+      googleLogoutWindow,
+      redirectTo,
+    )
   } catch {
     googleLogoutWindow?.close()
     navigateAfterSignOut("/auth/sign-out")

@@ -49,7 +49,8 @@ export async function setOnboardingState(input: {
 export async function completeOnboardingForUser(
   userId: string,
   projectId: string,
-  via: RelayOnboardingCompletionSurface
+  via: RelayOnboardingCompletionSurface,
+  options: { onboardingStep?: "project_created" | "personal_project_selected" } = {}
 ) {
   const state = await setOnboardingState({
     userId,
@@ -68,7 +69,7 @@ export async function completeOnboardingForUser(
     userId,
     projectId,
     context: {
-      onboardingStep: "project_created",
+      onboardingStep: options.onboardingStep ?? "project_created",
       completionVia: via,
     },
   }).catch(() => {})
