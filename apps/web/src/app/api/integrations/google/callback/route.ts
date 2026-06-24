@@ -57,10 +57,6 @@ function decodeIdTokenEmail(idToken: string | undefined): string | null {
   }
 }
 
-function hasSessionTokenCookie(cookieHeaders: string[]) {
-  return cookieHeaders.some((header) => header.startsWith(`${SESSION_TOKEN_COOKIE_NAME}=`))
-}
-
 function resolveSessionTokenMaxAge(payload: AuthSignInPayload | null) {
   const expiresAt = payload?.session?.expiresAt
   if (typeof expiresAt !== "string") return undefined
@@ -86,40 +82,26 @@ async function handleAuthCallback(input: {
     throw new Error("Google did not return an ID token.")
   }
 
-  const authHandler = requireAuthServer().handler()
   const targetPath = resolveAuthenticatedAppPath(input.nextPath)
-  const signInRequest = new Request(new URL("/api/auth/sign-in/social", url.origin), {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Origin": url.origin },
-    body: JSON.stringify({
-      provider: "google",
-      disableRedirect: true,
-      requestSignUp: input.intent === "sign-up",
-      idToken: {
-        token: tokens.id_token,
-        accessToken: tokens.access_token,
-      },
-    }),
+  const signInResult = await requireAuthServer().signIn.social({
+    provider: "google",
+    disableRedirect: true,
+    requestSignUp: input.intent === "sign-up",
+    idToken: {
+      token: tokens.id_token,
+      accessToken: tokens.access_token,
+    },
   })
 
-  const authResponse = await authHandler.POST(signInRequest, {
-    params: Promise.resolve({ path: ["sign-in", "social"] }),
-  })
-  const authPayload = await authResponse.json().catch(() => null) as AuthSignInPayload | null
-
-  if (!authResponse.ok) {
-    throw new Error(`Auth sign-in failed: ${authResponse.status}`)
+  if (signInResult.error) {
+    throw new Error(signInResult.error.message ?? "Auth sign-in failed.")
   }
 
+  const authPayload = signInResult.data as AuthSignInPayload | null
   const response = NextResponse.redirect(new URL(targetPath, url))
-  const cookieHeaders = authResponse.headers.getSetCookie()
-  for (const cookieHeader of cookieHeaders) {
-    response.headers.append("Set-Cookie", cookieHeader)
-  }
 
   const sessionToken = typeof authPayload?.token === "string" ? authPayload.token : null
-  const sessionCookieForwarded = hasSessionTokenCookie(cookieHeaders)
-  if (!sessionCookieForwarded && sessionToken) {
+  if (sessionToken) {
     response.cookies.set(SESSION_TOKEN_COOKIE_NAME, sessionToken, {
       httpOnly: true,
       secure: true,
@@ -127,10 +109,6 @@ async function handleAuthCallback(input: {
       path: "/",
       maxAge: resolveSessionTokenMaxAge(authPayload),
     })
-  }
-
-  if (!sessionCookieForwarded && !sessionToken) {
-    throw new Error("Auth sign-in did not return a session cookie or token.")
   }
 
   await logServerEvent({
@@ -141,8 +119,7 @@ async function handleAuthCallback(input: {
     message: "Google OAuth callback established a Relay web session.",
     context: {
       authIntent: input.intent,
-      forwardedCookieCount: cookieHeaders.length,
-      usedSessionTokenFallback: !sessionCookieForwarded && Boolean(sessionToken),
+      usedSessionTokenFallback: Boolean(sessionToken),
     },
   })
 
