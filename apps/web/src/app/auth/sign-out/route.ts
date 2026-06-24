@@ -1,19 +1,20 @@
 import { NextResponse } from "next/server"
 
-import { clearLocalSessionCookie } from "@/lib/auth/local-session"
+import { clearLocalSessionCookieFromResponse } from "@/lib/auth/local-session"
 import { getAuthProvider } from "@/lib/auth/provider"
 import { requireAuthServer } from "@/lib/auth/server"
 
 const GOOGLE_LOGOUT_URL = "https://accounts.google.com/Logout"
-const GOOGLE_LOGOUT_BRIDGE_URL = "https://appengine.google.com/_ah/logout"
+const GOOGLE_LOGOUT_RETURN_URL = "https://www.google.com/"
 
-function getGoogleLogoutUrl(returnUrl: URL) {
-  const bridgeUrl = new URL(GOOGLE_LOGOUT_BRIDGE_URL)
-  bridgeUrl.searchParams.set("continue", returnUrl.toString())
-
+function getGoogleLogoutUrl() {
   const logoutUrl = new URL(GOOGLE_LOGOUT_URL)
-  logoutUrl.searchParams.set("continue", bridgeUrl.toString())
+  logoutUrl.searchParams.set("continue", GOOGLE_LOGOUT_RETURN_URL)
   return logoutUrl
+}
+
+function wantsJsonResponse(request: Request) {
+  return request.headers.get("accept")?.includes("application/json") ?? false
 }
 
 function getAccountsFromPayload(payload: unknown) {
@@ -77,10 +78,13 @@ async function currentSessionUsesGoogle(
 async function signOutResponse(request: Request) {
   const url = new URL(request.url)
   const returnUrl = new URL("/get-started", url)
+  const wantsJson = wantsJsonResponse(request)
 
   if (getAuthProvider() === "local") {
-    await clearLocalSessionCookie()
-    return NextResponse.redirect(returnUrl, { status: 303 })
+    const response = wantsJson
+      ? NextResponse.json({ redirectTo: returnUrl.pathname })
+      : NextResponse.redirect(returnUrl, { status: 303 })
+    return clearLocalSessionCookieFromResponse(response)
   }
 
   const authHandler = requireAuthServer().handler()
@@ -99,8 +103,12 @@ async function signOutResponse(request: Request) {
     params: Promise.resolve({ path: ["sign-out"] }),
   })
 
-  const redirectUrl = shouldSignOutOfGoogle ? getGoogleLogoutUrl(returnUrl) : returnUrl
-  const response = NextResponse.redirect(redirectUrl, { status: 303 })
+  const response = wantsJson
+    ? NextResponse.json({
+        redirectTo: returnUrl.pathname,
+        googleLogoutUrl: shouldSignOutOfGoogle ? getGoogleLogoutUrl().toString() : undefined,
+      })
+    : NextResponse.redirect(returnUrl, { status: 303 })
   for (const cookieHeader of authResponse.headers.getSetCookie()) {
     response.headers.append("Set-Cookie", cookieHeader)
   }

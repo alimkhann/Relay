@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 
-import { clearRelayQueryCache } from "@/lib/query/clear-cache"
+import { signOutFromBrowser } from "@/lib/auth/sign-out-client"
 
 export function SignOutButton() {
   const [pending, setPending] = useState(false)
@@ -14,8 +14,7 @@ export function SignOutButton() {
       onSubmit={(event) => {
         event.preventDefault()
         setPending(true)
-        const form = event.currentTarget
-        void clearRelayQueryCache().finally(() => form.submit())
+        void signOutFromBrowser()
       }}
     >
       <button

@@ -8,7 +8,7 @@ import { Settings, LogOut, CreditCard } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 import { cn } from "@/lib/cn";
-import { clearRelayQueryCache } from "@/lib/query/clear-cache";
+import { signOutFromBrowser } from "@/lib/auth/sign-out-client";
 
 interface AccountMenuProps {
   name: string;
@@ -127,8 +127,7 @@ export function AccountMenu({ name, email, collapsed = false }: AccountMenuProps
                   method="POST"
                   onSubmit={(event) => {
                     event.preventDefault();
-                    const form = event.currentTarget;
-                    void clearRelayQueryCache().finally(() => form.submit());
+                    void signOutFromBrowser();
                   }}
                 >
                   <button

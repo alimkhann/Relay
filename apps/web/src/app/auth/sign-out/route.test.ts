@@ -3,17 +3,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const {
   authGetMock,
   authPostMock,
-  clearLocalSessionCookieMock,
+  clearLocalSessionCookieFromResponseMock,
   getAuthProviderMock,
 } = vi.hoisted(() => ({
   authGetMock: vi.fn(),
   authPostMock: vi.fn(),
-  clearLocalSessionCookieMock: vi.fn(),
+  clearLocalSessionCookieFromResponseMock: vi.fn((response: Response) => response),
   getAuthProviderMock: vi.fn(),
 }))
 
 vi.mock("@/lib/auth/local-session", () => ({
-  clearLocalSessionCookie: clearLocalSessionCookieMock,
+  clearLocalSessionCookieFromResponse: clearLocalSessionCookieFromResponseMock,
 }))
 
 vi.mock("@/lib/auth/provider", () => ({
@@ -43,7 +43,8 @@ describe("sign-out route", () => {
   beforeEach(() => {
     authGetMock.mockReset()
     authPostMock.mockReset()
-    clearLocalSessionCookieMock.mockReset()
+    clearLocalSessionCookieFromResponseMock.mockReset()
+    clearLocalSessionCookieFromResponseMock.mockImplementation((response: Response) => response)
     getAuthProviderMock.mockReset()
     getAuthProviderMock.mockReturnValue("neon")
     authPostMock.mockResolvedValue(responseWithCookies({ success: true }, [
@@ -51,7 +52,39 @@ describe("sign-out route", () => {
     ]))
   })
 
-  it("routes Google-linked sessions through Google logout after clearing Relay auth cookies", async () => {
+  it("returns a Google logout URL for browser-managed Google sign-out", async () => {
+    authGetMock.mockResolvedValue(Response.json([
+      {
+        id: "account-1",
+        providerId: "google",
+      },
+    ]))
+
+    const response = await POST(new Request("https://www.onrelay.app/auth/sign-out", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Cookie: "__Secure-neon-auth.session_token=session-1",
+      },
+    }))
+
+    expect(authGetMock).toHaveBeenCalledTimes(1)
+    const accountsRequest = authGetMock.mock.calls[0]![0] as Request
+    expect(accountsRequest.url).toBe("https://www.onrelay.app/api/auth/list-accounts")
+    expect(accountsRequest.headers.get("cookie")).toBe("__Secure-neon-auth.session_token=session-1")
+
+    expect(authPostMock).toHaveBeenCalledTimes(1)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      redirectTo: "/get-started",
+      googleLogoutUrl: "https://accounts.google.com/Logout?continue=https%3A%2F%2Fwww.google.com%2F",
+    })
+    expect(response.headers.getSetCookie()).toContain(
+      "__Secure-neon-auth.session_token=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax",
+    )
+  })
+
+  it("keeps plain server redirects on Relay instead of showing a Google redirect notice", async () => {
     authGetMock.mockResolvedValue(Response.json([
       {
         id: "account-1",
@@ -66,19 +99,9 @@ describe("sign-out route", () => {
       },
     }))
 
-    expect(authGetMock).toHaveBeenCalledTimes(1)
-    const accountsRequest = authGetMock.mock.calls[0]![0] as Request
-    expect(accountsRequest.url).toBe("https://www.onrelay.app/api/auth/list-accounts")
-    expect(accountsRequest.headers.get("cookie")).toBe("__Secure-neon-auth.session_token=session-1")
-
     expect(authPostMock).toHaveBeenCalledTimes(1)
     expect(response.status).toBe(303)
-    expect(response.headers.get("location")).toBe(
-      "https://accounts.google.com/Logout?continue=https%3A%2F%2Fappengine.google.com%2F_ah%2Flogout%3Fcontinue%3Dhttps%253A%252F%252Fwww.onrelay.app%252Fget-started",
-    )
-    expect(response.headers.getSetCookie()).toContain(
-      "__Secure-neon-auth.session_token=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax",
-    )
+    expect(response.headers.get("location")).toBe("https://www.onrelay.app/get-started")
   })
 
   it("keeps non-Google sessions on the normal Relay sign-out redirect", async () => {
@@ -101,6 +124,27 @@ describe("sign-out route", () => {
     expect(response.headers.get("location")).toBe("https://www.onrelay.app/get-started")
   })
 
+  it("omits Google logout for non-Google JSON sign-out", async () => {
+    authGetMock.mockResolvedValue(Response.json([
+      {
+        id: "account-1",
+        providerId: "credential",
+      },
+    ]))
+
+    const response = await POST(new Request("https://www.onrelay.app/auth/sign-out", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Cookie: "__Secure-neon-auth.session_token=session-1",
+      },
+    }))
+
+    expect(authPostMock).toHaveBeenCalledTimes(1)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ redirectTo: "/get-started" })
+  })
+
   it("uses the local sign-out path without touching Neon or Google when local auth is active", async () => {
     getAuthProviderMock.mockReturnValue("local")
 
@@ -108,7 +152,7 @@ describe("sign-out route", () => {
       method: "POST",
     }))
 
-    expect(clearLocalSessionCookieMock).toHaveBeenCalledTimes(1)
+    expect(clearLocalSessionCookieFromResponseMock).toHaveBeenCalledTimes(1)
     expect(authGetMock).not.toHaveBeenCalled()
     expect(authPostMock).not.toHaveBeenCalled()
     expect(response.status).toBe(303)

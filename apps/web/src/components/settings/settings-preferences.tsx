@@ -14,6 +14,7 @@ import PerplexityIcon from "@lobehub/icons/es/Perplexity"
 import { FadeIn } from "@/components/ui/fade-in"
 import { useTheme } from "@/components/theme-provider"
 import { cn } from "@/lib/cn"
+import { signOutFromBrowser } from "@/lib/auth/sign-out-client"
 import { syncUserSettingsToExtension } from "@/lib/extension-settings-bridge"
 import { createClientFlowId } from "@/lib/telemetry/client"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
@@ -624,7 +625,14 @@ export function SettingsPreferences({
                 <p className="text-[15px] font-medium text-[var(--relay-ink)]">Sign out</p>
                 <p className="mt-0.5 text-sm text-[var(--relay-muted)]">End your current session.</p>
               </div>
-              <form action="/auth/sign-out" method="POST">
+              <form
+                action="/auth/sign-out"
+                method="POST"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void signOutFromBrowser()
+                }}
+              >
                 <button
                   type="submit"
                   className="rounded-[var(--relay-radius-sm)] border border-[var(--relay-line)] px-4 py-2 text-[13px] font-medium text-[var(--relay-ink)] transition hover:bg-[var(--relay-soft)]"
