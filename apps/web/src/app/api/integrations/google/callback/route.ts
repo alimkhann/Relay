@@ -30,9 +30,15 @@ function settingsRedirect(requestUrl: string, status: "connected" | "error") {
   return NextResponse.redirect(`${origin}/settings?section=integrations&google=${status}`)
 }
 
-function signInRedirect(requestUrl: string, nextPath: string, status: "error") {
+function signInRedirect(requestUrl: string, nextPath: string, status: "error", intent?: WebAuthIntent) {
   const origin = new URL(requestUrl).origin
-  return NextResponse.redirect(`${origin}/sign-in?next=${encodeURIComponent(nextPath)}&google=${status}`)
+  const url = new URL("/sign-in", origin)
+  url.searchParams.set("next", nextPath)
+  if (intent === "sign-up") {
+    url.searchParams.set("intent", "sign-up")
+  }
+  url.searchParams.set("google", status)
+  return NextResponse.redirect(url)
 }
 
 function decodeIdTokenEmail(idToken: string | undefined): string | null {
@@ -154,7 +160,12 @@ export const GET = withApiRoute(async (request: Request) => {
     parsed = JSON.parse(decryptSecret(state)) as typeof parsed
     if (!parsed.ts || Date.now() - parsed.ts > STATE_TTL_MS) {
       if (parsed.mode === "auth" && parsed.nextPath) {
-        return signInRedirect(request.url, parsed.nextPath, "error")
+        return signInRedirect(
+          request.url,
+          parsed.nextPath,
+          "error",
+          resolveWebAuthIntent(parsed.intent),
+        )
       }
       return settingsRedirect(request.url, "error")
     }
@@ -187,7 +198,7 @@ export const GET = withApiRoute(async (request: Request) => {
         },
         error,
       })
-      return signInRedirect(request.url, nextPath, "error")
+      return signInRedirect(request.url, nextPath, "error", resolveWebAuthIntent(parsed.intent))
     }
   }
 

@@ -109,7 +109,7 @@ describe("Google integration callback auth mode", () => {
 
     expect(response.status).toBe(307)
     expect(response.headers.get("location")).toBe(
-      "https://www.onrelay.app/sign-in?next=%2Fdashboard&google=error",
+      "https://www.onrelay.app/sign-in?next=%2Fdashboard&intent=sign-up&google=error",
     )
     expect(logServerEventMock).toHaveBeenCalledWith(
       expect.objectContaining({

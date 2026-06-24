@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server"
 
-import { requireAuthServer } from "@/lib/auth/server"
+import { encryptSecret } from "@/server/lib/secret-crypto"
 import {
-  buildSignInHref,
-  resolveAuthenticatedAppPath,
-  resolveWebAuthIntent,
-} from "@/server/policies/viewer"
+  getGoogleIntegrationClient,
+  isGoogleIntegrationConfigured,
+} from "@/server/services/integrations/google-service"
+
+const GOOGLE_AUTH_SCOPES = ["openid", "email", "profile"]
+type WebAuthIntent = "sign-in" | "sign-up"
+
+function resolveWebAuthIntent(value: string | null | undefined): WebAuthIntent {
+  return value === "sign-up" ? "sign-up" : "sign-in"
+}
 
 function resolveSafeNextPath(value: string | null | undefined, fallback = "/dashboard") {
   if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) {
@@ -15,45 +21,48 @@ function resolveSafeNextPath(value: string | null | undefined, fallback = "/dash
   return value
 }
 
+function resolveAuthenticatedAppPath(value: string | null | undefined = "/dashboard") {
+  return resolveSafeNextPath(value, "/dashboard")
+}
+
+function buildSignInHref(nextPath = "/dashboard", options: { intent?: WebAuthIntent } = {}) {
+  const params = new URLSearchParams({ next: resolveSafeNextPath(nextPath) })
+  if (options.intent === "sign-up") {
+    params.set("intent", "sign-up")
+  }
+  return `/sign-in?${params.toString()}`
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const nextPath = resolveAuthenticatedAppPath(resolveSafeNextPath(url.searchParams.get("next")))
   const intent = resolveWebAuthIntent(url.searchParams.get("intent"))
+  const signInUrl = new URL(buildSignInHref(nextPath, { intent }), url)
 
   try {
-    const authHandler = requireAuthServer().handler()
-    const signInRequest = new Request(new URL("/api/auth/sign-in/social", url.origin), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Origin: url.origin,
-        Cookie: request.headers.get("cookie") ?? "",
-      },
-      body: JSON.stringify({
-        provider: "google",
-        callbackURL: nextPath,
-        newUserCallbackURL: nextPath,
-        errorCallbackURL: buildSignInHref(nextPath),
-        disableRedirect: true,
-        requestSignUp: intent === "sign-up",
-      }),
-    })
-
-    const authResponse = await authHandler.POST(signInRequest, {
-      params: Promise.resolve({ path: ["sign-in", "social"] }),
-    })
-    const payload = await authResponse.json().catch(() => null) as { url?: unknown } | null
-
-    if (!authResponse.ok || typeof payload?.url !== "string") {
-      throw new Error(`Auth social start failed: ${authResponse.status}`)
+    if (!isGoogleIntegrationConfigured()) {
+      throw new Error("Google OAuth is not configured.")
     }
 
-    const response = NextResponse.redirect(payload.url)
-    for (const cookieHeader of authResponse.headers.getSetCookie()) {
-      response.headers.append("Set-Cookie", cookieHeader)
-    }
-    return response
+    const client = getGoogleIntegrationClient()!
+    const state = encryptSecret(JSON.stringify({
+      mode: "auth",
+      nextPath,
+      intent,
+      ts: Date.now(),
+    }))
+    const params = new URLSearchParams({
+      client_id: client.clientId,
+      redirect_uri: `${url.origin}/api/integrations/google/callback`,
+      response_type: "code",
+      scope: GOOGLE_AUTH_SCOPES.join(" "),
+      prompt: "select_account",
+      state,
+    })
+
+    return NextResponse.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`)
   } catch {
-    return NextResponse.redirect(new URL(`${buildSignInHref(nextPath)}&google=error`, url))
+    signInUrl.searchParams.set("google", "error")
+    return NextResponse.redirect(signInUrl)
   }
 }
