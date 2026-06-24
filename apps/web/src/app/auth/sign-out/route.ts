@@ -4,15 +4,87 @@ import { clearLocalSessionCookie } from "@/lib/auth/local-session"
 import { getAuthProvider } from "@/lib/auth/provider"
 import { requireAuthServer } from "@/lib/auth/server"
 
+const GOOGLE_LOGOUT_URL = "https://accounts.google.com/Logout"
+const GOOGLE_LOGOUT_BRIDGE_URL = "https://appengine.google.com/_ah/logout"
+
+function getGoogleLogoutUrl(returnUrl: URL) {
+  const bridgeUrl = new URL(GOOGLE_LOGOUT_BRIDGE_URL)
+  bridgeUrl.searchParams.set("continue", returnUrl.toString())
+
+  const logoutUrl = new URL(GOOGLE_LOGOUT_URL)
+  logoutUrl.searchParams.set("continue", bridgeUrl.toString())
+  return logoutUrl
+}
+
+function getAccountsFromPayload(payload: unknown) {
+  if (Array.isArray(payload)) {
+    return payload
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return []
+  }
+
+  const record = payload as Record<string, unknown>
+  if (Array.isArray(record.accounts)) {
+    return record.accounts
+  }
+  if (Array.isArray(record.data)) {
+    return record.data
+  }
+  return []
+}
+
+function hasGoogleAccount(payload: unknown) {
+  return getAccountsFromPayload(payload).some((account) => {
+    if (!account || typeof account !== "object") {
+      return false
+    }
+
+    const record = account as Record<string, unknown>
+    return record.providerId === "google" || record.provider === "google"
+  })
+}
+
+async function currentSessionUsesGoogle(
+  authHandler: ReturnType<ReturnType<typeof requireAuthServer>["handler"]>,
+  request: Request,
+  url: URL,
+) {
+  try {
+    const accountsRequest = new Request(new URL("/api/auth/list-accounts", url.origin), {
+      method: "GET",
+      headers: {
+        Origin: url.origin,
+        Cookie: request.headers.get("cookie") ?? "",
+      },
+    })
+
+    const accountsResponse = await authHandler.GET(accountsRequest, {
+      params: Promise.resolve({ path: ["list-accounts"] }),
+    })
+
+    if (!accountsResponse.ok) {
+      return false
+    }
+
+    return hasGoogleAccount(await accountsResponse.json())
+  } catch {
+    return false
+  }
+}
+
 async function signOutResponse(request: Request) {
   const url = new URL(request.url)
+  const returnUrl = new URL("/get-started", url)
 
   if (getAuthProvider() === "local") {
     await clearLocalSessionCookie()
-    return NextResponse.redirect(new URL("/get-started", url), { status: 303 })
+    return NextResponse.redirect(returnUrl, { status: 303 })
   }
 
   const authHandler = requireAuthServer().handler()
+  const shouldSignOutOfGoogle = await currentSessionUsesGoogle(authHandler, request, url)
   const innerRequest = new Request(new URL("/api/auth/sign-out", url.origin), {
     method: "POST",
     headers: {
@@ -27,7 +99,8 @@ async function signOutResponse(request: Request) {
     params: Promise.resolve({ path: ["sign-out"] }),
   })
 
-  const response = NextResponse.redirect(new URL("/get-started", url), { status: 303 })
+  const redirectUrl = shouldSignOutOfGoogle ? getGoogleLogoutUrl(returnUrl) : returnUrl
+  const response = NextResponse.redirect(redirectUrl, { status: 303 })
   for (const cookieHeader of authResponse.headers.getSetCookie()) {
     response.headers.append("Set-Cookie", cookieHeader)
   }
