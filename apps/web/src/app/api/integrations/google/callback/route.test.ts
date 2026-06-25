@@ -129,4 +129,29 @@ describe("Google integration callback auth mode", () => {
       }),
     }))
   })
+
+  it("sets a session cookie from the Neon auth token header when no cookie is returned", async () => {
+    authHandlerPostMock.mockResolvedValue(new Response(JSON.stringify({ user: { id: "user-1" } }), {
+      status: 200,
+      headers: {
+        "set-auth-jwt": "neon-session-token-from-header",
+      },
+    }))
+
+    const response = await GET(
+      new Request("https://www.onrelay.app/api/integrations/google/callback?code=google-code&state=encrypted"),
+    )
+
+    expect(response.status).toBe(307)
+    expect(response.headers.get("location")).toBe("https://www.onrelay.app/dashboard")
+    expect(response.headers.getSetCookie().join("\n")).toContain(
+      "__Secure-neon-auth.session_token=neon-session-token-from-header",
+    )
+    expect(logServerEventMock).toHaveBeenCalledWith(expect.objectContaining({
+      event: "google_auth.callback_session_established",
+      context: expect.objectContaining({
+        usedAuthHeaderFallback: true,
+      }),
+    }))
+  })
 })

@@ -99,8 +99,10 @@ async function handleAuthCallback(input: {
   const hasSessionToken = setCookieHeaders.some((cookieHeader) =>
     cookieHeader.startsWith(`${SESSION_TOKEN_COOKIE_NAME}=`)
   )
+  const sessionTokenFromHeader =
+    authResponse.headers.get("set-auth-jwt") ?? authResponse.headers.get("set-auth-token")
 
-  if (!hasSessionToken) {
+  if (!hasSessionToken && !sessionTokenFromHeader) {
     throw new Error("Auth sign-in completed without a session cookie.")
   }
 
@@ -108,6 +110,14 @@ async function handleAuthCallback(input: {
   const response = NextResponse.redirect(new URL(targetPath, url))
   for (const cookieHeader of setCookieHeaders) {
     response.headers.append("Set-Cookie", cookieHeader)
+  }
+  if (!hasSessionToken && sessionTokenFromHeader) {
+    response.cookies.set(SESSION_TOKEN_COOKIE_NAME, sessionTokenFromHeader, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+    })
   }
 
   await logServerEvent({
@@ -119,6 +129,7 @@ async function handleAuthCallback(input: {
     context: {
       authIntent: input.intent,
       forwardedAuthCookies: setCookieHeaders.length,
+      usedAuthHeaderFallback: Boolean(!hasSessionToken && sessionTokenFromHeader),
     },
   })
 
