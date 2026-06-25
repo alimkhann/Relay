@@ -93,7 +93,7 @@ describe("account deletion route", () => {
     })
   })
 
-  it("returns a browser-managed Google logout URL when deleting a Google-linked account", async () => {
+  it("deletes a Google-linked account without returning an external logout URL", async () => {
     authGetMock.mockResolvedValue(Response.json([
       {
         id: "account-1",
@@ -108,17 +108,11 @@ describe("account deletion route", () => {
       },
     }))
 
-    expect(authGetMock).toHaveBeenCalledTimes(1)
-    const accountsRequest = authGetMock.mock.calls[0]![0] as Request
-    expect(accountsRequest.url).toBe("https://www.onrelay.app/api/auth/list-accounts")
-    expect(accountsRequest.headers.get("cookie")).toBe("__Secure-neon-auth.session_token=session-1")
+    expect(authGetMock).not.toHaveBeenCalled()
     expect(deleteAccountForUserMock).toHaveBeenCalledWith("user-1")
 
     expect(response.status).toBe(200)
-    expect(await response.json()).toEqual({
-      ok: true,
-      googleLogoutUrl: "https://accounts.google.com/Logout?continue=https%3A%2F%2Fwww.google.com%2F",
-    })
+    expect(await response.json()).toEqual({ ok: true })
     const setCookies = response.headers.getSetCookie().join("\n")
     expect(setCookies).toContain("__Secure-neon-auth.session_token=;")
     expect(setCookies).toContain("Domain=.onrelay.app")

@@ -3,11 +3,8 @@ import { NextResponse } from "next/server"
 import { createServiceRepositoryBundle } from "@relay/db"
 
 import { getSharedAuthCookieDomain } from "@/lib/auth/cookie-domain"
-import { getGoogleLogoutUrl } from "@/lib/auth/google-logout"
 import { clearLocalSessionCookieFromResponse } from "@/lib/auth/local-session"
-import { currentSessionUsesGoogle } from "@/lib/auth/provider-accounts"
 import { getAuthProvider } from "@/lib/auth/provider"
-import { requireAuthServer } from "@/lib/auth/server"
 import { withApiAuth } from "@/server/http/api-route"
 import { requireSessionViewer } from "@/server/policies/viewer"
 import { deleteAccountForUser } from "@/server/services/account-deletion-service"
@@ -72,15 +69,10 @@ export const POST = withApiAuth(async (request: Request) => {
     return response
   }
 
-  const authHandler = requireAuthServer().handler()
   const url = new URL(request.url)
-  const shouldSignOutOfGoogle = await currentSessionUsesGoogle(authHandler, request, url)
 
   await deleteAccountForUser(viewer.userId)
-  const response = NextResponse.json({
-    ok: true,
-    googleLogoutUrl: shouldSignOutOfGoogle ? getGoogleLogoutUrl().toString() : undefined,
-  })
+  const response = NextResponse.json({ ok: true })
   clearNeonSessionCookies(response, url)
   if (email) void sendAccountDeletedEmail(email, name)
   return response

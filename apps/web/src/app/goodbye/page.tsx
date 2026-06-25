@@ -2,7 +2,6 @@
 
 import { Suspense, useState, useTransition } from "react"
 import { useSearchParams } from "next/navigation"
-import { finishGoogleLogoutInBrowser, openGoogleLogoutWindow } from "@/lib/auth/sign-out-client"
 import { relayClientFetch } from "@/lib/telemetry/fetch"
 import { createClientFlowId } from "@/lib/telemetry/client"
 
@@ -45,7 +44,6 @@ function GoodbyeContent() {
       }
 
       if (isDelete) {
-        const googleLogoutWindow = openGoogleLogoutWindow()
         try {
           const flowId = createClientFlowId("account-delete-goodbye")
           const response = await relayClientFetch("/api/account/delete", {
@@ -66,15 +64,9 @@ function GoodbyeContent() {
             throw new Error(data.error ?? "Could not delete account")
           }
 
-          const data = (await response.json().catch(() => ({}))) as { googleLogoutUrl?: unknown }
-          finishGoogleLogoutInBrowser(
-            typeof data.googleLogoutUrl === "string" ? data.googleLogoutUrl : undefined,
-            googleLogoutWindow,
-            "/get-started",
-          )
+          window.location.assign("/get-started")
           return
         } catch (err) {
-          googleLogoutWindow?.close()
           setError(err instanceof Error ? err.message : "Could not delete account. Try again.")
           return
         }

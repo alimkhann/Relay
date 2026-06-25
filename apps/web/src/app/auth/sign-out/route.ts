@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { getSharedAuthCookieDomain } from "@/lib/auth/cookie-domain"
-import { getGoogleLogoutUrl } from "@/lib/auth/google-logout"
 import { clearLocalSessionCookieFromResponse } from "@/lib/auth/local-session"
-import { currentSessionUsesGoogle } from "@/lib/auth/provider-accounts"
 import { getAuthProvider } from "@/lib/auth/provider"
 import { requireAuthServer } from "@/lib/auth/server"
 
@@ -54,7 +52,6 @@ async function signOutResponse(request: Request) {
   }
 
   const authHandler = requireAuthServer().handler()
-  const shouldSignOutOfGoogle = await currentSessionUsesGoogle(authHandler, request, url)
   const innerRequest = new Request(new URL("/api/auth/sign-out", url.origin), {
     method: "POST",
     headers: {
@@ -70,10 +67,7 @@ async function signOutResponse(request: Request) {
   })
 
   const response = wantsJson
-    ? NextResponse.json({
-        redirectTo: returnUrl.pathname,
-        googleLogoutUrl: shouldSignOutOfGoogle ? getGoogleLogoutUrl().toString() : undefined,
-      })
+    ? NextResponse.json({ redirectTo: returnUrl.pathname })
     : NextResponse.redirect(returnUrl, { status: 303 })
   for (const cookieHeader of authResponse.headers.getSetCookie()) {
     response.headers.append("Set-Cookie", cookieHeader)

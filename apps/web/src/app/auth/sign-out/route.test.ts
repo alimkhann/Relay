@@ -52,7 +52,7 @@ describe("sign-out route", () => {
     ]))
   })
 
-  it("returns a Google logout URL for browser-managed Google sign-out", async () => {
+  it("returns a Relay redirect target for browser-managed sign-out", async () => {
     authGetMock.mockResolvedValue(Response.json([
       {
         id: "account-1",
@@ -68,17 +68,10 @@ describe("sign-out route", () => {
       },
     }))
 
-    expect(authGetMock).toHaveBeenCalledTimes(1)
-    const accountsRequest = authGetMock.mock.calls[0]![0] as Request
-    expect(accountsRequest.url).toBe("https://www.onrelay.app/api/auth/list-accounts")
-    expect(accountsRequest.headers.get("cookie")).toBe("__Secure-neon-auth.session_token=session-1")
-
+    expect(authGetMock).not.toHaveBeenCalled()
     expect(authPostMock).toHaveBeenCalledTimes(1)
     expect(response.status).toBe(200)
-    expect(await response.json()).toEqual({
-      redirectTo: "/get-started",
-      googleLogoutUrl: "https://accounts.google.com/Logout?continue=https%3A%2F%2Fwww.google.com%2F",
-    })
+    expect(await response.json()).toEqual({ redirectTo: "/get-started" })
     const setCookies = response.headers.getSetCookie().join("\n")
     expect(setCookies).toContain("__Secure-neon-auth.session_token=;")
     expect(setCookies).toContain("Domain=.onrelay.app")
@@ -100,6 +93,7 @@ describe("sign-out route", () => {
     }))
 
     expect(authPostMock).toHaveBeenCalledTimes(1)
+    expect(authGetMock).not.toHaveBeenCalled()
     expect(response.status).toBe(303)
     expect(response.headers.get("location")).toBe("https://www.onrelay.app/get-started")
   })
@@ -120,11 +114,12 @@ describe("sign-out route", () => {
     }))
 
     expect(authPostMock).toHaveBeenCalledTimes(1)
+    expect(authGetMock).not.toHaveBeenCalled()
     expect(response.status).toBe(303)
     expect(response.headers.get("location")).toBe("https://www.onrelay.app/get-started")
   })
 
-  it("omits Google logout for non-Google JSON sign-out", async () => {
+  it("uses the same JSON redirect target for non-Google sign-out", async () => {
     authGetMock.mockResolvedValue(Response.json([
       {
         id: "account-1",
@@ -141,6 +136,7 @@ describe("sign-out route", () => {
     }))
 
     expect(authPostMock).toHaveBeenCalledTimes(1)
+    expect(authGetMock).not.toHaveBeenCalled()
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ redirectTo: "/get-started" })
   })
