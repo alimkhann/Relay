@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { createServiceRepositoryBundle } from "@relay/db"
 
+import { getSharedAuthCookieDomain } from "@/lib/auth/cookie-domain"
 import { getGoogleLogoutUrl } from "@/lib/auth/google-logout"
 import { clearLocalSessionCookieFromResponse } from "@/lib/auth/local-session"
 import { currentSessionUsesGoogle } from "@/lib/auth/provider-accounts"
@@ -18,7 +19,8 @@ const NEON_SESSION_COOKIE_NAMES = [
   "__Secure-neon-auth.local.session_data",
 ]
 
-function clearNeonSessionCookies(response: NextResponse) {
+function clearNeonSessionCookies(response: NextResponse, url: URL) {
+  const sharedDomain = getSharedAuthCookieDomain(url.hostname)
   for (const name of NEON_SESSION_COOKIE_NAMES) {
     response.cookies.set(name, "", {
       path: "/",
@@ -28,6 +30,17 @@ function clearNeonSessionCookies(response: NextResponse) {
       secure: true,
       httpOnly: true,
     })
+    if (sharedDomain) {
+      response.cookies.set(name, "", {
+        path: "/",
+        expires: new Date(0),
+        maxAge: 0,
+        sameSite: "lax",
+        secure: true,
+        httpOnly: true,
+        domain: sharedDomain,
+      })
+    }
   }
   return response
 }
@@ -60,14 +73,15 @@ export const POST = withApiAuth(async (request: Request) => {
   }
 
   const authHandler = requireAuthServer().handler()
-  const shouldSignOutOfGoogle = await currentSessionUsesGoogle(authHandler, request, new URL(request.url))
+  const url = new URL(request.url)
+  const shouldSignOutOfGoogle = await currentSessionUsesGoogle(authHandler, request, url)
 
   await deleteAccountForUser(viewer.userId)
   const response = NextResponse.json({
     ok: true,
     googleLogoutUrl: shouldSignOutOfGoogle ? getGoogleLogoutUrl().toString() : undefined,
   })
-  clearNeonSessionCookies(response)
+  clearNeonSessionCookies(response, url)
   if (email) void sendAccountDeletedEmail(email, name)
   return response
 })

@@ -226,9 +226,9 @@ describe("Google integration callback auth mode", () => {
 
     expect(response.status).toBe(307)
     expect(response.headers.get("location")).toBe("https://www.onrelay.app/dashboard")
-    expect(response.headers.getSetCookie().join("\n")).toContain(
-      "__Secure-neon-auth.session_token=manual-session-token",
-    )
+    const setCookies = response.headers.getSetCookie().join("\n")
+    expect(setCookies).toContain("__Secure-neon-auth.session_token=manual-session-token")
+    expect(setCookies).toContain("Domain=.onrelay.app")
     expect(verifyGoogleIdentityMock).toHaveBeenCalledWith("google-access-token")
     expect(resolveOrProvisionAuthUserMock).toHaveBeenCalledWith({
       googleUser: { sub: "google-1", email: "user@example.com" },

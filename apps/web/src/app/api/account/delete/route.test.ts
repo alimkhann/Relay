@@ -119,9 +119,9 @@ describe("account deletion route", () => {
       ok: true,
       googleLogoutUrl: "https://accounts.google.com/Logout?continue=https%3A%2F%2Fwww.google.com%2F",
     })
-    expect(response.headers.getSetCookie().join("\n")).toContain(
-      "__Secure-neon-auth.session_token=;",
-    )
+    const setCookies = response.headers.getSetCookie().join("\n")
+    expect(setCookies).toContain("__Secure-neon-auth.session_token=;")
+    expect(setCookies).toContain("Domain=.onrelay.app")
   })
 
   it("omits Google logout when deleting a non-Google account", async () => {

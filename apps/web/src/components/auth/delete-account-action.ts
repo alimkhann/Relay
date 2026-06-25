@@ -5,6 +5,7 @@ import { redirect } from "next/navigation"
 
 import { createServiceRepositoryBundle } from "@relay/db"
 
+import { getSharedAuthCookieDomain } from "@/lib/auth/cookie-domain"
 import { clearLocalSessionCookie } from "@/lib/auth/local-session"
 import { getAuthProvider } from "@/lib/auth/provider"
 import { requireSessionViewer } from "@/server/policies/viewer"
@@ -18,6 +19,7 @@ const NEON_SESSION_COOKIE_NAMES = [
 
 async function clearNeonSessionCookies() {
   const cookieStore = await cookies()
+  const sharedDomain = getSharedAuthCookieDomain()
   for (const name of NEON_SESSION_COOKIE_NAMES) {
     cookieStore.set(name, "", {
       path: "/",
@@ -27,6 +29,17 @@ async function clearNeonSessionCookies() {
       secure: true,
       httpOnly: true,
     })
+    if (sharedDomain) {
+      cookieStore.set(name, "", {
+        path: "/",
+        expires: new Date(0),
+        maxAge: 0,
+        sameSite: "lax",
+        secure: true,
+        httpOnly: true,
+        domain: sharedDomain,
+      })
+    }
   }
 }
 

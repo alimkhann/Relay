@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { logServerEvent } from "@/server/logging/logger"
 import { captureServerEvent } from "@/lib/telemetry/posthog-server"
 import { withApiRoute } from "@/server/http/api-route"
+import { getSharedAuthCookieDomain } from "@/lib/auth/cookie-domain"
 import { requireAuthServer } from "@/lib/auth/server"
 import { decryptSecret } from "@/server/lib/secret-crypto"
 import {
@@ -173,6 +174,7 @@ async function handleAuthCallback(input: {
       sameSite: "lax",
       path: "/",
       maxAge: fallbackSessionMaxAge,
+      domain: getSharedAuthCookieDomain(url.hostname),
     })
   }
 
