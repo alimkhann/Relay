@@ -2,14 +2,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const {
   authHandlerPostMock,
+  createNeonAuthSessionMock,
   decryptSecretMock,
   exchangeGoogleAuthCodeMock,
   logServerEventMock,
+  resolveOrProvisionAuthUserMock,
+  verifyGoogleIdentityMock,
 } = vi.hoisted(() => ({
   authHandlerPostMock: vi.fn(),
+  createNeonAuthSessionMock: vi.fn(),
   decryptSecretMock: vi.fn(),
   exchangeGoogleAuthCodeMock: vi.fn(),
   logServerEventMock: vi.fn(),
+  resolveOrProvisionAuthUserMock: vi.fn(),
+  verifyGoogleIdentityMock: vi.fn(),
 }))
 
 vi.mock("@/lib/auth/server", () => ({
@@ -27,6 +33,12 @@ vi.mock("@/server/lib/secret-crypto", () => ({
 vi.mock("@/server/services/integrations/google-service", () => ({
   exchangeGoogleAuthCode: exchangeGoogleAuthCodeMock,
   upsertGoogleAccount: vi.fn(),
+}))
+
+vi.mock("@/server/services/google-auth-service", () => ({
+  createNeonAuthSession: createNeonAuthSessionMock,
+  resolveOrProvisionAuthUser: resolveOrProvisionAuthUserMock,
+  verifyGoogleIdentity: verifyGoogleIdentityMock,
 }))
 
 vi.mock("@/server/logging/logger", () => ({
@@ -54,9 +66,12 @@ function authState(input: { nextPath?: string; intent?: string } = {}) {
 describe("Google integration callback auth mode", () => {
   beforeEach(() => {
     authHandlerPostMock.mockReset()
+    createNeonAuthSessionMock.mockReset()
     decryptSecretMock.mockReset()
     exchangeGoogleAuthCodeMock.mockReset()
     logServerEventMock.mockReset()
+    resolveOrProvisionAuthUserMock.mockReset()
+    verifyGoogleIdentityMock.mockReset()
 
     decryptSecretMock.mockImplementation(() => authState())
     exchangeGoogleAuthCodeMock.mockResolvedValue({
@@ -112,6 +127,9 @@ describe("Google integration callback auth mode", () => {
         "Content-Type": "application/json",
       },
     }))
+    verifyGoogleIdentityMock.mockResolvedValue({ sub: "google-1", email: "user@example.com" })
+    resolveOrProvisionAuthUserMock.mockResolvedValue({ id: "user-1", email: "user@example.com" })
+    createNeonAuthSessionMock.mockRejectedValue(new Error("Manual session fallback failed."))
 
     const response = await GET(
       new Request("https://www.onrelay.app/api/integrations/google/callback?code=google-code&state=encrypted"),
@@ -125,7 +143,7 @@ describe("Google integration callback auth mode", () => {
     expect(logServerEventMock).toHaveBeenCalledWith(expect.objectContaining({
       event: "google_auth.callback_failed",
       context: expect.objectContaining({
-        reason: "Auth sign-in completed without a session cookie.",
+        reason: "Manual session fallback failed.",
       }),
     }))
   })
@@ -179,6 +197,51 @@ describe("Google integration callback auth mode", () => {
       event: "google_auth.callback_session_established",
       context: expect.objectContaining({
         usedAuthBodyFallback: true,
+      }),
+    }))
+  })
+
+  it("creates a Neon Auth session when the auth response succeeds without token material", async () => {
+    authHandlerPostMock.mockResolvedValue(new Response(JSON.stringify({ user: { id: "user-1" } }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }))
+    verifyGoogleIdentityMock.mockResolvedValue({ sub: "google-1", email: "user@example.com" })
+    resolveOrProvisionAuthUserMock.mockResolvedValue({ id: "user-1", email: "user@example.com" })
+    createNeonAuthSessionMock.mockResolvedValue({
+      token: "manual-session-token",
+      expiresAt: new Date(Date.now() + 3_600_000),
+    })
+
+    const response = await GET(
+      new Request("https://www.onrelay.app/api/integrations/google/callback?code=google-code&state=encrypted", {
+        headers: {
+          "user-agent": "Comet",
+          "x-forwarded-for": "203.0.113.7, 10.0.0.1",
+        },
+      }),
+    )
+
+    expect(response.status).toBe(307)
+    expect(response.headers.get("location")).toBe("https://www.onrelay.app/dashboard")
+    expect(response.headers.getSetCookie().join("\n")).toContain(
+      "__Secure-neon-auth.session_token=manual-session-token",
+    )
+    expect(verifyGoogleIdentityMock).toHaveBeenCalledWith("google-access-token")
+    expect(resolveOrProvisionAuthUserMock).toHaveBeenCalledWith({
+      googleUser: { sub: "google-1", email: "user@example.com" },
+    })
+    expect(createNeonAuthSessionMock).toHaveBeenCalledWith({
+      userId: "user-1",
+      ipAddress: "203.0.113.7",
+      userAgent: "Comet",
+    })
+    expect(logServerEventMock).toHaveBeenCalledWith(expect.objectContaining({
+      event: "google_auth.callback_session_established",
+      context: expect.objectContaining({
+        usedManualSessionFallback: true,
       }),
     }))
   })

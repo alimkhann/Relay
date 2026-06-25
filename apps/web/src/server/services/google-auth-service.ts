@@ -1,3 +1,5 @@
+import { randomBytes, randomUUID } from "node:crypto"
+
 import { createServiceRepositoryBundle } from "@relay/db"
 
 import { requireAuthServer } from "@/lib/auth/server"
@@ -201,6 +203,45 @@ export async function resolveOrProvisionAuthUser(input: {
     image: input.googleUser.picture ?? null,
     isNewUser,
   } satisfies NeonAuthUser
+}
+
+export async function createNeonAuthSession(input: {
+  userId: string
+  ipAddress?: string | null
+  userAgent?: string | null
+}) {
+  const repositories = createServiceRepositoryBundle()
+  const token = randomBytes(32).toString("base64url")
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+  const rows = await repositories.provider.query<{ token: string; expiresAt: Date | string }>(
+    `insert into neon_auth.session (
+       id,
+       "expiresAt",
+       token,
+       "createdAt",
+       "updatedAt",
+       "ipAddress",
+       "userAgent",
+       "userId"
+     )
+     values ($1::uuid, $2, $3, now(), now(), $4, $5, $6::uuid)
+     returning token, "expiresAt"`,
+    [
+      randomUUID(),
+      expiresAt,
+      token,
+      input.ipAddress ?? null,
+      input.userAgent ?? null,
+      input.userId,
+    ],
+  )
+
+  const session = rows[0]
+  if (!session?.token) {
+    throw new Error("Failed to create Neon Auth session.")
+  }
+
+  return session
 }
 
 export async function resolveGoogleAuthUser(input: {

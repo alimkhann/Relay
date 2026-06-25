@@ -6,6 +6,11 @@ import { withApiRoute } from "@/server/http/api-route"
 import { requireAuthServer } from "@/lib/auth/server"
 import { decryptSecret } from "@/server/lib/secret-crypto"
 import {
+  createNeonAuthSession,
+  resolveOrProvisionAuthUser,
+  verifyGoogleIdentity,
+} from "@/server/services/google-auth-service"
+import {
   resolveAuthenticatedAppPath,
   resolveWebAuthIntent,
   type WebAuthIntent,
@@ -71,13 +76,29 @@ function readSessionTokenFromAuthPayload(payload: unknown): string | null {
   return null
 }
 
+function resolveExpiresAtMaxAge(expiresAt: Date | string | null | undefined) {
+  if (!expiresAt) return undefined
+  const expiresAtMs = expiresAt instanceof Date ? expiresAt.getTime() : Date.parse(expiresAt)
+  if (!Number.isFinite(expiresAtMs)) return undefined
+  const maxAge = Math.floor((expiresAtMs - Date.now()) / 1000)
+  return maxAge > 0 ? maxAge : undefined
+}
+
+function getClientIpAddress(request: Request) {
+  return (
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    request.headers.get("x-real-ip") ??
+    null
+  )
+}
+
 async function handleAuthCallback(input: {
-  requestUrl: string
+  request: Request
   code: string
   nextPath: string
   intent: WebAuthIntent
 }) {
-  const url = new URL(input.requestUrl)
+  const url = new URL(input.request.url)
   const redirectUri = `${url.origin}/api/integrations/google/callback`
   const tokens = await exchangeGoogleAuthCode(input.code, redirectUri)
 
@@ -123,10 +144,21 @@ async function handleAuthCallback(input: {
   const sessionTokenFromHeader =
     authResponse.headers.get("set-auth-jwt") ?? authResponse.headers.get("set-auth-token")
   const sessionTokenFromBody = readSessionTokenFromAuthPayload(authPayload)
-  const fallbackSessionToken = sessionTokenFromHeader ?? sessionTokenFromBody
+  let fallbackSessionToken = sessionTokenFromHeader ?? sessionTokenFromBody
+  let fallbackSessionMaxAge: number | undefined
+  let usedManualSessionFallback = false
 
   if (!hasSessionToken && !fallbackSessionToken) {
-    throw new Error("Auth sign-in completed without a session cookie.")
+    const googleUser = await verifyGoogleIdentity(tokens.access_token)
+    const authUser = await resolveOrProvisionAuthUser({ googleUser })
+    const session = await createNeonAuthSession({
+      userId: authUser.id,
+      ipAddress: getClientIpAddress(input.request),
+      userAgent: input.request.headers.get("user-agent"),
+    })
+    fallbackSessionToken = session.token
+    fallbackSessionMaxAge = resolveExpiresAtMaxAge(session.expiresAt)
+    usedManualSessionFallback = true
   }
 
   const targetPath = resolveAuthenticatedAppPath(input.nextPath)
@@ -140,6 +172,7 @@ async function handleAuthCallback(input: {
       secure: true,
       sameSite: "lax",
       path: "/",
+      maxAge: fallbackSessionMaxAge,
     })
   }
 
@@ -154,6 +187,7 @@ async function handleAuthCallback(input: {
       forwardedAuthCookies: setCookieHeaders.length,
       usedAuthHeaderFallback: Boolean(!hasSessionToken && sessionTokenFromHeader),
       usedAuthBodyFallback: Boolean(!hasSessionToken && !sessionTokenFromHeader && sessionTokenFromBody),
+      usedManualSessionFallback,
     },
   })
 
@@ -191,7 +225,7 @@ export const GET = withApiRoute(async (request: Request) => {
     const nextPath = resolveAuthenticatedAppPath(parsed.nextPath)
     try {
       return await handleAuthCallback({
-        requestUrl: request.url,
+        request,
         code,
         nextPath,
         intent: resolveWebAuthIntent(parsed.intent),
