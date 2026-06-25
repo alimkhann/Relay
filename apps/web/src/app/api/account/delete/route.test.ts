@@ -113,9 +113,9 @@ describe("account deletion route", () => {
 
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ ok: true })
-    const setCookies = response.headers.getSetCookie().join("\n")
-    expect(setCookies).toContain("__Secure-neon-auth.session_token=;")
-    expect(setCookies).toContain("Domain=.onrelay.app")
+    const setCookies = response.headers.getSetCookie()
+    expect(setCookies.some((cookie) => cookie.includes("__Secure-neon-auth.session_token=;") && !cookie.includes("Domain="))).toBe(true)
+    expect(setCookies.some((cookie) => cookie.includes("__Secure-neon-auth.session_token=;") && cookie.includes("Domain=.onrelay.app"))).toBe(true)
   })
 
   it("omits Google logout when deleting a non-Google account", async () => {

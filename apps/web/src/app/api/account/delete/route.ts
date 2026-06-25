@@ -2,45 +2,14 @@ import { NextResponse } from "next/server"
 
 import { createServiceRepositoryBundle } from "@relay/db"
 
-import { getSharedAuthCookieDomain } from "@/lib/auth/cookie-domain"
 import { clearLocalSessionCookieFromResponse } from "@/lib/auth/local-session"
+import { clearNeonSessionCookiesFromResponse } from "@/lib/auth/neon-session-cookies"
 import { getAuthProvider } from "@/lib/auth/provider"
 import { withApiAuth } from "@/server/http/api-route"
 import { requireSessionViewer } from "@/server/policies/viewer"
 import { deleteAccountForUser } from "@/server/services/account-deletion-service"
 import { sendAccountDeletedEmail } from "@/server/services/email-service"
 import { assertIpRateLimit } from "@/server/services/rate-limit-service"
-
-const NEON_SESSION_COOKIE_NAMES = [
-  "__Secure-neon-auth.session_token",
-  "__Secure-neon-auth.local.session_data",
-]
-
-function clearNeonSessionCookies(response: NextResponse, url: URL) {
-  const sharedDomain = getSharedAuthCookieDomain(url.hostname)
-  for (const name of NEON_SESSION_COOKIE_NAMES) {
-    response.cookies.set(name, "", {
-      path: "/",
-      expires: new Date(0),
-      maxAge: 0,
-      sameSite: "lax",
-      secure: true,
-      httpOnly: true,
-    })
-    if (sharedDomain) {
-      response.cookies.set(name, "", {
-        path: "/",
-        expires: new Date(0),
-        maxAge: 0,
-        sameSite: "lax",
-        secure: true,
-        httpOnly: true,
-        domain: sharedDomain,
-      })
-    }
-  }
-  return response
-}
 
 export const POST = withApiAuth(async (request: Request) => {
   await assertIpRateLimit(request, "account_delete_ip", 3)
@@ -73,7 +42,7 @@ export const POST = withApiAuth(async (request: Request) => {
 
   await deleteAccountForUser(viewer.userId)
   const response = NextResponse.json({ ok: true })
-  clearNeonSessionCookies(response, url)
+  clearNeonSessionCookiesFromResponse(response, url)
   if (email) void sendAccountDeletedEmail(email, name)
   return response
 })
