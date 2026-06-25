@@ -50,6 +50,27 @@ function decodeIdTokenEmail(idToken: string | undefined): string | null {
   }
 }
 
+function readSessionTokenFromAuthPayload(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") {
+    return null
+  }
+
+  const record = payload as Record<string, unknown>
+  if (typeof record.token === "string" && record.token.length > 0) {
+    return record.token
+  }
+
+  const session = record.session
+  if (session && typeof session === "object") {
+    const sessionRecord = session as Record<string, unknown>
+    if (typeof sessionRecord.token === "string" && sessionRecord.token.length > 0) {
+      return sessionRecord.token
+    }
+  }
+
+  return null
+}
+
 async function handleAuthCallback(input: {
   requestUrl: string
   code: string
@@ -85,12 +106,12 @@ async function handleAuthCallback(input: {
   const authResponse = await authHandler.POST(signInRequest, {
     params: Promise.resolve({ path: ["sign-in", "social"] }),
   })
+  const authPayload = await authResponse.clone().json().catch(() => null)
 
   if (!authResponse.ok) {
-    const errorPayload = await authResponse.json().catch(() => null)
     const errorMessage =
-      errorPayload && typeof errorPayload === "object" && "message" in errorPayload
-        ? String(errorPayload.message)
+      authPayload && typeof authPayload === "object" && "message" in authPayload
+        ? String(authPayload.message)
         : `Auth sign-in failed: ${authResponse.status}`
     throw new Error(errorMessage)
   }
@@ -101,8 +122,10 @@ async function handleAuthCallback(input: {
   )
   const sessionTokenFromHeader =
     authResponse.headers.get("set-auth-jwt") ?? authResponse.headers.get("set-auth-token")
+  const sessionTokenFromBody = readSessionTokenFromAuthPayload(authPayload)
+  const fallbackSessionToken = sessionTokenFromHeader ?? sessionTokenFromBody
 
-  if (!hasSessionToken && !sessionTokenFromHeader) {
+  if (!hasSessionToken && !fallbackSessionToken) {
     throw new Error("Auth sign-in completed without a session cookie.")
   }
 
@@ -111,8 +134,8 @@ async function handleAuthCallback(input: {
   for (const cookieHeader of setCookieHeaders) {
     response.headers.append("Set-Cookie", cookieHeader)
   }
-  if (!hasSessionToken && sessionTokenFromHeader) {
-    response.cookies.set(SESSION_TOKEN_COOKIE_NAME, sessionTokenFromHeader, {
+  if (!hasSessionToken && fallbackSessionToken) {
+    response.cookies.set(SESSION_TOKEN_COOKIE_NAME, fallbackSessionToken, {
       httpOnly: true,
       secure: true,
       sameSite: "lax",
@@ -130,6 +153,7 @@ async function handleAuthCallback(input: {
       authIntent: input.intent,
       forwardedAuthCookies: setCookieHeaders.length,
       usedAuthHeaderFallback: Boolean(!hasSessionToken && sessionTokenFromHeader),
+      usedAuthBodyFallback: Boolean(!hasSessionToken && !sessionTokenFromHeader && sessionTokenFromBody),
     },
   })
 
