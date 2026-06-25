@@ -8,7 +8,6 @@ import { Settings, LogOut, CreditCard } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 import { cn } from "@/lib/cn";
-import { signOutFromBrowser } from "@/lib/auth/sign-out-client";
 
 interface AccountMenuProps {
   name: string;
@@ -122,22 +121,17 @@ export function AccountMenu({ name, email, collapsed = false }: AccountMenuProps
                   Billing
                 </Link>
                 <div className="mx-2.5 my-1 border-t border-[var(--relay-line)]" />
-                <form
-                  action="/auth/sign-out"
-                  method="POST"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void signOutFromBrowser();
+                <Link
+                  href="/auth/sign-out"
+                  prefetch={false}
+                  onClick={() => {
+                    setOpen(false);
                   }}
+                  className="flex w-full items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-2.5 py-2 text-[13px] font-medium text-[var(--relay-danger)] transition-colors hover:bg-[var(--relay-soft)]"
                 >
-                  <button
-                    type="submit"
-                    className="flex w-full items-center gap-2.5 rounded-[var(--relay-radius-sm)] px-2.5 py-2 text-[13px] font-medium text-[var(--relay-danger)] transition-colors hover:bg-[var(--relay-soft)]"
-                  >
-                    <LogOut className="h-3.5 w-3.5" />
-                    Sign out
-                  </button>
-                </form>
+                  <LogOut className="h-3.5 w-3.5" />
+                  Sign out
+                </Link>
               </motion.div>
             </Popover.Content>
           </Popover.Portal>
