@@ -3,6 +3,8 @@ import { NextResponse, type NextRequest } from "next/server"
 import { getAuthServer } from "@/lib/auth/server"
 import { buildExtensionPreflightResponse, isExtensionOrigin } from "@/server/http/extension-cors"
 
+const SESSION_TOKEN_COOKIE_NAME = "__Secure-neon-auth.session_token"
+
 const MARKDOWN_ENABLED_PATHS = [
   /^\/$/,
   /^\/machine$/,
@@ -48,6 +50,10 @@ export default async function middleware(request: NextRequest) {
   const auth = getAuthServer()
 
   if (!isProtectedPath(request.nextUrl.pathname) || !auth) {
+    return NextResponse.next()
+  }
+
+  if (request.cookies?.has(SESSION_TOKEN_COOKIE_NAME) || request.headers.get("cookie")?.includes(`${SESSION_TOKEN_COOKIE_NAME}=`)) {
     return NextResponse.next()
   }
 

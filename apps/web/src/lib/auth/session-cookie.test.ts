@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const cookieState = vi.hoisted(() => new Map<string, string>())
 const headerState = vi.hoisted(() => new Map<string, string>())
 
-const { cookiesMock, headersMock } = vi.hoisted(() => ({
+const { cookiesMock, headersMock, providerQueryMock } = vi.hoisted(() => ({
   cookiesMock: vi.fn(async () => ({
     get(name: string) {
       const value = cookieState.get(name)
@@ -14,7 +14,16 @@ const { cookiesMock, headersMock } = vi.hoisted(() => ({
     get(name: string) {
       return headerState.get(name.toLowerCase()) ?? null
     }
-  }))
+  })),
+  providerQueryMock: vi.fn()
+}))
+
+vi.mock("@relay/db", () => ({
+  createServiceRepositoryBundle: () => ({
+    provider: {
+      query: providerQueryMock
+    }
+  })
 }))
 
 vi.mock("next/headers", () => ({
@@ -72,6 +81,7 @@ describe("readSessionUserFromCookie", () => {
     headerState.clear()
     cookiesMock.mockClear()
     headersMock.mockClear()
+    providerQueryMock.mockReset()
     clearAuthCacheForTests()
     vi.unstubAllEnvs()
     vi.stubEnv("NEON_AUTH_COOKIE_SECRET", COOKIE_SECRET)
@@ -125,11 +135,36 @@ describe("readSessionUserFromCookie", () => {
       name: "Relay Two",
       image: null
     })
-    expect(fetchMock).toHaveBeenCalledWith(new URL("get-session", "https://auth.example.com"), {
+    expect(fetchMock).toHaveBeenCalledWith("https://auth.example.com/get-session", {
       method: "GET",
       headers: expect.any(Headers),
       cache: "no-store"
     })
+    expect(providerQueryMock).not.toHaveBeenCalled()
+  })
+
+  it("falls back to the session table when the auth server cannot read an app-managed token", async () => {
+    cookieState.set(SESSION_TOKEN_COOKIE_NAME, "raw-session-token")
+    const fetchMock = vi.fn(async () => Response.json({ session: null, user: null }))
+    vi.stubGlobal("fetch", fetchMock)
+    providerQueryMock.mockResolvedValue([
+      {
+        id: "user-3",
+        email: "user3@example.com",
+        name: "Relay Three",
+        image: null
+      }
+    ])
+
+    await expect(readSessionUserFromCookie()).resolves.toEqual({
+      id: "user-3",
+      email: "user3@example.com",
+      name: "Relay Three",
+      image: null
+    })
+    expect(providerQueryMock).toHaveBeenCalledWith(expect.stringContaining("from neon_auth.session"), [
+      "raw-session-token"
+    ])
   })
 
   it("accepts a Neon Google session cookie as a fallback in local auth mode", async () => {

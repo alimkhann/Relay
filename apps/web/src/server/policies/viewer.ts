@@ -61,7 +61,7 @@ export async function requireSessionViewer(): Promise<Viewer> {
   }
 
   const { data } = await requireAuthServer().getSession()
-  const user = data?.user as SessionUser | undefined
+  const user = (data?.user as SessionUser | undefined) ?? await readSessionUserFromCookie()
 
   if (!user?.id) {
     throw new AuthRequiredError()

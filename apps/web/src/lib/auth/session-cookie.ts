@@ -1,5 +1,7 @@
 import { cookies, headers } from "next/headers"
 
+import { createServiceRepositoryBundle } from "@relay/db"
+
 import { readLocalSessionUserFromCookie } from "./local-session"
 import { getAuthProvider } from "./provider"
 
@@ -49,6 +51,47 @@ function extractSessionUser(payload: unknown): SessionCookieUser | null {
     name: readOptionalString(user.name),
     image: readOptionalString(user.image)
   }
+}
+
+function readRawSessionToken(sessionTokenCookie: string) {
+  const signatureStart = sessionTokenCookie.lastIndexOf(".")
+  if (signatureStart < 1) return sessionTokenCookie
+
+  const signature = sessionTokenCookie.slice(signatureStart + 1)
+  return signature.length === 44 && signature.endsWith("=")
+    ? sessionTokenCookie.slice(0, signatureStart)
+    : sessionTokenCookie
+}
+
+async function fetchSessionUserFromDatabase(
+  sessionTokenCookie: string
+): Promise<SessionCookieUser | null> {
+  const sessionToken = readRawSessionToken(sessionTokenCookie)
+  const repositories = createServiceRepositoryBundle()
+  const rows = await repositories.provider.query<{
+    id: string
+    email: string | null
+    name: string | null
+    image: string | null
+  }>(
+    `select u.id, u.email, u.name, u.image
+       from neon_auth.session s
+       join neon_auth."user" u on u.id = s."userId"
+      where s.token = $1
+        and s."expiresAt" > now()
+      limit 1`,
+    [sessionToken]
+  )
+
+  const user = rows[0]
+  return user
+    ? {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        image: user.image
+      }
+    : null
 }
 
 async function verifySessionDataCookie(
@@ -128,7 +171,7 @@ async function fetchSessionUserFromAuthServer(
 
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const response = await fetch(new URL("get-session", baseUrl), {
+      const response = await fetch(`${baseUrl}/get-session`, {
         method: "GET",
         headers: requestHeaders,
         cache: "no-store"
@@ -195,6 +238,12 @@ export async function readSessionUserFromCookie(): Promise<SessionCookieUser | n
   const user = await fetchSessionUserFromAuthServer(sessionToken, baseUrl)
   if (user) {
     authCache.set(sessionToken, { user, expiresAt: Date.now() + AUTH_CACHE_TTL_MS })
+    return user
   }
-  return user
+
+  const databaseUser = await fetchSessionUserFromDatabase(sessionToken)
+  if (databaseUser) {
+    authCache.set(sessionToken, { user: databaseUser, expiresAt: Date.now() + AUTH_CACHE_TTL_MS })
+  }
+  return databaseUser
 }
