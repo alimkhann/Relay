@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const {
-  authSocialMock,
+  authHandlerPostMock,
   decryptSecretMock,
   exchangeGoogleAuthCodeMock,
   logServerEventMock,
 } = vi.hoisted(() => ({
-  authSocialMock: vi.fn(),
+  authHandlerPostMock: vi.fn(),
   decryptSecretMock: vi.fn(),
   exchangeGoogleAuthCodeMock: vi.fn(),
   logServerEventMock: vi.fn(),
@@ -14,9 +14,9 @@ const {
 
 vi.mock("@/lib/auth/server", () => ({
   requireAuthServer: () => ({
-    signIn: {
-      social: authSocialMock,
-    },
+    handler: () => ({
+      POST: authHandlerPostMock,
+    }),
   }),
 }))
 
@@ -53,7 +53,7 @@ function authState(input: { nextPath?: string; intent?: string } = {}) {
 
 describe("Google integration callback auth mode", () => {
   beforeEach(() => {
-    authSocialMock.mockReset()
+    authHandlerPostMock.mockReset()
     decryptSecretMock.mockReset()
     exchangeGoogleAuthCodeMock.mockReset()
     logServerEventMock.mockReset()
@@ -65,19 +65,13 @@ describe("Google integration callback auth mode", () => {
     })
   })
 
-  it("sets a Neon session cookie when ID-token sign-in returns a token without Set-Cookie", async () => {
-    authSocialMock.mockResolvedValue({
-      data: {
-        token: "neon-session-token",
-        session: {
-          expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
-        },
-        user: {
-          id: "user-1",
-        },
+  it("forwards Neon auth handler session cookies onto the app redirect", async () => {
+    authHandlerPostMock.mockResolvedValue(new Response(JSON.stringify({ user: { id: "user-1" } }), {
+      status: 200,
+      headers: {
+        "Set-Cookie": `${SESSION_TOKEN_COOKIE_NAME}=neon-session-token; Path=/; HttpOnly; Secure; SameSite=Lax`,
       },
-      error: null,
-    })
+    }))
 
     const response = await GET(
       new Request("https://www.onrelay.app/api/integrations/google/callback?code=google-code&state=encrypted"),
@@ -89,7 +83,11 @@ describe("Google integration callback auth mode", () => {
       "__Secure-neon-auth.session_token=neon-session-token",
     )
 
-    expect(authSocialMock).toHaveBeenCalledWith({
+    expect(authHandlerPostMock).toHaveBeenCalledOnce()
+    const [authRequest, authContext] = authHandlerPostMock.mock.calls[0]!
+    expect(authRequest.url).toBe("https://www.onrelay.app/api/auth/sign-in/social")
+    expect(authRequest.method).toBe("POST")
+    await expect(authRequest.json()).resolves.toEqual({
       provider: "google",
       disableRedirect: true,
       requestSignUp: true,
@@ -98,27 +96,37 @@ describe("Google integration callback auth mode", () => {
         accessToken: "google-access-token",
       },
     })
+    await expect(authContext.params).resolves.toEqual({ path: ["sign-in", "social"] })
+    expect(logServerEventMock).toHaveBeenCalledWith(expect.objectContaining({
+      event: "google_auth.callback_session_established",
+      context: expect.objectContaining({
+        forwardedAuthCookies: 1,
+      }),
+    }))
   })
 
-  it("redirects to the target when Neon accepts the ID-token sign-in through its cookie context", async () => {
-    authSocialMock.mockResolvedValue({
-      data: {
-        user: {
-          id: "user-1",
-        },
+  it("redirects to sign-in error when auth succeeds without a session cookie", async () => {
+    authHandlerPostMock.mockResolvedValue(new Response(JSON.stringify({ user: { id: "user-1" } }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
       },
-      error: null,
-    })
+    }))
 
     const response = await GET(
       new Request("https://www.onrelay.app/api/integrations/google/callback?code=google-code&state=encrypted"),
     )
 
     expect(response.status).toBe(307)
-    expect(response.headers.get("location")).toBe("https://www.onrelay.app/dashboard")
+    expect(response.headers.get("location")).toBe(
+      "https://www.onrelay.app/sign-in?next=%2Fdashboard&intent=sign-up&google=error",
+    )
     expect(response.headers.getSetCookie().join("\n")).not.toContain(SESSION_TOKEN_COOKIE_NAME)
     expect(logServerEventMock).toHaveBeenCalledWith(expect.objectContaining({
-      event: "google_auth.callback_session_established",
+      event: "google_auth.callback_failed",
+      context: expect.objectContaining({
+        reason: "Auth sign-in completed without a session cookie.",
+      }),
     }))
   })
 })

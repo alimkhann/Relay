@@ -18,13 +18,6 @@ import {
 const STATE_TTL_MS = 10 * 60 * 1000
 const SESSION_TOKEN_COOKIE_NAME = "__Secure-neon-auth.session_token"
 
-interface AuthSignInPayload {
-  token?: unknown
-  session?: {
-    expiresAt?: unknown
-  } | null
-}
-
 function settingsRedirect(requestUrl: string, status: "connected" | "error") {
   const origin = new URL(requestUrl).origin
   return NextResponse.redirect(`${origin}/settings?section=integrations&google=${status}`)
@@ -57,17 +50,6 @@ function decodeIdTokenEmail(idToken: string | undefined): string | null {
   }
 }
 
-function resolveSessionTokenMaxAge(payload: AuthSignInPayload | null) {
-  const expiresAt = payload?.session?.expiresAt
-  if (typeof expiresAt !== "string") return undefined
-
-  const expiresAtMs = Date.parse(expiresAt)
-  if (!Number.isFinite(expiresAtMs)) return undefined
-
-  const maxAge = Math.floor((expiresAtMs - Date.now()) / 1000)
-  return maxAge > 0 ? maxAge : undefined
-}
-
 async function handleAuthCallback(input: {
   requestUrl: string
   code: string
@@ -82,33 +64,50 @@ async function handleAuthCallback(input: {
     throw new Error("Google did not return an ID token.")
   }
 
-  const targetPath = resolveAuthenticatedAppPath(input.nextPath)
-  const signInResult = await requireAuthServer().signIn.social({
-    provider: "google",
-    disableRedirect: true,
-    requestSignUp: input.intent === "sign-up",
-    idToken: {
-      token: tokens.id_token,
-      accessToken: tokens.access_token,
+  const authHandler = requireAuthServer().handler()
+  const signInRequest = new Request(new URL("/api/auth/sign-in/social", url.origin), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: url.origin,
     },
+    body: JSON.stringify({
+      provider: "google",
+      disableRedirect: true,
+      requestSignUp: input.intent === "sign-up",
+      idToken: {
+        token: tokens.id_token,
+        accessToken: tokens.access_token,
+      },
+    }),
   })
 
-  if (signInResult.error) {
-    throw new Error(signInResult.error.message ?? "Auth sign-in failed.")
+  const authResponse = await authHandler.POST(signInRequest, {
+    params: Promise.resolve({ path: ["sign-in", "social"] }),
+  })
+
+  if (!authResponse.ok) {
+    const errorPayload = await authResponse.json().catch(() => null)
+    const errorMessage =
+      errorPayload && typeof errorPayload === "object" && "message" in errorPayload
+        ? String(errorPayload.message)
+        : `Auth sign-in failed: ${authResponse.status}`
+    throw new Error(errorMessage)
   }
 
-  const authPayload = signInResult.data as AuthSignInPayload | null
-  const response = NextResponse.redirect(new URL(targetPath, url))
+  const setCookieHeaders = authResponse.headers.getSetCookie()
+  const hasSessionToken = setCookieHeaders.some((cookieHeader) =>
+    cookieHeader.startsWith(`${SESSION_TOKEN_COOKIE_NAME}=`)
+  )
 
-  const sessionToken = typeof authPayload?.token === "string" ? authPayload.token : null
-  if (sessionToken) {
-    response.cookies.set(SESSION_TOKEN_COOKIE_NAME, sessionToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax",
-      path: "/",
-      maxAge: resolveSessionTokenMaxAge(authPayload),
-    })
+  if (!hasSessionToken) {
+    throw new Error("Auth sign-in completed without a session cookie.")
+  }
+
+  const targetPath = resolveAuthenticatedAppPath(input.nextPath)
+  const response = NextResponse.redirect(new URL(targetPath, url))
+  for (const cookieHeader of setCookieHeaders) {
+    response.headers.append("Set-Cookie", cookieHeader)
   }
 
   await logServerEvent({
@@ -119,7 +118,7 @@ async function handleAuthCallback(input: {
     message: "Google OAuth callback established a Relay web session.",
     context: {
       authIntent: input.intent,
-      usedSessionTokenFallback: Boolean(sessionToken),
+      forwardedAuthCookies: setCookieHeaders.length,
     },
   })
 
