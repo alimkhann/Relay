@@ -10,9 +10,18 @@ function navigateAfterSignOut(redirectTo: string) {
   window.location.assign(redirectTo)
 }
 
+async function clearRelayQueryCacheBestEffort() {
+  await Promise.race([
+    clearRelayQueryCache(),
+    new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 250)
+    }),
+  ])
+}
+
 export async function signOutFromBrowser() {
   try {
-    await clearRelayQueryCache()
+    await clearRelayQueryCacheBestEffort()
 
     const response = await fetch("/auth/sign-out", {
       method: "POST",
