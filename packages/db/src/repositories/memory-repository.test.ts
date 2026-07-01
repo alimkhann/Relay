@@ -101,6 +101,29 @@ describe("MemoryRepository.hybridSearch SQL shape", () => {
     expect(calls[0]!.values).toContainEqual(["mcp", "chatgpt"])
   })
 
+  it("lists personal items missing valid Folk categories without returning encrypted raw rows", async () => {
+    const { provider, calls } = makeFakeProvider([])
+    const repo = new MemoryRepository(provider)
+    await repo.listPersonalItemsMissingCategory("personal-1", 25)
+    const sql = calls[0]!.text
+    expect(sql).toContain("metadata->>'personalCategory'")
+    expect(sql).toContain("coalesce(lifecycle_state, 'active') <> 'forgotten'")
+    expect(sql).not.toContain("search_vector")
+    expect(calls[0]!.values[0]).toBe("personal-1")
+    expect(calls[0]!.values[2]).toBe(25)
+  })
+
+  it("lists MCP and Ask Relay note rows that still need project type backfill", async () => {
+    const { provider, calls } = makeFakeProvider([])
+    const repo = new MemoryRepository(provider)
+    await repo.listAgentNoteTypeBackfillCandidates("proj-1", 10)
+    const sql = calls[0]!.text
+    expect(sql).toContain("type = 'note'")
+    expect(sql).toContain("source_surface = any")
+    expect(sql).toContain("metadata->>'taxonomyBackfilledAt' is null")
+    expect(calls[0]!.values).toEqual(["proj-1", ["mcp", "ask_relay"], 10])
+  })
+
   it("includes a supersedes-aware NOT EXISTS subquery by default (D4)", async () => {
     const { provider, calls } = makeFakeProvider([])
     const repo = new MemoryRepository(provider)

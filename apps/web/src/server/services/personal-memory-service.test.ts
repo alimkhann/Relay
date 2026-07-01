@@ -4,6 +4,7 @@ import type { MemoryItemForConflictResolution } from "@relay/shared"
 
 const getPersonalProjectMock = vi.fn()
 const listActiveNotesForUpdateMock = vi.fn()
+const listPersonalItemsMissingCategoryMock = vi.fn()
 const createMemoryItemMock = vi.fn()
 const archiveOverBudgetMock = vi.fn()
 const markDirtyMock = vi.fn()
@@ -25,6 +26,7 @@ vi.mock("@relay/db", () => ({
     memoryEvents: { create: memoryEventCreateMock },
     memory: {
       listByProject: listActiveNotesForUpdateMock,
+      listPersonalItemsMissingCategory: listPersonalItemsMissingCategoryMock,
       listActiveNotesForUpdate: listActiveNotesForUpdateMock,
       create: createMemoryItemMock,
       archiveOverBudget: archiveOverBudgetMock,
@@ -186,6 +188,7 @@ describe("routePersonalMemory result", () => {
     vi.unstubAllEnvs()
     getPersonalProjectMock.mockReset()
     listActiveNotesForUpdateMock.mockReset()
+    listPersonalItemsMissingCategoryMock.mockReset()
     createMemoryItemMock.mockReset()
     archiveOverBudgetMock.mockReset()
     markDirtyMock.mockReset()
@@ -265,6 +268,7 @@ describe("routePersonalFromTranscript (personal-origin capture)", () => {
     vi.unstubAllEnvs()
     getPersonalProjectMock.mockReset()
     listActiveNotesForUpdateMock.mockReset()
+    listPersonalItemsMissingCategoryMock.mockReset()
     createMemoryItemMock.mockReset()
     archiveOverBudgetMock.mockReset()
     markDirtyMock.mockReset()

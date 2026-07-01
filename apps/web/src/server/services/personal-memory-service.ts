@@ -233,8 +233,7 @@ export async function backfillPersonalCategories(
   const repositories = createRepositoryBundle(userId)
   const personal = await repositories.projects.getPersonalProject(userId).catch(() => null)
   if (!personal) return { scanned: 0, categorized: 0 }
-  const rows = await repositories.memory.listByProject(personal.id, { limit: opts.limit ?? 500 })
-  const uncategorized = rows.filter((row) => !personalCategoryFromMetadata(row.metadata))
+  const uncategorized = await repositories.memory.listPersonalItemsMissingCategory(personal.id, opts.limit ?? 500)
   let categorized = 0
   for (const row of uncategorized) {
     const did = await refinePersonalCategory(userId, {

@@ -1,4 +1,4 @@
-import type { CreateMemoryItemInput, MemoryItemRow, MemoryItemType, MemoryRelationRow, MemoryRelationType, UpdateMemoryItemInput } from "@relay/shared"
+import { personalCategories, type CreateMemoryItemInput, type MemoryItemRow, type MemoryItemType, type MemoryRelationRow, type MemoryRelationType, type UpdateMemoryItemInput } from "@relay/shared"
 
 import { toMemoryRelationRow, toMemoryRow } from "../mappers/memory-mapper"
 import type { DatabaseProvider } from "../store/provider"
@@ -176,6 +176,41 @@ export class MemoryRepository {
        limit $2
        for update`,
       [projectId, Math.min(Math.max(limit, 1), 1000)],
+    )
+    return rows.map((record) => toMemoryRow(record as Record<string, unknown>))
+  }
+
+  async listPersonalItemsMissingCategory(projectId: string, limit = 50): Promise<MemoryItemRow[]> {
+    const rows = await this.provider.query(
+      `select ${MEMORY_COLS}
+       from memory_items
+       where project_id = $1
+         and is_archived = false
+         and coalesce(lifecycle_state, 'active') <> 'forgotten'
+         and (
+           metadata->>'personalCategory' is null
+           or not (metadata->>'personalCategory' = any($2::text[]))
+         )
+       order by updated_at desc, id desc
+       limit $3`,
+      [projectId, personalCategories, Math.min(Math.max(limit, 1), 1000)],
+    )
+    return rows.map((record) => toMemoryRow(record as Record<string, unknown>))
+  }
+
+  async listAgentNoteTypeBackfillCandidates(projectId: string, limit = 50): Promise<MemoryItemRow[]> {
+    const rows = await this.provider.query(
+      `select ${MEMORY_COLS}
+       from memory_items
+       where project_id = $1
+         and type = 'note'
+         and is_archived = false
+         and coalesce(lifecycle_state, 'active') <> 'forgotten'
+         and source_surface = any($2::text[])
+         and metadata->>'taxonomyBackfilledAt' is null
+       order by updated_at desc, id desc
+       limit $3`,
+      [projectId, ["mcp", "ask_relay"], Math.min(Math.max(limit, 1), 1000)],
     )
     return rows.map((record) => toMemoryRow(record as Record<string, unknown>))
   }
