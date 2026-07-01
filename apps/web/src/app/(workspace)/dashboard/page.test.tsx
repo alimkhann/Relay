@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   getResolvedOnboardingStateForUserMock,
   listProjectsForUserMock,
+  ensurePersonalProjectForUserMock,
   createRepositoryBundleMock,
   requirePageViewerMock,
   syncViewerProfileMock,
@@ -37,6 +38,18 @@ const {
         updatedAt: new Date().toISOString(),
       },
     ]),
+    ensurePersonalProjectForUserMock: vi.fn(async () => ({
+      id: "personal-1",
+      ownerId: "user-1",
+      name: "Personal",
+      slug: "personal-user-1",
+      description: "Personal memory that lives outside any project.",
+      projectUrl: null,
+      isArchived: false,
+      kind: "personal" as const,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })),
     createRepositoryBundleMock: vi.fn(() => ({
       referrals: {
         getByRefereeId: vi.fn(async () => null),
@@ -93,6 +106,7 @@ vi.mock("@/server/policies/viewer", () => {
 
 vi.mock("@/server/services/project-service", () => ({
   listProjectsForUser: listProjectsForUserMock,
+  ensurePersonalProjectForUser: ensurePersonalProjectForUserMock,
   getProjectDashboardForUser: vi.fn(async () => ({
     project: {
       id: "project-1",
@@ -209,6 +223,19 @@ describe("DashboardPage", () => {
       },
     });
     listProjectsForUserMock.mockReset();
+    ensurePersonalProjectForUserMock.mockClear();
+    ensurePersonalProjectForUserMock.mockResolvedValue({
+      id: "personal-1",
+      ownerId: "user-1",
+      name: "Personal",
+      slug: "personal-user-1",
+      description: "Personal memory that lives outside any project.",
+      projectUrl: null,
+      isArchived: false,
+      kind: "personal",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as any);
     listProjectsForUserMock.mockResolvedValue([
       {
         id: "project-1",
@@ -255,7 +282,8 @@ describe("DashboardPage", () => {
     expect(screen.getByText("Relay MVP")).toBeTruthy();
   });
 
-  it("renders onboarding when setup is still pending", async () => {
+  it("ensures Personal instead of rendering legacy project creation when setup is still pending", async () => {
+    listProjectsForUserMock.mockResolvedValueOnce([]);
     getResolvedOnboardingStateForUserMock.mockResolvedValueOnce({
       status: "pending",
       completedProjectId: null,
@@ -265,8 +293,9 @@ describe("DashboardPage", () => {
 
     render(await DashboardPage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByText("Create a project")).toBeTruthy();
-    expect(screen.getByText("Create")).toBeTruthy();
+    expect(ensurePersonalProjectForUserMock).toHaveBeenCalledWith("user-1");
+    expect(screen.getByText("Personal")).toBeTruthy();
+    expect(screen.queryByText("Create a project")).toBeNull();
   });
 
   it("falls back to the personal project when onboarding has no regular project", async () => {

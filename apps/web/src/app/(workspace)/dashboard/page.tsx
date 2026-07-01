@@ -2,7 +2,6 @@ import { redirect } from "next/navigation"
 
 import { createRepositoryBundle } from "@relay/db"
 
-import { CreateProjectForm } from "@/components/projects/create-project-form"
 import { ReferralWelcomeBanner } from "@/components/referral/referral-welcome-banner"
 import { PageTelemetry } from "@/components/telemetry/page-telemetry"
 import { DashboardContent } from "@/features/projects/dashboard-content"
@@ -13,7 +12,7 @@ import {
   completeOnboardingForUser,
   getResolvedOnboardingStateForUser
 } from "@/server/services/onboarding-service"
-import { listProjectsForUser } from "@/server/services/project-service"
+import { ensurePersonalProjectForUser, listProjectsForUser } from "@/server/services/project-service"
 import { resolveViewerEntitlements } from "@/server/services/entitlement-service"
 import { defaultSettings, getUserSettings, normalizeSettings } from "@/server/services/settings-service"
 
@@ -28,9 +27,9 @@ export default async function DashboardPage({
   // Include personal so it can be selected from the switcher, but keep the
   // regular-only list for onboarding/empty-state/default resolution (personal
   // is never the implicit current project and must not count as "has projects").
-  const allProjects = await listProjectsForUser(viewer.userId, { includePersonal: true })
+  let allProjects = await listProjectsForUser(viewer.userId, { includePersonal: true })
   const projects = allProjects.filter((p) => p.kind !== "personal")
-  const personalProject = allProjects.find((p) => p.kind === "personal") ?? null
+  let personalProject = allProjects.find((p) => p.kind === "personal") ?? null
   const [resolvedOnboarding, settings] = await Promise.all([
     getResolvedOnboardingStateForUser(viewer.userId, { projects }).catch((error) => {
       void logServerEvent({
@@ -76,6 +75,40 @@ export default async function DashboardPage({
   ])
   let onboarding = resolvedOnboarding
 
+  if (onboarding.status === "pending" && !personalProject) {
+    const ensuredPersonal = await ensurePersonalProjectForUser(viewer.userId).catch((error) => {
+      void logServerEvent({
+        level: "warn",
+        surface: "web-dashboard",
+        area: "onboarding",
+        event: "dashboard.personal_project_repair_failed",
+        message: "Dashboard could not ensure a personal project for pending onboarding.",
+        userId: viewer.userId,
+        context: { reason: error instanceof Error ? error.message : "unknown" }
+      })
+      return null
+    })
+
+    if (ensuredPersonal) {
+      personalProject = {
+        id: ensuredPersonal.id,
+        name: ensuredPersonal.name,
+        slug: ensuredPersonal.slug,
+        description: ensuredPersonal.description,
+        projectUrl: ensuredPersonal.projectUrl,
+        memoryCount: 0,
+        sessionCount: 0,
+        routingContext: {
+          hasMeaningfulContext: false,
+          keywords: [],
+        },
+        updatedAt: ensuredPersonal.updatedAt,
+        kind: ensuredPersonal.kind,
+      }
+      allProjects = [...allProjects, personalProject]
+    }
+  }
+
   if (onboarding.status === "pending" && personalProject) {
     onboarding = await completeOnboardingForUser(viewer.userId, personalProject.id, "web", {
       onboardingStep: "personal_project_selected",
@@ -117,38 +150,7 @@ export default async function DashboardPage({
       },
     })
 
-    return (
-      <>
-        <PageTelemetry
-          surface="web-dashboard"
-          area="page"
-          pageName="dashboard"
-          pageGroup="workspace"
-          message="Rendered the dashboard."
-          context={{
-            hasProject: false,
-            onboardingStatus: onboarding.status,
-            projectId: null,
-          }}
-        />
-        <section className="py-10">
-          {wasReferred && <ReferralWelcomeBanner />}
-          <header className="mb-10 space-y-2">
-            <h1 className="text-[28px] font-medium tracking-tight text-[var(--relay-ink)]">
-              Create a project
-            </h1>
-            <p className="text-[15px] leading-relaxed text-[var(--relay-muted)]">
-              Define a project boundary so Relay can route the right chats to the right context. The extension will pick this up automatically.
-            </p>
-          </header>
-          <CreateProjectForm
-            initialName={(await searchParams).projectName ?? ""}
-            initialDescription={(await searchParams).projectDescription ?? ""}
-            initialProjectUrl={(await searchParams).projectUrl ?? ""}
-          />
-        </section>
-      </>
-    )
+    redirect("/get-started")
   }
 
   const { project: selectedProjectId, walkthrough: walkthroughParam } = await searchParams
