@@ -104,7 +104,7 @@ async function queueRawPosthogEvent(input: {
 
 function queueBackgroundPosthog(input: TelemetryEventInput) {
   const config = getPosthogConfig();
-  if (!config) {
+  if (!config || input.level === "debug") {
     return;
   }
 
@@ -278,8 +278,10 @@ export async function identifyExtensionUser(userId: string | null | undefined) {
 export function recordBackgroundTelemetry(input: TelemetryEventInput) {
   const event = sanitizeTelemetryEvent(input);
   writeConsoleEvent(event);
-  queueBackgroundPosthog(event);
-  queueBackgroundException(event);
+  if (event.level !== "debug") {
+    queueBackgroundPosthog(event);
+    queueBackgroundException(event);
+  }
 }
 
 export function initializeBackgroundTelemetry() {

@@ -7,6 +7,10 @@ const {
   relayFetchMock,
   readPersistedDashboardMock,
   clearPersistedDashboardMock,
+  sessionStorageData,
+  sessionStorageGetMock,
+  sessionStorageSetMock,
+  sessionStorageRemoveMock,
 } = vi.hoisted(() => ({
   getRelaySessionMock: vi.fn(),
   setRelaySessionMock: vi.fn(),
@@ -14,7 +18,36 @@ const {
   relayFetchMock: vi.fn(),
   readPersistedDashboardMock: vi.fn().mockResolvedValue(null),
   clearPersistedDashboardMock: vi.fn().mockResolvedValue(undefined),
+  sessionStorageData: new Map<string, unknown>(),
+  sessionStorageGetMock: vi.fn(async (keys: string | string[]) => {
+    const keyList = Array.isArray(keys) ? keys : [keys]
+    return Object.fromEntries(
+      keyList
+        .filter((key) => sessionStorageData.has(key))
+        .map((key) => [key, sessionStorageData.get(key)]),
+    )
+  }),
+  sessionStorageSetMock: vi.fn(async (values: Record<string, unknown>) => {
+    for (const [key, value] of Object.entries(values)) {
+      sessionStorageData.set(key, value)
+    }
+  }),
+  sessionStorageRemoveMock: vi.fn(async (keys: string | string[]) => {
+    for (const key of Array.isArray(keys) ? keys : [keys]) {
+      sessionStorageData.delete(key)
+    }
+  }),
 }))
+
+vi.stubGlobal("chrome", {
+  storage: {
+    session: {
+      get: sessionStorageGetMock,
+      set: sessionStorageSetMock,
+      remove: sessionStorageRemoveMock,
+    },
+  },
+})
 
 vi.mock("../storage/session", () => ({
   getRelaySession: getRelaySessionMock,
@@ -126,6 +159,7 @@ describe("loadSessionData runaway-loop guards", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    sessionStorageData.clear()
     sessionCache.current = null
     sessionRefresh.inFlight = null
     sessionRefresh.cooldownUntil = 0
@@ -145,6 +179,30 @@ describe("loadSessionData runaway-loop guards", () => {
     await loadSessionData(true)
     expect(relayFetchMock).toHaveBeenCalledTimes(1)
     expect(sessionRefresh.cooldownUntil).toBeGreaterThan(Date.now())
+
+    relayFetchMock.mockClear()
+    const data = await loadSessionData(true)
+
+    expect(relayFetchMock).not.toHaveBeenCalled()
+    expect(data.connected).toBe(true)
+  })
+
+  it("hydrates refresh cooldown from chrome session storage after a worker restart", async () => {
+    getRelaySessionMock.mockResolvedValue(connectedSession)
+    sessionCache.current = { token: "tok", data: { connected: true } as never, fetchedAt: 0 }
+    relayFetchMock.mockResolvedValue(failingResponse)
+
+    await loadSessionData(true)
+    expect(relayFetchMock).toHaveBeenCalledTimes(1)
+
+    const persistedValues = Array.from(sessionStorageData.entries())
+    sessionCache.current = { token: "tok", data: { connected: true } as never, fetchedAt: 0 }
+    sessionRefresh.inFlight = null
+    sessionRefresh.cooldownUntil = 0
+    sessionRefresh.failureStreak = 0
+    sessionRefresh.lastFailureLogAt = 0
+    sessionStorageData.clear()
+    for (const [key, value] of persistedValues) sessionStorageData.set(key, value)
 
     relayFetchMock.mockClear()
     const data = await loadSessionData(true)
@@ -180,6 +238,7 @@ describe("loadSessionData runaway-loop guards", () => {
 
     // Simulate the cooldown elapsing but within the telemetry-throttle window.
     sessionRefresh.cooldownUntil = 0
+    sessionStorageData.clear()
     await loadSessionData(true)
 
     expect(relayFetchMock).toHaveBeenCalledTimes(2)
@@ -196,6 +255,7 @@ describe("loadSessionData runaway-loop guards", () => {
     expect(sessionRefresh.cooldownUntil).toBe(0)
     expect(sessionRefresh.failureStreak).toBe(0)
     expect(sessionRefresh.inFlight).toBeNull()
+    expect(sessionStorageRemoveMock).toHaveBeenCalled()
   })
 })
 

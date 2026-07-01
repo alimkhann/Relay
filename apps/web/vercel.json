@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "pnpm --filter @relay/web build",
-  "fluid": true,
+  "fluid": false,
   "ignoreCommand": "bash ../../scripts/vercel-ignore-build.sh",
   "crons": [
     {

@@ -55,10 +55,91 @@ import {
 import { createEmptyTrustMetadata } from "./tab-state";
 import { identifyExtensionUser, recordBackgroundTelemetry } from "./telemetry";
 
+const SESSION_REFRESH_SNAPSHOT_KEY = "relay.sessionRefreshGuards";
+
+type SessionRefreshSnapshot = {
+  token: string;
+  cooldownUntil: number;
+  failureStreak: number;
+  lastFailureLogAt: number;
+};
+
+function getSessionStorageArea() {
+  return typeof chrome !== "undefined" ? chrome.storage?.session : null;
+}
+
+async function readSessionRefreshSnapshot(token: string) {
+  const storage = getSessionStorageArea();
+  if (!storage) return null;
+
+  try {
+    const values = await storage.get(SESSION_REFRESH_SNAPSHOT_KEY);
+    const snapshot = values[SESSION_REFRESH_SNAPSHOT_KEY] as Partial<SessionRefreshSnapshot> | undefined;
+    if (
+      !snapshot ||
+      snapshot.token !== token ||
+      typeof snapshot.cooldownUntil !== "number" ||
+      typeof snapshot.failureStreak !== "number" ||
+      typeof snapshot.lastFailureLogAt !== "number"
+    ) {
+      return null;
+    }
+    return snapshot as SessionRefreshSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+async function persistSessionRefreshSnapshot(token: string) {
+  const storage = getSessionStorageArea();
+  if (!storage) return;
+
+  try {
+    await storage.set({
+      [SESSION_REFRESH_SNAPSHOT_KEY]: {
+        token,
+        cooldownUntil: sessionRefresh.cooldownUntil,
+        failureStreak: sessionRefresh.failureStreak,
+        lastFailureLogAt: sessionRefresh.lastFailureLogAt,
+      } satisfies SessionRefreshSnapshot,
+    });
+  } catch {
+    // Best-effort guard persistence only.
+  }
+}
+
+async function clearSessionRefreshSnapshot() {
+  const storage = getSessionStorageArea();
+  if (!storage) return;
+
+  try {
+    await storage.remove(SESSION_REFRESH_SNAPSHOT_KEY);
+  } catch {
+    // Best-effort guard cleanup only.
+  }
+}
+
+async function hydrateSessionRefreshSnapshot(token: string) {
+  if (sessionRefresh.cooldownUntil > Date.now()) return;
+
+  const snapshot = await readSessionRefreshSnapshot(token);
+  if (!snapshot) return;
+
+  if (snapshot.cooldownUntil <= Date.now()) {
+    await clearSessionRefreshSnapshot();
+    return;
+  }
+
+  sessionRefresh.cooldownUntil = snapshot.cooldownUntil;
+  sessionRefresh.failureStreak = snapshot.failureStreak;
+  sessionRefresh.lastFailureLogAt = snapshot.lastFailureLogAt;
+}
+
 export async function resetStoredSession(reason: string) {
   const session = await getRelaySession();
   sessionCache.current = null;
   resetSessionRefreshGuards();
+  await clearSessionRefreshSnapshot();
   dashboardCache.clear();
   await clearPersistedBackgroundCache(session.userId || undefined);
   await clearRelaySession();
@@ -81,6 +162,7 @@ export async function storeAuthenticatedExtensionSession(
 ) {
   sessionCache.current = null;
   resetSessionRefreshGuards();
+  await clearSessionRefreshSnapshot();
   await markMeaningfulActivity("onboarding_action");
   await setRelaySession({
     apiBase: payload.apiBase,
@@ -154,6 +236,7 @@ export async function loadSessionData(force = false) {
   // persistently-failing API cannot be hammered (see sessionRefresh in state.ts).
   // Serve the freshest cache we have, otherwise a last-known snapshot from the
   // stored session — never spin.
+  await hydrateSessionRefreshSnapshot(session.token);
   if (Date.now() < sessionRefresh.cooldownUntil) {
     if (sessionCache.current && sessionCache.current.token === session.token) {
       return sessionCache.current.data;
@@ -312,8 +395,15 @@ async function refreshSessionFromNetwork(
     });
     await identifyExtensionUser(sessionPayload.userId);
 
+    const previousData = sessionCache.current?.token === session.token ? sessionCache.current.data : null;
+    const refreshChanged =
+      !previousData ||
+      previousData.connected !== true ||
+      previousData.projects.length !== projects.length ||
+      previousData.onboarding.status !== onboarding.status;
+
     recordBackgroundTelemetry({
-      level: "info",
+      level: refreshChanged ? "info" : "debug",
       surface: "extension-background",
       area: "session",
       event: "extension_session_refreshed",
@@ -346,6 +436,7 @@ async function refreshSessionFromNetwork(
     // A good refresh clears the failure backoff.
     sessionRefresh.failureStreak = 0;
     sessionRefresh.cooldownUntil = 0;
+    await clearSessionRefreshSnapshot();
 
     return data;
   } catch (cause) {
@@ -358,6 +449,7 @@ async function refreshSessionFromNetwork(
     );
     sessionRefresh.cooldownUntil =
       Date.now() + (SESSION_REFRESH_FAILURE_BACKOFF_MS[backoffIndex] ?? 300_000);
+    await persistSessionRefreshSnapshot(session.token);
 
     // Throttle the failure telemetry so a loop cannot flood PostHog.
     if (

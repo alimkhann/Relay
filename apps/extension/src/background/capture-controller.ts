@@ -61,10 +61,10 @@ export async function captureObservedChange(
   const autoCapture = Boolean(options.autoCapture);
   const previousAssociationProjectName = state.chatAssociation.projectName;
   recordBackgroundTelemetry({
-    level: "info",
+    level: "debug",
     surface: "extension-background",
     area: "capture",
-    event: "capture_started",
+    event: "capture_preflight_started",
     flowId,
     message: "Started extension capture orchestration.",
     projectId: explicitProjectId ?? state.projectId ?? null,
@@ -115,7 +115,7 @@ export async function captureObservedChange(
 
       if (!stillEligible) {
         recordBackgroundTelemetry({
-          level: "info",
+          level: "debug",
           surface: "extension-background",
           area: "capture",
           event: "capture_skipped",
@@ -551,6 +551,24 @@ export async function captureObservedChange(
       await showSavingToast(tabId, projectId, projectName);
       savingToastShownAt = Date.now();
     }
+
+    recordBackgroundTelemetry({
+      level: "info",
+      surface: "extension-background",
+      area: "capture",
+      event: "capture_started",
+      flowId,
+      message: "Started extension capture save.",
+      projectId,
+      tabId,
+      context: {
+        trigger: autoCapture ? "auto" : manualSelection ? "manual" : "association",
+        chatProvider: state.page.platform ?? null,
+        captureSignature: state.page.captureSignature ?? null,
+        turnCount: state.page.turns ?? 0,
+        sourceUrl: state.page.url ?? null,
+      },
+    });
 
     const result = await captureTab(projectId, tabId, {
       processingMode: explicitProjectId ? "fast_ack" : "default",

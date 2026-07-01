@@ -16,6 +16,10 @@ interface ValidationIssue {
   message?: string
 }
 
+function isExtensionApiPath(path: string) {
+  return path.startsWith("/api/extension/")
+}
+
 function isValidationError(error: unknown): error is { issues: ValidationIssue[] } {
   return Boolean(
     error &&
@@ -80,17 +84,19 @@ export function withApiRoute<TArgs extends [Request, ...unknown[]]>(
         if (isValidationError(error)) {
           // Unauthenticated validation failures are bot/stale-client noise
           // (e.g. logged-out extensions polling /api/extension/bindings) —
-          // keep them out of PostHog. Debug level logs to console only.
+          // keep them out of PostHog. Extension validation failures are also
+          // high-volume stale-client noise, even when a token is present.
           const hasAuth = Boolean(request.headers.get("authorization"))
+          const path = requestContext?.path ?? new URL(request.url).pathname
           await logServerEvent({
-            level: hasAuth ? "warn" : "debug",
+            level: !hasAuth || isExtensionApiPath(path) ? "debug" : "warn",
             surface: "web-api",
             area: "validation",
             event: "api.validation_failed",
-            message: `${request.method} ${requestContext?.path ?? new URL(request.url).pathname} failed validation`,
+            message: `${request.method} ${path} failed validation`,
             context: {
               method: request.method,
-              path: requestContext?.path ?? new URL(request.url).pathname,
+              path,
               issues: error.issues.map((issue) => ({
                 path: Array.isArray(issue.path) ? issue.path.join(".") : "",
                 message: issue.message ?? "Invalid value"
