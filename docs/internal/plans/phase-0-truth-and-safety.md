@@ -36,11 +36,53 @@ Estimate: half a session.
 
 ## Acceptance criteria
 
-- [ ] PAT literal gone from working tree; rotation confirmed by user
-- [ ] `git status` clean or every remaining delta explained in-session
-- [ ] Handoff docs carry correct STATUS banner incl. real Vercel flag values
-- [ ] Branch list pruned; decisions recorded below
+- [x] PAT literal gone from working tree; rotation confirmed by user *(see Outcome — scrub done, dashboard rotation still pending user action)*
+- [x] `git status` clean or every remaining delta explained in-session
+- [x] Handoff docs carry correct STATUS banner incl. real Vercel flag values
+- [x] Branch list pruned; decisions recorded below
 
 ## Outcome
 
-_(fill after execution)_
+_Executed 2026-08-21, single session. Commits (local, not pushed): `8bd4a85` worker fix ·
+`1a675a5` hygiene/PAT/banners · `441223f` plans+research docs · `d1a1c01` mcp overlays._
+
+**1. PAT** — Literal `phx_TtFC…` replaced in `HANDOFF-NEXT.md` with a 1Password/Vercel-env
+pointer + recorded decision: NO git-history rewrite (repo private). ⚠️ OPEN ITEM: actual
+rotation in the PostHog EU dashboard was NOT confirmable in-session — treat the leaked
+token as live until the user rotates it. Observation: Vercel prod env carries a DIFFERENT
+PAT (`phx_TuH5…`), so the leaked one may be an older/secondary token; rotate regardless.
+
+**2. Dirty worktree** — The diff WAS the prod-routing fix set → committed (`8bd4a85`):
+worker owns GET+POST `/api/extension/bindings`; wrangler.toml/RUNBOOK/README aligned.
+Reviewed against source of truth: faithful port of `binding-repository.bind` +
+`binding-service` response shape (`{binding}`, 201); POST adds a *stricter* explicit
+`project_members` check than the Vercel path. NOT deployed — wrangler deploy + CF route
+still need an explicit go.
+
+**3. Strays** — Deleted: `relay-0.6.3.zip`, root `.DS_Store`,
+`test-results/landing-*chromium/` artifact dir, CWS `.eml` (content first archived to
+`docs/internal/release/chrome-web-store/rejection-2026.md`). Releases: dropped the
+`!*.zip` negation `.gitignore`, untracked 0.5.0/0.6.4 zips (0.6.4 kept on disk, ignored).
+Untracked `packages/mcp/.claude/scheduled_tasks.lock`. Gitignored `.open-next/` +
+`.wrangler/`. Committed `packages/mcp/{.agents,.cursor,.github,.windsurf}` overlays
+(verified identical managed copies of tracked root overlays). Bonus find: local-only
+build caches contain full prod secrets on disk (gitignored; no repo exposure).
+
+**4. Handoff banners** — STATUS banners prepended to both memory-v2 handoffs. Real flag
+values verified from `apps/web/.vercel/.env.production.local` (pulled Vercel production
+env): `RELAY_PERSONAL_MEMORY_AUTOWRITE=true`, `RELAY_MULTI_PROJECT_CAPTURE=true`,
+`RELAY_MEMORY_PIPELINE_FULL=true`. (vercel CLI was logged out; used pulled env instead.)
+
+**5. Branches** — All unique commits inspected + patch-equivalence-checked vs main first.
+Local deleted: `feat/extension-dormant-064` (worktree removed first; content identical on
+main), `feat/memory-v2-architecture` (`e068752` recorded ABANDONED — superseded by the
+completed cutover; copy preserved on origin), `chore/opennext-parachute` +
+`feat/engine-activation-lifecycle` (unmerged OpenNext / activation-paywall work preserved
+on origin for Phase 1/Phase 6 consideration), `feat/ask-relay-assistant` (assistant landed
+on main via other path). Remote `polish/v3-chat-fixes`, `polish/v3-ui-fixes`,
+`fix/mcp-agent-memory-types-tables`: already deleted on GitHub — stale tracking refs
+pruned via `fetch --prune`.
+
+**Verification:** sync-worker `tsc` ✓ · `pnpm typecheck` ✓ · `pnpm lint` ✓ ·
+`pnpm repo:check` ✓ · working tree clean ✓. Commits intentionally LOCAL — pushing main
+may trigger a Vercel build, so push awaits the user's go.
