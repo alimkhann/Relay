@@ -4,13 +4,13 @@ name = "relay-sync-worker"
 main = "src/index.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+preview_urls = true
 
-# Non-secret vars. Set VERCEL_ORIGIN to a Vercel origin that is NOT behind the
-# Cloudflare route (otherwise the non-GET proxy loops). Use the project's stable
-# *.vercel.app production alias, e.g. https://relay-<hash>.vercel.app or the
-# project production domain relay.vercel.app.
+# Non-secret vars. Production should route only /api/extension/bindings* here.
+# VERCEL_ORIGIN is only used if someone hits another path on workers.dev.
 [vars]
-VERCEL_ORIGIN = "https://relay.vercel.app"
+VERCEL_ORIGIN = "https://relay-alimkhans-projects0.vercel.app"
 
 # Secrets — set with:
 #   wrangler secret put DATABASE_URL

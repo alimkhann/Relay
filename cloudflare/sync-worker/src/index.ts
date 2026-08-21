@@ -14,9 +14,9 @@
  * `binding.project.{id,name,slug}` (apps/extension/src/background/sync-controller.ts),
  * so the project summary is intentionally slim — no per-project fan-out.
  *
- * Anything that is NOT `GET /api/extension/bindings` (e.g. the rare POST that
- * creates a binding) is proxied straight back to Vercel, so behaviour for every
- * other method/path is unchanged.
+ * It owns both GET and POST for this single route. Other paths still proxy to
+ * Vercel for direct workers.dev smoke tests, but production should only route
+ * `/api/extension/bindings*` here.
  */
 import { neon } from "@neondatabase/serverless"
 
@@ -28,6 +28,21 @@ export interface Env {
 }
 
 const BINDINGS_PATH = "/api/extension/bindings"
+const BINDING_KINDS = new Set(["tab", "domain", "manual"])
+const PLATFORMS = new Set(["chatgpt", "perplexity", "claude", "codex"])
+
+interface ExtensionViewer {
+  tokenId: string
+  userId: string
+}
+
+interface BindingInput {
+  projectId: string
+  bindingKind: "tab" | "domain" | "manual"
+  domain: string | null
+  tabId: string | null
+  platform: string | null
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -55,51 +70,185 @@ function proxyToVercel(request: Request, env: Env, url: URL): Promise<Response> 
   )
 }
 
+async function resolveExtensionViewer(request: Request, sql: any): Promise<ExtensionViewer | Response> {
+  const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim()
+  if (!token || token.startsWith("relay_mcp_")) {
+    return json({ error: "Unauthorized" }, 401)
+  }
+
+  const tokenHash = await sha256Hex(token)
+  const tokenRows = (await sql`
+    select id, user_id
+    from extension_api_tokens
+    where token_hash = ${tokenHash}
+      and revoked_at is null
+      and (expires_at is null or expires_at > now())
+    limit 1
+  `) as Array<{ id: string; user_id: string }>
+
+  const tokenRow = tokenRows[0]
+  if (!tokenRow) {
+    return json({ error: "Unauthorized" }, 401)
+  }
+
+  return { tokenId: tokenRow.id, userId: tokenRow.user_id }
+}
+
+function parseNullableString(value: unknown): string | null {
+  return typeof value === "string" ? value : null
+}
+
+function parseBindingInput(value: unknown): BindingInput | Response {
+  if (!value || typeof value !== "object") {
+    return json({ error: "Request validation failed." }, 400)
+  }
+  const record = value as Record<string, unknown>
+  const projectId = typeof record.projectId === "string" ? record.projectId.trim() : ""
+  const bindingKind = typeof record.bindingKind === "string" ? record.bindingKind : ""
+  const platform = parseNullableString(record.platform)
+
+  if (!projectId) {
+    return json({ error: "projectId is required." }, 400)
+  }
+  if (!BINDING_KINDS.has(bindingKind)) {
+    return json({ error: "Invalid bindingKind." }, 400)
+  }
+  if (platform !== null && !PLATFORMS.has(platform)) {
+    return json({ error: "Invalid platform." }, 400)
+  }
+
+  return {
+    projectId,
+    bindingKind: bindingKind as BindingInput["bindingKind"],
+    domain: parseNullableString(record.domain),
+    tabId: parseNullableString(record.tabId),
+    platform,
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
 
-    // Only own GET /api/extension/bindings. Everything else → Vercel origin.
-    if (request.method !== "GET" || url.pathname !== BINDINGS_PATH) {
+    // Only own /api/extension/bindings. Everything else → Vercel origin.
+    if (url.pathname !== BINDINGS_PATH) {
       return proxyToVercel(request, env, url)
+    }
+    if (request.method !== "GET" && request.method !== "POST") {
+      return json({ error: "Method not allowed." }, 405)
     }
 
     // --- auth: extension token only (reject missing / MCP tokens) ---
-    const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim()
-    if (!token || token.startsWith("relay_mcp_")) {
-      return json({ error: "Unauthorized" }, 401)
-    }
-
     const sql = neon(env.DATABASE_URL)
-    const tokenHash = await sha256Hex(token)
-
-    const tokenRows = (await sql`
-      select id, user_id
-      from extension_api_tokens
-      where token_hash = ${tokenHash}
-        and revoked_at is null
-        and (expires_at is null or expires_at > now())
-      limit 1
-    `) as Array<{ id: string; user_id: string }>
-
-    const tokenRow = tokenRows[0]
-    if (!tokenRow) {
-      return json({ error: "Unauthorized" }, 401)
+    const viewer = await resolveExtensionViewer(request, sql)
+    if (viewer instanceof Response) {
+      return viewer
     }
-    const userId = tokenRow.user_id
+    const userId = viewer.userId
 
     // Best-effort last_used_at touch (mirrors touchIfStale, 15m), non-blocking.
     ctx.waitUntil(
       sql`
         update extension_api_tokens
         set last_used_at = now()
-        where id = ${tokenRow.id}
+        where id = ${viewer.tokenId}
           and (last_used_at is null or last_used_at < now() - make_interval(mins => 15))
       `.then(
         () => undefined,
         () => undefined,
       ),
     )
+
+    if (request.method === "POST") {
+      let body: unknown
+      try {
+        body = await request.json()
+      } catch {
+        return json({ error: "Invalid JSON body." }, 400)
+      }
+
+      const parsed = parseBindingInput(body)
+      if (parsed instanceof Response) {
+        return parsed
+      }
+
+      const membershipRows = (await sql`
+        select 1
+        from project_members
+        where project_id = ${parsed.projectId}
+          and user_id = ${userId}
+        limit 1
+      `) as Array<{ "?column?": number }>
+      if (!membershipRows[0]) {
+        return json({ error: "Project not found." }, 404)
+      }
+
+      const existingRows = (await sql`
+        select *
+        from project_bindings
+        where user_id = ${userId}
+          and binding_kind = cast(${parsed.bindingKind} as binding_type)
+          and domain is not distinct from ${parsed.domain}
+          and tab_id is not distinct from ${parsed.tabId}
+        limit 1
+      `) as Array<{ id: string }>
+
+      const rows = existingRows[0]
+        ? await sql`
+            update project_bindings
+            set project_id = ${parsed.projectId},
+                platform = cast(${parsed.platform} as platform_type),
+                updated_at = now()
+            where id = ${existingRows[0].id}
+            returning *
+          `
+        : await sql`
+            insert into project_bindings (user_id, project_id, binding_kind, domain, tab_id, platform)
+            values (
+              ${userId},
+              ${parsed.projectId},
+              cast(${parsed.bindingKind} as binding_type),
+              ${parsed.domain},
+              ${parsed.tabId},
+              cast(${parsed.platform} as platform_type)
+            )
+            returning *
+          `
+
+      ctx.waitUntil(
+        sql`
+          insert into capture_events (user_id, project_id, session_id, event_type, payload)
+          values (${userId}, ${parsed.projectId}, null, 'project_bound', ${JSON.stringify(parsed)}::jsonb)
+        `.then(
+          () => undefined,
+          () => undefined,
+        ),
+      )
+
+      const binding = rows[0] as {
+        id: string
+        project_id: string
+        binding_kind: string
+        domain: string | null
+        tab_id: string | null
+        platform: string | null
+        created_at: string
+        updated_at: string
+      }
+      return json({
+        binding: {
+          id: binding.id,
+          userId,
+          projectId: binding.project_id,
+          bindingKind: binding.binding_kind,
+          domain: binding.domain,
+          tabId: binding.tab_id,
+          platform: binding.platform,
+          createdAt: binding.created_at,
+          updatedAt: binding.updated_at,
+        },
+      }, 201)
+    }
 
     // --- resolve binding (port of BindingRepository.resolve; scoped by user_id) ---
     const domain = url.searchParams.get("domain")

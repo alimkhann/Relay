@@ -34,8 +34,10 @@ Active-CPU/Provisioned-Memory figures are not the binding constraint here.
 ## Part A — Deploy the sync worker (bindings offload)
 
 Code is in `cloudflare/sync-worker/` (self-contained, outside the pnpm workspace,
-typechecked). It serves `GET /api/extension/bindings` and proxies everything else
-back to Vercel.
+typechecked). It serves both `GET` and `POST /api/extension/bindings`. The POST
+path is owned by the worker because Cloudflare Worker Routes match all methods
+for a path, and the available Vercel deployment aliases are either protected or
+redirect back to `www.onrelay.app`.
 
 ```bash
 cd cloudflare/sync-worker
@@ -46,8 +48,8 @@ npx wrangler login
 # is already scoped by user_id). Reuse SERVICE_DATABASE_URL or DATABASE_URL.
 npx wrangler secret put DATABASE_URL
 
-# Edit wrangler.toml → set VERCEL_ORIGIN to a Vercel origin NOT behind the CF route
-# (the project's *.vercel.app production alias), so the non-GET proxy doesn't loop.
+# VERCEL_ORIGIN is only used for direct workers.dev smoke tests on non-bindings
+# paths. Production should route only /api/extension/bindings* to this Worker.
 
 npm run deploy        # → https://relay-sync-worker.<subdomain>.workers.dev
 ```
@@ -65,6 +67,11 @@ curl -s "https://relay-sync-worker.<subdomain>.workers.dev/api/extension/binding
 Workers Routes → add `www.onrelay.app/api/extension/bindings*` → worker
 `relay-sync-worker`. The extension keeps calling `https://www.onrelay.app`
 (its single `PLASMO_PUBLIC_RELAY_API_BASE`) and never changes.
+
+If using CLI/API, the Cloudflare credential must be able to create/manage the
+`onrelay.app` zone. A Wrangler OAuth token with only `zone:read` can deploy the
+Worker but cannot add the site; Cloudflare returns
+`Requires permission "com.cloudflare.api.account.zone.create"`.
 
 **Rollback:** delete that Worker Route. Traffic falls back to the Vercel handler
 instantly. The Vercel route is never removed.
