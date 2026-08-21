@@ -1,5 +1,14 @@
 # Next-session handoff — Phase 4 complete; next: review → cutover tooling → rollout
 
+> **⚠️ STATUS 2026-08-21 — THIS DOC IS STALE BELOW THIS BANNER. CUTOVER HAPPENED.**
+> Prod Neon (`shiny-term-32281581`, branch `br-small-moon-agn70urq`, db `neondb`) is migrated
+> through **0055** (applied 2026-06-10/12), RLS enabled on key tables, memory-v2 LIVE
+> (~203 personal projects, ~999 session_projects links, pipeline jobs active).
+> Verified Vercel production env values (pulled `.env.production.local`, checked 2026-08-21):
+> `RELAY_PERSONAL_MEMORY_AUTOWRITE=true` · `RELAY_MULTI_PROJECT_CAPTURE=true` ·
+> `RELAY_MEMORY_PIPELINE_FULL=true`. The "keep flags dark / do NOT cutover" instructions
+> below are obsolete. Current recovery work: `docs/internal/plans/2026-08-21-MASTER-PLAN.md`.
+
 Branch `feat/memory-v2-architecture` (PR #35).
 
 ## START HERE (next session): review, then Phases 5–6
@@ -190,7 +199,10 @@ requiring the new extension (edge save, settings matrix). Everything else ships 
   daily reads → monthly reads → daily writes → monthly writes
 - Marketing cards: monthly only (cleaner). Settings + docs: both daily and monthly.
 - Internal hard limits (Relay AI messages/day): docs/settings only, NOT pricing page.
-- PostHog PAT: `phx_TtFC7MwjjnP7Y4ytQ5kxyGBmqRnV4VFD4m8iE8i2ZyxeALox`
+- PostHog PAT: see 1Password / Vercel env (never commit the literal; the value
+  that was here leaked in `c8cbc09` and must be rotated in the PostHog EU
+  dashboard — 2026-08-21 decision: scrub from repo, NO git-history rewrite,
+  repo is private)
   - Check actual limit-hit rates on paid plans before tightening limits
   - Check Relay AI / MCP tool call frequency (too aggressive on casual chat)
 

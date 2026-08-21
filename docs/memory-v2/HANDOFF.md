@@ -1,5 +1,14 @@
 # Memory Architecture v2 — Handoff
 
+> **⚠️ STATUS 2026-08-21 — ARCHIVE DOC. CUTOVER HAPPENED.**
+> Prod Neon (`shiny-term-32281581`, branch `br-small-moon-agn70urq`, db `neondb`) is migrated
+> through **0055** (applied 2026-06-10/12), RLS enabled on key tables, memory-v2 LIVE
+> (~203 personal projects, ~999 session_projects links, pipeline jobs active).
+> Verified Vercel production env values (pulled `.env.production.local`, checked 2026-08-21):
+> `RELAY_PERSONAL_MEMORY_AUTOWRITE=true` · `RELAY_MULTI_PROJECT_CAPTURE=true` ·
+> `RELAY_MEMORY_PIPELINE_FULL=true`. Everything below is historical context.
+> Current recovery work: `docs/internal/plans/2026-08-21-MASTER-PLAN.md`.
+
 > **⚠️ ARCHITECTURE PIVOT (2026-05-29): the `spaces` layer was dropped. Personal memory is now a `projects` row with `kind='personal'`.** Everything below the "Current architecture" section describes the **superseded** spaces design and is kept only as historical context. Read the section directly below first; treat the rest as an archive.
 
 ## ▶ NEXT-SESSION HANDOFF (2026-05-30) — READ FIRST
