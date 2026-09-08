@@ -1,27 +1,82 @@
+<div align="center">
+
 # Relay
 
-Relay is a browser-first cross-AI memory sidecar. This repository contains the MVP baseline:
+One memory sidecar for every AI tool you use.
 
-- `apps/web`: public landing page, authenticated dashboard, and backend API routes
-- `apps/extension`: Chrome MV3 extension built with Plasmo
-- `packages/shared`: shared types, Zod schemas, constants, and utilities
-- `packages/db`: storage abstractions, migrations, repositories, and query helpers
-- `packages/adapters`: per-site DOM adapters for supported AI tools
-- `packages/formatters`: target-specific context packet formatters
+[Live site](https://onrelay.app) · [Report a bug](https://github.com/alimkhann/Relay/issues) · [Request a feature](https://github.com/alimkhann/Relay/issues)
 
-## Quick Start
+</div>
 
-```bash
-pnpm install
-pnpm dev:web
-pnpm dev:extension
-```
+## About
 
-## Local DB + Local Auth
+I kept re-explaining my project every time I switched AI tabs. Each tool remembered nothing about the others. Relay fixes that with a small memory sidecar that lives in the browser and hands each tool the context it needs.
 
-Set `AUTH_PROVIDER=local` and `PLASMO_PUBLIC_RELAY_AUTH_PROVIDER=local` in your local env, then use the local Postgres flow:
+How it works: per-site adapters read the page you are on, the extension builds a tight context packet for the target tool, and everything stays reviewable in the dashboard. You see what gets stored and what gets sent. Nothing syncs silently.
 
-```bash
+The part I was careful about: handing private context to the wrong tool. So adapters work against a narrow validated schema, storage goes through explicit repositories, and raw page content never leaves the machine unshaped.
+
+Contents:
+
+- `apps/web` — landing page, dashboard, and API routes
+- `apps/extension` — Chrome MV3 extension
+- `packages/shared` — types, schemas, constants, utilities
+- `packages/db` — storage abstractions, migrations, repositories
+- `packages/adapters` — per-site DOM adapters for supported AI tools
+- `packages/formatters` — context packet formatters per target tool
+- `packages/cli`, `packages/cli-core`, `packages/wizard`, `packages/mcp` — terminal and agent integrations
+
+## Built with
+
+- [Next.js](https://nextjs.org) (App Router) for the web app and API routes
+- [Plasmo](https://www.plasmo.com) for the Chrome MV3 extension
+- [Postgres](https://www.postgresql.org) (Neon-compatible) for storage
+- [Tailwind CSS](https://tailwindcss.com) plus shadcn-style primitives for UI
+- [Vitest](https://vitest.dev) and [Playwright](https://playwright.dev) for tests
+
+## Getting started
+
+To get a local copy running, follow these steps.
+
+### Prerequisites
+
+- Node 20+
+- [pnpm](https://pnpm.io) 9+
+- Postgres running locally, or a Neon branch
+
+### Installation
+
+1. Clone the repo
+
+   ```sh
+   git clone https://github.com/alimkhann/Relay.git
+   cd Relay
+   ```
+
+2. Install dependencies
+
+   ```sh
+   pnpm install
+   ```
+
+3. Copy the example env file and fill in your own values
+
+   ```sh
+   cp .env.example .env
+   ```
+
+4. Start the web app and the extension dev build
+
+   ```sh
+   pnpm dev:web
+   pnpm dev:extension
+   ```
+
+### Local DB and local auth
+
+If you want to run fully offline, set `AUTH_PROVIDER=local` and `PLASMO_PUBLIC_RELAY_AUTH_PROVIDER=local` in your env, then:
+
+```sh
 pnpm db:local:start
 pnpm db:local:migrate
 pnpm db:local:seed:user -- --email local@relay.test --name "Relay Local"
@@ -29,46 +84,43 @@ pnpm dev:web
 pnpm dev:extension
 ```
 
-Useful reset commands:
+Reset helpers: `pnpm db:local:count` shows row counts, `pnpm db:local:reset` wipes local data.
 
-```bash
-pnpm db:local:count
-pnpm db:local:reset
-```
+## Usage
 
-## Extension Google Auth
+Load the extension from the Plasmo dev build into Chrome, sign in, and open any supported AI tool. Relay picks up the page context and offers it back as a packet shaped for that tool. The dashboard shows stored memory and what was sent where.
 
-Relay's extension sign-in uses `chrome.identity.launchWebAuthFlow()`. Google only accepts the exact redirect URI returned by `chrome.identity.getRedirectURL()`, which is tied to the extension ID.
+One gotcha that cost me an afternoon: extension Google sign-in ties the redirect URI to the extension ID. If you share unsigned test builds, each install gets a different ID and Google rejects the login with `redirect_uri_mismatch`. Fix it by pinning `CRX_PUBLIC_KEY` so the ID stays stable, then add `https://<your-extension-id>.chromiumapp.org/` to the OAuth client's authorized redirect URIs.
 
-For any shared, zipped, or production build:
+## Roadmap
 
-1. Set `CRX_PUBLIC_KEY` for the extension build so the extension ID stays stable.
-2. Set `PLASMO_PUBLIC_CRX_GOOGLE_CLIENT_ID` to the Google OAuth client used by the extension.
-3. In Google Cloud Console, add the exact redirect URI for that extension ID to the OAuth client's authorized redirect URIs:
+- More site adapters for the AI tools people actually use daily
+- More formatter targets so packets fit each tool's context window well
+- Extension store release once auth and sync are boring
+- CLI and MCP surface kept in sync with the web contract
 
-```text
-https://<your-extension-id>.chromiumapp.org/
-```
+Open issues hold the full list. Suggestions welcome.
 
-If you distribute unsigned test builds without a fixed `CRX_PUBLIC_KEY`, each install can get a different extension ID and Google sign-in will fail with `Error 400: redirect_uri_mismatch`.
+## Contributing
 
-## Tooling
+Small, reviewable changes beat big refactors here. If you touch a client integration surface, update the registry, docs, and tests in the same change. See `CONTRIBUTING.md` for the full guide.
 
-- Next.js App Router
-- Neon-compatible Postgres storage
-- Tailwind CSS
-- shadcn/ui-style primitives
-- Vitest
-- Playwright
+1. Fork the repo
+2. Create a branch (`git checkout -b feature/thing`)
+3. Commit your change
+4. Push and open a pull request
 
-## Why this exists
+## License
 
-AI tools each keep their own memory. I got tired of re-explaining my project every time I switched tabs. Relay keeps one memory sidecar in the browser and hands each tool the context it needs.
+Copyright (c) Relay. All rights reserved. See `LICENSE` for details.
 
-## How it works
+## Contact
 
-Input: you work across AI tools in Chrome. Per-site adapters read the page DOM and the extension builds a context packet for the target tool.
+Alimkhan Yergebayev — alimkhan.yergebayev@gmail.com
 
-Human control: memory stays local-first and reviewable in the dashboard. Nothing syncs silently. You see what gets stored and what gets sent.
+Project link: [https://github.com/alimkhann/Relay](https://github.com/alimkhann/Relay)
 
-Risk I designed around: leaking private context into the wrong tool. The guardrails are per-site adapters with a narrow schema (Zod), storage abstractions with explicit repositories, and no raw DOM exfil.
+## Acknowledgments
+
+- Plasmo docs for making MV3 development almost pleasant
+- The shadcn/ui project for primitives worth borrowing
