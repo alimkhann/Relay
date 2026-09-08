@@ -4,9 +4,15 @@
 
 One memory sidecar for every AI tool you use.
 
-[Live site](https://onrelay.app) · [Report a bug](https://github.com/alimkhann/Relay/issues) · [Request a feature](https://github.com/alimkhann/Relay/issues)
+[Live site](https://onrelay.app) · [Watch the demo](https://youtu.be/15aqzManX-0) · [Report a bug](https://github.com/alimkhann/Relay/issues) · [Request a feature](https://github.com/alimkhann/Relay/issues)
 
 </div>
+
+## Demo
+
+Two minutes, no slides. How capture, briefs, and injection actually work:
+
+[![Relay demo](https://img.youtube.com/vi/15aqzManX-0/maxresdefault.jpg)](https://youtu.be/15aqzManX-0)
 
 ## About
 
