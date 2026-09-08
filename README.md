@@ -11,9 +11,9 @@ One memory sidecar for every AI tool you use.
 ## Demo
 
 Fifty seconds, no slides. How capture, briefs, and injection actually work.
-Plays right here. Full version on [YouTube](https://youtu.be/15aqzManX-0).
+Click to watch on YouTube:
 
-<video src="https://github.com/alimkhann/Relay/raw/main/docs/demo.mp4" controls="controls" muted="muted" preload="metadata"></video>
+[![Relay demo, click to watch](docs/demo-video.png)](https://youtu.be/15aqzManX-0)
 
 ## About
 
