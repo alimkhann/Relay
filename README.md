@@ -60,3 +60,15 @@ If you distribute unsigned test builds without a fixed `CRX_PUBLIC_KEY`, each in
 - shadcn/ui-style primitives
 - Vitest
 - Playwright
+
+## Why this exists
+
+AI tools each keep their own memory. I got tired of re-explaining my project every time I switched tabs. Relay keeps one memory sidecar in the browser and hands each tool the context it needs.
+
+## How it works
+
+Input: you work across AI tools in Chrome. Per-site adapters read the page DOM and the extension builds a context packet for the target tool.
+
+Human control: memory stays local-first and reviewable in the dashboard. Nothing syncs silently. You see what gets stored and what gets sent.
+
+Risk I designed around: leaking private context into the wrong tool. The guardrails are per-site adapters with a narrow schema (Zod), storage abstractions with explicit repositories, and no raw DOM exfil.
