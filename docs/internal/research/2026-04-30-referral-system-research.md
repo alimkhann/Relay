@@ -1,6 +1,6 @@
 <img src="https://r2cdn.perplexity.ai/pplx-full-logo-primary-dark%402x.png" style="height:64px;margin-right:32px"/>
 
-# How can I implement referral system for relay? What should be the logic?
+# Referral system research
 
 I want to finally get paid users. I have 22 free ones. No paid.
 
