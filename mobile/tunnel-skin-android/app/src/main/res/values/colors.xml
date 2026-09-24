@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="tunnel_void">#FF070A0C</color>
+    <color name="tunnel_ink">#FF0C1216</color>
+    <color name="tunnel_panel">#FF121A1F</color>
+    <color name="tunnel_line">#FF1E2C33</color>
+    <color name="tunnel_signal">#FF5CFFB0</color>
+    <color name="tunnel_signal_dim">#FF2A7A58</color>
+    <color name="tunnel_warn">#FFFFB454</color>
+    <color name="tunnel_text">#FFE6F2EC</color>
+    <color name="tunnel_muted">#FF7E9490</color>
+    <color name="ic_launcher_background">#FF070A0C</color>
+</resources>
